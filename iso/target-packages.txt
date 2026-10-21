@@ -4,7 +4,6 @@ ark
 base
 btrfs-progs
 cryptsetup
-discover
 dkms
 dolphin
 dosfstools

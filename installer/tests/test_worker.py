@@ -1812,6 +1812,21 @@ class BootAndSnapshotTests(unittest.TestCase):
                 self.assertTrue(any(line.startswith('WARNING: Arch mirror ranking failed') for line in logs))
                 self.assertFalse(outputs[0].exists())
 
+    def test_final_settings_preserves_all_supported_locales(self):
+        from emaki_installer.i18n import LOCALES
+        expected = ''.join(language + ' UTF-8\n' for language in LOCALES)
+        self.worker.files.write('/etc/passwd', 'vmuser:x:1001:987:VM User:/home/vmuser:/bin/bash\n')
+        for language in LOCALES:
+            with self.subTest(language=language):
+                self.worker.plan.config['language'] = language
+                with patch.object(self.worker, 'repositories'), \
+                        patch.object(self.worker, 'record_boot_esp'), \
+                        patch('emaki_installer.worker.enable_units'):
+                    self.worker.settings()
+                self.assertEqual(self.worker.files.read('/etc/locale.gen'), expected)
+                self.assertEqual(self.worker.files.read('/etc/locale.conf'), 'LANG=' + language + '\n')
+        self.assertEqual(sum('locale-gen' in command for command, options in self.worker.runner.commands), len(LOCALES))
+
     def test_test_mode_keys_permissions_and_preset_before_enable(self):
         self.worker.test_mode = True
         self.worker.backend = SimpleNamespace(instance=SimpleNamespace(pacman=Mock()))

@@ -155,7 +155,7 @@ class DesktopApplicationMigrationTests(unittest.TestCase):
         self.apply()
         self.assertEqual(self.explicit(), {'emaki-desktop', *migration.FORMER_DESKTOP_DEPENDENCIES})
         self.assertEqual(lock.read_text(), 'held by the package transaction\n')
-        self.assertEqual(json.loads(self.state.read_text())['version'], 5)
+        self.assertEqual(json.loads(self.state.read_text())['version'], 6)
 
     def test_removed_applications_stay_removed_and_later_reason_changes_stay(self):
         self.package('firefox')
@@ -170,7 +170,7 @@ class DesktopApplicationMigrationTests(unittest.TestCase):
         self.package('firefox')
         self.apply(fresh=True)
         self.assertEqual(self.explicit(), {'emaki-desktop'})
-        self.assertEqual(json.loads(self.state.read_text())['version'], 5)
+        self.assertEqual(json.loads(self.state.read_text())['version'], 6)
 
     def test_without_desktop_package_does_not_change_package_reasons(self):
         shutil.rmtree(self.database / 'local/emaki-desktop-1-1')
@@ -569,7 +569,7 @@ class MigrationTests(unittest.TestCase):
         result = self.as_root('--transaction')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(directory.stat().st_mode & 0o7777, 0o750)
-        self.assertEqual(json.loads(state.read_text())['version'], 5)
+        self.assertEqual(json.loads(state.read_text())['version'], 6)
         # Once only: an administrator's later choice stays.
         directory.chmod(0o755)
         self.assertEqual(self.as_root('--transaction').returncode, 0)
@@ -643,7 +643,7 @@ class MigrationTests(unittest.TestCase):
         # The files directory itself is libflatpak's in a partial (Locale) checkout.
         self.assertEqual(mode(deployment / 'files'), 0o755)
         self.assertEqual(mode(deployment / 'metadata'), 0o644)
-        self.assertEqual(json.loads(state.read_text())['version'], 5)
+        self.assertEqual(json.loads(state.read_text())['version'], 6)
         # Once only: a later root-only choice stays.
         exports.chmod(0o700)
         self.assertEqual(self.as_root('--transaction').returncode, 0)
@@ -803,6 +803,79 @@ class MigrationTests(unittest.TestCase):
         self.assertLess('89-emaki-system-migrate.hook', '90-mkinitcpio-install.hook')
         self.assertIn('post_upgrade()', script)
         self.assertNotIn('preset-all', script)
+
+
+class LanguageMigrationTests(unittest.TestCase):
+    """Updated systems get Spanish and Portuguese in /etc/locale.gen, so Settings can offer them."""
+    STOCK = ('# Uncomment the locales you need.\n#en_US.UTF-8 UTF-8  \nen_US.UTF-8 UTF-8\n'
+             '#es_MX.UTF-8 UTF-8  \n#es_MX ISO-8859-1  \n#pt_BR.UTF-8 UTF-8  \n#pt_BR ISO-8859-1  \n')
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.gen = self.root / 'etc/locale.gen'
+        self.gen.parent.mkdir(parents=True)
+
+    def test_stock_lines_are_uncommented_and_nothing_else_changes(self):
+        self.gen.write_text(self.STOCK)
+        self.gen.chmod(0o644)
+        self.assertTrue(migration.enable_languages(self.root))
+        self.assertEqual(self.gen.read_text(), self.STOCK.replace('#es_MX.UTF-8 UTF-8  \n', 'es_MX.UTF-8 UTF-8\n')
+                         .replace('#pt_BR.UTF-8 UTF-8  \n', 'pt_BR.UTF-8 UTF-8\n'))
+        self.assertEqual(self.gen.stat().st_mode & 0o777, 0o644)
+        self.assertFalse(migration.enable_languages(self.root))
+
+    def test_missing_lines_are_appended_once(self):
+        self.gen.write_text('en_US.UTF-8 UTF-8')
+        self.assertTrue(migration.enable_languages(self.root))
+        self.assertEqual(self.gen.read_text(), 'en_US.UTF-8 UTF-8\nes_MX.UTF-8 UTF-8\npt_BR.UTF-8 UTF-8\n')
+        self.assertFalse(migration.enable_languages(self.root))
+
+    def test_missing_or_linked_file_is_left_alone(self):
+        self.assertFalse(migration.enable_languages(self.root))
+        target = self.root / 'elsewhere'
+        target.write_text(self.STOCK)
+        self.gen.symlink_to(target)
+        self.assertFalse(migration.enable_languages(self.root))
+        self.assertEqual(target.read_text(), self.STOCK)
+
+    def test_offline_root_never_builds_on_the_host(self):
+        self.gen.write_text(self.STOCK)
+        with mock.patch.object(migration.subprocess, 'run') as run:
+            self.assertTrue(migration.generate_languages(self.root))
+        run.assert_not_called()
+
+    def test_running_system_builds_and_a_failure_is_retried(self):
+        self.gen.write_text(self.STOCK)
+        # Arch's locale-gen exits 0 when one locale fails to build: success is the languages being there.
+        quiet = mock.Mock(returncode=0, stderr='localedef: cannot open es_MX')
+        with mock.patch.object(migration, 'enable_languages', return_value=True), \
+                mock.patch.object(migration, 'languages_generated', return_value=False), \
+                mock.patch.object(migration.subprocess, 'run', return_value=quiet) as run:
+            self.assertFalse(migration.generate_languages(Path('/')))
+        self.assertEqual(run.call_args.args[0], ['locale-gen'])
+        with mock.patch.object(migration, 'enable_languages', return_value=True), \
+                mock.patch.object(migration, 'languages_generated', return_value=True), \
+                mock.patch.object(migration.subprocess, 'run', return_value=mock.Mock(returncode=0, stderr='')):
+            self.assertTrue(migration.generate_languages(Path('/')))
+        with mock.patch.object(migration, 'enable_languages', return_value=False), \
+                mock.patch.object(migration, 'languages_generated', return_value=True), \
+                mock.patch.object(migration.subprocess, 'run') as run:
+            self.assertTrue(migration.generate_languages(Path('/')))
+        run.assert_not_called()
+
+    def test_a_hung_or_missing_command_never_stops_the_migration(self):
+        for error in (migration.subprocess.TimeoutExpired('locale-gen', 900), FileNotFoundError('locale-gen')):
+            with mock.patch.object(migration, 'enable_languages', return_value=True), \
+                    mock.patch.object(migration.subprocess, 'run', side_effect=error):
+                self.assertFalse(migration.generate_languages(Path('/')))
+
+    def test_fresh_install_leaves_the_build_to_the_installer(self):
+        with mock.patch.object(migration, 'enable_languages', return_value=True), \
+                mock.patch.object(migration.subprocess, 'run') as run:
+            self.assertTrue(migration.generate_languages(Path('/'), build=False))
+        run.assert_not_called()
 
 
 if __name__ == '__main__':

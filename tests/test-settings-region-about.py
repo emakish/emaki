@@ -185,7 +185,7 @@ run(('SettingsRegionPage.qml', 'managed: page.row(modelData.key).source === "dec
 run(('SettingsRegionPage.qml', 'reply.schema_version !== 1', 'false'))
 run(('SettingsAboutPage.qml', 'reply.schema_version !== 1', 'false'))
 # The licence card must remain present and visible.
-run(('SettingsAboutPage.qml', 'title: "Licenses"', 'title: ""'))
+run(('SettingsAboutPage.qml', 'title: qsTranslate("SettingsAboutPage", "Licenses")', 'title: ""'))
 # The report button asks the shell's report window for the "other" part and says when it is missing.
 run(('SettingsAboutPage.qml', 'ReportBridge.open("other")', '"unavailable"'))
 run(('SettingsAboutPage.qml', 'ReportBridge.open("other")', 'ReportBridge.open("shell")'))

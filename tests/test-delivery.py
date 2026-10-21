@@ -392,7 +392,7 @@ class PrivatePythonBytecode(unittest.TestCase):
         for module in ('__init__', 'esp_records', 'refresh', 'shared', 'update_menu', 'update', 'usable'):
             self.stage(f'grub/emaki_boot/{module}.py',
                        f'usr/lib/emaki/boot/emaki_boot/{module}.py')
-        for module in ('boot', 'errors', 'grub_screen', 'secureboot'):
+        for module in ('boot', 'errors', 'grub_screen', 'secureboot', 'i18n'):
             self.stage(f'installer/emaki_installer/{module}.py',
                        f'usr/lib/emaki/boot/emaki_boot/{module}.py')
         # The package installs update-manager's lock helper as emaki_boot/package_lock.py (Makefile).

@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
 const P = vm.createContext({});
+require("./translations.js").install(P);
 vm.runInContext(fs.readFileSync(path.join(__dirname, "../Protocol.js"), "utf8"), P);
 // A skipped snapshot remains skipped after later phases and after replay.
 const skippedSnapshot = P.initial();
@@ -28,7 +29,7 @@ assert.equal(P.phaseSkipped(resumedSnapshot, "snapshot"), false);
 const view = fs.readFileSync(path.join(__dirname, "../InstallerView.qml"), "utf8");
 const statusBinding = view.match(/text: (phaseRow.skipped[^\n]*session.indeterminate[^\n]*)/)[1];
 function status(phase, session) {
-    return vm.runInNewContext(statusBinding, {Protocol: P, phaseRow: {skipped: P.phaseSkipped(session, phase), modelData: phase}, view: {controller: {session}}});
+    return vm.runInNewContext(statusBinding, {qsTranslate: P.qsTranslate, Protocol: P, phaseRow: {skipped: P.phaseSkipped(session, phase), modelData: phase}, view: {controller: {session}}});
 }
 assert.equal(status("snapshot", skippedSnapshot), "Skipped: snapshots need btrfs");
 const replay = P.initial();

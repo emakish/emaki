@@ -19,7 +19,7 @@ QtObject {
     signal completed(var result)
     function find(noteId): var { return notes.find(note => note.id === noteId) || null; }
     function request(action, fields): string {
-        if (!ready || !worker.running) { error = "Notes is reconnecting. Your draft is kept here."; return ""; }
+        if (!ready || !worker.running) { error = qsTranslate("NotesService", "Notes is reconnecting. Your draft is kept here."); return ""; }
         const id = String(++serial);
         pending[id] = true;
         worker.write(JSON.stringify(Object.assign({}, fields || {}, {id: id, action: action})) + "\n");
@@ -37,13 +37,13 @@ QtObject {
                 retryMs = 2000;
                 if (value.errors && value.errors.length) error = value.errors.join("\n");
             } else if (value.type === "error") {
-                error = value.error || "Notes could not be loaded.";
+                error = value.error || qsTranslate("NotesService", "Notes could not be loaded.");
             } else if (value.type === "result") {
                 delete pending[value.id];
-                if (!value.ok) error = value.error || "The change could not be saved.";
+                if (!value.ok) error = value.error || qsTranslate("NotesService", "The change could not be saved.");
                 completed(value);
             }
-        } catch (_) { error = "Notes returned an unreadable response."; }
+        } catch (_) { error = qsTranslate("NotesService", "Notes returned an unreadable response."); }
     }
     // Restart delay after the backend stops: doubles up to 5 min, back to 2 s on a snapshot.
     property int retryMs: 2000
@@ -68,7 +68,7 @@ QtObject {
         onRunningChanged: {
             if (running) return;
             service.ready = false;
-            service.error = "Notes stopped. Your draft is kept here.";
+            service.error = qsTranslate("NotesService", "Notes stopped. Your draft is kept here.");
             const pending = service.pending;
             service.pending = ({});
             for (const id in pending) service.completed({id: id, ok: false, error: service.error});
@@ -77,7 +77,7 @@ QtObject {
     }
     property Timer startupTimeout: Timer {
         interval: 5000; running: service.active && !service.ready && service.worker.running
-        onTriggered: service.error = "Notes could not connect. Your draft is kept here."
+        onTriggered: service.error = qsTranslate("NotesService", "Notes could not connect. Your draft is kept here.")
     }
     property Timer reconnect: Timer { onTriggered: if (service.active && !service.worker.running) service.worker.running = true }
 }

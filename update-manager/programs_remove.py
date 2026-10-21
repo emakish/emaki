@@ -9,6 +9,18 @@ component, a protected system package or an ineligible target refuses the
 removal before pacman changes anything. Never a cascade (-c) or a dependency
 override (-d): pacman keeps everything another installed package requires.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import fcntl
 import json
 import os
@@ -98,12 +110,12 @@ def remove(name, expected):
 def main(argv):
     try:
         if len(argv) != 2:
-            raise ValueError('Expected a package and a preview token.')
+            raise ValueError(_('Expected a package and a preview token.'))
         catalog.valid_name(argv[0])
         if not catalog.TOKEN.fullmatch(argv[1]):
-            raise ValueError('Invalid preview token.')
+            raise ValueError(_('Invalid preview token.'))
         if os.geteuid() != 0:
-            raise ValueError('Permission is required to remove a program.')
+            raise ValueError(_('Permission is required to remove a program.'))
     except ValueError:
         emit('failed')
         return 1

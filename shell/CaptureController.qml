@@ -148,11 +148,11 @@ Scope {
     }
     function fail(code: string): void {
         reason = code;
-        error = CaptureText.failed;
+        error = CaptureText.failed();
         if (opened)
             ready = false;
         else
-            notificationStore?.local("Emaki", CaptureText.failed, "");
+            notificationStore?.local("Emaki", CaptureText.failed(), "");
     }
     function sampleInventory(data: string): void {
         if (!opened)
@@ -194,7 +194,7 @@ Scope {
                 completed = true;
                 recording = false;
                 lastPath = result.path;
-                notificationStore?.local("Emaki", mode === "recording" ? CaptureText.savedRecording : result.clipboard ? CaptureText.savedPicture : CaptureText.savedPictureNoClipboard, lastPath);
+                notificationStore?.local("Emaki", mode === "recording" ? CaptureText.savedRecording() : result.clipboard ? CaptureText.savedPicture() : CaptureText.savedPictureNoClipboard(), lastPath);
             } else if (result.event === "error") {
                 completed = true;
                 recording = false;

@@ -17,7 +17,7 @@ Item {
     readonly property var inputs: ready ? Array.from(backend?.audioNodes ?? []).filter(n => !n.isSink) : []
     readonly property var streams: ready ? backend.streams : []
     readonly property real inputLevel: active && source?.audio ? Math.max(0, Math.min(1, backend.micLevel)) : 0
-    readonly property string error: !ready ? "Sound is unavailable. Check that the audio service is running." : actionError
+    readonly property string error: !ready ? qsTranslate("SoundSettingsBackend", "Sound is unavailable. Check that the audio service is running.") : actionError
     readonly property bool busy: Object.keys(pending).length > 0
     property string actionError: ""
     property var pending: ({})
@@ -53,7 +53,7 @@ Item {
     }
     function request(key: string, perform: var, message: string): bool {
         if (!ready)
-            return fail("Sound is unavailable. Check that the audio service is running.");
+            return fail(qsTranslate("SoundSettingsBackend", "Sound is unavailable. Check that the audio service is running."));
         try {
             const check = perform();
             if (typeof check !== "function")
@@ -96,24 +96,24 @@ Item {
     function chooseOutput(id: int): bool {
         if (id === -1)
             return resetOutput();
-        return request("output", () => backend.chooseOutput(id), "The output device could not be changed. It may have disconnected.");
+        return request("output", () => backend.chooseOutput(id), qsTranslate("SoundSettingsBackend", "The output device could not be changed. It may have disconnected."));
     }
     function chooseInput(id: int): bool {
         if (id === -1)
             return resetInput();
-        return request("input", () => backend.chooseInput(id), "The input device could not be changed. It may have disconnected.");
+        return request("input", () => backend.chooseInput(id), qsTranslate("SoundSettingsBackend", "The input device could not be changed. It may have disconnected."));
     }
     function resetOutput(): bool {
-        return request("output", () => backend.resetOutput(), "The automatic output device could not be restored.");
+        return request("output", () => backend.resetOutput(), qsTranslate("SoundSettingsBackend", "The automatic output device could not be restored."));
     }
     function resetInput(): bool {
-        return request("input", () => backend.resetInput(), "The automatic input device could not be restored.");
+        return request("input", () => backend.resetInput(), qsTranslate("SoundSettingsBackend", "The automatic input device could not be restored."));
     }
     function setVolume(input: bool, percent: real): bool {
         if (!Number.isFinite(percent) || percent < 0 || percent > 100)
-            return fail("Choose a volume between 0 and 100 percent.");
+            return fail(qsTranslate("SoundSettingsBackend", "Choose a volume between 0 and 100 percent."));
         const node = input ? source : sink;
-        const message = input ? "The input volume could not be changed." : "The output volume could not be changed.";
+        const message = input ? qsTranslate("SoundSettingsBackend", "The input volume could not be changed.") : qsTranslate("SoundSettingsBackend", "The output volume could not be changed.");
         return request(input ? "input-volume" : "output-volume", () => {
             if (!node?.audio || node.ready === false)
                 return false;
@@ -135,7 +135,7 @@ Item {
             if (node.audio.muted !== muted)
                 backend.act(input ? "mic" : "mute", null);
             return () => (input ? source : sink) === node && !!node.audio && node.audio.muted === muted;
-        }, input ? "The microphone mute setting could not be changed." : "The output mute setting could not be changed.");
+        }, input ? qsTranslate("SoundSettingsBackend", "The microphone mute setting could not be changed.") : qsTranslate("SoundSettingsBackend", "The output mute setting could not be changed."));
     }
     function setOutputMuted(muted: bool): bool {
         return setMuted(false, muted);
@@ -145,7 +145,7 @@ Item {
     }
     function setStreamVolume(id: int, percent: real): bool {
         if (!Number.isFinite(percent) || percent < 0 || percent > 100)
-            return fail("Choose a volume between 0 and 100 percent.");
+            return fail(qsTranslate("SoundSettingsBackend", "Choose a volume between 0 and 100 percent."));
         const stream = Array.from(streams).find(s => s.id === id);
         return request("stream-" + id, () => {
             if (!stream?.audio)
@@ -155,6 +155,6 @@ Item {
                 percent: percent
             });
             return typeof check === "function" ? () => Array.from(streams).some(s => s.id === id && s.audio === stream.audio) && check() : false;
-        }, "The application volume could not be changed. Its audio stream may have ended.");
+        }, qsTranslate("SoundSettingsBackend", "The application volume could not be changed. Its audio stream may have ended."));
     }
 }

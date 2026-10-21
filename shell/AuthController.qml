@@ -14,14 +14,14 @@ QtObject {
     property bool queued: false
     property bool fieldReady: false
     property bool enabled: true
-    property string prompt: "Password"
+    property string prompt: qsTranslate("AuthController", "Password")
     property string message: ""
     property string messageKind: ""
     // PAM reports a rounded-up minute count. This is a display estimate only;
     // neither the timer nor its expiry authenticates or blocks an attempt.
     property real _lockoutUntil: 0
     property int lockoutRemaining: 0
-    readonly property string displayMessage: _lockoutUntil > 0 ? (lockoutRemaining > 0 ? "Too many wrong passwords. Try again in about " + Math.floor(lockoutRemaining / 60) + ":" + String(lockoutRemaining % 60).padStart(2, "0") + "." : "Wait time has ended. Try again.") : message
+    readonly property string displayMessage: _lockoutUntil > 0 ? (lockoutRemaining > 0 ? qsTranslate("AuthController", "Too many wrong passwords. Try again in about %1.").arg(Math.floor(lockoutRemaining / 60) + ":" + String(lockoutRemaining % 60).padStart(2, "0")) : qsTranslate("AuthController", "Wait time has ended. Try again.")) : message
     onMessageChanged: {
         const duration = /^\((\d+) minutes? left to unlock\)$/.exec(message.trim());
         const minutes = duration ? Number(duration[1]) : 0;

@@ -19,7 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_paths
 from emaki_report_redact import Redactor
 
-UNKNOWN = 'Unavailable'
+from emaki_i18n import translation
+
+_ = translation('shell').gettext
+
+UNKNOWN = _('Unavailable')
 
 
 def read(path):
@@ -73,7 +77,7 @@ def graphics_names(output):
             continue
         vendor = vendors.get(vendor, vendor)
         # PCI names often pair a chip codename with its product name in brackets.
-        _, bracket, product = device.partition(' [')
+        ignored, bracket, product = device.partition(' [')
         if bracket and product.endswith(']'):
             device = product[:-1]
         names.append(f'{vendor} {device}')
@@ -101,7 +105,7 @@ def details():
     graphics = graphics_names(command(['lspci', '-mm']))
     try:
         disk = shutil.disk_usage('/')
-        storage = f'{disk.total / 2**30:.1f} GiB · {disk.free / 2**30:.1f} GiB free'
+        storage = _('{total:.1f} GiB · {free:.1f} GiB free').format(total=disk.total / 2**30, free=disk.free / 2**30)
     except OSError:
         storage = UNKNOWN
     firmware = ' '.join(filter(None, [read('/sys/class/dmi/id/bios_vendor'),
@@ -119,14 +123,14 @@ def report(info):
         root = Path.home() / '.local/state'
     directory = root / 'emaki/reports'
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    parts = ['Emaki problem report', 'Review this file before sharing. It may contain private information.',
-             'This file has not been uploaded.', '', 'System details']
+    parts = [_('Emaki problem report'), _('Review this file before sharing. It may contain private information.'),
+             _('This file has not been uploaded.'), '', _('System details')]
     parts.extend(f'{key}: {value}' for key, value in info.items() if key != 'commit')
     for title, args in [
-        ('Recent journal errors', ['journalctl', '-b', '-p', 'err', '-n', '200', '--no-pager']),
-        ('Failed system units', ['systemctl', '--failed', '--no-legend', '--no-pager']),
-        ('Failed user units', ['systemctl', '--user', '--failed', '--no-legend', '--no-pager']),
-        ('Block devices', ['lsblk', '-o', 'NAME,TYPE,SIZE,MODEL', '--json']),
+        (_('Recent journal errors'), ['journalctl', '-b', '-p', 'err', '-n', '200', '--no-pager']),
+        (_('Failed system units'), ['systemctl', '--failed', '--no-legend', '--no-pager']),
+        (_('Failed user units'), ['systemctl', '--user', '--failed', '--no-legend', '--no-pager']),
+        (_('Block devices'), ['lsblk', '-o', 'NAME,TYPE,SIZE,MODEL', '--json']),
     ]:
         parts.extend(['', title, command(args)])
     # Each detail and each command output is redacted on its own: a value that
@@ -172,10 +176,10 @@ def installation(version):
     except (ValueError, TypeError, AttributeError, KeyError):
         installed = None
     if not isinstance(installed, str) or not VERSION.fullmatch(installed):
-        return 'Not recorded (please say whether this is a fresh installation or an updated one)'
+        return _('Not recorded (please say whether this is a fresh installation or an updated one)')
     if installed == version:
-        return f'Installed with Emaki {installed}; current release matches'
-    return f'Installed with Emaki {installed}; now on {version}'
+        return _('Installed with Emaki {value1}; current release matches').format(value1=installed)
+    return _('Installed with Emaki {value1}; now on {value2}').format(value1=installed, value2=version)
 
 
 def one_line(value):
@@ -186,15 +190,14 @@ def issue_body(info):
     """Only the fields named here enter the issue: no hardware, names, paths or logs. The build
     commit is left out: it is not a commit of the public repository."""
     version = ' '.join(filter(None, [info.get('version') or UNKNOWN, info.get('label')]))
-    system = [('Emaki', version), ('Update channel', info.get('channel')),
-              ('Linux kernel', info.get('kernel')),
-              ('Installation', installation(info.get('version')))]
+    system = [('Emaki', version), (_('Update channel'), info.get('channel')),
+              (_('Linux kernel'), info.get('kernel')),
+              (_('Installation'), installation(info.get('version')))]
     return '\n'.join([
-        '### What happened', '', '', '### What I expected', '', '',
-        '### Steps to reproduce', '1. ', '2. ', '3. ', '',
-        '### System', *(f'- {name}: {one_line(value)}' for name, value in system), '',
-        '<!-- Nothing else was collected from your computer. Logs help, but add them only if you '
-        'choose to: Settings > About can save a diagnostics file for you to review first. -->', ''])
+        _('### What happened'), '', '', _('### What I expected'), '', '',
+        _('### Steps to reproduce'), '1. ', '2. ', '3. ', '',
+        _('### System'), *(f'- {name}: {one_line(value)}' for name, value in system), '',
+        _('<!-- Nothing else was collected from your computer. Logs help, but add them only if you choose to: Settings > About can save a diagnostics file for you to review first. -->'), ''])
 
 
 def issue(info):

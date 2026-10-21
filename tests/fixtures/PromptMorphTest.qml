@@ -314,6 +314,7 @@ ShellRoot {
             inspect();
             if (surface.card.expansion > 0 && surface.card.expansion < 1) {
                 check(surface.visible, "surface retained for close morph");
+                check(!input.findChild(surface.card, "polkit-error").visible, "a granted request closes without an error line");
                 capture("03-closing-" + closingFrames++);
             } else if (surface.card.expansion === 0) {
                 check(closingFrames >= 2 && !surface.visible, "successful request shrinks back to bubble");
@@ -330,6 +331,7 @@ ShellRoot {
         } else if (phase === 5) {
             inspect();
             if (surface.card.expansion > 0) {
+                check(!input.findChild(surface.card, "polkit-error").visible, "a cancelled request closes without an error line");
                 capture("05-cancel-close-" + cancelFrames++);
                 return;
             }

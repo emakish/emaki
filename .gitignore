@@ -25,3 +25,6 @@ installer/ui/tests/artifacts/
 /scripts/paths
 /shell/helpers/emaki_paths.py
 /shell/Platform.qml
+/i18n/locale/
+
+/shell/helpers/emaki_i18n.py

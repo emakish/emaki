@@ -1,31 +1,24 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Read-only firmware and storage probes, rooted for fixture tests."""
+from .i18n import _
 from pathlib import Path
 
 
 # Secure Boot on and a firmware db without either Microsoft third-party CA (Secured-core
 # PCs): no shim can start there.
 SECURE_BOOT_NO_CA = (
-    'Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. '
-    'In your firmware settings, turn on the third-party certificate option '
-    '(often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again. '
-    'No disk has been changed.')
+    _('Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again. No disk has been changed.'))
 # What the review says about the db (installer check 7): which CAs it trusts.
 SECURE_BOOT_CAS = {
-    'both': 'Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 and 2023.',
-    '2011': 'Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 only.',
-    '2023': 'Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2023 only.',
+    'both': _('Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 and 2023.'),
+    '2011': _('Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 only.'),
+    '2023': _('Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2023 only.'),
 }
 SECURE_BOOT_UNKNOWN = (
-    'The firmware signature setting could not be read (Secure Boot). '
-    'Restart into your firmware settings, turn Secure Boot off, then start the USB again. '
-    'No disk has been changed.')
+    _('The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again. No disk has been changed.'))
 VMD_MESSAGE = (
-    'No installation disk is visible behind the Intel storage controller (VMD/RST). '
-    'In your firmware settings, disable VMD or Intel RST and select AHCI storage mode, '
-    'then restart the USB. If another operating system is installed, prepare it for '
-    'AHCI before changing this setting; otherwise it may stop booting.')
+    _('No installation disk is visible behind the Intel storage controller (VMD/RST). In your firmware settings, disable VMD or Intel RST and select AHCI storage mode, then restart the USB. If another operating system is installed, prepare it for AHCI before changing this setting; otherwise it may stop booting.'))
 
 
 def secure_boot(root=Path('/')):

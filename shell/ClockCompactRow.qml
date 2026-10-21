@@ -18,20 +18,23 @@ Item {
     property color dim: LiquidPalette.dimOnDark
     property color accent: LiquidPalette.accentOnDark
     readonly property alias dateLabel: dateLabel
-    readonly property var weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    readonly property var months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     // Reading .font makes the bindings follow the font (a method call alone is not tracked,
     // and the first evaluation may see the default font).
     readonly property real timeAdvance: {
         timeMetrics.font;
-        return timeMetrics.advanceWidth("00:00");
+        if (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true)
+            return timeMetrics.advanceWidth("00:00");
+        let widest = 0;
+        for (let hour = 0; hour < 24; ++hour)
+            widest = Math.max(widest, timeMetrics.advanceWidth(new Date(2026, 0, 1, hour, 0).toLocaleTimeString(Qt.locale(), "h:mm AP")));
+        return widest;
     }
     readonly property real widestDate: {
         dateMetrics.font;
         let widest = 0;
-        for (const d of weekdays)
-            for (const m of months)
-                widest = Math.max(widest, dateMetrics.advanceWidth(d + " 30 " + m));
+        for (let month = 0; month < 12; ++month)
+            for (let day = 0; day < 7; ++day)
+                widest = Math.max(widest, dateMetrics.advanceWidth(Qt.locale().dayName(day, Locale.ShortFormat) + " 30 " + Qt.locale().monthName(month, Locale.ShortFormat)));
         return widest;
     }
     // clock.js measureIsland(): 18 + time + 12 + widest date + 12 + indicator 12 + 18.

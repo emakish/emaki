@@ -111,6 +111,8 @@ class EngineTests(unittest.TestCase):
         shutil.copyfile(root / 'update-manager/restore.py', destination / 'restore.py')
         shutil.copyfile(engine.__file__, destination / 'programs_engine.py')
         shutil.copyfile(root / source, destination / 'emaki_redaction.py')
+        for module in ('emaki_i18n.py', 'emaki_paths.py'):
+            shutil.copyfile(root / 'scripts' / module, destination / module)
         code = """import sys
 sys.path.insert(0, sys.argv[1])
 import programs_engine as engine

@@ -1,0 +1,2069 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_XA\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " (Rich software requires emaki-apps)"
+msgstr "[ (Ŕîçĥ šöƒţŵàŕé ŕéǫûîŕéš éɱàķî-àþþš)···········]"
+
+msgid " Emaki could not check its files; its fallback loader will not be changed."
+msgstr "[ Éɱàķî çöûļð ñöţ çĥéçķ îţš ƒîļéš; îţš ƒàļļƀàçķ ļöàðéŕ ŵîļļ ñöţ ƀé çĥàñĝéð.························]"
+
+msgid " It holds another system's startup files; its fallback loader will not be changed."
+msgstr "[ Îţ ĥöļðš àñöţĥéŕ šÿšţéɱ'š šţàŕţûþ ƒîļéš; îţš ƒàļļƀàçķ ļöàðéŕ ŵîļļ ñöţ ƀé çĥàñĝéð.···························]"
+
+msgid " The Windows data partition passed post-shrink verification before loader installation. Disk changes have already been made. Do not retry installation. Save the installation log to another device and seek recovery help before changing this disk."
+msgstr "[ Ţĥé Ŵîñðöŵš ðàţà þàŕţîţîöñ þàššéð þöšţ-šĥŕîñķ ṽéŕîƒîçàţîöñ ƀéƒöŕé ļöàðéŕ îñšţàļļàţîöñ. Ðîšķ çĥàñĝéš ĥàṽé àļŕéàðÿ ƀééñ ɱàðé. Ðö ñöţ ŕéţŕÿ îñšţàļļàţîöñ. Šàṽé ţĥé îñšţàļļàţîöñ ļöĝ ţö àñöţĥéŕ ðéṽîçé àñð šééķ ŕéçöṽéŕÿ ĥéļþ ƀéƒöŕé çĥàñĝîñĝ ţĥîš ðîšķ.····················································································]"
+
+msgid " has no country."
+msgstr "[ ĥàš ñö çöûñţŕÿ.····]"
+
+msgid "(no reply)"
+msgstr "[(ñö ŕéþļÿ)··]"
+
+msgid ", encrypted (LUKS2)"
+msgstr "[, éñçŕÿþţéð (ĻÛĶŠ2)·····]"
+
+msgid "--follow combines only with --plan --yes"
+msgstr "[--ƒöļļöŵ çöɱƀîñéš öñļÿ ŵîţĥ --þļàñ --ÿéš············]"
+
+msgid "--plan with --follow requires --yes"
+msgstr "[--þļàñ ŵîţĥ --ƒöļļöŵ ŕéǫûîŕéš --ÿéš···········]"
+
+msgid "--yes requires --plan"
+msgstr "[--ÿéš ŕéǫûîŕéš --þļàñ······]"
+
+msgid "/efi must be an existing GPT EFI system partition with FAT32."
+msgstr "[/éƒî ɱûšţ ƀé àñ éẋîšţîñĝ ĜÞŢ ÉƑÎ šÿšţéɱ þàŕţîţîöñ ŵîţĥ ƑÀŢ32.····················]"
+
+msgid "/home cannot be FAT; choose ext4 or btrfs."
+msgstr "[/ĥöɱé çàññöţ ƀé ƑÀŢ; çĥööšé éẋţ4 öŕ ƀţŕƒš.·············]"
+
+msgid "/swap is reserved for hibernation."
+msgstr "[/šŵàþ îš ŕéšéŕṽéð ƒöŕ ĥîƀéŕñàţîöñ.··········]"
+
+msgid "64-bit UEFI is required."
+msgstr "[64-ƀîţ ÛÉƑÎ îš ŕéǫûîŕéð.·······]"
+
+msgid "; could not complete request."
+msgstr "[; çöûļð ñöţ çöɱþļéţé ŕéǫûéšţ.·········]"
+
+msgid "; disk untouched: "
+msgstr "[; ðîšķ ûñţöûçĥéð: ·····]"
+
+msgid "@swap is reserved for hibernation."
+msgstr "[@šŵàþ îš ŕéšéŕṽéð ƒöŕ ĥîƀéŕñàţîöñ.··········]"
+
+msgid "A deleted partition cannot be used."
+msgstr "[À ðéļéţéð þàŕţîţîöñ çàññöţ ƀé ûšéð.···········]"
+
+msgid "A disk ID is required."
+msgstr "[À ðîšķ ÎÐ îš ŕéǫûîŕéð.······]"
+
+msgid "A kept partition changed its name. Nothing was formatted."
+msgstr "[À ķéþţ þàŕţîţîöñ çĥàñĝéð îţš ñàɱé. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð.··················]"
+
+msgid "A new partition lies outside the space this disk's partition table lets partitions use. The disk was not changed."
+msgstr "[À ñéŵ þàŕţîţîöñ ļîéš öûţšîðé ţĥé šþàçé ţĥîš ðîšķ'š þàŕţîţîöñ ţàƀļé ļéţš þàŕţîţîöñš ûšé. Ţĥé ðîšķ ŵàš ñöţ çĥàñĝéð.······································]"
+
+msgid "A new partition must start and end on whole MiB inside the free space."
+msgstr "[À ñéŵ þàŕţîţîöñ ɱûšţ šţàŕţ àñð éñð öñ ŵĥöļé ṀîƁ îñšîðé ţĥé ƒŕéé šþàçé.·······················]"
+
+msgid "A new partition overlaps another partition."
+msgstr "[À ñéŵ þàŕţîţîöñ öṽéŕļàþš àñöţĥéŕ þàŕţîţîöñ.··············]"
+
+msgid "A new partition table is made only on an empty disk; this disk holds data."
+msgstr "[À ñéŵ þàŕţîţîöñ ţàƀļé îš ɱàðé öñļÿ öñ àñ éɱþţÿ ðîšķ; ţĥîš ðîšķ ĥöļðš ðàţà.························]"
+
+msgid "A new swap partition can only be used as swap."
+msgstr "[À ñéŵ šŵàþ þàŕţîţîöñ çàñ öñļÿ ƀé ûšéð àš šŵàþ.···············]"
+
+msgid "A package download is incomplete; your disk has not been changed."
+msgstr "[À þàçķàĝé ðöŵñļöàð îš îñçöɱþļéţé; ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.·····················]"
+
+msgid "A partition is deleted twice."
+msgstr "[À þàŕţîţîöñ îš ðéļéţéð ţŵîçé.·········]"
+
+msgid "A partition to delete is not on the selected disk."
+msgstr "[À þàŕţîţîöñ ţö ðéļéţé îš ñöţ öñ ţĥé šéļéçţéð ðîšķ.················]"
+
+msgid "A repository override requires a test build in test mode."
+msgstr "[À ŕéþöšîţöŕÿ öṽéŕŕîðé ŕéǫûîŕéš à ţéšţ ƀûîļð îñ ţéšţ ɱöðé.··················]"
+
+msgid "A safety check stopped the update. Resolve the reported problem before trying again."
+msgstr "[À šàƒéţÿ çĥéçķ šţöþþéð ţĥé ûþðàţé. Ŕéšöļṽé ţĥé ŕéþöŕţéð þŕöƀļéɱ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.····························]"
+
+msgid "A selected XKB layout is not available on this ISO."
+msgstr "[À šéļéçţéð ẊĶƁ ļàÿöûţ îš ñöţ àṽàîļàƀļé öñ ţĥîš ÎŠÖ.················]"
+
+msgid "A separate disk password is only used with that password choice."
+msgstr "[À šéþàŕàţé ðîšķ þàššŵöŕð îš öñļÿ ûšéð ŵîţĥ ţĥàţ þàššŵöŕð çĥöîçé.·····················]"
+
+msgid "A startup partition may only be mounted at /efi."
+msgstr "[À šţàŕţûþ þàŕţîţîöñ ɱàÿ öñļÿ ƀé ɱöûñţéð àţ /éƒî.···············]"
+
+msgid "A swap partition cannot have other uses."
+msgstr "[À šŵàþ þàŕţîţîöñ çàññöţ ĥàṽé öţĥéŕ ûšéš.············]"
+
+msgid "A swap partition needs at least 256 MiB."
+msgstr "[À šŵàþ þàŕţîţîöñ ñééðš àţ ļéàšţ 256 ṀîƁ.············]"
+
+msgid "A swap partition takes the swap format."
+msgstr "[À šŵàþ þàŕţîţîöñ ţàķéš ţĥé šŵàþ ƒöŕɱàţ.············]"
+
+msgid "A swapfile already exists at /swap/swapfile; move it before installing."
+msgstr "[À šŵàþƒîļé àļŕéàðÿ éẋîšţš àţ /šŵàþ/šŵàþƒîļé; ɱöṽé îţ ƀéƒöŕé îñšţàļļîñĝ.·······················]"
+
+#, python-brace-format
+msgid "Account: {value1}; hostname: {value2}; timezone: {value3}."
+msgstr "[Àççöûñţ: {value1}; ĥöšţñàɱé: {value2}; ţîɱéžöñé: {value3}.···················]"
+
+msgid "Adding trusted package keys (pacman-key --populate)."
+msgstr "[Àððîñĝ ţŕûšţéð þàçķàĝé ķéÿš (þàçɱàñ-ķéÿ --þöþûļàţé).·················]"
+
+msgid "After the restart a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation; you do this only once."
+msgstr "[Àƒţéŕ ţĥé ŕéšţàŕţ à ƀļûé šçŕééñ àšķš ÿöû ţö çöñƒîŕɱ Éɱàķî'š ķéÿ ŵîţĥ à þàššŵöŕð šĥöŵñ àţ ţĥé éñð öƒ ţĥé îñšţàļļàţîöñ; ÿöû ðö ţĥîš öñļÿ öñçé.···············································]"
+
+msgid "Alongside can format only Emaki's newly created startup partition and root."
+msgstr "[Àļöñĝšîðé çàñ ƒöŕɱàţ öñļÿ Éɱàķî'š ñéŵļÿ çŕéàţéð šţàŕţûþ þàŕţîţîöñ àñð ŕööţ.·························]"
+
+#, python-brace-format
+msgid "Alongside installation on {path} ({model})."
+msgstr "[Àļöñĝšîðé îñšţàļļàţîöñ öñ {path} ({model}).··············]"
+
+msgid "Alongside requires GPT."
+msgstr "[Àļöñĝšîðé ŕéǫûîŕéš ĜÞŢ.·······]"
+
+msgid "Alongside requires partition_id and integer shrink_bytes (bytes freed for Emaki)."
+msgstr "[Àļöñĝšîðé ŕéǫûîŕéš þàŕţîţîöñ_îð àñð îñţéĝéŕ šĥŕîñķ_ƀÿţéš (ƀÿţéš ƒŕééð ƒöŕ Éɱàķî).···························]"
+
+msgid "Alongside: create Emaki's own EFI system partition and root only inside the freed Windows extent."
+msgstr "[Àļöñĝšîðé: çŕéàţé Éɱàķî'š öŵñ ÉƑÎ šÿšţéɱ þàŕţîţîöñ àñð ŕööţ öñļÿ îñšîðé ţĥé ƒŕééð Ŵîñðöŵš éẋţéñţ.································]"
+
+msgid "Alongside: dry-run the exact NTFS size; no disk writes yet."
+msgstr "[Àļöñĝšîðé: ðŕÿ-ŕûñ ţĥé éẋàçţ ÑŢƑŠ šîžé; ñö ðîšķ ŵŕîţéš ÿéţ.···················]"
+
+msgid "Alongside: shrink only the Windows GPT entry, preserving its start, GUID, type, name and attributes."
+msgstr "[Àļöñĝšîðé: šĥŕîñķ öñļÿ ţĥé Ŵîñðöŵš ĜÞŢ éñţŕÿ, þŕéšéŕṽîñĝ îţš šţàŕţ, ĜÛÎÐ, ţÿþé, ñàɱé àñð àţţŕîƀûţéš.·································]"
+
+msgid "Alongside: shrink the Windows filesystem; answering y after the successful dry run."
+msgstr "[Àļöñĝšîðé: šĥŕîñķ ţĥé Ŵîñðöŵš ƒîļéšÿšţéɱ; àñšŵéŕîñĝ ÿ àƒţéŕ ţĥé šûççéššƒûļ ðŕÿ ŕûñ.····························]"
+
+msgid "Alongside: verify resized NTFS geometry and read-only metadata. Windows chkdsk on first boot is expected; the dirty flag is preserved."
+msgstr "[Àļöñĝšîðé: ṽéŕîƒÿ ŕéšîžéð ÑŢƑŠ ĝéöɱéţŕÿ àñð ŕéàð-öñļÿ ɱéţàðàţà. Ŵîñðöŵš çĥķðšķ öñ ƒîŕšţ ƀööţ îš éẋþéçţéð; ţĥé ðîŕţÿ ƒļàĝ îš þŕéšéŕṽéð.·············································]"
+
+msgid "An EFI system partition needs at least 512 MiB."
+msgstr "[Àñ ÉƑÎ šÿšţéɱ þàŕţîţîöñ ñééðš àţ ļéàšţ 512 ṀîƁ.···············]"
+
+msgid "An encrypted swap partition needs formatting and an encrypted root, which keeps its key."
+msgstr "[Àñ éñçŕÿþţéð šŵàþ þàŕţîţîöñ ñééðš ƒöŕɱàţţîñĝ àñð àñ éñçŕÿþţéð ŕööţ, ŵĥîçĥ ķééþš îţš ķéÿ.·····························]"
+
+msgid "An installed file is in the way of this update. Resolve the file conflict before trying again."
+msgstr "[Àñ îñšţàļļéð ƒîļé îš îñ ţĥé ŵàÿ öƒ ţĥîš ûþðàţé. Ŕéšöļṽé ţĥé ƒîļé çöñƒļîçţ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·······························]"
+
+msgid "An update step failed. Some packages may already have changed. Resolve the reported problem before updating again."
+msgstr "[Àñ ûþðàţé šţéþ ƒàîļéð. Šöɱé þàçķàĝéš ɱàÿ àļŕéàðÿ ĥàṽé çĥàñĝéð. Ŕéšöļṽé ţĥé ŕéþöŕţéð þŕöƀļéɱ ƀéƒöŕé ûþðàţîñĝ àĝàîñ.······································]"
+
+msgid "Another package operation may be running. Wait for it to finish before trying again."
+msgstr "[Àñöţĥéŕ þàçķàĝé öþéŕàţîöñ ɱàÿ ƀé ŕûññîñĝ. Ŵàîţ ƒöŕ îţ ţö ƒîñîšĥ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.····························]"
+
+msgid "Assign exactly one root and one startup partition, plus optional data mounts."
+msgstr "[Àššîĝñ éẋàçţļÿ öñé ŕööţ àñð öñé šţàŕţûþ þàŕţîţîöñ, þļûš öþţîöñàļ ðàţà ɱöûñţš.·························]"
+
+msgid "At least 32 GiB must be freed from Windows for Emaki."
+msgstr "[Àţ ļéàšţ 32 ĜîƁ ɱûšţ ƀé ƒŕééð ƒŕöɱ Ŵîñðöŵš ƒöŕ Éɱàķî.·················]"
+
+msgid "Automatic restart is unavailable. "
+msgstr "[Àûţöɱàţîç ŕéšţàŕţ îš ûñàṽàîļàƀļé. ··········]"
+
+msgid "Bounded termination requires a timeout, a positive budget and no stdin."
+msgstr "[Ɓöûñðéð ţéŕɱîñàţîöñ ŕéǫûîŕéš à ţîɱéöûţ, à þöšîţîṽé ƀûðĝéţ àñð ñö šţðîñ.·······················]"
+
+#, python-brace-format
+msgid "Btrfs mount options missing at {value1}."
+msgstr "[Ɓţŕƒš ɱöûñţ öþţîöñš ɱîššîñĝ àţ {value1}.············]"
+
+msgid "Btrfs needs separate /home, /var/log, package cache and /.snapshots mounts."
+msgstr "[Ɓţŕƒš ñééðš šéþàŕàţé /ĥöɱé, /ṽàŕ/ļöĝ, þàçķàĝé çàçĥé àñð /.šñàþšĥöţš ɱöûñţš.·························]"
+
+msgid "Btrfs root requires a separate snapshot subvolume on the root filesystem."
+msgstr "[Ɓţŕƒš ŕööţ ŕéǫûîŕéš à šéþàŕàţé šñàþšĥöţ šûƀṽöļûɱé öñ ţĥé ŕööţ ƒîļéšÿšţéɱ.························]"
+
+#, python-brace-format
+msgid "Building the startup image (mkinitcpio: {value1})."
+msgstr "[Ɓûîļðîñĝ ţĥé šţàŕţûþ îɱàĝé (ɱķîñîţçþîö: {value1}).················]"
+
+msgid "Cannot create the log there; choose a new filename on mounted removable media."
+msgstr "[Çàññöţ çŕéàţé ţĥé ļöĝ ţĥéŕé; çĥööšé à ñéŵ ƒîļéñàɱé öñ ɱöûñţéð ŕéɱöṽàƀļé ɱéðîà.··························]"
+
+msgid "Cannot determine RAM size for hibernation."
+msgstr "[Çàññöţ ðéţéŕɱîñé ŔÀṀ šîžé ƒöŕ ĥîƀéŕñàţîöñ.·············]"
+
+msgid "Cannot determine btrfs resume offset."
+msgstr "[Çàññöţ ðéţéŕɱîñé ƀţŕƒš ŕéšûɱé öƒƒšéţ.···········]"
+
+msgid "Cannot determine ext4 resume offset."
+msgstr "[Çàññöţ ðéţéŕɱîñé éẋţ4 ŕéšûɱé öƒƒšéţ.···········]"
+
+msgid "Cannot determine the new account UID/GID."
+msgstr "[Çàññöţ ðéţéŕɱîñé ţĥé ñéŵ àççöûñţ ÛÎÐ/ĜÎÐ.·············]"
+
+msgid "Cannot identify the live boot medium."
+msgstr "[Çàññöţ îðéñţîƒÿ ţĥé ļîṽé ƀööţ ɱéðîûɱ.···········]"
+
+msgid "Cannot identify the live boot medium; installation is refused."
+msgstr "[Çàññöţ îðéñţîƒÿ ţĥé ļîṽé ƀööţ ɱéðîûɱ; îñšţàļļàţîöñ îš ŕéƒûšéð.····················]"
+
+msgid "Cannot inspect existing btrfs subvolumes."
+msgstr "[Çàññöţ îñšþéçţ éẋîšţîñĝ ƀţŕƒš šûƀṽöļûɱéš.·············]"
+
+msgid "Cannot load archinstall 4.5 and its dependencies: "
+msgstr "[Çàññöţ ļöàð àŕçĥîñšţàļļ 4.5 àñð îţš ðéþéñðéñçîéš: ················]"
+
+msgid "Cannot read the Windows volume signature."
+msgstr "[Çàññöţ ŕéàð ţĥé Ŵîñðöŵš ṽöļûɱé šîĝñàţûŕé.·············]"
+
+#, python-brace-format
+msgid "Cannot read the signature of {value1}; it may be part of a multi-device set."
+msgstr "[Çàññöţ ŕéàð ţĥé šîĝñàţûŕé öƒ {value1}; îţ ɱàÿ ƀé þàŕţ öƒ à ɱûļţî-ðéṽîçé šéţ.·························]"
+
+#, python-brace-format
+msgid "Cannot run {value1}: {value2}."
+msgstr "[Çàññöţ ŕûñ {value1}: {value2}.·········]"
+
+msgid "Cannot safely inspect the Windows hibernation file."
+msgstr "[Çàññöţ šàƒéļÿ îñšþéçţ ţĥé Ŵîñðöŵš ĥîƀéŕñàţîöñ ƒîļé.················]"
+
+msgid "Cannot verify GPT partition "
+msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ ········]"
+
+msgid "Cannot verify NTFS, hibernation state or GPT metadata: "
+msgstr "[Çàññöţ ṽéŕîƒÿ ÑŢƑŠ, ĥîƀéŕñàţîöñ šţàţé öŕ ĜÞŢ ɱéţàðàţà: ··················]"
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of {value2}."
+msgstr "[Çàññöţ ṽéŕîƒÿ ţĥàţ {value1} îš ţĥé öñļÿ ðéṽîçé öƒ {value2}.···················]"
+
+#, python-brace-format
+msgid "Cannot write {value1}: {value2}."
+msgstr "[Çàññöţ ŵŕîţé {value1}: {value2}.··········]"
+
+msgid "Changing filesystem type requires format: true."
+msgstr "[Çĥàñĝîñĝ ƒîļéšÿšţéɱ ţÿþé ŕéǫûîŕéš ƒöŕɱàţ: ţŕûé.···············]"
+
+msgid "Checking available disk space (pacman)."
+msgstr "[Çĥéçķîñĝ àṽàîļàƀļé ðîšķ šþàçé (þàçɱàñ).············]"
+
+msgid "Checking for conflicting files (pacman)."
+msgstr "[Çĥéçķîñĝ ƒöŕ çöñƒļîçţîñĝ ƒîļéš (þàçɱàñ).············]"
+
+msgid "Checking package compatibility (pacman)."
+msgstr "[Çĥéçķîñĝ þàçķàĝé çöɱþàţîƀîļîţÿ (þàçɱàñ).············]"
+
+msgid "Checking package files (pacman)."
+msgstr "[Çĥéçķîñĝ þàçķàĝé ƒîļéš (þàçɱàñ).··········]"
+
+msgid "Checking trusted package keys (pacman)."
+msgstr "[Çĥéçķîñĝ ţŕûšţéð þàçķàĝé ķéÿš (þàçɱàñ).············]"
+
+msgid "Choose Rich or Minimal software."
+msgstr "[Çĥööšé Ŕîçĥ öŕ Ṁîñîɱàļ šöƒţŵàŕé.··········]"
+
+msgid "Choose a log file on removable media."
+msgstr "[Çĥööšé à ļöĝ ƒîļé öñ ŕéɱöṽàƀļé ɱéðîà.···········]"
+
+msgid "Choose a time zone from the city list."
+msgstr "[Çĥööšé à ţîɱé žöñé ƒŕöɱ ţĥé çîţÿ ļîšţ.············]"
+
+msgid "Choose a whole-MiB Emaki size within the verified shrink bounds (at least 32 GiB)."
+msgstr "[Çĥööšé à ŵĥöļé-ṀîƁ Éɱàķî šîžé ŵîţĥîñ ţĥé ṽéŕîƒîéð šĥŕîñķ ƀöûñðš (àţ ļéàšţ 32 ĜîƁ).···························]"
+
+msgid "Choose btrfs or ext4."
+msgstr "[Çĥööšé ƀţŕƒš öŕ éẋţ4.······]"
+
+msgid "Choose whether to encrypt the disk and which password to use."
+msgstr "[Çĥööšé ŵĥéţĥéŕ ţö éñçŕÿþţ ţĥé ðîšķ àñð ŵĥîçĥ þàššŵöŕð ţö ûšé.····················]"
+
+msgid "Cleanup failed: "
+msgstr "[Çļéàñûþ ƒàîļéð: ····]"
+
+msgid "Close it [cryptsetup close]"
+msgstr "[Çļöšé îţ [çŕÿþţšéţûþ çļöšé]········]"
+
+msgid "Config must be an object."
+msgstr "[Çöñƒîĝ ɱûšţ ƀé àñ öƀĵéçţ.·······]"
+
+msgid "Confirm the reviewed disk plan and install."
+msgstr "[Çöñƒîŕɱ ţĥé ŕéṽîéŵéð ðîšķ þļàñ àñð îñšţàļļ.··············]"
+
+msgid "Connected"
+msgstr "[Çöññéçţéð··]"
+
+msgid "Connected, but the Wi-Fi settings could not be saved for installation. Connect again."
+msgstr "[Çöññéçţéð, ƀûţ ţĥé Ŵî-Ƒî šéţţîñĝš çöûļð ñöţ ƀé šàṽéð ƒöŕ îñšţàļļàţîöñ. Çöññéçţ àĝàîñ.····························]"
+
+msgid "Connection timed out."
+msgstr "[Çöññéçţîöñ ţîɱéð öûţ.······]"
+
+msgid "Could not connect to this network."
+msgstr "[Çöûļð ñöţ çöññéçţ ţö ţĥîš ñéţŵöŕķ.··········]"
+
+msgid "Could not connect. Check the password."
+msgstr "[Çöûļð ñöţ çöññéçţ. Çĥéçķ ţĥé þàššŵöŕð.············]"
+
+msgid "Could not prepare to restart. Keep the USB stick connected and try again."
+msgstr "[Çöûļð ñöţ þŕéþàŕé ţö ŕéšţàŕţ. Ķééþ ţĥé ÛŠƁ šţîçķ çöññéçţéð àñð ţŕÿ àĝàîñ.························]"
+
+msgid "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."
+msgstr "[Çöûļð ñöţ ŕéšţàŕţ. Ţŕÿ àĝàîñ, öŕ ĥöļð ţĥé þöŵéŕ ƀûţţöñ ţö ţûŕñ ţĥé çöɱþûţéŕ öƒƒ, ţĥéñ šţàŕţ îţ àĝàîñ. Ÿöûŕ îñšţàļļàţîöñ îš šàƒé.···········································]"
+
+msgid "Could not save the Wi-Fi connection [NetworkManager]. Connect to that network again before installing."
+msgstr "[Çöûļð ñöţ šàṽé ţĥé Ŵî-Ƒî çöññéçţîöñ [ÑéţŵöŕķṀàñàĝéŕ]. Çöññéçţ ţö ţĥàţ ñéţŵöŕķ àĝàîñ ƀéƒöŕé îñšţàļļîñĝ.··································]"
+
+#, python-brace-format
+msgid "Could not stop target process {value1}: {value2}"
+msgstr "[Çöûļð ñöţ šţöþ ţàŕĝéţ þŕöçéšš {value1}: {value2}···············]"
+
+msgid "Could not unmount all target filesystems; inspect the log before retrying."
+msgstr "[Çöûļð ñöţ ûñɱöûñţ àļļ ţàŕĝéţ ƒîļéšÿšţéɱš; îñšþéçţ ţĥé ļöĝ ƀéƒöŕé ŕéţŕÿîñĝ.························]"
+
+msgid "Create Emaki's own startup partition (1 GiB) and root in the freed space; Windows' startup partition is not changed."
+msgstr "[Çŕéàţé Éɱàķî'š öŵñ šţàŕţûþ þàŕţîţîöñ (1 ĜîƁ) àñð ŕööţ îñ ţĥé ƒŕééð šþàçé; Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ îš ñöţ çĥàñĝéð.·······································]"
+
+#, python-brace-format
+msgid "Create a new GPT partition table on {value1}; the disk is empty."
+msgstr "[Çŕéàţé à ñéŵ ĜÞŢ þàŕţîţîöñ ţàƀļé öñ {value1}; ţĥé ðîšķ îš éɱþţÿ.·····················]"
+
+#, python-brace-format
+msgid "Create partition {value1}: {value2}, {value3}{value4}; use: {value5}."
+msgstr "[Çŕéàţé þàŕţîţîöñ {value1}: {value2}, {value3}{value4}; ûšé: {value5}.·······················]"
+
+msgid "Create the partitions for the new partition table."
+msgstr "[Çŕéàţé ţĥé þàŕţîţîöñš ƒöŕ ţĥé ñéŵ þàŕţîţîöñ ţàƀļé.················]"
+
+msgid "Creating the package trust store (pacman-key --init)."
+msgstr "[Çŕéàţîñĝ ţĥé þàçķàĝé ţŕûšţ šţöŕé (þàçɱàñ-ķéÿ --îñîţ).·················]"
+
+#, python-brace-format
+msgid "DKMS module {value1}/{value2} for {value3} has no built modules."
+msgstr "[ÐĶṀŠ ɱöðûļé {value1}/{value2} ƒöŕ {value3} ĥàš ñö ƀûîļţ ɱöðûļéš.·····················]"
+
+#, python-brace-format
+msgid "DKMS module {value1}/{value2} for {value3} is not signed by the machine key: "
+msgstr "[ÐĶṀŠ ɱöðûļé {value1}/{value2} ƒöŕ {value3} îš ñöţ šîĝñéð ƀÿ ţĥé ɱàçĥîñé ķéÿ: ·························]"
+
+msgid "Deactivate it [lvchange -an]"
+msgstr "[Ðéàçţîṽàţé îţ [ļṽçĥàñĝé -àñ]········]"
+
+#, python-brace-format
+msgid "Delete partition {value1} ({value2}): all its files are lost."
+msgstr "[Ðéļéţé þàŕţîţîöñ {value1} ({value2}): àļļ îţš ƒîļéš àŕé ļöšţ.····················]"
+
+msgid "Deleted partitions lose all their files. Nothing on the disk changes until you press Install."
+msgstr "[Ðéļéţéð þàŕţîţîöñš ļöšé àļļ ţĥéîŕ ƒîļéš. Ñöţĥîñĝ öñ ţĥé ðîšķ çĥàñĝéš ûñţîļ ÿöû þŕéšš Îñšţàļļ.·······························]"
+
+msgid "Destination is not on a mounted removable filesystem."
+msgstr "[Ðéšţîñàţîöñ îš ñöţ öñ à ɱöûñţéð ŕéɱöṽàƀļé ƒîļéšÿšţéɱ.·················]"
+
+msgid "Destination is not removable/USB media."
+msgstr "[Ðéšţîñàţîöñ îš ñöţ ŕéɱöṽàƀļé/ÛŠƁ ɱéðîà.············]"
+
+msgid "Destination mount changed during export."
+msgstr "[Ðéšţîñàţîöñ ɱöûñţ çĥàñĝéð ðûŕîñĝ éẋþöŕţ.············]"
+
+msgid "Destination must be block media."
+msgstr "[Ðéšţîñàţîöñ ɱûšţ ƀé ƀļöçķ ɱéðîà.··········]"
+
+msgid "Destination must be under /run/media/live/."
+msgstr "[Ðéšţîñàţîöñ ɱûšţ ƀé ûñðéŕ /ŕûñ/ɱéðîà/ļîṽé/.··············]"
+
+#, python-brace-format
+msgid "Device cannot be opened exclusively: {value1}."
+msgstr "[Ðéṽîçé çàññöţ ƀé öþéñéð éẋçļûšîṽéļÿ: {value1}.···············]"
+
+msgid "Disk identity or partition layout changed after the review."
+msgstr "[Ðîšķ îðéñţîţÿ öŕ þàŕţîţîöñ ļàÿöûţ çĥàñĝéð àƒţéŕ ţĥé ŕéṽîéŵ.···················]"
+
+msgid "Disk password must be nonempty and contain no control characters (line breaks, tabs)."
+msgstr "[Ðîšķ þàššŵöŕð ɱûšţ ƀé ñöñéɱþţÿ àñð çöñţàîñ ñö çöñţŕöļ çĥàŕàçţéŕš (ļîñé ƀŕéàķš, ţàƀš).····························]"
+
+msgid "Display scale must be a number from 0.5 to 4."
+msgstr "[Ðîšþļàÿ šçàļé ɱûšţ ƀé à ñûɱƀéŕ ƒŕöɱ 0.5 ţö 4.··············]"
+
+msgid "Display scales must be an object with at most 64 outputs."
+msgstr "[Ðîšþļàÿ šçàļéš ɱûšţ ƀé àñ öƀĵéçţ ŵîţĥ àţ ɱöšţ 64 öûţþûţš.··················]"
+
+msgid "Duplicate fstab mountpoint."
+msgstr "[Ðûþļîçàţé ƒšţàƀ ɱöûñţþöîñţ.········]"
+
+msgid "Duplicate mountpoint."
+msgstr "[Ðûþļîçàţé ɱöûñţþöîñţ.······]"
+
+msgid "Duplicate subvolume name."
+msgstr "[Ðûþļîçàţé šûƀṽöļûɱé ñàɱé.·······]"
+
+msgid "EFI loader is not a valid bounded file."
+msgstr "[ÉƑÎ ļöàðéŕ îš ñöţ à ṽàļîð ƀöûñðéð ƒîļé.············]"
+
+msgid "EFI loader path contains a symlink."
+msgstr "[ÉƑÎ ļöàðéŕ þàţĥ çöñţàîñš à šÿɱļîñķ.···········]"
+
+msgid "Emaki could not confirm that the Windows disk is safe to shrink. Start Windows, let it check the disk if it asks, then choose Shut down (not Restart) and start from the USB stick again."
+msgstr "[Éɱàķî çöûļð ñöţ çöñƒîŕɱ ţĥàţ ţĥé Ŵîñðöŵš ðîšķ îš šàƒé ţö šĥŕîñķ. Šţàŕţ Ŵîñðöŵš, ļéţ îţ çĥéçķ ţĥé ðîšķ îƒ îţ àšķš, ţĥéñ çĥööšé Šĥûţ ðöŵñ (ñöţ Ŕéšţàŕţ) àñð šţàŕţ ƒŕöɱ ţĥé ÛŠƁ šţîçķ àĝàîñ.·······························································]"
+
+msgid "Emaki could not make itself the computer's default startup choice. If another system starts instead, choose Emaki in the firmware boot menu."
+msgstr "[Éɱàķî çöûļð ñöţ ɱàķé îţšéļƒ ţĥé çöɱþûţéŕ'š ðéƒàûļţ šţàŕţûþ çĥöîçé. Îƒ àñöţĥéŕ šÿšţéɱ šţàŕţš îñšţéàð, çĥööšé Éɱàķî îñ ţĥé ƒîŕɱŵàŕé ƀööţ ɱéñû.···············································]"
+
+msgid "Emaki could not make itself the computer's default startup choice. If another system starts instead, start the installation USB and use its GRUB console to load EFI/Emaki/grubx64.efi from this installation's startup partition."
+msgstr "[Éɱàķî çöûļð ñöţ ɱàķé îţšéļƒ ţĥé çöɱþûţéŕ'š ðéƒàûļţ šţàŕţûþ çĥöîçé. Îƒ àñöţĥéŕ šÿšţéɱ šţàŕţš îñšţéàð, šţàŕţ ţĥé îñšţàļļàţîöñ ÛŠƁ àñð ûšé îţš ĜŔÛƁ çöñšöļé ţö ļöàð ÉƑÎ/Éɱàķî/ĝŕûƀẋ64.éƒî ƒŕöɱ ţĥîš îñšţàļļàţîöñ'š šţàŕţûþ þàŕţîţîöñ.··············································································]"
+
+msgid "Emaki could not verify that the firmware starts the new installation first."
+msgstr "[Éɱàķî çöûļð ñöţ ṽéŕîƒÿ ţĥàţ ţĥé ƒîŕɱŵàŕé šţàŕţš ţĥé ñéŵ îñšţàļļàţîöñ ƒîŕšţ.·························]"
+
+msgid "Emaki installer protocol client (live ISO)."
+msgstr "[Éɱàķî îñšţàļļéŕ þŕöţöçöļ çļîéñţ (ļîṽé ÎŠÖ).··············]"
+
+msgid "Emaki needs one full update before you install apps; when online, use the terminal to update the whole system [pacman]."
+msgstr "[Éɱàķî ñééðš öñé ƒûļļ ûþðàţé ƀéƒöŕé ÿöû îñšţàļļ àþþš; ŵĥéñ öñļîñé, ûšé ţĥé ţéŕɱîñàļ ţö ûþðàţé ţĥé ŵĥöļé šÿšţéɱ [þàçɱàñ].········································]"
+
+#, python-brace-format
+msgid "Emaki needs two free GPT partition entries (its startup partition and its root); this disk has {value1}."
+msgstr "[Éɱàķî ñééðš ţŵö ƒŕéé ĜÞŢ þàŕţîţîöñ éñţŕîéš (îţš šţàŕţûþ þàŕţîţîöñ àñð îţš ŕööţ); ţĥîš ðîšķ ĥàš {value1}.···································]"
+
+msgid "Emaki owns device discovery"
+msgstr "[Éɱàķî öŵñš ðéṽîçé ðîšçöṽéŕÿ········]"
+
+msgid "Emaki requires archinstall distribution version 4.5."
+msgstr "[Éɱàķî ŕéǫûîŕéš àŕçĥîñšţàļļ ðîšţŕîƀûţîöñ ṽéŕšîöñ 4.5.·················]"
+
+msgid "Emaki's startup partition could not be verified from its saved partition identity. Nothing was changed."
+msgstr "[Éɱàķî'š šţàŕţûþ þàŕţîţîöñ çöûļð ñöţ ƀé ṽéŕîƒîéð ƒŕöɱ îţš šàṽéð þàŕţîţîöñ îðéñţîţÿ. Ñöţĥîñĝ ŵàš çĥàñĝéð.···································]"
+
+msgid "Emaki's startup partition is not a new one; disk untouched."
+msgstr "[Éɱàķî'š šţàŕţûþ þàŕţîţîöñ îš ñöţ à ñéŵ öñé; ðîšķ ûñţöûçĥéð.···················]"
+
+msgid "Encrypted root has no LUKS UUID."
+msgstr "[Éñçŕÿþţéð ŕööţ ĥàš ñö ĻÛĶŠ ÛÛÎÐ.··········]"
+
+msgid "Encrypted-volume confirmations require a device path, encryption type and UUID."
+msgstr "[Éñçŕÿþţéð-ṽöļûɱé çöñƒîŕɱàţîöñš ŕéǫûîŕé à ðéṽîçé þàţĥ, éñçŕÿþţîöñ ţÿþé àñð ÛÛÎÐ.··························]"
+
+msgid "Encrypting root requires formatting it; existing files cannot be encrypted in place."
+msgstr "[Éñçŕÿþţîñĝ ŕööţ ŕéǫûîŕéš ƒöŕɱàţţîñĝ îţ; éẋîšţîñĝ ƒîļéš çàññöţ ƀé éñçŕÿþţéð îñ þļàçé.····························]"
+
+msgid "Encryption: LUKS2 root, account password."
+msgstr "[Éñçŕÿþţîöñ: ĻÛĶŠ2 ŕööţ, àççöûñţ þàššŵöŕð.·············]"
+
+msgid "Encryption: LUKS2 root, separate disk password."
+msgstr "[Éñçŕÿþţîöñ: ĻÛĶŠ2 ŕööţ, šéþàŕàţé ðîšķ þàššŵöŕð.···············]"
+
+msgid "Encryption: off."
+msgstr "[Éñçŕÿþţîöñ: öƒƒ.····]"
+
+msgid "Erase all partitions and create a new GPT partition table."
+msgstr "[Éŕàšé àļļ þàŕţîţîöñš àñð çŕéàţé à ñéŵ ĜÞŢ þàŕţîţîöñ ţàƀļé.···················]"
+
+msgid "Erase disk"
+msgstr "[Éŕàšé ðîšķ··]"
+
+#, python-brace-format
+msgid "Erase installation on {path} ({model})."
+msgstr "[Éŕàšé îñšţàļļàţîöñ öñ {path} ({model}).············]"
+
+msgid "Every new partition needs a use: choose its mount point or swap, or remove it."
+msgstr "[Éṽéŕÿ ñéŵ þàŕţîţîöñ ñééðš à ûšé: çĥööšé îţš ɱöûñţ þöîñţ öŕ šŵàþ, öŕ ŕéɱöṽé îţ.··························]"
+
+msgid "Exactly one / and one /efi are required."
+msgstr "[Éẋàçţļÿ öñé / àñð öñé /éƒî àŕé ŕéǫûîŕéð.············]"
+
+msgid "Existing snapper root config points at a different subvolume."
+msgstr "[Éẋîšţîñĝ šñàþþéŕ ŕööţ çöñƒîĝ þöîñţš àţ à ðîƒƒéŕéñţ šûƀṽöļûɱé.····················]"
+
+msgid "Finding required packages (pacman)."
+msgstr "[Ƒîñðîñĝ ŕéǫûîŕéð þàçķàĝéš (þàçɱàñ).···········]"
+
+#, python-brace-format
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}{value5}: its files are lost; use: {value6}."
+msgstr "[Ƒöŕɱàţ þàŕţîţîöñ {value1} ({value2}, {value3}) àš {value4}{value5}: îţš ƒîļéš àŕé ļöšţ; ûšé: {value6}.··································]"
+
+msgid "Freed extent overlaps another partition."
+msgstr "[Ƒŕééð éẋţéñţ öṽéŕļàþš àñöţĥéŕ þàŕţîţîöñ.············]"
+
+#, python-brace-format
+msgid "Fresh Emaki {value1} install"
+msgstr "[Ƒŕéšĥ Éɱàķî {value1} îñšţàļļ········]"
+
+msgid "GPT identity or geometry could not be verified."
+msgstr "[ĜÞŢ îðéñţîţÿ öŕ ĝéöɱéţŕÿ çöûļð ñöţ ƀé ṽéŕîƒîéð.···············]"
+
+msgid "GPT validation failed; Windows will not be resized."
+msgstr "[ĜÞŢ ṽàļîðàţîöñ ƒàîļéð; Ŵîñðöŵš ŵîļļ ñöţ ƀé ŕéšîžéð.················]"
+
+msgid "GRUB NVRAM registration failed and no removable loader could be installed."
+msgstr "[ĜŔÛƁ ÑṼŔÀṀ ŕéĝîšţŕàţîöñ ƒàîļéð àñð ñö ŕéɱöṽàƀļé ļöàðéŕ çöûļð ƀé îñšţàļļéð.························]"
+
+#, python-brace-format
+msgid "GRUB has no executable entry for {value1}."
+msgstr "[ĜŔÛƁ ĥàš ñö éẋéçûţàƀļé éñţŕÿ ƒöŕ {value1}.·············]"
+
+#, python-brace-format
+msgid "GRUB loader {value1} does not carry the expected prefix; the unlock screen was not built."
+msgstr "[ĜŔÛƁ ļöàðéŕ {value1} ðöéš ñöţ çàŕŕÿ ţĥé éẋþéçţéð þŕéƒîẋ; ţĥé ûñļöçķ šçŕééñ ŵàš ñöţ ƀûîļţ.······························]"
+
+msgid "GRUB's SBAT data is missing or unrecognized."
+msgstr "[ĜŔÛƁ'š ŠƁÀŢ ðàţà îš ɱîššîñĝ öŕ ûñŕéçöĝñîžéð.··············]"
+
+msgid "GRUB's SBAT data names no GRUB version."
+msgstr "[ĜŔÛƁ'š ŠƁÀŢ ðàţà ñàɱéš ñö ĜŔÛƁ ṽéŕšîöñ.············]"
+
+msgid "GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority."
+msgstr "[ĜŔÛƁ, ļîñûẋ + ļîñûẋ-ļţš; /ƀööţ îñšîðé ŕööţ; žŕàɱ ŵîţĥ ĥîĝĥéŕ šŵàþ þŕîöŕîţÿ.·························]"
+
+#, python-brace-format
+msgid "Graphics controller (PCI {value1:04x}:"
+msgstr "[Ĝŕàþĥîçš çöñţŕöļļéŕ (ÞÇÎ {value1:04x}:············]"
+
+#, python-brace-format
+msgid "Graphics driver packages (Nvidia): {packages}."
+msgstr "[Ĝŕàþĥîçš ðŕîṽéŕ þàçķàĝéš (Ñṽîðîà): {packages}.···············]"
+
+msgid "Graphics hardware or driver availability changed; prepare a new installation plan."
+msgstr "[Ĝŕàþĥîçš ĥàŕðŵàŕé öŕ ðŕîṽéŕ àṽàîļàƀîļîţÿ çĥàñĝéð; þŕéþàŕé à ñéŵ îñšţàļļàţîöñ þļàñ.···························]"
+
+msgid "Hibernation writes memory, including passwords, to the disk unencrypted."
+msgstr "[Ĥîƀéŕñàţîöñ ŵŕîţéš ɱéɱöŕÿ, îñçļûðîñĝ þàššŵöŕðš, ţö ţĥé ðîšķ ûñéñçŕÿþţéð.························]"
+
+msgid "Hibernation: off."
+msgstr "[Ĥîƀéŕñàţîöñ: öƒƒ.····]"
+
+#, python-brace-format
+msgid "Hibernation: reserve {value1:,} bytes ({value2:.2f} GiB), equal to RAM."
+msgstr "[Ĥîƀéŕñàţîöñ: ŕéšéŕṽé {value1:,} ƀÿţéš ({value2:.2f} ĜîƁ), éǫûàļ ţö ŔÀṀ.·······················]"
+
+msgid "Hostname must be one DNS label (1–63 characters)."
+msgstr "[Ĥöšţñàɱé ɱûšţ ƀé öñé ÐÑŠ ļàƀéļ (1–63 çĥàŕàçţéŕš).················]"
+
+msgid "Implicit and explicit mounts overlap."
+msgstr "[Îɱþļîçîţ àñð éẋþļîçîţ ɱöûñţš öṽéŕļàþ.···········]"
+
+msgid "Installation cancelled at a phase boundary; disk changes are not undone."
+msgstr "[Îñšţàļļàţîöñ çàñçéļļéð àţ à þĥàšé ƀöûñðàŕÿ; ðîšķ çĥàñĝéš àŕé ñöţ ûñðöñé.························]"
+
+msgid "Installation complete; syncing and unmounting target filesystems."
+msgstr "[Îñšţàļļàţîöñ çöɱþļéţé; šÿñçîñĝ àñð ûñɱöûñţîñĝ ţàŕĝéţ ƒîļéšÿšţéɱš.·····················]"
+
+#, python-brace-format
+msgid "Installation failed: {value1}: {value2}"
+msgstr "[Îñšţàļļàţîöñ ƒàîļéð: {value1}: {value2}············]"
+
+msgid "Installer connection closed or sent an invalid frame."
+msgstr "[Îñšţàļļéŕ çöññéçţîöñ çļöšéð öŕ šéñţ àñ îñṽàļîð ƒŕàɱé.·················]"
+
+#, python-brace-format
+msgid "Installing a package (pacman: {value1})."
+msgstr "[Îñšţàļļîñĝ à þàçķàĝé (þàçɱàñ: {value1}).············]"
+
+msgid "Installing alongside Windows is not available in this version."
+msgstr "[Îñšţàļļîñĝ àļöñĝšîðé Ŵîñðöŵš îš ñöţ àṽàîļàƀļé îñ ţĥîš ṽéŕšîöñ.····················]"
+
+msgid "Installing next to Windows requires a GPT disk with an existing startup partition."
+msgstr "[Îñšţàļļîñĝ ñéẋţ ţö Ŵîñðöŵš ŕéǫûîŕéš à ĜÞŢ ðîšķ ŵîţĥ àñ éẋîšţîñĝ šţàŕţûþ þàŕţîţîöñ.···························]"
+
+msgid "Installing next to Windows requires exactly one FAT32 startup partition."
+msgstr "[Îñšţàļļîñĝ ñéẋţ ţö Ŵîñðöŵš ŕéǫûîŕéš éẋàçţļÿ öñé ƑÀŢ32 šţàŕţûþ þàŕţîţîöñ.························]"
+
+msgid "Installing next to Windows requires exactly one existing FAT32 startup partition on the selected disk."
+msgstr "[Îñšţàļļîñĝ ñéẋţ ţö Ŵîñðöŵš ŕéǫûîŕéš éẋàçţļÿ öñé éẋîšţîñĝ ƑÀŢ32 šţàŕţûþ þàŕţîţîöñ öñ ţĥé šéļéçţéð ðîšķ.··································]"
+
+msgid "Invalid GPT GUID."
+msgstr "[Îñṽàļîð ĜÞŢ ĜÛÎÐ.····]"
+
+msgid "Invalid GPT geometry or name."
+msgstr "[Îñṽàļîð ĜÞŢ ĝéöɱéţŕÿ öŕ ñàɱé.·········]"
+
+msgid "Invalid UTF-8 JSON."
+msgstr "[Îñṽàļîð ÛŢƑ-8 ĴŠÖÑ.·····]"
+
+msgid "Invalid Wi-Fi connection ID."
+msgstr "[Îñṽàļîð Ŵî-Ƒî çöññéçţîöñ ÎÐ.········]"
+
+msgid "Invalid account."
+msgstr "[Îñṽàļîð àççöûñţ.····]"
+
+msgid "Invalid config values."
+msgstr "[Îñṽàļîð çöñƒîĝ ṽàļûéš.······]"
+
+msgid "Invalid display output name."
+msgstr "[Îñṽàļîð ðîšþļàÿ öûţþûţ ñàɱé.········]"
+
+msgid "Invalid filesystem or format flag."
+msgstr "[Îñṽàļîð ƒîļéšÿšţéɱ öŕ ƒöŕɱàţ ƒļàĝ.··········]"
+
+msgid "Invalid frame length."
+msgstr "[Îñṽàļîð ƒŕàɱé ļéñĝţĥ.······]"
+
+msgid "Invalid full name."
+msgstr "[Îñṽàļîð ƒûļļ ñàɱé.·····]"
+
+#, python-brace-format
+msgid "Invalid memdisk name {value1}."
+msgstr "[Îñṽàļîð ɱéɱðîšķ ñàɱé {value1}.·········]"
+
+msgid "Invalid mode."
+msgstr "[Îñṽàļîð ɱöðé.···]"
+
+msgid "Invalid mount row."
+msgstr "[Îñṽàļîð ɱöûñţ ŕöŵ.·····]"
+
+msgid "Invalid new partition."
+msgstr "[Îñṽàļîð ñéŵ þàŕţîţîöñ.······]"
+
+msgid "Invalid partition changes."
+msgstr "[Îñṽàļîð þàŕţîţîöñ çĥàñĝéš.········]"
+
+msgid "Invalid plan confirmation."
+msgstr "[Îñṽàļîð þļàñ çöñƒîŕɱàţîöñ.········]"
+
+msgid "Invalid repository URL."
+msgstr "[Îñṽàļîð ŕéþöšîţöŕÿ ÛŔĻ.·······]"
+
+msgid "Invalid resume sequence."
+msgstr "[Îñṽàļîð ŕéšûɱé šéǫûéñçé.·······]"
+
+msgid "Invalid target path."
+msgstr "[Îñṽàļîð ţàŕĝéţ þàţĥ.·····]"
+
+msgid "Invalid time zone data."
+msgstr "[Îñṽàļîð ţîɱé žöñé ðàţà.·······]"
+
+msgid "Invalid time zone."
+msgstr "[Îñṽàļîð ţîɱé žöñé.·····]"
+
+msgid "Invalid timezone."
+msgstr "[Îñṽàļîð ţîɱéžöñé.····]"
+
+msgid "Invalid user login."
+msgstr "[Îñṽàļîð ûšéŕ ļöĝîñ.·····]"
+
+msgid "Job is not retained by this daemon."
+msgstr "[Ĵöƀ îš ñöţ ŕéţàîñéð ƀÿ ţĥîš ðàéɱöñ.···········]"
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}."
+msgstr "[Ķééþ þàŕţîţîöñ {value1} ({value2}, {value3}, {value4}) àñð îţš ƒîļéš; ûšé: {value5}.····························]"
+
+msgid "Kernel partition size differs after resize."
+msgstr "[Ķéŕñéļ þàŕţîţîöñ šîžé ðîƒƒéŕš àƒţéŕ ŕéšîžé.··············]"
+
+msgid "Keyboard trial is available only in the live Emaki session."
+msgstr "[Ķéÿƀöàŕð ţŕîàļ îš àṽàîļàƀļé öñļÿ îñ ţĥé ļîṽé Éɱàķî šéššîöñ.···················]"
+
+#, python-brace-format
+msgid "Keyboard: {value1} (default), {value2}. Super+Space switches."
+msgstr "[Ķéÿƀöàŕð: {value1} (ðéƒàûļţ), {value2}. Šûþéŕ+Šþàçé šŵîţçĥéš.····················]"
+
+#, python-brace-format
+msgid "Keyboard: {value1}."
+msgstr "[Ķéÿƀöàŕð: {value1}.·····]"
+
+msgid "Layouts saved for the live session; allow a moment for niri to reload. Super+Space switches layouts."
+msgstr "[Ļàÿöûţš šàṽéð ƒöŕ ţĥé ļîṽé šéššîöñ; àļļöŵ à ɱöɱéñţ ƒöŕ ñîŕî ţö ŕéļöàð. Šûþéŕ+Šþàçé šŵîţçĥéš ļàÿöûţš.·································]"
+
+msgid "Live clock changes are available only on the Emaki ISO."
+msgstr "[Ļîṽé çļöçķ çĥàñĝéš àŕé àṽàîļàƀļé öñļÿ öñ ţĥé Éɱàķî ÎŠÖ.··················]"
+
+msgid "Live clock changes are unavailable."
+msgstr "[Ļîṽé çļöçķ çĥàñĝéš àŕé ûñàṽàîļàƀļé.···········]"
+
+msgid "Log export is unavailable after restart preparation."
+msgstr "[Ļöĝ éẋþöŕţ îš ûñàṽàîļàƀļé àƒţéŕ ŕéšţàŕţ þŕéþàŕàţîöñ.·················]"
+
+msgid "Log export is unavailable during restart preparation."
+msgstr "[Ļöĝ éẋþöŕţ îš ûñàṽàîļàƀļé ðûŕîñĝ ŕéšţàŕţ þŕéþàŕàţîöñ.·················]"
+
+msgid "Log export unavailable."
+msgstr "[Ļöĝ éẋþöŕţ ûñàṽàîļàƀļé.·······]"
+
+#, python-brace-format
+msgid "Login name checked against {value1} packages."
+msgstr "[Ļöĝîñ ñàɱé çĥéçķéð àĝàîñšţ {value1} þàçķàĝéš.··············]"
+
+msgid "Make an installed Emaki start again with Secure Boot: rebuild its boot loader and firmware startup entries. Run it from the Emaki installation USB."
+msgstr "[Ṁàķé àñ îñšţàļļéð Éɱàķî šţàŕţ àĝàîñ ŵîţĥ Šéçûŕé Ɓööţ: ŕéƀûîļð îţš ƀööţ ļöàðéŕ àñð ƒîŕɱŵàŕé šţàŕţûþ éñţŕîéš. Ŕûñ îţ ƒŕöɱ ţĥé Éɱàķî îñšţàļļàţîöñ ÛŠƁ.··················································]"
+
+msgid "Malformed genfstab output."
+msgstr "[Ṁàļƒöŕɱéð ĝéñƒšţàƀ öûţþûţ.········]"
+
+#, python-brace-format
+msgid "Manual installation on {path} ({model})."
+msgstr "[Ṁàñûàļ îñšţàļļàţîöñ öñ {path} ({model}).············]"
+
+msgid "Manual installation requires GPT."
+msgstr "[Ṁàñûàļ îñšţàļļàţîöñ ŕéǫûîŕéš ĜÞŢ.··········]"
+
+msgid "Manual mode: preserving the partition table, starts, GUIDs and flags."
+msgstr "[Ṁàñûàļ ɱöðé: þŕéšéŕṽîñĝ ţĥé þàŕţîţîöñ ţàƀļé, šţàŕţš, ĜÛÎÐš àñð ƒļàĝš.·······················]"
+
+msgid "Minimal — Dolphin, Firefox and kitty."
+msgstr "[Ṁîñîɱàļ — Ðöļþĥîñ, Ƒîŕéƒöẋ àñð ķîţţÿ.···········]"
+
+msgid "Mirror ranking returned no usable HTTPS list."
+msgstr "[Ṁîŕŕöŕ ŕàñķîñĝ ŕéţûŕñéð ñö ûšàƀļé ĤŢŢÞŠ ļîšţ.··············]"
+
+#, python-brace-format
+msgid "Missing /boot/{value1}."
+msgstr "[Ṁîššîñĝ /ƀööţ/{value1}.·······]"
+
+#, python-brace-format
+msgid "Missing {value1} mkinitcpio preset."
+msgstr "[Ṁîššîñĝ {value1} ɱķîñîţçþîö þŕéšéţ.···········]"
+
+#, python-brace-format
+msgid "More than one disk holds the same file system or encrypted disk ({devices}), as after copying a whole disk. Disconnect or change all but one of them, then run sudo emaki-boot-repair again. Nothing was changed."
+msgstr "[Ṁöŕé ţĥàñ öñé ðîšķ ĥöļðš ţĥé šàɱé ƒîļé šÿšţéɱ öŕ éñçŕÿþţéð ðîšķ ({devices}), àš àƒţéŕ çöþÿîñĝ à ŵĥöļé ðîšķ. Ðîšçöññéçţ öŕ çĥàñĝé àļļ ƀûţ öñé öƒ ţĥéɱ, ţĥéñ ŕûñ šûðö éɱàķî-ƀööţ-ŕéþàîŕ àĝàîñ. Ñöţĥîñĝ ŵàš çĥàñĝéð.········································································]"
+
+#, python-brace-format
+msgid "More than one installed Emaki was found: {devices}. Name the one to repair, for example: sudo emaki-boot-repair --root {first}"
+msgstr "[Ṁöŕé ţĥàñ öñé îñšţàļļéð Éɱàķî ŵàš ƒöûñð: {devices}. Ñàɱé ţĥé öñé ţö ŕéþàîŕ, ƒöŕ éẋàɱþļé: šûðö éɱàķî-ƀööţ-ŕéþàîŕ --ŕööţ {first}···········································]"
+
+msgid "Mountpoints must be canonical absolute paths."
+msgstr "[Ṁöûñţþöîñţš ɱûšţ ƀé çàñöñîçàļ àƀšöļûţé þàţĥš.··············]"
+
+msgid "NTFS allocation metadata is unreadable."
+msgstr "[ÑŢƑŠ àļļöçàţîöñ ɱéţàðàţà îš ûñŕéàðàƀļé.············]"
+
+msgid "NTFS backup boot record does not match after resize."
+msgstr "[ÑŢƑŠ ƀàçķûþ ƀööţ ŕéçöŕð ðöéš ñöţ ɱàţçĥ àƒţéŕ ŕéšîžé.·················]"
+
+msgid "NTFS is dirty or needs a Windows consistency check. Run chkdsk in Windows and fully shut down first."
+msgstr "[ÑŢƑŠ îš ðîŕţÿ öŕ ñééðš à Ŵîñðöŵš çöñšîšţéñçÿ çĥéçķ. Ŕûñ çĥķðšķ îñ Ŵîñðöŵš àñð ƒûļļÿ šĥûţ ðöŵñ ƒîŕšţ.·································]"
+
+msgid "NTFS metadata lies outside the resized filesystem."
+msgstr "[ÑŢƑŠ ɱéţàðàţà ļîéš öûţšîðé ţĥé ŕéšîžéð ƒîļéšÿšţéɱ.················]"
+
+msgid "NTFS minimum size is invalid."
+msgstr "[ÑŢƑŠ ɱîñîɱûɱ šîžé îš îñṽàļîð.·········]"
+
+msgid "NTFS resize dry run did not pass; disk untouched."
+msgstr "[ÑŢƑŠ ŕéšîžé ðŕÿ ŕûñ ðîð ñöţ þàšš; ðîšķ ûñţöûçĥéð.················]"
+
+msgid "NTFS size does not match the approved shrink."
+msgstr "[ÑŢƑŠ šîžé ðöéš ñöţ ɱàţçĥ ţĥé àþþŕöṽéð šĥŕîñķ.··············]"
+
+msgid "Network is no longer available."
+msgstr "[Ñéţŵöŕķ îš ñö ļöñĝéŕ àṽàîļàƀļé.·········]"
+
+msgid "NetworkManager did not answer within 35 seconds."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ ðîð ñöţ àñšŵéŕ ŵîţĥîñ 35 šéçöñðš.···············]"
+
+msgid "NetworkManager is not running."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ îš ñöţ ŕûññîñĝ.·········]"
+
+msgid "NetworkManager is unavailable. You can install offline."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ îš ûñàṽàîļàƀļé. Ÿöû çàñ îñšţàļļ öƒƒļîñé.··················]"
+
+#, python-brace-format
+msgid "NetworkManager lists {value1} Wi-Fi profiles with this UUID."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ ļîšţš {value1} Ŵî-Ƒî þŕöƒîļéš ŵîţĥ ţĥîš ÛÛÎÐ.···················]"
+
+msgid "NetworkManager returned an empty profile."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ ŕéţûŕñéð àñ éɱþţÿ þŕöƒîļé.·············]"
+
+msgid "NetworkManager's normalized profile could not be read."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ'š ñöŕɱàļîžéð þŕöƒîļé çöûļð ñöţ ƀé ŕéàð.·················]"
+
+msgid "New partition table is not GPT."
+msgstr "[Ñéŵ þàŕţîţîöñ ţàƀļé îš ñöţ ĜÞŢ.·········]"
+
+msgid "New partitions are out of order."
+msgstr "[Ñéŵ þàŕţîţîöñš àŕé öûţ öƒ öŕðéŕ.··········]"
+
+msgid "No GRUB loader was written."
+msgstr "[Ñö ĜŔÛƁ ļöàðéŕ ŵàš ŵŕîţţéñ.········]"
+
+msgid "No active job. Pass --job-id to replay the last completed job."
+msgstr "[Ñö àçţîṽé ĵöƀ. Þàšš --ĵöƀ-îð ţö ŕéþļàÿ ţĥé ļàšţ çöɱþļéţéð ĵöƀ.····················]"
+
+msgid "No by-id name is available; device identity and geometry will be rechecked."
+msgstr "[Ñö ƀÿ-îð ñàɱé îš àṽàîļàƀļé; ðéṽîçé îðéñţîţÿ àñð ĝéöɱéţŕÿ ŵîļļ ƀé ŕéçĥéçķéð.·························]"
+
+msgid "No firmware entry starts this Emaki (an older one names another disk); creating one."
+msgstr "[Ñö ƒîŕɱŵàŕé éñţŕÿ šţàŕţš ţĥîš Éɱàķî (àñ öļðéŕ öñé ñàɱéš àñöţĥéŕ ðîšķ); çŕéàţîñĝ öñé.····························]"
+
+msgid "No installation disk is visible behind the Intel storage controller (VMD/RST). In your firmware settings, disable VMD or Intel RST and select AHCI storage mode, then restart the USB. If another operating system is installed, prepare it for AHCI before changing this setting; otherwise it may stop booting."
+msgstr "[Ñö îñšţàļļàţîöñ ðîšķ îš ṽîšîƀļé ƀéĥîñð ţĥé Îñţéļ šţöŕàĝé çöñţŕöļļéŕ (ṼṀÐ/ŔŠŢ). Îñ ÿöûŕ ƒîŕɱŵàŕé šéţţîñĝš, ðîšàƀļé ṼṀÐ öŕ Îñţéļ ŔŠŢ àñð šéļéçţ ÀĤÇÎ šţöŕàĝé ɱöðé, ţĥéñ ŕéšţàŕţ ţĥé ÛŠƁ. Îƒ àñöţĥéŕ öþéŕàţîñĝ šÿšţéɱ îš îñšţàļļéð, þŕéþàŕé îţ ƒöŕ ÀĤÇÎ ƀéƒöŕé çĥàñĝîñĝ ţĥîš šéţţîñĝ; öţĥéŕŵîšé îţ ɱàÿ šţöþ ƀööţîñĝ.·········································································································]"
+
+msgid "No installation is running."
+msgstr "[Ñö îñšţàļļàţîöñ îš ŕûññîñĝ.········]"
+
+msgid "No installation packages could be found online; your disk has not been changed."
+msgstr "[Ñö îñšţàļļàţîöñ þàçķàĝéš çöûļð ƀé ƒöûñð öñļîñé; ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.··························]"
+
+#, python-brace-format
+msgid "No installed Emaki was found on the unlocked disks. If Emaki is on the encrypted disk {device}, unlock it with: sudo cryptsetup open {device} emaki-root and run sudo emaki-boot-repair again."
+msgstr "[Ñö îñšţàļļéð Éɱàķî ŵàš ƒöûñð öñ ţĥé ûñļöçķéð ðîšķš. Îƒ Éɱàķî îš öñ ţĥé éñçŕÿþţéð ðîšķ {device}, ûñļöçķ îţ ŵîţĥ: šûðö çŕÿþţšéţûþ öþéñ {device} éɱàķî-ŕööţ àñð ŕûñ šûðö éɱàķî-ƀööţ-ŕéþàîŕ àĝàîñ.·································································]"
+
+msgid "No installed Emaki was found on this computer's disks. Nothing was changed."
+msgstr "[Ñö îñšţàļļéð Éɱàķî ŵàš ƒöûñð öñ ţĥîš çöɱþûţéŕ'š ðîšķš. Ñöţĥîñĝ ŵàš çĥàñĝéð.·························]"
+
+msgid "No outstanding installation plan."
+msgstr "[Ñö öûţšţàñðîñĝ îñšţàļļàţîöñ þļàñ.··········]"
+
+msgid "No verified Microsoft EFI loader exists on this disk."
+msgstr "[Ñö ṽéŕîƒîéð Ṁîçŕöšöƒţ ÉƑÎ ļöàðéŕ éẋîšţš öñ ţĥîš ðîšķ.·················]"
+
+msgid "No verified Microsoft EFI loader exists on this disk; automatic Windows boot setup is unavailable."
+msgstr "[Ñö ṽéŕîƒîéð Ṁîçŕöšöƒţ ÉƑÎ ļöàðéŕ éẋîšţš öñ ţĥîš ðîšķ; àûţöɱàţîç Ŵîñðöŵš ƀööţ šéţûþ îš ûñàṽàîļàƀļé.·································]"
+
+msgid "No verified NTFS shrink bounds are available."
+msgstr "[Ñö ṽéŕîƒîéð ÑŢƑŠ šĥŕîñķ ƀöûñðš àŕé àṽàîļàƀļé.··············]"
+
+msgid "Not enough free space for the RAM-sized swapfile."
+msgstr "[Ñöţ éñöûĝĥ ƒŕéé šþàçé ƒöŕ ţĥé ŔÀṀ-šîžéð šŵàþƒîļé.················]"
+
+msgid "Not enough free space. Emaki needs about 35 GB that Windows does not use. Delete or move files in Windows, then shut it down and start from the USB stick again."
+msgstr "[Ñöţ éñöûĝĥ ƒŕéé šþàçé. Éɱàķî ñééðš àƀöûţ 35 ĜƁ ţĥàţ Ŵîñðöŵš ðöéš ñöţ ûšé. Ðéļéţé öŕ ɱöṽé ƒîļéš îñ Ŵîñðöŵš, ţĥéñ šĥûţ îţ ðöŵñ àñð šţàŕţ ƒŕöɱ ţĥé ÛŠƁ šţîçķ àĝàîñ.······················································]"
+
+#, python-brace-format
+msgid "Offline package or signature is missing: {value1}."
+msgstr "[Öƒƒļîñé þàçķàĝé öŕ šîĝñàţûŕé îš ɱîššîñĝ: {value1}.················]"
+
+msgid "Offline package signatures must be required and trusted."
+msgstr "[Öƒƒļîñé þàçķàĝé šîĝñàţûŕéš ɱûšţ ƀé ŕéǫûîŕéð àñð ţŕûšţéð.··················]"
+
+msgid "Offline package transaction is empty."
+msgstr "[Öƒƒļîñé þàçķàĝé ţŕàñšàçţîöñ îš éɱþţÿ.···········]"
+
+msgid "Offline pacman configuration is missing or unreadable."
+msgstr "[Öƒƒļîñé þàçɱàñ çöñƒîĝûŕàţîöñ îš ɱîššîñĝ öŕ ûñŕéàðàƀļé.·················]"
+
+msgid "Offline repository must be the live USB file:// repository."
+msgstr "[Öƒƒļîñé ŕéþöšîţöŕÿ ɱûšţ ƀé ţĥé ļîṽé ÛŠƁ ƒîļé:// ŕéþöšîţöŕÿ.···················]"
+
+msgid "Offline repository preflight failed"
+msgstr "[Öƒƒļîñé ŕéþöšîţöŕÿ þŕéƒļîĝĥţ ƒàîļéð···········]"
+
+msgid "Offline repository preflight failed; disk untouched: "
+msgstr "[Öƒƒļîñé ŕéþöšîţöŕÿ þŕéƒļîĝĥţ ƒàîļéð; ðîšķ ûñţöûçĥéð: ·················]"
+
+#, python-brace-format
+msgid "Offline repository preflight failed; disk untouched: package signature verification failed: {value1}."
+msgstr "[Öƒƒļîñé ŕéþöšîţöŕÿ þŕéƒļîĝĥţ ƒàîļéð; ðîšķ ûñţöûçĥéð: þàçķàĝé šîĝñàţûŕé ṽéŕîƒîçàţîöñ ƒàîļéð: {value1}.··································]"
+
+#, python-brace-format
+msgid "One password for everything is not available: the login screen starts in {value1}, but the disk is unlocked at startup in {value2}."
+msgstr "[Öñé þàššŵöŕð ƒöŕ éṽéŕÿţĥîñĝ îš ñöţ àṽàîļàƀļé: ţĥé ļöĝîñ šçŕééñ šţàŕţš îñ {value1}, ƀûţ ţĥé ðîšķ îš ûñļöçķéð àţ šţàŕţûþ îñ {value2}.············································]"
+
+msgid "Online repositories are forbidden during pacstrap."
+msgstr "[Öñļîñé ŕéþöšîţöŕîéš àŕé ƒöŕƀîððéñ ðûŕîñĝ þàçšţŕàþ.················]"
+
+msgid "Only [emaki-offline] is permitted for pacstrap."
+msgstr "[Öñļÿ [éɱàķî-öƒƒļîñé] îš þéŕɱîţţéð ƒöŕ þàçšţŕàþ.···············]"
+
+msgid "Only a formatted partition other than root and /efi can be encrypted on its own, and only with an encrypted root, which keeps its key."
+msgstr "[Öñļÿ à ƒöŕɱàţţéð þàŕţîţîöñ öţĥéŕ ţĥàñ ŕööţ àñð /éƒî çàñ ƀé éñçŕÿþţéð öñ îţš öŵñ, àñð öñļÿ ŵîţĥ àñ éñçŕÿþţéð ŕööţ, ŵĥîçĥ ķééþš îţš ķéÿ.·············································]"
+
+msgid "Only a swap partition can be used as swap."
+msgstr "[Öñļÿ à šŵàþ þàŕţîţîöñ çàñ ƀé ûšéð àš šŵàþ.·············]"
+
+msgid "Only an unambiguous largest Windows/NTFS partition can be offered."
+msgstr "[Öñļÿ àñ ûñàɱƀîĝûöûš ļàŕĝéšţ Ŵîñðöŵš/ÑŢƑŠ þàŕţîţîöñ çàñ ƀé öƒƒéŕéð.······················]"
+
+msgid "Only directly attached whole block devices are supported."
+msgstr "[Öñļÿ ðîŕéçţļÿ àţţàçĥéð ŵĥöļé ƀļöçķ ðéṽîçéš àŕé šûþþöŕţéð.··················]"
+
+msgid "Only protocol 1 is supported."
+msgstr "[Öñļÿ þŕöţöçöļ 1 îš šûþþöŕţéð.·········]"
+
+msgid "Only the largest Windows/NTFS partition is considered; this partition is not offered."
+msgstr "[Öñļÿ ţĥé ļàŕĝéšţ Ŵîñðöŵš/ÑŢƑŠ þàŕţîţîöñ îš çöñšîðéŕéð; ţĥîš þàŕţîţîöñ îš ñöţ öƒƒéŕéð.····························]"
+
+msgid "Only verified single-device btrfs filesystems can be preserved."
+msgstr "[Öñļÿ ṽéŕîƒîéð šîñĝļé-ðéṽîçé ƀţŕƒš ƒîļéšÿšţéɱš çàñ ƀé þŕéšéŕṽéð.·····················]"
+
+msgid "Opening package files (pacman)."
+msgstr "[Öþéñîñĝ þàçķàĝé ƒîļéš (þàçɱàñ).·········]"
+
+msgid "Outgoing message exceeds 64 KiB."
+msgstr "[Öûţĝöîñĝ ɱéššàĝé éẋçééðš 64 ĶîƁ.··········]"
+
+msgid "Oversized subprocess log line suppressed."
+msgstr "[Öṽéŕšîžéð šûƀþŕöçéšš ļöĝ ļîñé šûþþŕéššéð.·············]"
+
+msgid "Package cache cleanup failed: "
+msgstr "[Þàçķàĝé çàçĥé çļéàñûþ ƒàîļéð: ·········]"
+
+msgid "Package setup did not finish [pacman]."
+msgstr "[Þàçķàĝé šéţûþ ðîð ñöţ ƒîñîšĥ [þàçɱàñ].············]"
+
+msgid "Packages are downloaded and verified before disk changes."
+msgstr "[Þàçķàĝéš àŕé ðöŵñļöàðéð àñð ṽéŕîƒîéð ƀéƒöŕé ðîšķ çĥàñĝéš.··················]"
+
+msgid "Packages are installed from the signed offline USB repository."
+msgstr "[Þàçķàĝéš àŕé îñšţàļļéð ƒŕöɱ ţĥé šîĝñéð öƒƒļîñé ÛŠƁ ŕéþöšîţöŕÿ.····················]"
+
+msgid "Partition changes belong to a manual installation."
+msgstr "[Þàŕţîţîöñ çĥàñĝéš ƀéļöñĝ ţö à ɱàñûàļ îñšţàļļàţîöñ.················]"
+
+msgid "Partition editor"
+msgstr "[Þàŕţîţîöñ éðîţöŕ····]"
+
+msgid "Partition editor: applying the reviewed changes."
+msgstr "[Þàŕţîţîöñ éðîţöŕ: àþþļÿîñĝ ţĥé ŕéṽîéŵéð çĥàñĝéš.···············]"
+
+#, python-brace-format
+msgid "Partition editor: create partition {value1}."
+msgstr "[Þàŕţîţîöñ éðîţöŕ: çŕéàţé þàŕţîţîöñ {value1}.··············]"
+
+#, python-brace-format
+msgid "Partition editor: delete partition {value1} ({value2})."
+msgstr "[Þàŕţîţîöñ éðîţöŕ: ðéļéţé þàŕţîţîöñ {value1} ({value2}).··················]"
+
+msgid "Partition editor: the disk was read again; its kernel view matches the written table."
+msgstr "[Þàŕţîţîöñ éðîţöŕ: ţĥé ðîšķ ŵàš ŕéàð àĝàîñ; îţš ķéŕñéļ ṽîéŵ ɱàţçĥéš ţĥé ŵŕîţţéñ ţàƀļé.····························]"
+
+msgid "Partition editor: whole-disk reread is busy; updating only changed kernel entries."
+msgstr "[Þàŕţîţîöñ éðîţöŕ: ŵĥöļé-ðîšķ ŕéŕéàð îš ƀûšÿ; ûþðàţîñĝ öñļÿ çĥàñĝéð ķéŕñéļ éñţŕîéš.···························]"
+
+msgid "Partition geometry differs from the approved plan."
+msgstr "[Þàŕţîţîöñ ĝéöɱéţŕÿ ðîƒƒéŕš ƒŕöɱ ţĥé àþþŕöṽéð þļàñ.················]"
+
+msgid "Partition geometry is unknown or the partition is read-only."
+msgstr "[Þàŕţîţîöñ ĝéöɱéţŕÿ îš ûñķñöŵñ öŕ ţĥé þàŕţîţîöñ îš ŕéàð-öñļÿ.···················]"
+
+msgid "Partition identity differs from the written table. Nothing was formatted."
+msgstr "[Þàŕţîţîöñ îðéñţîţÿ ðîƒƒéŕš ƒŕöɱ ţĥé ŵŕîţţéñ ţàƀļé. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð.························]"
+
+msgid "Partition is not on the selected disk."
+msgstr "[Þàŕţîţîöñ îš ñöţ öñ ţĥé šéļéçţéð ðîšķ.············]"
+
+#, python-brace-format
+msgid "Partition recovery for {value1}: {value2}; {value3}; "
+msgstr "[Þàŕţîţîöñ ŕéçöṽéŕÿ ƒöŕ {value1}: {value2}; {value3}; ·················]"
+
+#, python-brace-format
+msgid "Partition {value1} cannot be deleted: its place on the disk is unknown or it is read-only."
+msgstr "[Þàŕţîţîöñ {value1} çàññöţ ƀé ðéļéţéð: îţš þļàçé öñ ţĥé ðîšķ îš ûñķñöŵñ öŕ îţ îš ŕéàð-öñļÿ.······························]"
+
+#, python-brace-format
+msgid "Partition {value1} holds {value2}. Confirm deleting it by typing %1."
+msgstr "[Þàŕţîţîöñ {value1} ĥöļðš {value2}. Çöñƒîŕɱ ðéļéţîñĝ îţ ƀÿ ţÿþîñĝ %1.······················]"
+
+#, python-brace-format
+msgid "Partition {value1} holds {value2}. Emaki does not change it; delete the partition to use its space."
+msgstr "[Þàŕţîţîöñ {value1} ĥöļðš {value2}. Éɱàķî ðöéš ñöţ çĥàñĝé îţ; ðéļéţé ţĥé þàŕţîţîöñ ţö ûšé îţš šþàçé.·································]"
+
+#, python-brace-format
+msgid "Partition {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
+msgstr "[Þàŕţîţîöñ {value1}: {value2} {value3}, {value4:.2f} ĜîƁ; {value5}.······················]"
+
+msgid "Partitions not listed here are not changed."
+msgstr "[Þàŕţîţîöñš ñöţ ļîšţéð ĥéŕé àŕé ñöţ çĥàñĝéð.··············]"
+
+msgid "Password must be nonempty and contain no control characters (line breaks, tabs)."
+msgstr "[Þàššŵöŕð ɱûšţ ƀé ñöñéɱþţÿ àñð çöñţàîñ ñö çöñţŕöļ çĥàŕàçţéŕš (ļîñé ƀŕéàķš, ţàƀš).··························]"
+
+msgid "Plan token expired; review a new plan."
+msgstr "[Þļàñ ţöķéñ éẋþîŕéð; ŕéṽîéŵ à ñéŵ þļàñ.············]"
+
+msgid "Preparing language support (locale-gen)."
+msgstr "[Þŕéþàŕîñĝ ļàñĝûàĝé šûþþöŕţ (ļöçàļé-ĝéñ).············]"
+
+msgid "Preparing packages (pacman)."
+msgstr "[Þŕéþàŕîñĝ þàçķàĝéš (þàçɱàñ).········]"
+
+msgid "Preserve all other partitions; add Windows Boot Manager to GRUB; Emaki stays the default."
+msgstr "[Þŕéšéŕṽé àļļ öţĥéŕ þàŕţîţîöñš; àðð Ŵîñðöŵš Ɓööţ Ṁàñàĝéŕ ţö ĜŔÛƁ; Éɱàķî šţàÿš ţĥé ðéƒàûļţ.······························]"
+
+msgid "Processes rooted inside target: "
+msgstr "[Þŕöçéššéš ŕööţéð îñšîðé ţàŕĝéţ: ··········]"
+
+msgid "RAM size changed after the review; prepare a new installation plan."
+msgstr "[ŔÀṀ šîžé çĥàñĝéð àƒţéŕ ţĥé ŕéṽîéŵ; þŕéþàŕé à ñéŵ îñšţàļļàţîöñ þļàñ.······················]"
+
+msgid "Reading package lists (pacman)."
+msgstr "[Ŕéàðîñĝ þàçķàĝé ļîšţš (þàçɱàñ).·········]"
+
+msgid "Reading packages from the installation media (pacman)."
+msgstr "[Ŕéàðîñĝ þàçķàĝéš ƒŕöɱ ţĥé îñšţàļļàţîöñ ɱéðîà (þàçɱàñ).·················]"
+
+msgid "Reboot is only available after a completed installation."
+msgstr "[Ŕéƀööţ îš öñļÿ àṽàîļàƀļé àƒţéŕ à çöɱþļéţéð îñšţàļļàţîöñ.··················]"
+
+msgid "Reboot is unavailable."
+msgstr "[Ŕéƀööţ îš ûñàṽàîļàƀļé.······]"
+
+msgid "Refusing process cleanup of the live root."
+msgstr "[Ŕéƒûšîñĝ þŕöçéšš çļéàñûþ öƒ ţĥé ļîṽé ŕööţ.·············]"
+
+msgid "Removed the stale pacman lock; no pacman runs in the target."
+msgstr "[Ŕéɱöṽéð ţĥé šţàļé þàçɱàñ ļöçķ; ñö þàçɱàñ ŕûñš îñ ţĥé ţàŕĝéţ.···················]"
+
+#, python-brace-format
+msgid "Repairing the installed Emaki on {root} with the startup partition {esp}."
+msgstr "[Ŕéþàîŕîñĝ ţĥé îñšţàļļéð Éɱàķî öñ {root} ŵîţĥ ţĥé šţàŕţûþ þàŕţîţîöñ {esp}.························]"
+
+msgid "Repeated partition rows need distinct subvolumes and identical format flags."
+msgstr "[Ŕéþéàţéð þàŕţîţîöñ ŕöŵš ñééð ðîšţîñçţ šûƀṽöļûɱéš àñð îðéñţîçàļ ƒöŕɱàţ ƒļàĝš.·························]"
+
+msgid "Repository URL must be HTTPS, without credentials or fragments."
+msgstr "[Ŕéþöšîţöŕÿ ÛŔĻ ɱûšţ ƀé ĤŢŢÞŠ, ŵîţĥöûţ çŕéðéñţîàļš öŕ ƒŕàĝɱéñţš.·····················]"
+
+msgid "Request failed: "
+msgstr "[Ŕéǫûéšţ ƒàîļéð: ····]"
+
+msgid "Requests need a string type and a nonempty ID (at most 128 characters)."
+msgstr "[Ŕéǫûéšţš ñééð à šţŕîñĝ ţÿþé àñð à ñöñéɱþţÿ ÎÐ (àţ ɱöšţ 128 çĥàŕàçţéŕš).·······················]"
+
+#, python-brace-format
+msgid "Required target file missing: {value1}."
+msgstr "[Ŕéǫûîŕéð ţàŕĝéţ ƒîļé ɱîššîñĝ: {value1}.············]"
+
+#, python-brace-format
+msgid "Restart scope adoption failed: {value1}. Continuing without verified isolation; the guardian may remain in the installer service cgroup."
+msgstr "[Ŕéšţàŕţ šçöþé àðöþţîöñ ƒàîļéð: {value1}. Çöñţîñûîñĝ ŵîţĥöûţ ṽéŕîƒîéð îšöļàţîöñ; ţĥé ĝûàŕðîàñ ɱàÿ ŕéɱàîñ îñ ţĥé îñšţàļļéŕ šéŕṽîçé çĝŕöûþ.··············································]"
+
+msgid "Resume a known job, including a completed job."
+msgstr "[Ŕéšûɱé à ķñöŵñ ĵöƀ, îñçļûðîñĝ à çöɱþļéţéð ĵöƀ.···············]"
+
+msgid "Rich — desktop apps, office, email, media and utilities."
+msgstr "[Ŕîçĥ — ðéšķţöþ àþþš, öƒƒîçé, éɱàîļ, ɱéðîà àñð ûţîļîţîéš.··················]"
+
+msgid "Root encryption is chosen on the Encryption step (the plan encryption)."
+msgstr "[Ŕööţ éñçŕÿþţîöñ îš çĥöšéñ öñ ţĥé Éñçŕÿþţîöñ šţéþ (ţĥé þļàñ éñçŕÿþţîöñ).·······················]"
+
+msgid "Root must be btrfs or ext4."
+msgstr "[Ŕööţ ɱûšţ ƀé ƀţŕƒš öŕ éẋţ4.········]"
+
+msgid "Root needs 20 GiB plus the RAM-sized hibernation file and encryption header."
+msgstr "[Ŕööţ ñééðš 20 ĜîƁ þļûš ţĥé ŔÀṀ-šîžéð ĥîƀéŕñàţîöñ ƒîļé àñð éñçŕÿþţîöñ ĥéàðéŕ.·························]"
+
+msgid "Root partition must be at least 20 GiB."
+msgstr "[Ŕööţ þàŕţîţîöñ ɱûšţ ƀé àţ ļéàšţ 20 ĜîƁ.············]"
+
+msgid "Run the repair as root: sudo emaki-boot-repair"
+msgstr "[Ŕûñ ţĥé ŕéþàîŕ àš ŕööţ: šûðö éɱàķî-ƀööţ-ŕéþàîŕ···············]"
+
+#, python-brace-format
+msgid "Running package setup step {value1} of {value2} (pacman: {value3})."
+msgstr "[Ŕûññîñĝ þàçķàĝé šéţûþ šţéþ {value1} öƒ {value2} (þàçɱàñ: {value3}).······················]"
+
+msgid "STOP: NTFS resize did not confirm success. Partition table untouched; inspect Windows before retrying."
+msgstr "[ŠŢÖÞ: ÑŢƑŠ ŕéšîžé ðîð ñöţ çöñƒîŕɱ šûççéšš. Þàŕţîţîöñ ţàƀļé ûñţöûçĥéð; îñšþéçţ Ŵîñðöŵš ƀéƒöŕé ŕéţŕÿîñĝ.··································]"
+
+msgid "STOP: Windows GPT metadata differs after shrink. No Emaki root was created."
+msgstr "[ŠŢÖÞ: Ŵîñðöŵš ĜÞŢ ɱéţàðàţà ðîƒƒéŕš àƒţéŕ šĥŕîñķ. Ñö Éɱàķî ŕööţ ŵàš çŕéàţéð.·························]"
+
+msgid "STOP: Windows was resized but the post-shrink NTFS check failed. No Emaki root was created or formatted. Do not retry the installer; boot Windows for a consistency check and inspect the installation log."
+msgstr "[ŠŢÖÞ: Ŵîñðöŵš ŵàš ŕéšîžéð ƀûţ ţĥé þöšţ-šĥŕîñķ ÑŢƑŠ çĥéçķ ƒàîļéð. Ñö Éɱàķî ŕööţ ŵàš çŕéàţéð öŕ ƒöŕɱàţţéð. Ðö ñöţ ŕéţŕÿ ţĥé îñšţàļļéŕ; ƀööţ Ŵîñðöŵš ƒöŕ à çöñšîšţéñçÿ çĥéçķ àñð îñšþéçţ ţĥé îñšţàļļàţîöñ ļöĝ.······································································]"
+
+msgid "STOP: an existing partition changed unexpectedly; formatting refused."
+msgstr "[ŠŢÖÞ: àñ éẋîšţîñĝ þàŕţîţîöñ çĥàñĝéð ûñéẋþéçţéðļÿ; ƒöŕɱàţţîñĝ ŕéƒûšéð.·······················]"
+
+msgid "STOP: changing the partition table failed after it had begun, so the disk may have been changed. Nothing was formatted; inspect the disk and the installation log before trying again."
+msgstr "[ŠŢÖÞ: çĥàñĝîñĝ ţĥé þàŕţîţîöñ ţàƀļé ƒàîļéð àƒţéŕ îţ ĥàð ƀéĝûñ, šö ţĥé ðîšķ ɱàÿ ĥàṽé ƀééñ çĥàñĝéð. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð; îñšþéçţ ţĥé ðîšķ àñð ţĥé îñšţàļļàţîöñ ļöĝ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.······························································]"
+
+msgid "STOP: preserved GPT metadata changed. No Emaki root was created."
+msgstr "[ŠŢÖÞ: þŕéšéŕṽéð ĜÞŢ ɱéţàðàţà çĥàñĝéð. Ñö Éɱàķî ŕööţ ŵàš çŕéàţéð.·····················]"
+
+msgid "STOP: the partition table differs from the reviewed changes after writing. Nothing was formatted; inspect the disk and the installation log."
+msgstr "[ŠŢÖÞ: ţĥé þàŕţîţîöñ ţàƀļé ðîƒƒéŕš ƒŕöɱ ţĥé ŕéṽîéŵéð çĥàñĝéš àƒţéŕ ŵŕîţîñĝ. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð; îñšþéçţ ţĥé ðîšķ àñð ţĥé îñšţàļļàţîöñ ļöĝ.···············································]"
+
+msgid "STOP: unexpected partition table after shrinking Windows."
+msgstr "[ŠŢÖÞ: ûñéẋþéçţéð þàŕţîţîöñ ţàƀļé àƒţéŕ šĥŕîñķîñĝ Ŵîñðöŵš.··················]"
+
+#, python-brace-format
+msgid "STOP: {value1} differs from the approved freed extent; formatting refused."
+msgstr "[ŠŢÖÞ: {value1} ðîƒƒéŕš ƒŕöɱ ţĥé àþþŕöṽéð ƒŕééð éẋţéñţ; ƒöŕɱàţţîñĝ ŕéƒûšéð.························]"
+
+msgid "Scale must be null or a number from 0.5 to 4."
+msgstr "[Šçàļé ɱûšţ ƀé ñûļļ öŕ à ñûɱƀéŕ ƒŕöɱ 0.5 ţö 4.··············]"
+
+msgid "Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often \"Allow Microsoft 3rd Party UEFI CA\") or turn Secure Boot off, then start the USB again. No disk has been changed."
+msgstr "[Šéçûŕé Ɓööţ îš öñ, ƀûţ ţĥîš çöɱþûţéŕ ðöéš ñöţ ţŕûšţ ţĥé Ṁîçŕöšöƒţ çéŕţîƒîçàţé Éɱàķî šţàŕţš ŵîţĥ. Îñ ÿöûŕ ƒîŕɱŵàŕé šéţţîñĝš, ţûŕñ öñ ţĥé ţĥîŕð-þàŕţÿ çéŕţîƒîçàţé öþţîöñ (öƒţéñ \"Àļļöŵ Ṁîçŕöšöƒţ 3ŕð Þàŕţÿ ÛÉƑÎ ÇÀ\") öŕ ţûŕñ Šéçûŕé Ɓööţ öƒƒ, ţĥéñ šţàŕţ ţĥé ÛŠƁ àĝàîñ. Ñö ðîšķ ĥàš ƀééñ çĥàñĝéð.···································································································]"
+
+#, python-brace-format
+msgid "Secure Boot on a kept startup partition: it has {value1} bytes free, this installation and later boot updates need {value2}."
+msgstr "[Šéçûŕé Ɓööţ öñ à ķéþţ šţàŕţûþ þàŕţîţîöñ: îţ ĥàš {value1} ƀÿţéš ƒŕéé, ţĥîš îñšţàļļàţîöñ àñð ļàţéŕ ƀööţ ûþðàţéš ñééð {value2}.··········································]"
+
+msgid "Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 and 2023."
+msgstr "[Šéçûŕé Ɓööţ: öñ; ţĥé ƒîŕɱŵàŕé ţŕûšţš ţĥé Ṁîçŕöšöƒţ ÛÉƑÎ ÇÀ 2011 àñð 2023.························]"
+
+msgid "Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 only."
+msgstr "[Šéçûŕé Ɓööţ: öñ; ţĥé ƒîŕɱŵàŕé ţŕûšţš ţĥé Ṁîçŕöšöƒţ ÛÉƑÎ ÇÀ 2011 öñļÿ.·······················]"
+
+msgid "Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2023 only."
+msgstr "[Šéçûŕé Ɓööţ: öñ; ţĥé ƒîŕɱŵàŕé ţŕûšţš ţĥé Ṁîçŕöšöƒţ ÛÉƑÎ ÇÀ 2023 öñļÿ.·······················]"
+
+msgid "Secure Boot: removing the firmware entries of an earlier Emaki boot slot on this disk: "
+msgstr "[Šéçûŕé Ɓööţ: ŕéɱöṽîñĝ ţĥé ƒîŕɱŵàŕé éñţŕîéš öƒ àñ éàŕļîéŕ Éɱàķî ƀööţ šļöţ öñ ţĥîš ðîšķ: ·····························]"
+
+msgid "Secure Boot: the machine key waits for confirmation in MokManager at the next start."
+msgstr "[Šéçûŕé Ɓööţ: ţĥé ɱàçĥîñé ķéÿ ŵàîţš ƒöŕ çöñƒîŕɱàţîöñ îñ ṀöķṀàñàĝéŕ àţ ţĥé ñéẋţ šţàŕţ.····························]"
+
+msgid "Selected Windows NTFS partition is not on this disk."
+msgstr "[Šéļéçţéð Ŵîñðöŵš ÑŢƑŠ þàŕţîţîöñ îš ñöţ öñ ţĥîš ðîšķ.·················]"
+
+msgid "Selected disk no longer exists."
+msgstr "[Šéļéçţéð ðîšķ ñö ļöñĝéŕ éẋîšţš.·········]"
+
+msgid "Shrink the Windows filesystem and its partition end only; preserve its start, GUID, type, name and files."
+msgstr "[Šĥŕîñķ ţĥé Ŵîñðöŵš ƒîļéšÿšţéɱ àñð îţš þàŕţîţîöñ éñð öñļÿ; þŕéšéŕṽé îţš šţàŕţ, ĜÛÎÐ, ţÿþé, ñàɱé àñð ƒîļéš.···································]"
+
+#, python-brace-format
+msgid "Shutdown ramfs preparation failed or was skipped: {value1}"
+msgstr "[Šĥûţðöŵñ ŕàɱƒš þŕéþàŕàţîöñ ƒàîļéð öŕ ŵàš šķîþþéð: {value1}···················]"
+
+msgid "Socket path is not a socket."
+msgstr "[Šöçķéţ þàţĥ îš ñöţ à šöçķéţ.········]"
+
+msgid "Software: "
+msgstr "[Šöƒţŵàŕé: ··]"
+
+msgid "Some packages need different versions of each other. Wait for matching packages, then try the full update again."
+msgstr "[Šöɱé þàçķàĝéš ñééð ðîƒƒéŕéñţ ṽéŕšîöñš öƒ éàçĥ öţĥéŕ. Ŵàîţ ƒöŕ ɱàţçĥîñĝ þàçķàĝéš, ţĥéñ ţŕÿ ţĥé ƒûļļ ûþðàţé àĝàîñ.······································]"
+
+msgid "Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there."
+msgstr "[Šţàŕţ ţĥé çöɱþûţéŕ ƒŕöɱ ţĥé Éɱàķî îñšţàļļàţîöñ ÛŠƁ àñð ŕûñ šûðö éɱàķî-ƀööţ-ŕéþàîŕ ţĥéŕé.·····························]"
+
+msgid "Stop it [mdadm --stop]"
+msgstr "[Šţöþ îţ [ɱðàðɱ --šţöþ]······]"
+
+#, python-brace-format
+msgid "Stopping target process {value1}: {value2}"
+msgstr "[Šţöþþîñĝ ţàŕĝéţ þŕöçéšš {value1}: {value2}·············]"
+
+msgid "Subvolume name is a symlink."
+msgstr "[Šûƀṽöļûɱé ñàɱé îš à šÿɱļîñķ.········]"
+
+msgid "Supply one to four distinct XKB layouts."
+msgstr "[Šûþþļÿ öñé ţö ƒöûŕ ðîšţîñçţ ẊĶƁ ļàÿöûţš.············]"
+
+msgid "Swapfile size or resume offset is invalid."
+msgstr "[Šŵàþƒîļé šîžé öŕ ŕéšûɱé öƒƒšéţ îš îñṽàļîð.·············]"
+
+msgid "Target pacman.conf is missing standard Arch repositories."
+msgstr "[Ţàŕĝéţ þàçɱàñ.çöñƒ îš ɱîššîñĝ šţàñðàŕð Àŕçĥ ŕéþöšîţöŕîéš.··················]"
+
+msgid "Target root is a symlink."
+msgstr "[Ţàŕĝéţ ŕööţ îš à šÿɱļîñķ.·······]"
+
+#, python-brace-format
+msgid "Target symlink refused: {value1}."
+msgstr "[Ţàŕĝéţ šÿɱļîñķ ŕéƒûšéð: {value1}.··········]"
+
+#, python-brace-format
+msgid "Target {value1} has unsafe directory permissions."
+msgstr "[Ţàŕĝéţ {value1} ĥàš ûñšàƒé ðîŕéçţöŕÿ þéŕɱîššîöñš.················]"
+
+msgid "Test mode requires /etc/emaki-test/authorized_keys."
+msgstr "[Ţéšţ ɱöðé ŕéǫûîŕéš /éţç/éɱàķî-ţéšţ/àûţĥöŕîžéð_ķéÿš.················]"
+
+msgid "The GRUB early config must be printable ASCII."
+msgstr "[Ţĥé ĜŔÛƁ éàŕļÿ çöñƒîĝ ɱûšţ ƀé þŕîñţàƀļé ÀŠÇÎÎ.···············]"
+
+msgid "The GRUB image command names no single output."
+msgstr "[Ţĥé ĜŔÛƁ îɱàĝé çöɱɱàñð ñàɱéš ñö šîñĝļé öûţþûţ.···············]"
+
+msgid "The GRUB unlock-screen assets are invalid: "
+msgstr "[Ţĥé ĜŔÛƁ ûñļöçķ-šçŕééñ àššéţš àŕé îñṽàļîð: ··············]"
+
+msgid "The GRUB unlock-screen font is missing from this ISO."
+msgstr "[Ţĥé ĜŔÛƁ ûñļöçķ-šçŕééñ ƒöñţ îš ɱîššîñĝ ƒŕöɱ ţĥîš ÎŠÖ.·················]"
+
+msgid "The GRUB unlock-screen font is not a PFF2 font."
+msgstr "[Ţĥé ĜŔÛƁ ûñļöçķ-šçŕééñ ƒöñţ îš ñöţ à ÞƑƑ2 ƒöñţ.···············]"
+
+msgid "The GRUB version for SBAT is invalid."
+msgstr "[Ţĥé ĜŔÛƁ ṽéŕšîöñ ƒöŕ ŠƁÀŢ îš îñṽàļîð.···········]"
+
+msgid "The ISO XKB layout inventory is unavailable."
+msgstr "[Ţĥé ÎŠÖ ẊĶƁ ļàÿöûţ îñṽéñţöŕÿ îš ûñàṽàîļàƀļé.··············]"
+
+msgid "The Secure Boot key could not be mounted read-only, so nothing was changed."
+msgstr "[Ţĥé Šéçûŕé Ɓööţ ķéÿ çöûļð ñöţ ƀé ɱöûñţéð ŕéàð-öñļÿ, šö ñöţĥîñĝ ŵàš çĥàñĝéð.·························]"
+
+msgid "The Secure Boot setting changed after the review; prepare a new installation plan."
+msgstr "[Ţĥé Šéçûŕé Ɓööţ šéţţîñĝ çĥàñĝéð àƒţéŕ ţĥé ŕéṽîéŵ; þŕéþàŕé à ñéŵ îñšţàļļàţîöñ þļàñ.···························]"
+
+msgid "The Windows part of this disk is set up in a way Emaki cannot safely shrink."
+msgstr "[Ţĥé Ŵîñðöŵš þàŕţ öƒ ţĥîš ðîšķ îš šéţ ûþ îñ à ŵàÿ Éɱàķî çàññöţ šàƒéļÿ šĥŕîñķ.·························]"
+
+msgid "The Windows partition does not start on a 1 MiB boundary; this layout is unsupported."
+msgstr "[Ţĥé Ŵîñðöŵš þàŕţîţîöñ ðöéš ñöţ šţàŕţ öñ à 1 ṀîƁ ƀöûñðàŕÿ; ţĥîš ļàÿöûţ îš ûñšûþþöŕţéð.····························]"
+
+msgid "The Windows partition is mounted, held, or in use. Unmount it before trying again."
+msgstr "[Ţĥé Ŵîñðöŵš þàŕţîţîöñ îš ɱöûñţéð, ĥéļð, öŕ îñ ûšé. Ûñɱöûñţ îţ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.···························]"
+
+msgid "The Windows partition or its disk is mounted, held, or in use."
+msgstr "[Ţĥé Ŵîñðöŵš þàŕţîţîöñ öŕ îţš ðîšķ îš ɱöûñţéð, ĥéļð, öŕ îñ ûšé.····················]"
+
+msgid "The automatic clock setting could not be restored (network time). Check the date and time in the live session, then try again. Your disk has not been changed."
+msgstr "[Ţĥé àûţöɱàţîç çļöçķ šéţţîñĝ çöûļð ñöţ ƀé ŕéšţöŕéð (ñéţŵöŕķ ţîɱé). Çĥéçķ ţĥé ðàţé àñð ţîɱé îñ ţĥé ļîṽé šéššîöñ, ţĥéñ ţŕÿ àĝàîñ. Ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.······················································]"
+
+msgid "The available packages do not yet match this Emaki release. Wait for matching packages, then try the full update again. Do not force this update."
+msgstr "[Ţĥé àṽàîļàƀļé þàçķàĝéš ðö ñöţ ÿéţ ɱàţçĥ ţĥîš Éɱàķî ŕéļéàšé. Ŵàîţ ƒöŕ ɱàţçĥîñĝ þàçķàĝéš, ţĥéñ ţŕÿ ţĥé ƒûļļ ûþðàţé àĝàîñ. Ðö ñöţ ƒöŕçé ţĥîš ûþðàţé.·················································]"
+
+#, python-brace-format
+msgid "The boot slot a could not be written: {value1}"
+msgstr "[Ţĥé ƀööţ šļöţ à çöûļð ñöţ ƀé ŵŕîţţéñ: {value1}···············]"
+
+msgid "The computer clock could not be corrected. Set the date and time in the live session, then try again. Your disk has not been changed."
+msgstr "[Ţĥé çöɱþûţéŕ çļöçķ çöûļð ñöţ ƀé çöŕŕéçţéð. Šéţ ţĥé ðàţé àñð ţîɱé îñ ţĥé ļîṽé šéššîöñ, ţĥéñ ţŕÿ àĝàîñ. Ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.·············································]"
+
+msgid "The computer clock is still incorrect. Set the date and time in the live session, then try again. Your disk has not been changed."
+msgstr "[Ţĥé çöɱþûţéŕ çļöçķ îš šţîļļ îñçöŕŕéçţ. Šéţ ţĥé ðàţé àñð ţîɱé îñ ţĥé ļîṽé šéššîöñ, ţĥéñ ţŕÿ àĝàîñ. Ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.············································]"
+
+msgid "The computer clock was corrected for this live session so package signatures can be checked."
+msgstr "[Ţĥé çöɱþûţéŕ çļöçķ ŵàš çöŕŕéçţéð ƒöŕ ţĥîš ļîṽé šéššîöñ šö þàçķàĝé šîĝñàţûŕéš çàñ ƀé çĥéçķéð.·······························]"
+
+msgid "The current time could not be checked online. If package signatures fail, check the date and time in the live session."
+msgstr "[Ţĥé çûŕŕéñţ ţîɱé çöûļð ñöţ ƀé çĥéçķéð öñļîñé. Îƒ þàçķàĝé šîĝñàţûŕéš ƒàîļ, çĥéçķ ţĥé ðàţé àñð ţîɱé îñ ţĥé ļîṽé šéššîöñ.········································]"
+
+msgid "The default (first) layout must type Latin letters; a non-Latin layout can be second."
+msgstr "[Ţĥé ðéƒàûļţ (ƒîŕšţ) ļàÿöûţ ɱûšţ ţÿþé Ļàţîñ ļéţţéŕš; à ñöñ-Ļàţîñ ļàÿöûţ çàñ ƀé šéçöñð.····························]"
+
+msgid "The disk could not be read. Installation stopped."
+msgstr "[Ţĥé ðîšķ çöûļð ñöţ ƀé ŕéàð. Îñšţàļļàţîöñ šţöþþéð.················]"
+
+msgid "The disk does not hold a GPT partition table."
+msgstr "[Ţĥé ðîšķ ðöéš ñöţ ĥöļð à ĜÞŢ þàŕţîţîöñ ţàƀļé.··············]"
+
+#, python-brace-format
+msgid "The disk inspection stopped because {target} could not be unmounted: {error}. No more disks were inspected."
+msgstr "[Ţĥé ðîšķ îñšþéçţîöñ šţöþþéð ƀéçàûšé {target} çöûļð ñöţ ƀé ûñɱöûñţéð: {error}. Ñö ɱöŕé ðîšķš ŵéŕé îñšþéçţéð.····································]"
+
+msgid "The disk is busy. Close its files and unmount its volumes [umount], then try again."
+msgstr "[Ţĥé ðîšķ îš ƀûšÿ. Çļöšé îţš ƒîļéš àñð ûñɱöûñţ îţš ṽöļûɱéš [ûɱöûñţ], ţĥéñ ţŕÿ àĝàîñ.····························]"
+
+msgid "The disk is no longer empty. The disk was not changed; start a new review."
+msgstr "[Ţĥé ðîšķ îš ñö ļöñĝéŕ éɱþţÿ. Ţĥé ðîšķ ŵàš ñöţ çĥàñĝéð; šţàŕţ à ñéŵ ŕéṽîéŵ.························]"
+
+msgid "The disk is read-only or is the live boot medium."
+msgstr "[Ţĥé ðîšķ îš ŕéàð-öñļÿ öŕ îš ţĥé ļîṽé ƀööţ ɱéðîûɱ.················]"
+
+msgid "The disk is still being read. Try again in a moment."
+msgstr "[Ţĥé ðîšķ îš šţîļļ ƀéîñĝ ŕéàð. Ţŕÿ àĝàîñ îñ à ɱöɱéñţ.·················]"
+
+msgid "The disk must be at least 24 GiB."
+msgstr "[Ţĥé ðîšķ ɱûšţ ƀé àţ ļéàšţ 24 ĜîƁ.··········]"
+
+msgid "The disk sector size changed. Installation stopped."
+msgstr "[Ţĥé ðîšķ šéçţöŕ šîžé çĥàñĝéð. Îñšţàļļàţîöñ šţöþþéð.················]"
+
+msgid "The disk sector size changed. The disk was not changed; start a new review."
+msgstr "[Ţĥé ðîšķ šéçţöŕ šîžé çĥàñĝéð. Ţĥé ðîšķ ŵàš ñöţ çĥàñĝéð; šţàŕţ à ñéŵ ŕéṽîéŵ.·························]"
+
+msgid "The disk sector size could not be read. The disk was not changed."
+msgstr "[Ţĥé ðîšķ šéçţöŕ šîžé çöûļð ñöţ ƀé ŕéàð. Ţĥé ðîšķ ŵàš ñöţ çĥàñĝéð.·····················]"
+
+msgid "The disk sequence number could not be read. Installation stopped."
+msgstr "[Ţĥé ðîšķ šéǫûéñçé ñûɱƀéŕ çöûļð ñöţ ƀé ŕéàð. Îñšţàļļàţîöñ šţöþþéð.·····················]"
+
+msgid "The disk sequence number is unknown. Installation stopped."
+msgstr "[Ţĥé ðîšķ šéǫûéñçé ñûɱƀéŕ îš ûñķñöŵñ. Îñšţàļļàţîöñ šţöþþéð.···················]"
+
+msgid "The disk was read again and its partition table changed after installation stopped. Close the installer and inspect the disk before starting a new review."
+msgstr "[Ţĥé ðîšķ ŵàš ŕéàð àĝàîñ àñð îţš þàŕţîţîöñ ţàƀļé çĥàñĝéð àƒţéŕ îñšţàļļàţîöñ šţöþþéð. Çļöšé ţĥé îñšţàļļéŕ àñð îñšþéçţ ţĥé ðîšķ ƀéƒöŕé šţàŕţîñĝ à ñéŵ ŕéṽîéŵ.····················································]"
+
+msgid "The disk was replaced after the review. Installation stopped."
+msgstr "[Ţĥé ðîšķ ŵàš ŕéþļàçéð àƒţéŕ ţĥé ŕéṽîéŵ. Îñšţàļļàţîöñ šţöþþéð.····················]"
+
+msgid "The disk's startup files could not be checked safely, so Emaki stopped."
+msgstr "[Ţĥé ðîšķ'š šţàŕţûþ ƒîļéš çöûļð ñöţ ƀé çĥéçķéð šàƒéļÿ, šö Éɱàķî šţöþþéð.·······················]"
+
+#, python-brace-format
+msgid "The disk's startup partition is too full for Secure Boot updates: Emaki needs about {need} MB free there (it has {free} MB). Making it bigger needs a backup and a disk tool. Do not delete Windows startup files."
+msgstr "[Ţĥé ðîšķ'š šţàŕţûþ þàŕţîţîöñ îš ţöö ƒûļļ ƒöŕ Šéçûŕé Ɓööţ ûþðàţéš: Éɱàķî ñééðš àƀöûţ {need} ṀƁ ƒŕéé ţĥéŕé (îţ ĥàš {free} ṀƁ). Ṁàķîñĝ îţ ƀîĝĝéŕ ñééðš à ƀàçķûþ àñð à ðîšķ ţööļ. Ðö ñöţ ðéļéţé Ŵîñðöŵš šţàŕţûþ ƒîļéš.········································································]"
+
+msgid "The disk's startup partitions could not be identified safely, so Emaki stopped."
+msgstr "[Ţĥé ðîšķ'š šţàŕţûþ þàŕţîţîöñš çöûļð ñöţ ƀé îðéñţîƒîéð šàƒéļÿ, šö Éɱàķî šţöþþéð.··························]"
+
+msgid "The downloaded package repository could not be prepared; your disk has not been changed."
+msgstr "[Ţĥé ðöŵñļöàðéð þàçķàĝé ŕéþöšîţöŕÿ çöûļð ñöţ ƀé þŕéþàŕéð; ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.·····························]"
+
+#, python-brace-format
+msgid "The encrypted partition {value1} could not be identified."
+msgstr "[Ţĥé éñçŕÿþţéð þàŕţîţîöñ {value1} çöûļð ñöţ ƀé îðéñţîƒîéð.··················]"
+
+msgid "The encrypted system partition could not be identified."
+msgstr "[Ţĥé éñçŕÿþţéð šÿšţéɱ þàŕţîţîöñ çöûļð ñöţ ƀé îðéñţîƒîéð.··················]"
+
+msgid "The firmware could not save a startup entry (NVRAM/efibootmgr). Emaki installed the standard fallback loader (EFI/BOOT/BOOTX64.EFI). If needed, choose this disk in your firmware boot menu."
+msgstr "[Ţĥé ƒîŕɱŵàŕé çöûļð ñöţ šàṽé à šţàŕţûþ éñţŕÿ (ÑṼŔÀṀ/éƒîƀööţɱĝŕ). Éɱàķî îñšţàļļéð ţĥé šţàñðàŕð ƒàļļƀàçķ ļöàðéŕ (ÉƑÎ/ƁÖÖŢ/ƁÖÖŢẊ64.ÉƑÎ). Îƒ ñééðéð, çĥööšé ţĥîš ðîšķ îñ ÿöûŕ ƒîŕɱŵàŕé ƀööţ ɱéñû.································································]"
+
+msgid "The firmware entry for Emaki could not be activated."
+msgstr "[Ţĥé ƒîŕɱŵàŕé éñţŕÿ ƒöŕ Éɱàķî çöûļð ñöţ ƀé àçţîṽàţéð.·················]"
+
+msgid "The firmware entry for Emaki is not first after removing the unsigned one."
+msgstr "[Ţĥé ƒîŕɱŵàŕé éñţŕÿ ƒöŕ Éɱàķî îš ñöţ ƒîŕšţ àƒţéŕ ŕéɱöṽîñĝ ţĥé ûñšîĝñéð öñé.························]"
+
+msgid "The firmware signature database is malformed."
+msgstr "[Ţĥé ƒîŕɱŵàŕé šîĝñàţûŕé ðàţàƀàšé îš ɱàļƒöŕɱéð.··············]"
+
+msgid "The firmware signature database is truncated."
+msgstr "[Ţĥé ƒîŕɱŵàŕé šîĝñàţûŕé ðàţàƀàšé îš ţŕûñçàţéð.··············]"
+
+msgid "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again. No disk has been changed."
+msgstr "[Ţĥé ƒîŕɱŵàŕé šîĝñàţûŕé šéţţîñĝ çöûļð ñöţ ƀé ŕéàð (Šéçûŕé Ɓööţ). Ŕéšţàŕţ îñţö ÿöûŕ ƒîŕɱŵàŕé šéţţîñĝš, ţûŕñ Šéçûŕé Ɓööţ öƒƒ, ţĥéñ šţàŕţ ţĥé ÛŠƁ àĝàîñ. Ñö ðîšķ ĥàš ƀééñ çĥàñĝéð.···························································]"
+
+msgid "The firmware startup entries could not be read, so the startup copies were not replaced."
+msgstr "[Ţĥé ƒîŕɱŵàŕé šţàŕţûþ éñţŕîéš çöûļð ñöţ ƀé ŕéàð, šö ţĥé šţàŕţûþ çöþîéš ŵéŕé ñöţ ŕéþļàçéð.·····························]"
+
+msgid "The firmware still starts an earlier Emaki startup copy on this disk, so the startup copies were not replaced."
+msgstr "[Ţĥé ƒîŕɱŵàŕé šţîļļ šţàŕţš àñ éàŕļîéŕ Éɱàķî šţàŕţûþ çöþÿ öñ ţĥîš ðîšķ, šö ţĥé šţàŕţûþ çöþîéš ŵéŕé ñöţ ŕéþļàçéð.·····································]"
+
+#, python-brace-format
+msgid "The firmware variable {value1} is unreadable."
+msgstr "[Ţĥé ƒîŕɱŵàŕé ṽàŕîàƀļé {value1} îš ûñŕéàðàƀļé.··············]"
+
+msgid "The formatted partition could not be identified."
+msgstr "[Ţĥé ƒöŕɱàţţéð þàŕţîţîöñ çöûļð ñöţ ƀé îðéñţîƒîéð.···············]"
+
+msgid "The free space Secure Boot updates need on the disk's startup partition could not be checked."
+msgstr "[Ţĥé ƒŕéé šþàçé Šéçûŕé Ɓööţ ûþðàţéš ñééð öñ ţĥé ðîšķ'š šţàŕţûþ þàŕţîţîöñ çöûļð ñöţ ƀé çĥéçķéð.·······························]"
+
+msgid "The grub package has no kernel.img or moddep.lst for x86_64-efi."
+msgstr "[Ţĥé ĝŕûƀ þàçķàĝé ĥàš ñö ķéŕñéļ.îɱĝ öŕ ɱöððéþ.ļšţ ƒöŕ ẋ86_64-éƒî.·····················]"
+
+msgid "The grub package lacks the modules "
+msgstr "[Ţĥé ĝŕûƀ þàçķàĝé ļàçķš ţĥé ɱöðûļéš ···········]"
+
+msgid "The installation files are missing. Connect to the internet and try again (Ventoy or copytoram). Your disk has not been changed."
+msgstr "[Ţĥé îñšţàļļàţîöñ ƒîļéš àŕé ɱîššîñĝ. Çöññéçţ ţö ţĥé îñţéŕñéţ àñð ţŕÿ àĝàîñ (Ṽéñţöÿ öŕ çöþÿţöŕàɱ). Ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.···········································]"
+
+msgid "The installation files are missing. Connect to the internet before installing (Ventoy or copytoram)."
+msgstr "[Ţĥé îñšţàļļàţîöñ ƒîļéš àŕé ɱîššîñĝ. Çöññéçţ ţö ţĥé îñţéŕñéţ ƀéƒöŕé îñšţàļļîñĝ (Ṽéñţöÿ öŕ çöþÿţöŕàɱ).·································]"
+
+msgid "The installation files could not be downloaded and checked. Check the internet connection and free space in the live session, then try again; your disk has not been changed. "
+msgstr "[Ţĥé îñšţàļļàţîöñ ƒîļéš çöûļð ñöţ ƀé ðöŵñļöàðéð àñð çĥéçķéð. Çĥéçķ ţĥé îñţéŕñéţ çöññéçţîöñ àñð ƒŕéé šþàçé îñ ţĥé ļîṽé šéššîöñ, ţĥéñ ţŕÿ àĝàîñ; ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð. ···························································]"
+
+msgid "The installation files were not found on the live medium. Packages will be downloaded and checked before your disk is changed. Keep the internet connection active (Ventoy or copytoram)."
+msgstr "[Ţĥé îñšţàļļàţîöñ ƒîļéš ŵéŕé ñöţ ƒöûñð öñ ţĥé ļîṽé ɱéðîûɱ. Þàçķàĝéš ŵîļļ ƀé ðöŵñļöàðéð àñð çĥéçķéð ƀéƒöŕé ÿöûŕ ðîšķ îš çĥàñĝéð. Ķééþ ţĥé îñţéŕñéţ çöññéçţîöñ àçţîṽé (Ṽéñţöÿ öŕ çöþÿţöŕàɱ).·······························································]"
+
+msgid "The installation log cannot be saved while the installer is stopping."
+msgstr "[Ţĥé îñšţàļļàţîöñ ļöĝ çàññöţ ƀé šàṽéð ŵĥîļé ţĥé îñšţàļļéŕ îš šţöþþîñĝ.·······················]"
+
+msgid "The installed Emaki is too old for this repair. Nothing was changed."
+msgstr "[Ţĥé îñšţàļļéð Éɱàķî îš ţöö öļð ƒöŕ ţĥîš ŕéþàîŕ. Ñöţĥîñĝ ŵàš çĥàñĝéð.······················]"
+
+#, python-brace-format
+msgid "The installed directory {path} is not a safe directory. The repair stopped."
+msgstr "[Ţĥé îñšţàļļéð ðîŕéçţöŕÿ {path} îš ñöţ à šàƒé ðîŕéçţöŕÿ. Ţĥé ŕéþàîŕ šţöþþéð.·························]"
+
+msgid "The installed system will include the Intel storage driver (vmd) so this disk can start."
+msgstr "[Ţĥé îñšţàļļéð šÿšţéɱ ŵîļļ îñçļûðé ţĥé Îñţéļ šţöŕàĝé ðŕîṽéŕ (ṽɱð) šö ţĥîš ðîšķ çàñ šţàŕţ.·····························]"
+
+msgid "The installer is busy or stopping. Wait before trying again."
+msgstr "[Ţĥé îñšţàļļéŕ îš ƀûšÿ öŕ šţöþþîñĝ. Ŵàîţ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.···················]"
+
+#, python-brace-format
+msgid "The installer mapping {value1} is already in use."
+msgstr "[Ţĥé îñšţàļļéŕ ɱàþþîñĝ {value1} îš àļŕéàðÿ îñ ûšé.················]"
+
+msgid "The installer needs a user runtime directory"
+msgstr "[Ţĥé îñšţàļļéŕ ñééðš à ûšéŕ ŕûñţîɱé ðîŕéçţöŕÿ··············]"
+
+msgid "The installer root mapping is already in use."
+msgstr "[Ţĥé îñšţàļļéŕ ŕööţ ɱàþþîñĝ îš àļŕéàðÿ îñ ûšé.··············]"
+
+msgid "The live Arch mirrorlist is missing."
+msgstr "[Ţĥé ļîṽé Àŕçĥ ɱîŕŕöŕļîšţ îš ɱîššîñĝ.···········]"
+
+msgid "The live ISO boot mount is missing."
+msgstr "[Ţĥé ļîṽé ÎŠÖ ƀööţ ɱöûñţ îš ɱîššîñĝ.···········]"
+
+msgid "The live boot medium cannot be a target."
+msgstr "[Ţĥé ļîṽé ƀööţ ɱéðîûɱ çàññöţ ƀé à ţàŕĝéţ.············]"
+
+#, python-brace-format
+msgid "The login name check could not read a package ({value1}; bsdtar). The disk has not been changed."
+msgstr "[Ţĥé ļöĝîñ ñàɱé çĥéçķ çöûļð ñöţ ŕéàð à þàçķàĝé ({value1}; ƀšðţàŕ). Ţĥé ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.································]"
+
+msgid "The machine certificate has no single subject name."
+msgstr "[Ţĥé ɱàçĥîñé çéŕţîƒîçàţé ĥàš ñö šîñĝļé šûƀĵéçţ ñàɱé.················]"
+
+msgid "The machine key label is invalid."
+msgstr "[Ţĥé ɱàçĥîñé ķéÿ ļàƀéļ îš îñṽàļîð.··········]"
+
+#, python-brace-format
+msgid "The menu face {value1} is not a regular file."
+msgstr "[Ţĥé ɱéñû ƒàçé {value1} îš ñöţ à ŕéĝûļàŕ ƒîļé.··············]"
+
+msgid "The new firmware entry for Emaki is not listed."
+msgstr "[Ţĥé ñéŵ ƒîŕɱŵàŕé éñţŕÿ ƒöŕ Éɱàķî îš ñöţ ļîšţéð.···············]"
+
+msgid "The new startup copy could not be written. Check the installation log for details."
+msgstr "[Ţĥé ñéŵ šţàŕţûþ çöþÿ çöûļð ñöţ ƀé ŵŕîţţéñ. Çĥéçķ ţĥé îñšţàļļàţîöñ ļöĝ ƒöŕ ðéţàîļš.···························]"
+
+msgid "The new startup partition did not get a valid FAT32 file system, so Emaki stopped before writing its boot files."
+msgstr "[Ţĥé ñéŵ šţàŕţûþ þàŕţîţîöñ ðîð ñöţ ĝéţ à ṽàļîð ƑÀŢ32 ƒîļé šÿšţéɱ, šö Éɱàķî šţöþþéð ƀéƒöŕé ŵŕîţîñĝ îţš ƀööţ ƒîļéš.······································]"
+
+msgid "The one-time password is invalid."
+msgstr "[Ţĥé öñé-ţîɱé þàššŵöŕð îš îñṽàļîð.··········]"
+
+msgid "The online update did not finish; use the terminal to update the whole system before installing apps [pacman]."
+msgstr "[Ţĥé öñļîñé ûþðàţé ðîð ñöţ ƒîñîšĥ; ûšé ţĥé ţéŕɱîñàļ ţö ûþðàţé ţĥé ŵĥöļé šÿšţéɱ ƀéƒöŕé îñšţàļļîñĝ àþþš [þàçɱàñ].·····································]"
+
+msgid "The package download address is unsafe; your disk has not been changed."
+msgstr "[Ţĥé þàçķàĝé ðöŵñļöàð àððŕéšš îš ûñšàƒé; ÿöûŕ ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.·······················]"
+
+msgid "The package emaki-shim-signed is not in this installation."
+msgstr "[Ţĥé þàçķàĝé éɱàķî-šĥîɱ-šîĝñéð îš ñöţ îñ ţĥîš îñšţàļļàţîöñ.···················]"
+
+msgid "The package hook directory is not empty or is unavailable [pacman]."
+msgstr "[Ţĥé þàçķàĝé ĥööķ ðîŕéçţöŕÿ îš ñöţ éɱþţÿ öŕ îš ûñàṽàîļàƀļé [þàçɱàñ].······················]"
+
+#, python-brace-format
+msgid "The package repository could not be read: {value1}"
+msgstr "[Ţĥé þàçķàĝé ŕéþöšîţöŕÿ çöûļð ñöţ ƀé ŕéàð: {value1}················]"
+
+#, python-brace-format
+msgid "The package repository holds {value1} archives of {value2}."
+msgstr "[Ţĥé þàçķàĝé ŕéþöšîţöŕÿ ĥöļðš {value1} àŕçĥîṽéš öƒ {value2}.···················]"
+
+#, python-brace-format
+msgid "The packages {value1} are not in this installation."
+msgstr "[Ţĥé þàçķàĝéš {value1} àŕé ñöţ îñ ţĥîš îñšţàļļàţîöñ.················]"
+
+msgid "The partition table changed after the review. The disk was not changed; start a new review."
+msgstr "[Ţĥé þàŕţîţîöñ ţàƀļé çĥàñĝéð àƒţéŕ ţĥé ŕéṽîéŵ. Ţĥé ðîšķ ŵàš ñöţ çĥàñĝéð; šţàŕţ à ñéŵ ŕéṽîéŵ.······························]"
+
+msgid "The partition table could not be read. Installation stopped."
+msgstr "[Ţĥé þàŕţîţîöñ ţàƀļé çöûļð ñöţ ƀé ŕéàð. Îñšţàļļàţîöñ šţöþþéð.···················]"
+
+msgid "The partition table differs from the reviewed change. Installation stopped."
+msgstr "[Ţĥé þàŕţîţîöñ ţàƀļé ðîƒƒéŕš ƒŕöɱ ţĥé ŕéṽîéŵéð çĥàñĝé. Îñšţàļļàţîöñ šţöþþéð.·························]"
+
+msgid "The partition table was written, but a changed partition is still busy. Nothing was formatted; read the disk again."
+msgstr "[Ţĥé þàŕţîţîöñ ţàƀļé ŵàš ŵŕîţţéñ, ƀûţ à çĥàñĝéð þàŕţîţîöñ îš šţîļļ ƀûšÿ. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð; ŕéàð ţĥé ðîšķ àĝàîñ.·······································]"
+
+msgid "The partition table was written, but the disk is still busy. Nothing was formatted; read the disk again."
+msgstr "[Ţĥé þàŕţîţîöñ ţàƀļé ŵàš ŵŕîţţéñ, ƀûţ ţĥé ðîšķ îš šţîļļ ƀûšÿ. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð; ŕéàð ţĥé ðîšķ àĝàîñ.···································]"
+
+msgid "The partition table was written, but the kernel could not read a new partition. Nothing was formatted; read the disk again."
+msgstr "[Ţĥé þàŕţîţîöñ ţàƀļé ŵàš ŵŕîţţéñ, ƀûţ ţĥé ķéŕñéļ çöûļð ñöţ ŕéàð à ñéŵ þàŕţîţîöñ. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð; ŕéàð ţĥé ðîšķ àĝàîñ.··········································]"
+
+msgid "The partition table was written, but the kernel could not read it. Nothing was formatted; read the disk again."
+msgstr "[Ţĥé þàŕţîţîöñ ţàƀļé ŵàš ŵŕîţţéñ, ƀûţ ţĥé ķéŕñéļ çöûļð ñöţ ŕéàð îţ. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð; ŕéàð ţĥé ðîšķ àĝàîñ.·····································]"
+
+msgid "The partitions on the disk could not be read. Installation stopped."
+msgstr "[Ţĥé þàŕţîţîöñš öñ ţĥé ðîšķ çöûļð ñöţ ƀé ŕéàð. Îñšţàļļàţîöñ šţöþþéð.······················]"
+
+#, python-brace-format
+msgid "The place of partition {value1} on the disk is unknown, so the partition editor cannot change this disk."
+msgstr "[Ţĥé þļàçé öƒ þàŕţîţîöñ {value1} öñ ţĥé ðîšķ îš ûñķñöŵñ, šö ţĥé þàŕţîţîöñ éðîţöŕ çàññöţ çĥàñĝé ţĥîš ðîšķ.···································]"
+
+msgid "The repair did not finish; the messages above say why."
+msgstr "[Ţĥé ŕéþàîŕ ðîð ñöţ ƒîñîšĥ; ţĥé ɱéššàĝéš àƀöṽé šàÿ ŵĥÿ.·················]"
+
+msgid "The repair finished. Remove the installation USB and restart the computer."
+msgstr "[Ţĥé ŕéþàîŕ ƒîñîšĥéð. Ŕéɱöṽé ţĥé îñšţàļļàţîöñ ÛŠƁ àñð ŕéšţàŕţ ţĥé çöɱþûţéŕ.························]"
+
+msgid "The request could not be completed. Check the installation log for details."
+msgstr "[Ţĥé ŕéǫûéšţ çöûļð ñöţ ƀé çöɱþļéţéð. Çĥéçķ ţĥé îñšţàļļàţîöñ ļöĝ ƒöŕ ðéţàîļš.·························]"
+
+msgid "The restart service could not start."
+msgstr "[Ţĥé ŕéšţàŕţ šéŕṽîçé çöûļð ñöţ šţàŕţ.···········]"
+
+msgid "The root partition and the partitions marked encrypted are encrypted. The startup partition and the other partitions stay unencrypted."
+msgstr "[Ţĥé ŕööţ þàŕţîţîöñ àñð ţĥé þàŕţîţîöñš ɱàŕķéð éñçŕÿþţéð àŕé éñçŕÿþţéð. Ţĥé šţàŕţûþ þàŕţîţîöñ àñð ţĥé öţĥéŕ þàŕţîţîöñš šţàÿ ûñéñçŕÿþţéð.·············································]"
+
+msgid "The root partition is encrypted. The startup partition and any separate data partitions stay unencrypted."
+msgstr "[Ţĥé ŕööţ þàŕţîţîöñ îš éñçŕÿþţéð. Ţĥé šţàŕţûþ þàŕţîţîöñ àñð àñÿ šéþàŕàţé ðàţà þàŕţîţîöñš šţàÿ ûñéñçŕÿþţéð.···································]"
+
+msgid "The shutdown ramfs is unavailable."
+msgstr "[Ţĥé šĥûţðöŵñ ŕàɱƒš îš ûñàṽàîļàƀļé.··········]"
+
+msgid "The signed GRUB image does not carry its early config and memdisk."
+msgstr "[Ţĥé šîĝñéð ĜŔÛƁ îɱàĝé ðöéš ñöţ çàŕŕÿ îţš éàŕļÿ çöñƒîĝ àñð ɱéɱðîšķ.······················]"
+
+#, python-brace-format
+msgid "The startup copy {value1} could not be read back after it was written."
+msgstr "[Ţĥé šţàŕţûþ çöþÿ {value1} çöûļð ñöţ ƀé ŕéàð ƀàçķ àƒţéŕ îţ ŵàš ŵŕîţţéñ.·······················]"
+
+msgid "The startup partition could not be identified, so the startup copies were not replaced."
+msgstr "[Ţĥé šţàŕţûþ þàŕţîţîöñ çöûļð ñöţ ƀé îðéñţîƒîéð, šö ţĥé šţàŕţûþ çöþîéš ŵéŕé ñöţ ŕéþļàçéð.·····························]"
+
+msgid "The startup partition needs at least 32 MiB of verified free space."
+msgstr "[Ţĥé šţàŕţûþ þàŕţîţîöñ ñééðš àţ ļéàšţ 32 ṀîƁ öƒ ṽéŕîƒîéð ƒŕéé šþàçé.······················]"
+
+#, python-brace-format
+msgid "The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)"
+msgstr "[Ţĥé šţàŕţûþ þàŕţîţîöñ öƒ ţĥé îñšţàļļéð Éɱàķî ({source}) ŵàš ñöţ ƒöûñð. Ñàɱé îţ, ƒöŕ éẋàɱþļé: šûðö éɱàķî-ƀööţ-ŕéþàîŕ --éšþ /ðéṽ/ñṽɱé0ñ1þ5 (ñéẋţ ţö Ŵîñðöŵš, ţĥé þàŕţîţîöñ ļàƀéļļéð ÉṀÀĶÎ)·······························································]"
+
+msgid "The startup password must use characters available on an English (US) keyboard."
+msgstr "[Ţĥé šţàŕţûþ þàššŵöŕð ɱûšţ ûšé çĥàŕàçţéŕš àṽàîļàƀļé öñ àñ Éñĝļîšĥ (ÛŠ) ķéÿƀöàŕð.··························]"
+
+msgid "The swap partition could not be identified."
+msgstr "[Ţĥé šŵàþ þàŕţîţîöñ çöûļð ñöţ ƀé îðéñţîƒîéð.··············]"
+
+msgid "The system partition could not be identified."
+msgstr "[Ţĥé šÿšţéɱ þàŕţîţîöñ çöûļð ñöţ ƀé îðéñţîƒîéð.··············]"
+
+msgid "The target is read-only."
+msgstr "[Ţĥé ţàŕĝéţ îš ŕéàð-öñļÿ.·······]"
+
+msgid "The update could not check packages held after a rollback. Resolve the reported problem before trying again."
+msgstr "[Ţĥé ûþðàţé çöûļð ñöţ çĥéçķ þàçķàĝéš ĥéļð àƒţéŕ à ŕöļļƀàçķ. Ŕéšöļṽé ţĥé ŕéþöŕţéð þŕöƀļéɱ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.····································]"
+
+msgid "The update could not finish. Resolve the reported problem before trying again."
+msgstr "[Ţĥé ûþðàţé çöûļð ñöţ ƒîñîšĥ. Ŕéšöļṽé ţĥé ŕéþöŕţéð þŕöƀļéɱ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.··························]"
+
+msgid "The update could not reach a package source. Check your connection, then try again."
+msgstr "[Ţĥé ûþðàţé çöûļð ñöţ ŕéàçĥ à þàçķàĝé šöûŕçé. Çĥéçķ ÿöûŕ çöññéçţîöñ, ţĥéñ ţŕÿ àĝàîñ.····························]"
+
+msgid "The update could not verify a download. Check the date and connection, then try again. Do not turn off signature checks."
+msgstr "[Ţĥé ûþðàţé çöûļð ñöţ ṽéŕîƒÿ à ðöŵñļöàð. Çĥéçķ ţĥé ðàţé àñð çöññéçţîöñ, ţĥéñ ţŕÿ àĝàîñ. Ðö ñöţ ţûŕñ öƒƒ šîĝñàţûŕé çĥéçķš.········································]"
+
+msgid "The update includes a package held after a rollback. Review the held packages before trying again."
+msgstr "[Ţĥé ûþðàţé îñçļûðéš à þàçķàĝé ĥéļð àƒţéŕ à ŕöļļƀàçķ. Ŕéṽîéŵ ţĥé ĥéļð þàçķàĝéš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·································]"
+
+msgid "There is not enough free space for the update. Free some space, then try again."
+msgstr "[Ţĥéŕé îš ñöţ éñöûĝĥ ƒŕéé šþàçé ƒöŕ ţĥé ûþðàţé. Ƒŕéé šöɱé šþàçé, ţĥéñ ţŕÿ àĝàîñ.··························]"
+
+msgid "This ISO lacks GRUB modules for the encrypted unlock screen: "
+msgstr "[Ţĥîš ÎŠÖ ļàçķš ĜŔÛƁ ɱöðûļéš ƒöŕ ţĥé éñçŕÿþţéð ûñļöçķ šçŕééñ: ····················]"
+
+msgid "This ISO lacks the GRUB unlock-screen font."
+msgstr "[Ţĥîš ÎŠÖ ļàçķš ţĥé ĜŔÛƁ ûñļöçķ-šçŕééñ ƒöñţ.··············]"
+
+msgid "This NTFS partition is not a verified Windows system volume."
+msgstr "[Ţĥîš ÑŢƑŠ þàŕţîţîöñ îš ñöţ à ṽéŕîƒîéð Ŵîñðöŵš šÿšţéɱ ṽöļûɱé.···················]"
+
+msgid "This disk has no free GPT partition entry left."
+msgstr "[Ţĥîš ðîšķ ĥàš ñö ƒŕéé ĜÞŢ þàŕţîţîöñ éñţŕÿ ļéƒţ.···············]"
+
+msgid "This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again."
+msgstr "[Ţĥîš ðîšķ îš ƀûšÿ [ĻṼṀ, ŔÀÎÐ öŕ àñ öþéñ éñçŕÿþţéð ṽöļûɱé]. Çļöšé îţš ṽöļûɱéš, ţĥéñ ţŕÿ àĝàîñ.·······························]"
+
+msgid "This login name belongs to the system. Choose another name; the disk has not been changed."
+msgstr "[Ţĥîš ļöĝîñ ñàɱé ƀéļöñĝš ţö ţĥé šÿšţéɱ. Çĥööšé àñöţĥéŕ ñàɱé; ţĥé ðîšķ ĥàš ñöţ ƀééñ çĥàñĝéð.······························]"
+
+msgid "This operation is unavailable. Please try again."
+msgstr "[Ţĥîš öþéŕàţîöñ îš ûñàṽàîļàƀļé. Þļéàšé ţŕÿ àĝàîñ.···············]"
+
+msgid "This session does not read the keyboard trial."
+msgstr "[Ţĥîš šéššîöñ ðöéš ñöţ ŕéàð ţĥé ķéÿƀöàŕð ţŕîàļ.···············]"
+
+msgid "Time source did not use HTTPS."
+msgstr "[Ţîɱé šöûŕçé ðîð ñöţ ûšé ĤŢŢÞŠ.·········]"
+
+msgid "Time source omitted the time zone."
+msgstr "[Ţîɱé šöûŕçé öɱîţţéð ţĥé ţîɱé žöñé.··········]"
+
+msgid "Time zone data is unavailable."
+msgstr "[Ţîɱé žöñé ðàţà îš ûñàṽàîļàƀļé.·········]"
+
+msgid "UEFI boot is required."
+msgstr "[ÛÉƑÎ ƀööţ îš ŕéǫûîŕéð.······]"
+
+msgid "Unaligned Windows end."
+msgstr "[Ûñàļîĝñéð Ŵîñðöŵš éñð.······]"
+
+msgid "Unexpected device."
+msgstr "[Ûñéẋþéçţéð ðéṽîçé.·····]"
+
+msgid "Unexpected partition count after write."
+msgstr "[Ûñéẋþéçţéð þàŕţîţîöñ çöûñţ àƒţéŕ ŵŕîţé.············]"
+
+msgid "Unexpected partition count or table type after write. Nothing was formatted."
+msgstr "[Ûñéẋþéçţéð þàŕţîţîöñ çöûñţ öŕ ţàƀļé ţÿþé àƒţéŕ ŵŕîţé. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð.·························]"
+
+msgid "Unexpected partition name from sfdisk."
+msgstr "[Ûñéẋþéçţéð þàŕţîţîöñ ñàɱé ƒŕöɱ šƒðîšķ.············]"
+
+msgid "Unformatted filesystems keep data; installation still writes system and account files."
+msgstr "[Ûñƒöŕɱàţţéð ƒîļéšÿšţéɱš ķééþ ðàţà; îñšţàļļàţîöñ šţîļļ ŵŕîţéš šÿšţéɱ àñð àççöûñţ ƒîļéš.·····························]"
+
+msgid "Unknown CPU"
+msgstr "[Ûñķñöŵñ ÇÞÛ··]"
+
+msgid "Unknown GPU"
+msgstr "[Ûñķñöŵñ ĜÞÛ··]"
+
+msgid "Unknown config fields."
+msgstr "[Ûñķñöŵñ çöñƒîĝ ƒîéļðš.······]"
+
+msgid "Unknown request type."
+msgstr "[Ûñķñöŵñ ŕéǫûéšţ ţÿþé.······]"
+
+#, python-brace-format
+msgid "Unknown startup copy {value1!r}."
+msgstr "[Ûñķñöŵñ šţàŕţûþ çöþÿ {value1!r}.··········]"
+
+msgid "Unknown timezone."
+msgstr "[Ûñķñöŵñ ţîɱéžöñé.····]"
+
+#, python-brace-format
+msgid "Unmount failed after {value1} attempts: {value2}"
+msgstr "[Ûñɱöûñţ ƒàîļéð àƒţéŕ {value1} àţţéɱþţš: {value2}···············]"
+
+msgid "Unreadable NTFS boot record after resize."
+msgstr "[Ûñŕéàðàƀļé ÑŢƑŠ ƀööţ ŕéçöŕð àƒţéŕ ŕéšîžé.·············]"
+
+msgid "Unsafe log destination."
+msgstr "[Ûñšàƒé ļöĝ ðéšţîñàţîöñ.·······]"
+
+msgid "Unsafe offline pacman directive: HookDir."
+msgstr "[Ûñšàƒé öƒƒļîñé þàçɱàñ ðîŕéçţîṽé: ĤööķÐîŕ.·············]"
+
+#, python-brace-format
+msgid "Unsafe offline pacman directive: {value1}."
+msgstr "[Ûñšàƒé öƒƒļîñé þàçɱàñ ðîŕéçţîṽé: {value1}.·············]"
+
+msgid "Unsafe runtime directory."
+msgstr "[Ûñšàƒé ŕûñţîɱé ðîŕéçţöŕÿ.·······]"
+
+msgid "Unsafe temporary mountpoint."
+msgstr "[Ûñšàƒé ţéɱþöŕàŕÿ ɱöûñţþöîñţ.········]"
+
+msgid "Unsupported NTFS sector or cluster geometry."
+msgstr "[Ûñšûþþöŕţéð ÑŢƑŠ šéçţöŕ öŕ çļûšţéŕ ĝéöɱéţŕÿ.··············]"
+
+msgid "Unsupported filesystem."
+msgstr "[Ûñšûþþöŕţéð ƒîļéšÿšţéɱ.·······]"
+
+msgid "Unsupported kernel preset."
+msgstr "[Ûñšûþþöŕţéð ķéŕñéļ þŕéšéţ.········]"
+
+msgid "Unsupported mountpoint; /boot, /usr and the pacman database must stay in root."
+msgstr "[Ûñšûþþöŕţéð ɱöûñţþöîñţ; /ƀööţ, /ûšŕ àñð ţĥé þàçɱàñ ðàţàƀàšé ɱûšţ šţàÿ îñ ŕööţ.··························]"
+
+msgid "Unsupported sector geometry."
+msgstr "[Ûñšûþþöŕţéð šéçţöŕ ĝéöɱéţŕÿ.········]"
+
+msgid "Unsupported system language."
+msgstr "[Ûñšûþþöŕţéð šÿšţéɱ ļàñĝûàĝé.········]"
+
+msgid "Update Emaki at the end: off."
+msgstr "[Ûþðàţé Éɱàķî àţ ţĥé éñð: öƒƒ.·········]"
+
+msgid "Update Emaki at the end: when connected."
+msgstr "[Ûþðàţé Éɱàķî àţ ţĥé éñð: ŵĥéñ çöññéçţéð.············]"
+
+msgid "Update download stopped."
+msgstr "[Ûþðàţé ðöŵñļöàð šţöþþéð.·······]"
+
+msgid "Use a simple top-level btrfs subvolume name."
+msgstr "[Ûšé à šîɱþļé ţöþ-ļéṽéļ ƀţŕƒš šûƀṽöļûɱé ñàɱé.··············]"
+
+msgid "Use at least 8 characters for the startup password."
+msgstr "[Ûšé àţ ļéàšţ 8 çĥàŕàçţéŕš ƒöŕ ţĥé šţàŕţûþ þàššŵöŕð.················]"
+
+msgid "Use only letters, digits and symbols of the English (US) keyboard."
+msgstr "[Ûšé öñļÿ ļéţţéŕš, ðîĝîţš àñð šÿɱƀöļš öƒ ţĥé Éñĝļîšĥ (ÛŠ) ķéÿƀöàŕð.······················]"
+
+msgid "Using a partition as swap requires formatting it."
+msgstr "[Ûšîñĝ à þàŕţîţîöñ àš šŵàþ ŕéǫûîŕéš ƒöŕɱàţţîñĝ îţ.················]"
+
+msgid "WARNING: Arch mirror ranking failed; the USB mirror list is retained: "
+msgstr "[ŴÀŔÑÎÑĜ: Àŕçĥ ɱîŕŕöŕ ŕàñķîñĝ ƒàîļéð; ţĥé ÛŠƁ ɱîŕŕöŕ ļîšţ îš ŕéţàîñéð: ·······················]"
+
+msgid "WARNING: GRUB NVRAM registration failed; retrying vendor files without NVRAM."
+msgstr "[ŴÀŔÑÎÑĜ: ĜŔÛƁ ÑṼŔÀṀ ŕéĝîšţŕàţîöñ ƒàîļéð; ŕéţŕÿîñĝ ṽéñðöŕ ƒîļéš ŵîţĥöûţ ÑṼŔÀṀ.·························]"
+
+msgid "WARNING: GRUB menu title adjustment reported a problem; installation continues."
+msgstr "[ŴÀŔÑÎÑĜ: ĜŔÛƁ ɱéñû ţîţļé àðĵûšţɱéñţ ŕéþöŕţéð à þŕöƀļéɱ; îñšţàļļàţîöñ çöñţîñûéš.··························]"
+
+#, python-brace-format
+msgid "WARNING: could not remove {value1}: {value2}"
+msgstr "[ŴÀŔÑÎÑĜ: çöûļð ñöţ ŕéɱöṽé {value1}: {value2}··············]"
+
+msgid "WARNING: firmware startup order: "
+msgstr "[ŴÀŔÑÎÑĜ: ƒîŕɱŵàŕé šţàŕţûþ öŕðéŕ: ··········]"
+
+msgid "WARNING: no connected DRM output identified; scale override omitted."
+msgstr "[ŴÀŔÑÎÑĜ: ñö çöññéçţéð ÐŔṀ öûţþûţ îðéñţîƒîéð; šçàļé öṽéŕŕîðé öɱîţţéð.······················]"
+
+msgid "WARNING: online update failed; the offline installation is retained: "
+msgstr "[ŴÀŔÑÎÑĜ: öñļîñé ûþðàţé ƒàîļéð; ţĥé öƒƒļîñé îñšţàļļàţîöñ îš ŕéţàîñéð: ·······················]"
+
+#, python-brace-format
+msgid "WARNING: optional unit {value1} is missing; skipped."
+msgstr "[ŴÀŔÑÎÑĜ: öþţîöñàļ ûñîţ {value1} îš ɱîššîñĝ; šķîþþéð.·················]"
+
+msgid "WARNING: pacman is still running in the target; its lock is kept."
+msgstr "[ŴÀŔÑÎÑĜ: þàçɱàñ îš šţîļļ ŕûññîñĝ îñ ţĥé ţàŕĝéţ; îţš ļöçķ îš ķéþţ.·····················]"
+
+msgid "WARNING: preserving another system's startup files; removable GRUB copy skipped."
+msgstr "[ŴÀŔÑÎÑĜ: þŕéšéŕṽîñĝ àñöţĥéŕ šÿšţéɱ'š šţàŕţûþ ƒîļéš; ŕéɱöṽàƀļé ĜŔÛƁ çöþÿ šķîþþéð.··························]"
+
+msgid "WARNING: preserving existing fallback EFI boot file; removable GRUB copy skipped."
+msgstr "[ŴÀŔÑÎÑĜ: þŕéšéŕṽîñĝ éẋîšţîñĝ ƒàļļƀàçķ ÉƑÎ ƀööţ ƒîļé; ŕéɱöṽàƀļé ĜŔÛƁ çöþÿ šķîþþéð.···························]"
+
+msgid "WARNING: removable GRUB installation failed."
+msgstr "[ŴÀŔÑÎÑĜ: ŕéɱöṽàƀļé ĜŔÛƁ îñšţàļļàţîöñ ƒàîļéð.··············]"
+
+msgid "WARNING: the Arch keyring was not refreshed; the update is still attempted: "
+msgstr "[ŴÀŔÑÎÑĜ: ţĥé Àŕçĥ ķéÿŕîñĝ ŵàš ñöţ ŕéƒŕéšĥéð; ţĥé ûþðàţé îš šţîļļ àţţéɱþţéð: ·························]"
+
+msgid "WARNING: the Emaki keyring was not refreshed; the update is still attempted: "
+msgstr "[ŴÀŔÑÎÑĜ: ţĥé Éɱàķî ķéÿŕîñĝ ŵàš ñöţ ŕéƒŕéšĥéð; ţĥé ûþðàţé îš šţîļļ àţţéɱþţéð: ·························]"
+
+msgid "WARNING: the firmware boot entries could not be read; the startup order is unchanged."
+msgstr "[ŴÀŔÑÎÑĜ: ţĥé ƒîŕɱŵàŕé ƀööţ éñţŕîéš çöûļð ñöţ ƀé ŕéàð; ţĥé šţàŕţûþ öŕðéŕ îš ûñçĥàñĝéð.····························]"
+
+msgid "WARNING: the full update is deferred until every repository is reachable."
+msgstr "[ŴÀŔÑÎÑĜ: ţĥé ƒûļļ ûþðàţé îš ðéƒéŕŕéð ûñţîļ éṽéŕÿ ŕéþöšîţöŕÿ îš ŕéàçĥàƀļé.························]"
+
+msgid "WARNING: the installed Emaki version could not be read; problem reports will not say whether this is a fresh installation."
+msgstr "[ŴÀŔÑÎÑĜ: ţĥé îñšţàļļéð Éɱàķî ṽéŕšîöñ çöûļð ñöţ ƀé ŕéàð; þŕöƀļéɱ ŕéþöŕţš ŵîļļ ñöţ šàÿ ŵĥéţĥéŕ ţĥîš îš à ƒŕéšĥ îñšţàļļàţîöñ.·········································]"
+
+msgid "WARNING: the login screen shows its plain background until the first login (wallpaper copy: "
+msgstr "[ŴÀŔÑÎÑĜ: ţĥé ļöĝîñ šçŕééñ šĥöŵš îţš þļàîñ ƀàçķĝŕöûñð ûñţîļ ţĥé ƒîŕšţ ļöĝîñ (ŵàļļþàþéŕ çöþÿ: ·······························]"
+
+msgid "WARNING: vendor GRUB retry failed; attempting the removable loader."
+msgstr "[ŴÀŔÑÎÑĜ: ṽéñðöŕ ĜŔÛƁ ŕéţŕÿ ƒàîļéð; àţţéɱþţîñĝ ţĥé ŕéɱöṽàƀļé ļöàðéŕ.······················]"
+
+#, python-brace-format
+msgid "WARNING: {value1}/{value2} on the EFI partition holds other files; they were kept."
+msgstr "[ŴÀŔÑÎÑĜ: {value1}/{value2} öñ ţĥé ÉƑÎ þàŕţîţîöñ ĥöļðš öţĥéŕ ƒîļéš; ţĥéÿ ŵéŕé ķéþţ.···························]"
+
+#, python-brace-format
+msgid "Warning: {target} could not be unmounted: {error}"
+msgstr "[Ŵàŕñîñĝ: {target} çöûļð ñöţ ƀé ûñɱöûñţéð: {error}················]"
+
+msgid "Wi-Fi country could not be set; continuing with the time zone."
+msgstr "[Ŵî-Ƒî çöûñţŕÿ çöûļð ñöţ ƀé šéţ; çöñţîñûîñĝ ŵîţĥ ţĥé ţîɱé žöñé.····················]"
+
+msgid "Wi-Fi country left unset: timezone "
+msgstr "[Ŵî-Ƒî çöûñţŕÿ ļéƒţ ûñšéţ: ţîɱéžöñé ···········]"
+
+msgid "Wi-Fi was not copied; join it again after restarting."
+msgstr "[Ŵî-Ƒî ŵàš ñöţ çöþîéð; ĵöîñ îţ àĝàîñ àƒţéŕ ŕéšţàŕţîñĝ.·················]"
+
+msgid "Wi-Fi: "
+msgstr "[Ŵî-Ƒî: ·]"
+
+#, python-brace-format
+msgid "Wi-Fi: chose {value1}: {value2}."
+msgstr "[Ŵî-Ƒî: çĥöšé {value1}: {value2}.··········]"
+
+#, python-brace-format
+msgid "Wi-Fi: installed {value1} into /etc/NetworkManager/system-connections (0600)."
+msgstr "[Ŵî-Ƒî: îñšţàļļéð {value1} îñţö /éţç/ÑéţŵöŕķṀàñàĝéŕ/šÿšţéɱ-çöññéçţîöñš (0600).·························]"
+
+#, python-brace-format
+msgid "Wi-Fi: not copied: {value1}"
+msgstr "[Ŵî-Ƒî: ñöţ çöþîéð: {value1}········]"
+
+#, python-brace-format
+msgid "Wi-Fi: not copied: {value1}."
+msgstr "[Ŵî-Ƒî: ñöţ çöþîéð: {value1}.········]"
+
+#, python-brace-format
+msgid "Wi-Fi: not installed: {value1}."
+msgstr "[Ŵî-Ƒî: ñöţ îñšţàļļéð: {value1}.·········]"
+
+#, python-brace-format
+msgid "Wi-Fi: nothing chosen: {value1}."
+msgstr "[Ŵî-Ƒî: ñöţĥîñĝ çĥöšéñ: {value1}.··········]"
+
+#, python-brace-format
+msgid "Wi-Fi: the live session has {value1} Wi-Fi profile(s); Network page join: {value2}."
+msgstr "[Ŵî-Ƒî: ţĥé ļîṽé šéššîöñ ĥàš {value1} Ŵî-Ƒî þŕöƒîļé(š); Ñéţŵöŕķ þàĝé ĵöîñ: {value2}.····························]"
+
+msgid "Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting."
+msgstr "[Ŵîñðöŵš Ɓööţ Ṁàñàĝéŕ ŵàš ñöţ ðîšçöṽéŕéð ƀÿ öš-þŕöƀéŕ; îñšþéçţ ĜŔÛƁ ƀéƒöŕé ŕéƀööţîñĝ.····························]"
+
+msgid "Windows GPT identity or geometry could not be verified."
+msgstr "[Ŵîñðöŵš ĜÞŢ îðéñţîţÿ öŕ ĝéöɱéţŕÿ çöûļð ñöţ ƀé ṽéŕîƒîéð.··················]"
+
+msgid "Windows GPT metadata changed after review; disk untouched."
+msgstr "[Ŵîñðöŵš ĜÞŢ ɱéţàðàţà çĥàñĝéð àƒţéŕ ŕéṽîéŵ; ðîšķ ûñţöûçĥéð.···················]"
+
+msgid "Windows candidates have equal sizes; selection is ambiguous."
+msgstr "[Ŵîñðöŵš çàñðîðàţéš ĥàṽé éǫûàļ šîžéš; šéļéçţîöñ îš àɱƀîĝûöûš.···················]"
+
+msgid "Windows end, Emaki's startup partition and Emaki root disagree; disk untouched."
+msgstr "[Ŵîñðöŵš éñð, Éɱàķî'š šţàŕţûþ þàŕţîţîöñ àñð Éɱàķî ŕööţ ðîšàĝŕéé; ðîšķ ûñţöûçĥéð.··························]"
+
+msgid "Windows firmware startup could not be identified safely; boot menu setup stopped."
+msgstr "[Ŵîñðöŵš ƒîŕɱŵàŕé šţàŕţûþ çöûļð ñöţ ƀé îðéñţîƒîéð šàƒéļÿ; ƀööţ ɱéñû šéţûþ šţöþþéð.···························]"
+
+msgid "Windows geometry is unknown or the partition is busy/read-only."
+msgstr "[Ŵîñðöŵš ĝéöɱéţŕÿ îš ûñķñöŵñ öŕ ţĥé þàŕţîţîöñ îš ƀûšÿ/ŕéàð-öñļÿ.·····················]"
+
+msgid "Windows is asleep, not shut down (hibernation or Fast Startup is on). In Windows, open Command Prompt as administrator, type powercfg /hibernate off and press Enter. Then shut Windows down and start from the USB stick again."
+msgstr "[Ŵîñðöŵš îš àšļééþ, ñöţ šĥûţ ðöŵñ (ĥîƀéŕñàţîöñ öŕ Ƒàšţ Šţàŕţûþ îš öñ). Îñ Ŵîñðöŵš, öþéñ Çöɱɱàñð Þŕöɱþţ àš àðɱîñîšţŕàţöŕ, ţÿþé þöŵéŕçƒĝ /ĥîƀéŕñàţé öƒƒ àñð þŕéšš Éñţéŕ. Ţĥéñ šĥûţ Ŵîñðöŵš ðöŵñ àñð šţàŕţ ƒŕöɱ ţĥé ÛŠƁ šţîçķ àĝàîñ.·············································································]"
+
+msgid "Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys."
+msgstr "[Ŵîñðöŵš îš éñçŕÿþţéð ŵîţĥ ƁîţĻöçķéŕ, šö Éɱàķî çàññöţ ɱàķé ŕööɱ ñéẋţ ţö îţ. Ŵîñðöŵš ŵàš ñöţ çĥàñĝéð. Îñ Ŵîñðöŵš, ţûŕñ öƒƒ ƁîţĻöçķéŕ àñð ŵàîţ ûñţîļ îţ ƒîñîšĥéš, ţĥéñ šĥûţ ðöŵñ àñð šţàŕţ ƒŕöɱ ţĥé ÛŠƁ šţîçķ àĝàîñ. Îƒ Ŵîñðöŵš šţöþþéð šţàŕţîñĝ àƒţéŕ ÿöû çĥàñĝéð Šéçûŕé Ɓööţ, çĥàñĝé îţ ƀàçķ. Ñéṽéŕ ðéļéţé öŕ ŕéšéţ ţĥé ƒîŕɱŵàŕé ķéÿš.················································································································]"
+
+#, python-brace-format
+msgid "Windows keeps {value1:.2f} GB, Emaki gets {value2:.2f} GB; back up your files first."
+msgstr "[Ŵîñðöŵš ķééþš {value1:.2f} ĜƁ, Éɱàķî ĝéţš {value2:.2f} ĜƁ; ƀàçķ ûþ ÿöûŕ ƒîļéš ƒîŕšţ.····························]"
+
+msgid "Windows must retain its minimum size plus 2 GiB."
+msgstr "[Ŵîñðöŵš ɱûšţ ŕéţàîñ îţš ɱîñîɱûɱ šîžé þļûš 2 ĜîƁ.···············]"
+
+msgid "Windows shrink bounds, disk identity or startup partition state changed after review; disk untouched."
+msgstr "[Ŵîñðöŵš šĥŕîñķ ƀöûñðš, ðîšķ îðéñţîţÿ öŕ šţàŕţûþ þàŕţîţîöñ šţàţé çĥàñĝéð àƒţéŕ ŕéṽîéŵ; ðîšķ ûñţöûçĥéð.··································]"
+
+msgid "Windows system metadata is unreadable after resize."
+msgstr "[Ŵîñðöŵš šÿšţéɱ ɱéţàðàţà îš ûñŕéàðàƀļé àƒţéŕ ŕéšîžé.················]"
+
+msgid "Windows uses this disk as a dynamic disk or in Storage Spaces. Emaki cannot share such a disk."
+msgstr "[Ŵîñðöŵš ûšéš ţĥîš ðîšķ àš à ðÿñàɱîç ðîšķ öŕ îñ Šţöŕàĝé Šþàçéš. Éɱàķî çàññöţ šĥàŕé šûçĥ à ðîšķ.·······························]"
+
+msgid "Windows will run a consistency check (chkdsk) on its first boot after resizing. Let it finish."
+msgstr "[Ŵîñðöŵš ŵîļļ ŕûñ à çöñšîšţéñçÿ çĥéçķ (çĥķðšķ) öñ îţš ƒîŕšţ ƀööţ àƒţéŕ ŕéšîžîñĝ. Ļéţ îţ ƒîñîšĥ.·······························]"
+
+msgid "Windows' startup partition changed during the installation."
+msgstr "[Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ çĥàñĝéð ðûŕîñĝ ţĥé îñšţàļļàţîöñ.···················]"
+
+msgid "Windows' startup partition could not be read after loader installation."
+msgstr "[Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ çöûļð ñöţ ƀé ŕéàð àƒţéŕ ļöàðéŕ îñšţàļļàţîöñ.·······················]"
+
+msgid "Windows' startup partition could not be read, so Emaki stopped before changing the disk."
+msgstr "[Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ çöûļð ñöţ ƀé ŕéàð, šö Éɱàķî šţöþþéð ƀéƒöŕé çĥàñĝîñĝ ţĥé ðîšķ.·····························]"
+
+msgid "Windows' startup partition read failed: "
+msgstr "[Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ ŕéàð ƒàîļéð: ············]"
+
+#, python-brace-format
+msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
+msgstr "[Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ šĥà256 ƀéƒöŕé ţĥé ƒîŕšţ ðîšķ ŵŕîţé: {value1}; ñöŵ: {value2}.·····························]"
+
+msgid "Worker failed: "
+msgstr "[Ŵöŕķéŕ ƒàîļéð: ····]"
+
+msgid "Worker failed; inspect the log."
+msgstr "[Ŵöŕķéŕ ƒàîļéð; îñšþéçţ ţĥé ļöĝ.·········]"
+
+#, python-brace-format
+msgid "Wrong btrfs subvolume at {value1}."
+msgstr "[Ŵŕöñĝ ƀţŕƒš šûƀṽöļûɱé àţ {value1}.··········]"
+
+#, python-brace-format
+msgid "Wrong filesystem UUID at {value1}."
+msgstr "[Ŵŕöñĝ ƒîļéšÿšţéɱ ÛÛÎÐ àţ {value1}.··········]"
+
+msgid "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
+msgstr "[Ÿöûŕ îñšţàļļàţîöñ îš šàƒé. Îƒ ţĥé çöɱþûţéŕ ĥàš ñöţ ŕéšţàŕţéð ƀÿ îţšéļƒ, ĥöļð ţĥé þöŵéŕ ƀûţţöñ ţö ţûŕñ îţ öƒƒ, ţĥéñ šţàŕţ îţ àĝàîñ.············································]"
+
+msgid "bad length"
+msgstr "[ƀàð ļéñĝţĥ··]"
+
+#, python-brace-format
+msgid "cannot list {value1}: {value2}"
+msgstr "[çàññöţ ļîšţ {value1}: {value2}·········]"
+
+msgid "emaki-config did not install the snapshot boot hook."
+msgstr "[éɱàķî-çöñƒîĝ ðîð ñöţ îñšţàļļ ţĥé šñàþšĥöţ ƀööţ ĥööķ.·················]"
+
+#, python-brace-format
+msgid "emaki-install: the running installer did not show its window:\n{0}"
+msgstr "[éɱàķî-îñšţàļļ: ţĥé ŕûññîñĝ îñšţàļļéŕ ðîð ñöţ šĥöŵ îţš ŵîñðöŵ:\n{0}·····················]"
+
+msgid "emaki-installerd must run as root on the live ISO."
+msgstr "[éɱàķî-îñšţàļļéŕð ɱûšţ ŕûñ àš ŕööţ öñ ţĥé ļîṽé ÎŠÖ.················]"
+
+msgid "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
+msgstr "[éɱàķî-šĥîɱ-šîĝñéð ðöéš ñöţ ĥöļð šĥîɱẋ64.éƒî àñð ɱɱẋ64.éƒî.···················]"
+
+msgid "ext4 recovery: use linux-lts, cached packages, or the live ISO; snapshots are unavailable."
+msgstr "[éẋţ4 ŕéçöṽéŕÿ: ûšé ļîñûẋ-ļţš, çàçĥéð þàçķàĝéš, öŕ ţĥé ļîṽé ÎŠÖ; šñàþšĥöţš àŕé ûñàṽàîļàƀļé.······························]"
+
+#, python-brace-format
+msgid "files of group {value1} keep that group (not a regular group)"
+msgstr "[ƒîļéš öƒ ĝŕöûþ {value1} ķééþ ţĥàţ ĝŕöûþ (ñöţ à ŕéĝûļàŕ ĝŕöûþ)····················]"
+
+#, python-brace-format
+msgid "files of group {value1} now have group {value2}"
+msgstr "[ƒîļéš öƒ ĝŕöûþ {value1} ñöŵ ĥàṽé ĝŕöûþ {value2}···············]"
+
+#, python-brace-format
+msgid "files of user {value1} keep that owner (not a regular account)"
+msgstr "[ƒîļéš öƒ ûšéŕ {value1} ķééþ ţĥàţ öŵñéŕ (ñöţ à ŕéĝûļàŕ àççöûñţ)····················]"
+
+#, python-brace-format
+msgid "files of user {value1} now belong to {value2} ({value3})"
+msgstr "[ƒîļéš öƒ ûšéŕ {value1} ñöŵ ƀéļöñĝ ţö {value2} ({value3})··················]"
+
+msgid "format"
+msgstr "[ƒöŕɱàţ·]"
+
+#, python-brace-format
+msgid "fstab filesystem or UUID missing at {value1}."
+msgstr "[ƒšţàƀ ƒîļéšÿšţéɱ öŕ ÛÛÎÐ ɱîššîñĝ àţ {value1}.··············]"
+
+msgid "fstab must contain exactly the planned filesystem mounts and no swap."
+msgstr "[ƒšţàƀ ɱûšţ çöñţàîñ éẋàçţļÿ ţĥé þļàññéð ƒîļéšÿšţéɱ ɱöûñţš àñð ñö šŵàþ.·······················]"
+
+msgid "grub-install did not write the cryptomount line of the encrypted root."
+msgstr "[ĝŕûƀ-îñšţàļļ ðîð ñöţ ŵŕîţé ţĥé çŕÿþţöɱöûñţ ļîñé öƒ ţĥé éñçŕÿþţéð ŕööţ.·······················]"
+
+msgid "grub-mkimage did not produce a GRUB image with the expected prefix."
+msgstr "[ĝŕûƀ-ɱķîɱàĝé ðîð ñöţ þŕöðûçé à ĜŔÛƁ îɱàĝé ŵîţĥ ţĥé éẋþéçţéð þŕéƒîẋ.······················]"
+
+msgid "grub-mkimage still rejects the SBAT level of the signed image."
+msgstr "[ĝŕûƀ-ɱķîɱàĝé šţîļļ ŕéĵéçţš ţĥé ŠƁÀŢ ļéṽéļ öƒ ţĥé šîĝñéð îɱàĝé.····················]"
+
+msgid "hibernation must be boolean."
+msgstr "[ĥîƀéŕñàţîöñ ɱûšţ ƀé ƀööļéàñ.········]"
+
+msgid "invalid PF2 character index"
+msgstr "[îñṽàļîð ÞƑ2 çĥàŕàçţéŕ îñðéẋ········]"
+
+msgid "invalid PF2 font"
+msgstr "[îñṽàļîð ÞƑ2 ƒöñţ····]"
+
+msgid "invalid PF2 glyph metrics or bitmap"
+msgstr "[îñṽàļîð ÞƑ2 ĝļÿþĥ ɱéţŕîçš öŕ ƀîţɱàþ···········]"
+
+msgid "invalid PF2 glyph offset or storage"
+msgstr "[îñṽàļîð ÞƑ2 ĝļÿþĥ öƒƒšéţ öŕ šţöŕàĝé···········]"
+
+msgid "invalid PF2 section"
+msgstr "[îñṽàļîð ÞƑ2 šéçţîöñ·····]"
+
+msgid "its startup partition"
+msgstr "[îţš šţàŕţûþ þàŕţîţîöñ······]"
+
+msgid "missing PF2 data"
+msgstr "[ɱîššîñĝ ÞƑ2 ðàţà····]"
+
+msgid "nmcli could not be started."
+msgstr "[ñɱçļî çöûļð ñöţ ƀé šţàŕţéð.········]"
+
+msgid "nmcli printed text that is not UTF-8."
+msgstr "[ñɱçļî þŕîñţéð ţéẋţ ţĥàţ îš ñöţ ÛŢƑ-8.···········]"
+
+msgid "no answer"
+msgstr "[ñö àñšŵéŕ··]"
+
+msgid "no single emaki-config archive in the resolved package set."
+msgstr "[ñö šîñĝļé éɱàķî-çöñƒîĝ àŕçĥîṽé îñ ţĥé ŕéšöļṽéð þàçķàĝé šéţ.···················]"
+
+msgid "ntfsresize did not report one unambiguous minimum size."
+msgstr "[ñţƒšŕéšîžé ðîð ñöţ ŕéþöŕţ öñé ûñàɱƀîĝûöûš ɱîñîɱûɱ šîžé.··················]"
+
+msgid "one of --probe, --plan, --follow, --save-log is required"
+msgstr "[öñé öƒ --þŕöƀé, --þļàñ, --ƒöļļöŵ, --šàṽé-ļöĝ îš ŕéǫûîŕéð··················]"
+
+msgid "online_update must be boolean."
+msgstr "[öñļîñé_ûþðàţé ɱûšţ ƀé ƀööļéàñ.·········]"
+
+msgid "preserve"
+msgstr "[þŕéšéŕṽé·]"
+
+msgid "snapper did not print the new snapshot number."
+msgstr "[šñàþþéŕ ðîð ñöţ þŕîñţ ţĥé ñéŵ šñàþšĥöţ ñûɱƀéŕ.···············]"
+
+msgid "startup partition, FAT32"
+msgstr "[šţàŕţûþ þàŕţîţîöñ, ƑÀŢ32·······]"
+
+msgid "the fallback font must have visible printable ASCII glyphs"
+msgstr "[ţĥé ƒàļļƀàçķ ƒöñţ ɱûšţ ĥàṽé ṽîšîƀļé þŕîñţàƀļé ÀŠÇÎÎ ĝļÿþĥš···················]"
+
+msgid "the filesystem of the installed Emaki to repair"
+msgstr "[ţĥé ƒîļéšÿšţéɱ öƒ ţĥé îñšţàļļéð Éɱàķî ţö ŕéþàîŕ···············]"
+
+msgid "the installation USB holds no package repository."
+msgstr "[ţĥé îñšţàļļàţîöñ ÛŠƁ ĥöļðš ñö þàçķàĝé ŕéþöšîţöŕÿ.················]"
+
+#, python-brace-format
+msgid "the keyfile could not be opened ({value1})."
+msgstr "[ţĥé ķéÿƒîļé çöûļð ñöţ ƀé öþéñéð ({value1}).··············]"
+
+msgid "truncated"
+msgstr "[ţŕûñçàţéð··]"
+
+#, python-brace-format
+msgid "unclosed quote at {value1}"
+msgstr "[ûñçļöšéð ǫûöţé àţ {value1}········]"
+
+msgid "unknown unlock artwork variant"
+msgstr "[ûñķñöŵñ ûñļöçķ àŕţŵöŕķ ṽàŕîàñţ·········]"
+
+#, python-brace-format
+msgid "unlock artwork has the wrong format: {value1}/{value2}"
+msgstr "[ûñļöçķ àŕţŵöŕķ ĥàš ţĥé ŵŕöñĝ ƒöŕɱàţ: {value1}/{value2}·················]"
+
+#, python-brace-format
+msgid "unlock artwork is unavailable: {value1}/{value2}"
+msgstr "[ûñļöçķ àŕţŵöŕķ îš ûñàṽàîļàƀļé: {value1}/{value2}···············]"
+
+#, python-brace-format
+msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
+msgstr "[{value1} àñð ţĥé šûƀṽöļûɱé {value2} àŕé ŕéšéŕṽéð ƒöŕ ţĥé Šéçûŕé Ɓööţ ķéÿ.························]"
+
+#, python-brace-format
+msgid "{value1} carries no signature."
+msgstr "[{value1} çàŕŕîéš ñö šîĝñàţûŕé.·········]"
+
+#, python-brace-format
+msgid "{value1} could not be read back after it was written."
+msgstr "[{value1} çöûļð ñöţ ƀé ŕéàð ƀàçķ àƒţéŕ îţ ŵàš ŵŕîţţéñ.·················]"
+
+#, python-brace-format
+msgid "{value1} could not be read back from the startup partition."
+msgstr "[{value1} çöûļð ñöţ ƀé ŕéàð ƀàçķ ƒŕöɱ ţĥé šţàŕţûþ þàŕţîţîöñ.···················]"
+
+#, python-brace-format
+msgid "{value1} could not be read: {value2}"
+msgstr "[{value1} çöûļð ñöţ ƀé ŕéàð: {value2}···········]"
+
+#, python-brace-format
+msgid "{value1} does not verify with the machine key after signing."
+msgstr "[{value1} ðöéš ñöţ ṽéŕîƒÿ ŵîţĥ ţĥé ɱàçĥîñé ķéÿ àƒţéŕ šîĝñîñĝ.···················]"
+
+#, python-brace-format
+msgid "{value1} does not verify with the machine key."
+msgstr "[{value1} ðöéš ñöţ ṽéŕîƒÿ ŵîţĥ ţĥé ɱàçĥîñé ķéÿ.···············]"
+
+#, python-brace-format
+msgid "{value1} exited with status {value2}."
+msgstr "[{value1} éẋîţéð ŵîţĥ šţàţûš {value2}.···········]"
+
+#, python-brace-format
+msgid "{value1} failed: {value2}"
+msgstr "[{value1} ƒàîļéð: {value2}·······]"
+
+#, python-brace-format
+msgid "{value1} has no snapshot boot hook (/{value2}, /{value3})."
+msgstr "[{value1} ĥàš ñö šñàþšĥöţ ƀööţ ĥööķ (/{value2}, /{value3}).···················]"
+
+#, python-brace-format
+msgid "{value1} is a directory inside a startup copy."
+msgstr "[{value1} îš à ðîŕéçţöŕÿ îñšîðé à šţàŕţûþ çöþÿ.···············]"
+
+#, python-brace-format
+msgid "{value1} is a symbolic link."
+msgstr "[{value1} îš à šÿɱƀöļîç ļîñķ.········]"
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. {value3}, then try again."
+msgstr "[{value1} îš àçţîṽé [{value2}]. {value3}, ţĥéñ ţŕÿ àĝàîñ.··················]"
+
+#, python-brace-format
+msgid "{value1} is held by {value2} [device mapper or RAID]. Deactivate that volume or stop that array before trying again."
+msgstr "[{value1} îš ĥéļð ƀÿ {value2} [ðéṽîçé ɱàþþéŕ öŕ ŔÀÎÐ]. Ðéàçţîṽàţé ţĥàţ ṽöļûɱé öŕ šţöþ ţĥàţ àŕŕàÿ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·······································]"
+
+#, python-brace-format
+msgid "{value1} is not a directory."
+msgstr "[{value1} îš ñöţ à ðîŕéçţöŕÿ.········]"
+
+#, python-brace-format
+msgid "{value1} is open at {value2} [mount]. Close files there, then unmount it [umount]."
+msgstr "[{value1} îš öþéñ àţ {value2} [ɱöûñţ]. Çļöšé ƒîļéš ţĥéŕé, ţĥéñ ûñɱöûñţ îţ [ûɱöûñţ].···························]"
+
+#, python-brace-format
+msgid "{value1} timed out."
+msgstr "[{value1} ţîɱéð öûţ.·····]"
+
+#, python-brace-format
+msgid "{value1}: udev settle did not complete; checking the kernel directly."
+msgstr "[{value1}: ûðéṽ šéţţļé ðîð ñöţ çöɱþļéţé; çĥéçķîñĝ ţĥé ķéŕñéļ ðîŕéçţļÿ.·······················]"
+
+#, python-brace-format
+msgid "{value1}: {value2}: retry deadline reached."
+msgstr "[{value1}: {value2}: ŕéţŕÿ ðéàðļîñé ŕéàçĥéð.··············]"

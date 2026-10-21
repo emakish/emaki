@@ -7,7 +7,7 @@ import Quickshell.Io
 
 Scope {
     id: environment
-    property string layout: "Layout unavailable"
+    property string layout: qsTranslate("LockEnvironment", "Layout unavailable")
     property bool capsLock: false
     property bool capsKnown: false
     property bool outputsActive: true
@@ -22,7 +22,7 @@ Scope {
             // idle visuals when an output returns. Transitions do not rely on it.
             if (!running) {
                 environment.outputsActive = true;
-                environment.layout = "Layout unavailable";
+                environment.layout = qsTranslate("LockEnvironment", "Layout unavailable");
                 environment.capsKnown = false;
                 environment.capsLock = false;
             }

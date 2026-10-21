@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 const root = new URL('../shell/settings/', import.meta.url);
 const source = fs.readFileSync(new URL('SettingsIndex.js', root), 'utf8');
 const index = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), index);
 vm.runInContext(source.replace(/^\.pragma library\s*$/m, ''), index);
 // The panel choice remains one atomic setting and its live values agree with both flags.
 const panelChoice = index.search('hide the panel', ['panel'], ['bar.autohide_mode'])[0];
@@ -14,7 +15,7 @@ assert.equal(panelChoice.key, 'bar.autohide_mode');
 assert.equal(panelChoice.enabled, true);
 const corePage = fs.readFileSync(new URL('../SettingsCorePage.qml', root), 'utf8');
 for (const label of ['Always', 'On Desktop Only', 'In Full Screen Only', 'Never'])
-    assert.ok(corePage.includes('label: "' + label + '"'));
+    assert.ok(corePage.includes('label: qsTranslate("SettingsCorePage", "' + label + '")'));
 const bridgeSource = fs.readFileSync(new URL('../SettingsBridge.qml', root), 'utf8');
 const signature = 'function apply(rows: string): string {';
 const bridgeBody = bridgeSource.slice(bridgeSource.indexOf(signature) + signature.length,
@@ -41,8 +42,8 @@ const ids = ['wifi', 'bluetooth', 'network', 'appearance', 'wallpaper', 'panel',
     'windows', 'displays', 'sound', 'keyboard', 'mouse', 'notifications', 'battery',
     'lock', 'apps', 'updates', 'privacy', 'region', 'users', 'storage',
     'about', 'assistants'];
-assert.deepEqual(Array.from(index.sections, section => section.id), ids);
-assert.deepEqual([...new Set(index.sections.map(section => section.group))],
+assert.deepEqual(Array.from(index.sections(), section => section.id), ids);
+assert.deepEqual([...new Set(index.sections().map(section => section.group))],
     ['Network', 'Personal', 'Devices', 'System']);
 assert.equal(index.section('missing'), null);
 assert.equal(index.section('panel').title, 'Panel & Dock');
@@ -66,7 +67,7 @@ const valueFreeExplanations = {
     'battery-battery-health': 'Percentage of the original full-charge capacity.',
 };
 const itemIds = new Set();
-for (const section of index.sections) {
+for (const section of index.sections()) {
     assert.ok(section.description);
     assert.equal(section.colors.length, 2);
     if (!available.includes(section.id)) assert.equal(section.items.length, 0);
@@ -77,9 +78,9 @@ for (const section of index.sections) {
         const qml = fs.readFileSync(new URL('../' + item.source, root), 'utf8');
         const literals = Array.from(qml.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g), match =>
             JSON.parse('"' + match[1] + '"').trim());
-        assert.ok(literals.includes(item.title), item.id + ': title must match visible page text');
+        assert.ok(literals.some(text => text === item.title || text.startsWith(item.title + ' %')), item.id + ': title must match visible page text');
         if (item.staticExplanation) {
-            const staticExplanations = Array.from(qml.matchAll(/^\s*explanation: ("(?:[^"\\]|\\.)*")\s*,?\s*$/gm),
+            const staticExplanations = Array.from(qml.matchAll(/^\s*explanation: (?:qsTranslate\("[^"\n]+", )?((?:"(?:[^"\\]|\\.)*"))\)?\s*,?\s*$/gm),
                 match => JSON.parse(match[1]));
             assert.ok(staticExplanations.includes(item.explanation), item.id + ': display only an intact static explanation');
         }
@@ -91,7 +92,7 @@ for (const section of index.sections) {
                 assert.ok(literals.some(text => text.includes(item.searchExplanation)),
                     item.id + ': reuse an intact sentence from this row');
         }
-        const visibleWords = literals.join(' ').split(/\s+/);
+        const visibleWords = literals.join(' ').replace(/%L?(?:[1-9][0-9]?|n)/g, '').replace(/\(s\)/g, 's').split(/\s+/);
         for (const word of item.explanation.split(/\s+/).filter(Boolean))
             assert.ok(visibleWords.includes(word), item.id + ': explanation drift: ' + word);
         assert.ok(index.search(item.title, available, targets).some(result =>
@@ -142,7 +143,7 @@ assert.equal(index.search('hide the dock', available)[0].explanation,
     'Move to the bottom edge to show your apps.');
 assert.equal(index.search('DNS servers', available)[0].explanation,
     'Separate server addresses with commas. Empty uses automatic DNS.');
-for (const page of index.sections) {
+for (const page of index.sections()) {
     for (const item of page.items) {
         const result = index.search(item.title, available, [item.key || item.id]).find(result =>
             !result.section && result.id === item.id);
@@ -155,12 +156,12 @@ for (const page of index.sections) {
 }
 assert.equal(index.search('hide the panel', ['panel'], []).length, 0);
 assert.equal(index.search('hide the panel', ['panel'], ['bar.autohide_mode']).length, 1);
-const before = JSON.stringify(index.sections);
+const before = JSON.stringify(index.sections());
 const pages = ['panel'];
 const first = index.search('dock', pages);
 first[0].enabled = false;
 index.search('dock', available);
-assert.equal(JSON.stringify(index.sections), before);
+assert.equal(JSON.stringify(index.sections()), before);
 assert.deepEqual(pages, ['panel']);
 assert.ok(index.search('dock', pages).every(result => result.enabled));
 console.log('Settings index: visible titles, explanations, reveal targets, search and availability passed');

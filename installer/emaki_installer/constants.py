@@ -35,7 +35,7 @@ SNAPSHOT_PACKAGES = ['snapper', 'snap-pac', 'grub-btrfs']
 # The Rich programs, installed explicitly next to emaki-apps so a person can remove
 # any of them and keep it removed. The same names are emaki-apps' optdepends.
 RICH_APPS = '''gwenview ark okular thunderbird qbittorrent haruna elisa kate libreoffice-fresh
-spectacle obs-studio plasma-systemmonitor partitionmanager filelight discover
+spectacle obs-studio plasma-systemmonitor partitionmanager filelight
 isoimagewriter skanlite kcharselect keepassxc'''.split()
 # Installed in both editions, separately from the vital base.
 DESKTOP_APPS = 'firefox dolphin kdegraphics-thumbnailers ffmpegthumbs'.split()

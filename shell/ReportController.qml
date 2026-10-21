@@ -34,7 +34,7 @@ Scope {
     readonly property bool busy: state === "composing" || browser.running
     readonly property ReportWindow window: windowLoader.item as ReportWindow
     readonly property bool opened: windowLoader.active
-    readonly property string unprepared: "The report could not be prepared. Nothing was sent. Try again."
+    readonly property string unprepared: qsTranslate("ReportController", "The report could not be prepared. Nothing was sent. Try again.")
     signal opening
 
     function validPart(name: string): bool {
@@ -76,8 +76,8 @@ Scope {
         const action = "report:" + name;
         if (store.entries.some(e => !e.object && e.actions?.some(a => a.id === action)))
             return "offered";
-        const summary = name === "update" ? "The update did not finish." : name === "install" ? "A program could not be installed." : "The panel stopped and was restarted.";
-        store.offer(name === "shell" ? "Panel recovery" : "Programs & Updates", summary, "You can report the problem. Nothing is sent until you review the report and choose Send.", action, "Report…");
+        const summary = name === "update" ? qsTranslate("ReportController", "The update did not finish.") : name === "install" ? qsTranslate("ReportController", "A program could not be installed.") : qsTranslate("ReportController", "The panel stopped and was restarted.");
+        store.offer(name === "shell" ? "Panel recovery" : "Programs & Updates", summary, qsTranslate("ReportController", "You can report the problem. Nothing is sent until you review the report and choose Send."), action, qsTranslate("ReportController", "Report…"));
         return "offered";
     }
     function compose(name: string, clearText: bool): void {
@@ -157,7 +157,7 @@ Scope {
         // Never send text the person has not seen: show the current preview first.
         if (!previewOpen || previewStale) {
             previewOpen = true;
-            message = "Check the preview, then choose Send again.";
+            message = qsTranslate("ReportController", "Check the preview, then choose Send again.");
             refreshPreview();
             return;
         }
@@ -170,7 +170,7 @@ Scope {
         if (shown.too_big === true) {
             Quickshell.clipboardText = shown.body;
             sent = true;
-            message = "The report is too long to fill in the issue form by itself, so it was copied to the clipboard. Open a new issue on GitHub and paste it there.";
+            message = qsTranslate("ReportController", "The report is too long to fill in the issue form by itself, so it was copied to the clipboard. Open a new issue on GitHub and paste it there.");
             return;
         }
         browser.completed = false;
@@ -192,7 +192,7 @@ Scope {
             return reply.body;
         const title = field(reply.url, "title");
         const body = field(reply.url, "body");
-        return (title ? "Title: " + title + "\n\n" : "") + body;
+        return (title ? qsTranslate("ReportController", "Title: %1").arg(title) + "\n\n" : "") + body;
     }
     function parseUrlReply(text: string): var {
         const reply = JSON.parse(text);
@@ -282,7 +282,7 @@ Scope {
                         return;
                     if (!previewer.received && previewer.key.length > 0 && JSON.parse(previewer.key)[0] === controller.generation) {
                         controller.shown = null;
-                        controller.preview = "The preview could not be prepared.";
+                        controller.preview = qsTranslate("ReportController", "The preview could not be prepared.");
                         controller.shownKey = previewer.key;
                     }
                     previewer.document = "";
@@ -301,16 +301,16 @@ Scope {
             if (!running)
                 Qt.callLater(() => {
                     if (!browser.completed)
-                        controller.message = "The browser could not be opened. Nothing was sent.";
+                        controller.message = qsTranslate("ReportController", "The browser could not be opened. Nothing was sent.");
                 });
         }
         onExited: code => {
             completed = true;
             if (code !== 0) {
-                controller.message = "The browser could not be opened. Nothing was sent.";
+                controller.message = qsTranslate("ReportController", "The browser could not be opened. Nothing was sent.");
             } else {
                 controller.sent = true;
-                controller.message = "The issue form is open in your browser with this report filled in. It is posted only when you submit it there.";
+                controller.message = qsTranslate("ReportController", "The issue form is open in your browser with this report filled in. It is posted only when you submit it there.");
             }
         }
     }

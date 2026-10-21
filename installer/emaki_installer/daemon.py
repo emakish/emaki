@@ -1,5 +1,6 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
+from .i18n import _
 import asyncio
 import fcntl
 import grp
@@ -41,10 +42,10 @@ def peer_allowed(sock, group_id):
 
 
 def export_log(dest, runner, redactor, source=LOG, media=Path('/run/media/live')):
-    require(isinstance(dest, str), Code.BAD_DEST, 'Choose a log file on removable media.')
+    require(isinstance(dest, str), Code.BAD_DEST, _('Choose a log file on removable media.'))
     path = Path(dest)
     require(path.is_absolute() and '..' not in path.parts and media in path.parents,
-            Code.BAD_DEST, 'Destination must be under /run/media/live/.')
+            Code.BAD_DEST, _('Destination must be under /run/media/live/.'))
     # Open every directory with O_NOFOLLOW and keep the final descriptor pinned.
     fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
     try:
@@ -55,19 +56,19 @@ def export_log(dest, runner, redactor, source=LOG, media=Path('/run/media/live')
         result = json.loads(runner.run(['findmnt', '-J', '-T', str(path.parent), '-o', 'TARGET,SOURCE,MAJ:MIN']))
         mounted = result.get('filesystems', [])
         require(len(mounted) == 1 and media in Path(mounted[0]['target']).parents,
-                Code.BAD_DEST, 'Destination is not on a mounted removable filesystem.')
+                Code.BAD_DEST, _('Destination is not on a mounted removable filesystem.'))
         pinned = os.fstat(fd)
         require(mounted[0].get('maj:min') == f'{os.major(pinned.st_dev)}:{os.minor(pinned.st_dev)}',
-                Code.BAD_DEST, 'Destination mount changed during export.')
+                Code.BAD_DEST, _('Destination mount changed during export.'))
         source_device = mounted[0]['source'].split('[', 1)[0]
-        require(source_device.startswith('/dev/'), Code.BAD_DEST, 'Destination must be block media.')
+        require(source_device.startswith('/dev/'), Code.BAD_DEST, _('Destination must be block media.'))
         tree = json.loads(runner.run(['lsblk', '--tree', '-s', '-J', '-o', 'TYPE,RM,TRAN', source_device]))
 
         def removable(nodes):
             return any(x.get('rm') in (True, 1, '1') or x.get('tran') == 'usb'
                        or removable(x.get('children', [])) for x in nodes)
 
-        require(removable(tree.get('blockdevices', [])), Code.BAD_DEST, 'Destination is not removable/USB media.')
+        require(removable(tree.get('blockdevices', [])), Code.BAD_DEST, _('Destination is not removable/USB media.'))
         # O_EXCL deliberately refuses overwriting an existing file or symlink.
         output_fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                             0o600, dir_fd=fd)
@@ -77,7 +78,7 @@ def export_log(dest, runner, redactor, source=LOG, media=Path('/run/media/live')
             output.flush()
             os.fsync(output.fileno())
     except OSError as exc:
-        raise InstallError(Code.BAD_DEST, 'Cannot create the log there; choose a new filename on mounted removable media.') from exc
+        raise InstallError(Code.BAD_DEST, _('Cannot create the log there; choose a new filename on mounted removable media.')) from exc
     finally:
         os.close(fd)
 
@@ -218,18 +219,18 @@ class Server:
 
 def main():
     try:
-        require(os.geteuid() == 0, Code.BAD_REQUEST, 'emaki-installerd must run as root on the live ISO.')
-        require(Path('/run/archiso/bootmnt').is_dir(), Code.BAD_REQUEST, 'The live ISO boot mount is missing.')
+        require(os.geteuid() == 0, Code.BAD_REQUEST, _('emaki-installerd must run as root on the live ISO.'))
+        require(Path('/run/archiso/bootmnt').is_dir(), Code.BAD_REQUEST, _('The live ISO boot mount is missing.'))
         os.umask(0o022)
         gid = grp.getgrnam('emaki-install').gr_gid
-        require(not WORK.is_symlink(), Code.UNSAFE_DISK, 'Unsafe runtime directory.')
+        require(not WORK.is_symlink(), Code.UNSAFE_DISK, _('Unsafe runtime directory.'))
         WORK.mkdir(mode=0o750, parents=True, exist_ok=True)
         os.chown(WORK, 0, gid)
         os.chmod(WORK, 0o750)
         lock_fd = os.open(WORK / 'daemon.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if SOCKET.exists() or SOCKET.is_symlink():
-            require(stat.S_ISSOCK(SOCKET.lstat().st_mode), Code.UNSAFE_DISK, 'Socket path is not a socket.')
+            require(stat.S_ISSOCK(SOCKET.lstat().st_mode), Code.UNSAFE_DISK, _('Socket path is not a socket.'))
             SOCKET.unlink()
         with secure_log(LOG) as log:
             initial = Runner(lambda line: print(line, file=log, flush=True))

@@ -98,7 +98,7 @@ Item {
         border.width: 2
         border.color: LiquidPalette.inkOnDark
         Accessible.role: Accessible.Pane
-        Accessible.name: CaptureText.selection
+        Accessible.name: CaptureText.selection()
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.SizeAllCursor
@@ -160,7 +160,7 @@ Item {
         anchors.topMargin: Metrics.reservedSpace + 16
         anchors.horizontalCenter: parent.horizontalCenter
         width: Math.min(parent.width - 40, 760)
-        text: !panel.controller.ready ? CaptureText.preparing : panel.selectingArea ? CaptureText.areaHint : panel.controller.target === "window" ? CaptureText.selectWindow : CaptureText.screenHint
+        text: !panel.controller.ready ? CaptureText.preparing() : panel.selectingArea ? CaptureText.areaHint() : panel.controller.target === "window" ? CaptureText.selectWindow() : CaptureText.screenHint()
         color: LiquidPalette.inkOnDark
         font.family: ShellPalette.uiFont
         font.pixelSize: 15
@@ -201,12 +201,12 @@ Item {
                 // Window titles are untrusted application text, never rich text.
                 text: ""
                 selected: panel.controller.windowId === modelData.id
-                Accessible.name: modelData.title || modelData.app_id || CaptureText.untitledWindow
+                Accessible.name: modelData.title || modelData.app_id || CaptureText.untitledWindow()
                 onClicked: panel.controller.selectWindow(modelData.id)
                 Text {
                     anchors.fill: parent
                     anchors.margins: 14
-                    text: parent.modelData.title || parent.modelData.app_id || CaptureText.untitledWindow
+                    text: parent.modelData.title || parent.modelData.app_id || CaptureText.untitledWindow()
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: LiquidPalette.ink
@@ -217,7 +217,7 @@ Item {
             Text {
                 anchors.centerIn: parent
                 visible: windowList.count === 0
-                text: CaptureText.noWindows
+                text: CaptureText.noWindows()
                 color: LiquidPalette.ink
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 14
@@ -274,17 +274,17 @@ Item {
                     model: [
                         {
                             value: "area",
-                            label: CaptureText.area,
+                            label: CaptureText.area(),
                             icon: "edit-select-all-symbolic"
                         },
                         {
                             value: "window",
-                            label: CaptureText.window,
+                            label: CaptureText.window(),
                             icon: "focus-windows-symbolic"
                         },
                         {
                             value: "screen",
-                            label: CaptureText.screen,
+                            label: CaptureText.screen(),
                             icon: "video-display-symbolic"
                         }
                     ]
@@ -311,12 +311,12 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 8
                 WelcomeButton {
-                    text: CaptureText.picture
+                    text: CaptureText.picture()
                     selected: panel.controller.mode === "picture"
                     onClicked: panel.controller.selectMode("picture")
                 }
                 WelcomeButton {
-                    text: CaptureText.recording
+                    text: CaptureText.recording()
                     selected: panel.controller.mode === "recording"
                     onClicked: panel.controller.selectMode("recording")
                 }
@@ -336,11 +336,11 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 10
                 WelcomeButton {
-                    text: CaptureText.cancel
+                    text: CaptureText.cancel()
                     onClicked: panel.controller.close()
                 }
                 WelcomeButton {
-                    text: panel.controller.mode === "recording" ? CaptureText.record : CaptureText.capture
+                    text: panel.controller.mode === "recording" ? CaptureText.record() : CaptureText.capture()
                     primary: true
                     enabled: panel.controller.canCapture
                     onClicked: panel.controller.capture()

@@ -46,10 +46,11 @@ copy_source = '\n'.join(line for line in (ROOT / 'shell/PolkitText.js').read_tex
                         if not line.startswith('.'))
 source = '\n'.join(line for line in (ROOT / 'shell/PolkitDetails.js').read_text().splitlines()
                    if not line.startswith('.'))
-script = r'''
+translation = (ROOT / 'tests/qml-translation.js').read_text()
+script = translation + r'''
 const assert = require('node:assert/strict');
 const Copy = {};
-require('node:vm').runInNewContext(COPY_TEXT, Copy);
+require('node:vm').runInNewContext(TRANSLATION + '\n' + COPY_TEXT, Copy);
 SOURCE
 const paths = {binDir: '/opt/emaki/bin', libDir: '/opt/emaki/lib/emaki',
     libexecDir: '/opt/emaki/libexec/emaki'};
@@ -338,5 +339,5 @@ assert.equal(rows(action, '', {program, command_line: 'hidden'}, '').find(
 console.log('PASS: 38 whole policy texts, pid-only requests, ' + commandCases.length
     + ' command cases, bounded program/user names, nine quote/bracket forms, helper boundaries and rollback policy');
 '''
-subprocess.run(['node', '-e', script.replace('SOURCE', source).replace('COPY_TEXT', json.dumps(copy_source))
+subprocess.run(['node', '-e', script.replace('TRANSLATION', json.dumps(translation)).replace('SOURCE', source).replace('COPY_TEXT', json.dumps(copy_source))
                 .replace('POLICY_TEXTS', json.dumps(policy_texts)).replace('PROGRAM_MESSAGES', json.dumps(program_messages)).replace('COMMAND_CASES', json.dumps(command_cases))], check=True)

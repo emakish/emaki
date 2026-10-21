@@ -2,26 +2,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 .pragma library
 
-var area = "Area";
-var window = "Window";
-var screen = "Screen";
-var picture = "Picture";
-var recording = "Recording";
-var capture = "Capture";
-var record = "Start recording";
-var cancel = "Cancel";
-var stop = "Stop recording";
-var finishing = "Finishing recording";
-var preparing = "Preparing capture…";
-var selectWindow = "Choose a window";
-var noWindows = "No windows available";
-var untitledWindow = "Untitled window";
-var areaHint = "Drag to select. Arrow keys move; Shift + arrows resize.";
-var screenHint = "Choose a screen below.";
-var selection = "Capture area";
-var failed = "Capture failed";
-var unavailable = "Capture is unavailable";
-var savedPicture = "Screenshot saved and copied";
-var savedPictureNoClipboard = "Screenshot saved; clipboard unavailable";
-var savedRecording = "Recording saved";
-var starting = "Preparing capture";
+function area() { return qsTranslate("Shell", "Area"); }
+function window() { return qsTranslate("Shell", "Window"); }
+function screen() { return qsTranslate("Shell", "Screen"); }
+function picture() { return qsTranslate("Shell", "Picture"); }
+function recording() { return qsTranslate("Shell", "Recording"); }
+function capture() { return qsTranslate("Shell", "Capture"); }
+function record() { return qsTranslate("Shell", "Start recording"); }
+function cancel() { return qsTranslate("Shell", "Cancel"); }
+function stop() { return qsTranslate("Shell", "Stop recording"); }
+function finishing() { return qsTranslate("Shell", "Finishing recording"); }
+function preparing() { return qsTranslate("Shell", "Preparing capture…"); }
+function selectWindow() { return qsTranslate("Shell", "Choose a window"); }
+function noWindows() { return qsTranslate("Shell", "No windows available"); }
+function untitledWindow() { return qsTranslate("Shell", "Untitled window"); }
+function areaHint() { return qsTranslate("Shell", "Drag to select. Arrow keys move; Shift + arrows resize."); }
+function screenHint() { return qsTranslate("Shell", "Choose a screen below."); }
+function selection() { return qsTranslate("Shell", "Capture area"); }
+function failed() { return qsTranslate("Shell", "Capture failed"); }
+function unavailable() { return qsTranslate("Shell", "Capture is unavailable"); }
+function savedPicture() { return qsTranslate("Shell", "Screenshot saved and copied"); }
+function savedPictureNoClipboard() { return qsTranslate("Shell", "Screenshot saved; clipboard unavailable"); }
+function savedRecording() { return qsTranslate("Shell", "Recording saved"); }
+function starting() { return qsTranslate("Shell", "Preparing capture"); }

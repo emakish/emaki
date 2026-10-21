@@ -120,7 +120,7 @@ with tempfile.TemporaryDirectory(prefix="notification-store-", dir="/tmp") as te
                    XDG_CONFIG_HOME=str(work/"config"), XDG_STATE_HOME=str(work/"state"), XDG_DATA_HOME=str(work/"data"),
                    XDG_CACHE_HOME=str(work/"cache"), XDG_RUNTIME_DIR=str(work/"runtime"),
                    DBUS_SESSION_BUS_ADDRESS="unix:path="+str(work/"missing"), DBUS_SYSTEM_BUS_ADDRESS="unix:path="+str(work/"missing"))
-        for key in ("DISPLAY", "WAYLAND_DISPLAY", "NIRI_SOCKET"):
+        for key in ("DISPLAY", "WAYLAND_DISPLAY", "NIRI_SOCKET", "QT_QPA_PLATFORMTHEME"):
             env.pop(key, None)
         result = subprocess.run(["qs", "-p", str(work / "shell.qml"), "--no-color"], env=env, capture_output=True, text=True, timeout=10, umask=0o022)
         output = result.stdout + result.stderr

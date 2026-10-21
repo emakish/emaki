@@ -19,7 +19,7 @@ from emaki_installer.planner import console_unsafe_chars  # noqa: E402
 
 # Evaluates consoleUnsafeChars for every case with the window's own Protocol.js; the cases and
 # the table travel in a file, not in argv.
-EVALUATE = ('const vm = require("node:vm"); const fs = require("node:fs"); const context = vm.createContext({});'
+EVALUATE = ('const vm = require("node:vm"); const fs = require("node:fs"); const context = vm.createContext({});require(require("node:path").join(require("node:path").dirname(process.argv[1]), "tests/translations.js")).install(context);'
             'vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), context);'
             'const input = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));'
             'process.stdout.write(JSON.stringify(input.cases.map(c => context.consoleUnsafeChars(input.table, c[0], c[1]))));')
@@ -68,7 +68,7 @@ class ConsoleWarning(unittest.TestCase):
 
 def window(expression):
     """Evaluate an expression with the window's own Protocol.js."""
-    script = ('const vm = require("node:vm"); const fs = require("node:fs"); const context = vm.createContext({});'
+    script = ('const vm = require("node:vm"); const fs = require("node:fs"); const context = vm.createContext({});require(require("node:path").join(require("node:path").dirname(process.argv[1]), "tests/translations.js")).install(context);'
               'vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), context);'
               'process.stdout.write(JSON.stringify(vm.runInContext(process.argv[2], context)));')
     result = subprocess.run(['node', '-e', script, str(UI / 'Protocol.js'), expression],

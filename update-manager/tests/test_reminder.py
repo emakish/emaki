@@ -108,6 +108,17 @@ class Persistence(unittest.TestCase):
 
 
 class Notifications(unittest.TestCase):
+    def test_identity_is_stable_with_translation(self):
+        with patch.object(reminder, '_', side_effect=lambda value: '[' + value + ']'), \
+                patch.object(reminder.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            self.assertTrue(reminder.notify('Title', 'Body')['ok'])
+            args = run.call_args.args[0]
+            self.assertIn('Programs & Updates', args)
+            self.assertIn('desktop-entry', args)
+            self.assertIn('emaki-update-manager', args)
+
+
     def test_only_an_undismissed_restart_reminder_sends_fixed_notification(self):
         for state in (dict(restart=False, reminder=False), dict(restart=True, reminder=False)):
             with patch.object(reminder, 'status', return_value=state), patch.object(reminder.subprocess, 'run') as run:

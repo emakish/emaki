@@ -6,10 +6,11 @@ import Quickshell
 
 FloatingWindow {
     id: window
+    readonly property bool identified: Translation.identify(view.Window.window, "emaki-report")
     required property var controller
     property bool loadWallpaper: true
     readonly property alias view: view
-    title: "Report a problem"
+    title: qsTranslate("ReportWindow", "Report a problem")
     implicitWidth: Math.min(720, screen ? screen.width - 48 : 720)
     implicitHeight: Math.min(700, screen ? screen.height - 120 : 700)
     minimumSize: Qt.size(480, 420)

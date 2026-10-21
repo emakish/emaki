@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import Emaki.I18n
 import QtTest
 import Quickshell
 
@@ -35,7 +36,7 @@ ShellRoot {
             page.requestPreview("cache"); // Duplicate input while pending is ignored.
             tryVerify(() => page.preview !== null);
             compare(page.preview.entries.length, 20000);
-            compare(page.unsharedBytes(page.preview), "At least 50 B; 1 files unknown");
+            compare(page.unsharedBytes(page.preview), "At least 50 B; 1 file unknown");
             compare(page.unsharedBytes({
                 reclaimable_bytes: 100
             }), "100 B");

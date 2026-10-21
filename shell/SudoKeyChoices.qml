@@ -17,12 +17,12 @@ Column {
     readonly property bool amountValid: way === "session" || (way === "time" && minutesValid) || (way === "turns" && turnEligible && turnsValid)
     readonly property string mode: way === "turns" ? "turns:" + Number(turnsText) : way
     readonly property int seconds: way === "time" && minutesValid ? Number(minutesText) * 60 : 0
-    readonly property string amountError: way === "time" && !minutesValid ? Copy.keyMinutesError : way === "turns" && !turnsValid ? Copy.keyTurnsError : ""
+    readonly property string amountError: way === "time" && !minutesValid ? Copy.keyMinutesError() : way === "turns" && !turnsValid ? Copy.keyTurnsError() : ""
     onTurnEligibleChanged: if (!turnEligible && way === "turns")
         way = "time"
     spacing: 6
     RadioButton {
-        text: "For a while"
+        text: qsTranslate("SudoKeyChoices", "For a while")
         checked: choices.way === "time"
         onClicked: choices.way = "time"
     }
@@ -31,19 +31,19 @@ Column {
         objectName: "sudo-key-minutes"
         width: parent.width
         visible: choices.way === "time"
-        placeholderText: Copy.keyMinutesInput
+        placeholderText: Copy.keyMinutesInput()
         inputMethodHints: Qt.ImhDigitsOnly
         maximumLength: 16
     }
     RadioButton {
-        text: "The whole session"
+        text: qsTranslate("SudoKeyChoices", "The whole session")
         checked: choices.way === "session"
         onClicked: choices.way = "session"
     }
     RadioButton {
         objectName: "sudo-key-turns"
         visible: choices.turnEligible
-        text: Copy.keyTurnsChoice
+        text: Copy.keyTurnsChoice()
         checked: choices.way === "turns"
         onClicked: choices.way = "turns"
     }
@@ -52,7 +52,7 @@ Column {
         objectName: "sudo-key-turn-count"
         width: parent.width
         visible: choices.turnEligible && choices.way === "turns"
-        placeholderText: Copy.keyTurnsInput
+        placeholderText: Copy.keyTurnsInput()
         inputMethodHints: Qt.ImhDigitsOnly
         maximumLength: 16
     }
@@ -70,7 +70,7 @@ Column {
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: "Super+Ctrl+Esc revokes every sudo key"
+        text: qsTranslate("SudoKeyChoices", "Super+Ctrl+Esc revokes every sudo key")
         color: LiquidPalette.polkitInk
         font.pixelSize: 12
     }
@@ -79,7 +79,7 @@ Column {
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         visible: !choices.grantAllowed
-        text: Copy.keyWarningRequired
+        text: Copy.keyWarningRequired()
         color: LiquidPalette.polkitInk
         font.pixelSize: 12
     }

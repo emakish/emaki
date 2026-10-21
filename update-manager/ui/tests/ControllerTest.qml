@@ -38,6 +38,7 @@ ShellRoot {
                 controller.apply();
                 test.check(controller.busy === (scenario === "flatpak"), "only managed rows can start update");
                 test.settle();
+                if (scenario === "flatpak") test.check(controller.progress.step === 4, "Flatpak phase is independent of translated display text");
                 if (!test.failed) console.log("CONTROLLER_OK");
                 Qt.quit(); return;
             }

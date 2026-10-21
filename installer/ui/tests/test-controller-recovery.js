@@ -8,6 +8,7 @@ const path = require("node:path");
 const source = fs.readFileSync(path.join(__dirname, "../InstallerController.qml"), "utf8");
 const protocol = fs.readFileSync(path.join(__dirname, "../Protocol.js"), "utf8");
 const P = vm.createContext({});
+require("./translations.js").install(P);
 vm.runInContext(protocol, P);
 function controller() {
     const c = vm.createContext({
@@ -22,6 +23,7 @@ function controller() {
         resetEdits() { c.partitionEdits = {delete: [], create: [], new_table: false}; },
         write(message) { c.messages.push(message); }
     });
+    require("./translations.js").install(c);
     Object.defineProperty(c, "locked", {get() { return c.session.probing; }});
     let currentStep = c.step;
     Object.defineProperty(c, "step", {get() { return currentStep; }, set(value) {

@@ -40,7 +40,7 @@ Item {
     signal openRequested(string noteId)
     function select(noteId): void {
         if (noteId && noteId === selectedId) { showList = false; return; }
-        if (dirty || pendingId) { message = "Save your draft or reload before changing notes."; return; }
+        if (dirty || pendingId) { message = qsTranslate("NotesView", "Save your draft or reload before changing notes."); return; }
         selectedId = noteId; showList = !noteId; reload();
     }
     function reload(): void {
@@ -58,8 +58,8 @@ Item {
         send(copy ? "notes.create" : "notes.save", copy ? {body: draft} : {noteId: selectedId, body: draft, revision: revision});
     }
     function create(body): void {
-        if (dirty || pendingId) { message = "Save your draft or reload before creating a note."; return; }
-        send("notes.create", {body: body || "New note\n"});
+        if (dirty || pendingId) { message = qsTranslate("NotesView", "Save your draft or reload before creating a note."); return; }
+        send("notes.create", {body: body || qsTranslate("NotesView", "New note\n")});
     }
     function quickCreate(): void {
         if (!quick.text.trim() || pendingId) return;
@@ -75,13 +75,13 @@ Item {
             const note = NotesService.find(root.selectedId);
             if (root.pendingId || (note && note.revision === root.revision)) return;
             if (root.dirty) {
-                if (!note || note.revision !== root.revision) { root.conflict = true; root.message = "This note changed elsewhere. Your draft is safe. Reload or save a copy."; }
+                if (!note || note.revision !== root.revision) { root.conflict = true; root.message = qsTranslate("NotesView", "This note changed elsewhere. Your draft is safe. Reload or save a copy."); }
             } else { const editing = root.editing; root.reload(); root.editing = editing; }
         }
         function onCompleted(result): void {
             if (result.id !== root.pendingId) return;
             root.pendingId = "";
-            if (!result.ok) { autosave.stop(); root.conflict = !!result.conflict; root.message = result.conflict ? "This note changed elsewhere. Your draft is safe. Reload or save a copy." : (result.error || "The change could not be saved."); return; }
+            if (!result.ok) { autosave.stop(); root.conflict = !!result.conflict; root.message = result.conflict ? qsTranslate("NotesView", "This note changed elsewhere. Your draft is safe. Reload or save a copy.") : (result.error || qsTranslate("NotesView", "The change could not be saved.")); return; }
             if (root.pendingAction === "notes.create") {
                 root.selectedId = result.noteId;
                 root.showList = false;
@@ -154,7 +154,7 @@ Item {
                     Layout.bottomMargin: 10
                     spacing: 10
                     Image { source: SystemIcons.notesSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk); sourceSize: Qt.size(32, 32); Layout.preferredWidth: 32; Layout.preferredHeight: 32; smooth: false }
-                    Text { Layout.fillWidth: true; text: "Emaki Notes"; elide: Text.ElideRight; color: ShellPalette.settingsInk; font.family: "Noto Sans"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: qsTranslate("NotesView", "Emaki Notes"); elide: Text.ElideRight; color: ShellPalette.settingsInk; font.family: "Noto Sans"; font.pixelSize: 16; font.weight: Font.DemiBold }
                 }
                 TextField {
                     id: search
@@ -162,7 +162,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     implicitHeight: 42
-                    placeholderText: "Search notes"
+                    placeholderText: qsTranslate("NotesView", "Search notes")
                     placeholderTextColor: ShellPalette.settingsDim
                     color: ShellPalette.settingsInk
                     font.family: "Noto Sans"; font.pixelSize: 13
@@ -174,7 +174,7 @@ Item {
                         source: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + Qt.tint(ShellPalette.managerBackground, ShellPalette.settingsDim) + '" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>')
                     }
                 }
-                NotesButton { objectName: "notesNew"; Layout.fillWidth: true; implicitHeight: 40; text: "+  New note"; primary: true; enabled: NotesService.ready && !root.pendingId; onClicked: root.create(); Accessible.name: "New note" }
+                NotesButton { objectName: "notesNew"; Layout.fillWidth: true; implicitHeight: 40; text: qsTranslate("NotesView", "+  New note"); primary: true; enabled: NotesService.ready && !root.pendingId; onClicked: root.create(); Accessible.name: qsTranslate("NotesView", "New note") }
                 RowLayout {
                     visible: root.compact
                     Layout.fillWidth: true
@@ -182,7 +182,7 @@ Item {
                         id: quick
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        placeholderText: "Quick new note…"
+                        placeholderText: qsTranslate("NotesView", "Quick new note…")
                         placeholderTextColor: ShellPalette.settingsDim
                         color: ShellPalette.settingsInk
                         padding: 10
@@ -190,7 +190,7 @@ Item {
                         background: Rectangle { radius: 10; color: ShellPalette.settingsField; border.width: quick.activeFocus ? 1 : 0; border.color: ShellPalette.accent }
                         onAccepted: root.quickCreate()
                     }
-                    NotesButton { text: "+"; Accessible.name: "Create quick note"; enabled: !!quick.text.trim() && !root.pendingId && NotesService.ready; onClicked: root.quickCreate() }
+                    NotesButton { text: "+"; Accessible.name: qsTranslate("NotesView", "Create quick note"); enabled: !!quick.text.trim() && !root.pendingId && NotesService.ready; onClicked: root.quickCreate() }
                 }
                 Text { visible: !!root.message && (root.showList || !root.selectedId); Layout.fillWidth: true; text: root.message; wrapMode: Text.Wrap; color: LiquidPalette.danger; font.pixelSize: 12 }
                 ListView {
@@ -210,13 +210,13 @@ Item {
                         contentItem: Column {
                             spacing: 5
                             Text { width: parent.width; text: (entry.modelData.pinned ? "⌖  " : "") + entry.modelData.title; textFormat: Text.PlainText; elide: Text.ElideRight; color: ShellPalette.settingsInk; font.family: "Noto Sans"; font.pixelSize: 14; font.weight: Font.DemiBold }
-                            Text { width: parent.width; text: entry.modelData.body.split("\n").slice(1).find(line => line.trim()) || "No additional text"; textFormat: Text.PlainText; elide: Text.ElideRight; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 12 }
-                            Text { text: Qt.formatDateTime(new Date(entry.modelData.updated * 1000), "MMM d, yyyy"); color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
+                            Text { width: parent.width; text: entry.modelData.body.split("\n").slice(1).find(line => line.trim()) || qsTranslate("NotesView", "No additional text"); textFormat: Text.PlainText; elide: Text.ElideRight; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 12 }
+                            Text { text: new Date(entry.modelData.updated * 1000).toLocaleDateString(Qt.locale(), "MMM d, yyyy"); color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
                         }
                     }
-                    Text { anchors.centerIn: parent; width: parent.width; visible: !list.count; text: search.text ? "No matching notes" : "A little space for your thoughts.\nCreate your first note."; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 13; lineHeight: 1.5 }
+                    Text { anchors.centerIn: parent; width: parent.width; visible: !list.count; text: search.text ? qsTranslate("NotesView", "No matching notes") : qsTranslate("NotesView", "A little space for your thoughts.\nCreate your first note."); horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 13; lineHeight: 1.5 }
                 }
-                Text { Layout.fillWidth: true; visible: !root.compact; text: "Local notes · " + root.filtered.length; color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
+                Text { Layout.fillWidth: true; visible: !root.compact; text: qsTranslate("NotesView", "Local notes · %1").arg(String(root.filtered.length)); color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
             }
         }
         Rectangle { visible: root.split; Layout.fillHeight: true; width: 1; color: ShellPalette.settingsRim }
@@ -231,10 +231,10 @@ Item {
                 Layout.rightMargin: root.compact ? 0 : 16
                 Layout.topMargin: 8; Layout.bottomMargin: 8
                 spacing: 4
-                ActionButton { objectName: "notesBack"; visible: !root.split; text: "Back to notes"; path: "M15 5l-7 7 7 7"; onClicked: root.showList = true }
-                Text { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: root.selectedId ? root.pendingId ? "Saving…" : root.dirty ? "Unsaved draft" : "Saved on this device" : "Notes"; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 12 }
-                ActionButton { visible: !!root.selectedId; text: root.selected?.pinned ? "Unpin note" : "Pin note"; marked: !!root.selected?.pinned; path: "M8 3h8l-1 7 4 4H5l4-4z M12 14v7"; enabled: !root.pendingId && !root.dirty; onClicked: root.send("notes.pin", {noteId: root.selectedId, pinned: !root.selected.pinned, revision: root.revision}) }
-                ActionButton { visible: !!root.selectedId; text: "Delete note"; path: "M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7"; enabled: !root.pendingId; onClicked: root.confirmDelete = !root.confirmDelete }
+                ActionButton { objectName: "notesBack"; visible: !root.split; text: qsTranslate("NotesView", "Back to notes"); path: "M15 5l-7 7 7 7"; onClicked: root.showList = true }
+                Text { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: root.selectedId ? root.pendingId ? qsTranslate("NotesView", "Saving…") : root.dirty ? qsTranslate("NotesView", "Unsaved draft") : qsTranslate("NotesView", "Saved on this device") : qsTranslate("NotesView", "Notes"); color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 12 }
+                ActionButton { visible: !!root.selectedId; text: root.selected?.pinned ? qsTranslate("NotesView", "Unpin note") : qsTranslate("NotesView", "Pin note"); marked: !!root.selected?.pinned; path: "M8 3h8l-1 7 4 4H5l4-4z M12 14v7"; enabled: !root.pendingId && !root.dirty; onClicked: root.send("notes.pin", {noteId: root.selectedId, pinned: !root.selected.pinned, revision: root.revision}) }
+                ActionButton { visible: !!root.selectedId; text: qsTranslate("NotesView", "Delete note"); path: "M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7"; enabled: !root.pendingId; onClicked: root.confirmDelete = !root.confirmDelete }
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: ShellPalette.settingsRim }
             ColumnLayout {
@@ -243,17 +243,17 @@ Item {
                 visible: root.confirmDelete || !!(root.message || NotesService.error) || root.conflict
                 RowLayout {
                     visible: root.confirmDelete; Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: "Delete this note?"; wrapMode: Text.Wrap; color: ShellPalette.settingsInk; font.family: "Noto Sans" }
-                    NotesButton { text: "Cancel"; onClicked: root.confirmDelete = false }
-                    NotesButton { text: "Delete"; onClicked: root.send("notes.delete", {noteId: root.selectedId, revision: root.revision}) }
+                    Text { Layout.fillWidth: true; text: qsTranslate("NotesView", "Delete this note?"); wrapMode: Text.Wrap; color: ShellPalette.settingsInk; font.family: "Noto Sans" }
+                    NotesButton { text: qsTranslate("NotesView", "Cancel"); onClicked: root.confirmDelete = false }
+                    NotesButton { text: qsTranslate("NotesView", "Delete"); onClicked: root.send("notes.delete", {noteId: root.selectedId, revision: root.revision}) }
                 }
                 Text { Layout.fillWidth: true; visible: !!(root.message || NotesService.error); text: root.message || NotesService.error; wrapMode: Text.Wrap; color: LiquidPalette.danger; font.family: "Noto Sans"; font.pixelSize: 12 }
                 RowLayout {
                     visible: root.conflict || !!root.message
                     Layout.fillWidth: true
                     Item { Layout.fillWidth: true }
-                    NotesButton { text: "Reload"; enabled: !root.pendingId; onClicked: root.reload() }
-                    NotesButton { text: root.conflict ? "Save a copy" : "Save"; primary: true; enabled: !root.pendingId; onClicked: root.save(root.conflict) }
+                    NotesButton { text: qsTranslate("NotesView", "Reload"); enabled: !root.pendingId; onClicked: root.reload() }
+                    NotesButton { text: root.conflict ? qsTranslate("NotesView", "Save a copy") : qsTranslate("NotesView", "Save"); primary: true; enabled: !root.pendingId; onClicked: root.save(root.conflict) }
                 }
             }
             ScrollView {
@@ -285,7 +285,7 @@ Item {
                         color: ShellPalette.settingsInk
                         selectionColor: ShellPalette.accent; selectedTextColor: ShellPalette.accentText
                         font.family: "Noto Sans"; font.pixelSize: root.compact ? 24 : 28; font.weight: Font.DemiBold
-                        placeholderText: "Title"; placeholderTextColor: ShellPalette.settingsDim
+                        placeholderText: qsTranslate("NotesView", "Title"); placeholderTextColor: ShellPalette.settingsDim
                         background: Rectangle { color: "transparent" }
                     }
                     TextArea {
@@ -314,7 +314,7 @@ Item {
                         selectionColor: ShellPalette.accent; selectedTextColor: ShellPalette.accentText
                         font.family: "Noto Sans"; font.pixelSize: 15
                         placeholderTextColor: ShellPalette.settingsDim
-                        placeholderText: "Your thoughts…"
+                        placeholderText: qsTranslate("NotesView", "Your thoughts…")
                         background: Rectangle { radius: 12; color: ShellPalette.settingsField; border.width: 1; border.color: editor.activeFocus ? ShellPalette.accent : ShellPalette.settingsRim }
                     }
                     NotesChecklist {
@@ -331,7 +331,7 @@ Item {
                             if (!root.conflict) root.save(false);
                         }
                     }
-                    Text { width: parent.writingWidth; anchors.horizontalCenter: parent.horizontalCenter; text: "Use - [ ] for a task. Tick tasks below the text."; wrapMode: Text.Wrap; color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
+                    Text { width: parent.writingWidth; anchors.horizontalCenter: parent.horizontalCenter; text: qsTranslate("NotesView", "Use - [ ] for a task. Tick tasks below the text."); wrapMode: Text.Wrap; color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
                 }
             }
             Item {
@@ -342,11 +342,11 @@ Item {
                     width: Math.max(0, parent.width - 48)
                     spacing: 14
                     Icon { kind: "file"; ink: ShellPalette.accentForeground; width: 36; height: 36; anchors.horizontalCenter: parent.horizontalCenter }
-                    Text { width: parent.width; text: "A little room to think"; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: ShellPalette.settingsInk; font.family: "Noto Sans"; font.pixelSize: 22 }
-                    Text { width: parent.width; text: "Select a note, or start a new one."; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 13 }
+                    Text { width: parent.width; text: qsTranslate("NotesView", "A little room to think"); wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: ShellPalette.settingsInk; font.family: "Noto Sans"; font.pixelSize: 22 }
+                    Text { width: parent.width; text: qsTranslate("NotesView", "Select a note, or start a new one."); wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 13 }
                 }
             }
-            NotesButton { visible: root.compact && !!root.selectedId; Layout.alignment: Qt.AlignHCenter; text: "Open in Emaki Notes"; onClicked: root.openRequested(root.selectedId) }
+            NotesButton { visible: root.compact && !!root.selectedId; Layout.alignment: Qt.AlignHCenter; text: qsTranslate("NotesView", "Open in Emaki Notes"); onClicked: root.openRequested(root.selectedId) }
         }
     }
 }

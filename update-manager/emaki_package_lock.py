@@ -1,20 +1,35 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Read-only package-lock advice; never remove another operation's lock."""
+
+try:
+    from .i18n import _
+except ImportError:
+    try:
+        from emaki_i18n import translation
+    except ModuleNotFoundError:
+        import sys as _i18n_sys
+        from pathlib import Path as _I18nPath
+        _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+        _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+        from emaki_i18n import translation
+
+    _ = translation('programs').gettext
+
 import json
 import os
 from pathlib import Path
 import stat
 import time
 
-LIVE = 'Another package operation is running. Wait for it to finish, then try again.'
-UNKNOWN = ('Another program may be installing or updating software. '
+LIVE = _('Another package operation is running. Wait for it to finish, then try again.')
+UNKNOWN = (_('Another program may be installing or updating software. '
            'Do not remove the lock while software changes may be running. '
-           'Restart the computer, then try again.')
-ABANDONED = ('Software changes are blocked by a lock left by an earlier operation. '
+           'Restart the computer, then try again.'))
+ABANDONED = (_('Software changes are blocked by a lock left by an earlier operation. '
              'Close all software installers and updaters. '
              'An administrator must check that none is running before removing {path}. '
-             'Then try again. Nothing was removed automatically.')
+             'Then try again. Nothing was removed automatically.'))
 
 
 def identity(info):

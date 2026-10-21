@@ -62,9 +62,9 @@ Scope {
         }
         const kind = Logic.noticeKind(status);
         if (kind === "unsigned")
-            store.hold(Logic.title, Logic.unsignedSummary, Logic.unsignedBody, action, Logic.noticeAction);
+            store.hold("Secure Boot", Logic.unsignedSummary(), Logic.unsignedBody(), action, Logic.noticeAction());
         else if (kind === "confirm")
-            store.hold(Logic.title, Logic.noticeSummary, Logic.noticeBody, action, Logic.noticeAction);
+            store.hold("Secure Boot", Logic.noticeSummary(), Logic.noticeBody(), action, Logic.noticeAction());
     }
     onReadyChanged: check()
     Component.onCompleted: check()

@@ -36,7 +36,7 @@ Scope {
             inputGuard.start();
         deadline = opened ? Date.now() + timeoutMs : 0;
         if (locked && currentFlow) {
-            notice(backend.requestKind === "sudo" ? Copy.sudoInterruptedTitle : Copy.blockedTitle, backend.requestKind === "sudo" ? Copy.sudoInterruptedBody : Copy.cancelledBody);
+            notice(backend.requestKind === "sudo" ? Copy.sudoInterruptedTitle() : Copy.blockedTitle(), backend.requestKind === "sudo" ? Copy.sudoInterruptedBody() : Copy.cancelledBody());
             backend?.cancel("lock");
         } else if (opened) {
             started();
@@ -70,8 +70,8 @@ Scope {
             cancelling = false;
         }
         if (wasOpen) {
-            const title = reason === "timeout" ? "Not done — nobody answered" : reason === "lock" ? Copy.lockedTitle : "Not done — you cancelled";
-            notice(sudoInterrupted ? Copy.sudoInterruptedTitle : title, sudoInterrupted ? Copy.sudoInterruptedBody : (reason === "timeout" ? "The request closed after 2 minutes. " : "") + Copy.cancelledBody);
+            const title = reason === "timeout" ? qsTranslate("PolkitPromptController", "Not done — nobody answered") : reason === "lock" ? Copy.lockedTitle() : qsTranslate("PolkitPromptController", "Not done — you cancelled");
+            notice(sudoInterrupted ? Copy.sudoInterruptedTitle() : title, sudoInterrupted ? Copy.sudoInterruptedBody() : (reason === "timeout" ? qsTranslate("PolkitPromptController", "The request closed after 2 minutes. Nothing was done. The program was told you said no.") : Copy.cancelledBody()));
         }
     }
     function tick(now: double): void {
@@ -106,7 +106,7 @@ Scope {
             controller.focusInput();
         }
         function onInterrupted(): void {
-            controller.notice(Copy.sudoInterruptedTitle, Copy.sudoInterruptedBody);
+            controller.notice(Copy.sudoInterruptedTitle(), Copy.sudoInterruptedBody());
         }
     }
     Timer {

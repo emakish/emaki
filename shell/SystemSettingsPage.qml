@@ -54,7 +54,7 @@ Column {
     Text {
         width: parent.width
         visible: !["idle", "confirmed", "applied", "ready"].includes(root.actionResult) && root.page !== "keyboard"
-        text: root.awaitingAction ? "Working…" : root.actionResult === "requested" ? "Change requested." : "Could not confirm the change. The current value is shown below."
+        text: root.awaitingAction ? qsTranslate("SystemSettingsPage", "Working…") : root.actionResult === "requested" ? qsTranslate("SystemSettingsPage", "Change requested.") : qsTranslate("SystemSettingsPage", "Could not confirm the change. The current value is shown below.")
         textFormat: Text.PlainText
         color: root.pending ? SettingsTheme.dim : SettingsTheme.error
         font.family: SettingsTheme.fontFamily
@@ -65,12 +65,12 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.page === "wifi"
-        title: "Wireless connection"
+        title: qsTranslate("SystemSettingsPage", "Wireless connection")
         SettingsToggleRow {
             objectName: "settings-wifi-power"
             width: parent.width
-            title: "Wi-Fi"
-            explanation: "Turn the wireless radio on or off."
+            title: qsTranslate("SystemSettingsPage", "Wi-Fi")
+            explanation: qsTranslate("SystemSettingsPage", "Turn the wireless radio on or off.")
             value: root.backend?.wifiEnabled ?? false
             defaultValue: value
             unavailable: !root.backend?.networkReady || !root.backend?.wifiHardwareEnabled || !root.backend?.wifiDevices.length
@@ -79,20 +79,20 @@ Column {
         }
         SettingsRow {
             width: parent.width
-            title: "Connection"
-            explanation: !root.backend?.networkReady ? "Network status is unavailable." : !root.backend.wifiHardwareEnabled ? "The wireless radio is blocked by the system." : root.connectedNetworks.length ? "Connected to " + root.connectedNetworks.map(network => network.name || network.ssid || "Wireless network").join(", ") + "." : "No wireless connection is active."
+            title: qsTranslate("SystemSettingsPage", "Connection")
+            explanation: !root.backend?.networkReady ? qsTranslate("SystemSettingsPage", "Network status is unavailable.") : !root.backend.wifiHardwareEnabled ? qsTranslate("SystemSettingsPage", "The wireless radio is blocked by the system.") : root.connectedNetworks.length ? qsTranslate("SystemSettingsPage", "Connected to %1.").arg(root.connectedNetworks.map(network => network.name || network.ssid || qsTranslate("SystemSettingsPage", "Wireless network")).join(", ")) : qsTranslate("SystemSettingsPage", "No wireless connection is active.")
             managed: true
         }
     }
     SettingsCard {
         width: parent.width
         visible: root.page === "bluetooth"
-        title: "Bluetooth devices"
+        title: qsTranslate("SystemSettingsPage", "Bluetooth devices")
         SettingsToggleRow {
             objectName: "settings-bluetooth-power"
             width: parent.width
-            title: "Bluetooth"
-            explanation: "Turn the Bluetooth adapter on or off."
+            title: qsTranslate("SystemSettingsPage", "Bluetooth")
+            explanation: qsTranslate("SystemSettingsPage", "Turn the Bluetooth adapter on or off.")
             value: root.backend?.adapter?.enabled ?? false
             defaultValue: value
             unavailable: !root.backend?.adapter
@@ -101,10 +101,10 @@ Column {
         }
         SettingsRow {
             width: parent.width
-            title: "Connected devices"
+            title: qsTranslate("SystemSettingsPage", "Connected devices")
             explanation: {
                 const devices = Array.from(root.backend?.devices ?? []).filter(device => device.connected);
-                return devices.length ? devices.map(device => device.name || "Bluetooth device").join(", ") : "No Bluetooth devices are connected.";
+                return devices.length ? devices.map(device => device.name || qsTranslate("SystemSettingsPage", "Bluetooth device")).join(", ") : qsTranslate("SystemSettingsPage", "No Bluetooth devices are connected.");
             }
             managed: true
         }
@@ -112,12 +112,12 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.page === "sound"
-        title: "Output"
+        title: qsTranslate("SystemSettingsPage", "Output")
         SettingsToggleRow {
             objectName: "settings-sound-mute"
             width: parent.width
-            title: "Mute"
-            explanation: "Silence the current sound output."
+            title: qsTranslate("SystemSettingsPage", "Mute")
+            explanation: qsTranslate("SystemSettingsPage", "Silence the current sound output.")
             value: root.service.sinkMuted
             defaultValue: value
             unavailable: !root.audioReady
@@ -127,8 +127,8 @@ Column {
         SettingsSliderRow {
             objectName: "settings-sound-volume"
             width: parent.width
-            title: "Volume"
-            explanation: root.audioReady ? Math.round(root.service.sinkVolume * 100) + "% of the current output volume." : "No sound output is available."
+            title: qsTranslate("SystemSettingsPage", "Volume")
+            explanation: root.audioReady ? qsTranslate("SystemSettingsPage", "%1% of the current output volume.").arg(Math.round(root.service.sinkVolume * 100).toFixed(0)) : qsTranslate("SystemSettingsPage", "No sound output is available.")
             value: Math.max(0, Math.round(root.service.sinkVolume * 100))
             defaultValue: value
             unavailable: !root.audioReady
@@ -139,12 +139,12 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.page === "displays"
-        title: "Brightness and colour"
+        title: qsTranslate("SystemSettingsPage", "Brightness and colour")
         SettingsSliderRow {
             objectName: "settings-display-brightness"
             width: parent.width
-            title: "Brightness"
-            explanation: root.service.brightness.state === "ready" ? root.service.brightness.percent + "% of the built-in backlight." : "No adjustable backlight is available."
+            title: qsTranslate("SystemSettingsPage", "Brightness")
+            explanation: root.service.brightness.state === "ready" ? qsTranslate("SystemSettingsPage", "%1% of the built-in backlight.").arg(root.service.brightness.percent.toFixed(0)) : qsTranslate("SystemSettingsPage", "No adjustable backlight is available.")
             from: 5
             value: root.service.brightness.percent ?? 5
             defaultValue: value
@@ -155,8 +155,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-night-light"
             width: parent.width
-            title: "Night Light"
-            explanation: "Use warmer display colours for evening light."
+            title: qsTranslate("SystemSettingsPage", "Night Light")
+            explanation: qsTranslate("SystemSettingsPage", "Use warmer display colours for evening light.")
             value: root.service.night.on
             defaultValue: value
             unavailable: !["on", "off", "starting"].includes(root.service.night.state)
@@ -165,8 +165,8 @@ Column {
         SettingsSliderRow {
             objectName: "settings-night-warmth"
             width: parent.width
-            title: "Warmth"
-            explanation: "Choose how warm Night Light makes the display."
+            title: qsTranslate("SystemSettingsPage", "Warmth")
+            explanation: qsTranslate("SystemSettingsPage", "Choose how warm Night Light makes the display.")
             value: root.service.night.warmth
             defaultValue: value
             unavailable: !["on", "off", "starting"].includes(root.service.night.state)
@@ -176,24 +176,24 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.page === "battery"
-        title: "Power"
+        title: qsTranslate("SystemSettingsPage", "Power")
         SettingsRow {
             width: parent.width
-            title: "Battery"
-            explanation: root.service.batteryPercent < 0 ? "No battery is reported by the system." : root.service.batteryPercent + "% remaining" + (root.backend?.charging ? ", charging." : ".")
+            title: qsTranslate("SystemSettingsPage", "Battery")
+            explanation: root.service.batteryPercent < 0 ? qsTranslate("SystemSettingsPage", "No battery is reported by the system.") : (root.backend?.charging ? qsTranslate("SystemSettingsPage", "%1% remaining, charging.") : qsTranslate("SystemSettingsPage", "%1% remaining.")).arg(root.service.batteryPercent.toFixed(0))
             managed: true
         }
         SettingsChoiceRow {
             objectName: "settings-power-profile"
             width: parent.width
-            title: "Power mode"
-            explanation: "Balance energy use and performance."
+            title: qsTranslate("SystemSettingsPage", "Power mode")
+            explanation: qsTranslate("SystemSettingsPage", "Balance energy use and performance.")
             options: Array.from(root.service.profiles.profiles ?? []).map(profile => ({
                         value: profile,
                         label: ({
-                                "power-saver": "Power saver",
-                                balanced: "Balanced",
-                                performance: "Performance"
+                                "power-saver": qsTranslate("SystemSettingsPage", "Power saver"),
+                                balanced: qsTranslate("SystemSettingsPage", "Balanced"),
+                                performance: qsTranslate("SystemSettingsPage", "Performance")
                             })[profile] || profile
                     }))
             value: root.service.profiles.current
@@ -206,12 +206,12 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.page === "keyboard"
-        title: "Keyboard layouts"
+        title: qsTranslate("SystemSettingsPage", "Keyboard layouts")
         SettingsChoiceRow {
             objectName: "settings-keyboard-layout"
             width: parent.width
-            title: "Current layout"
-            explanation: "Switch between the layouts already configured on this system."
+            title: qsTranslate("SystemSettingsPage", "Current layout")
+            explanation: qsTranslate("SystemSettingsPage", "Switch between the layouts already configured on this system.")
             options: Array.from(root.niri.layouts?.names ?? []).map((name, index) => ({
                         value: index,
                         label: name
@@ -223,8 +223,8 @@ Column {
         }
         SettingsRow {
             width: parent.width
-            title: "Configured layouts"
-            explanation: "The system manages the layout list and its switching shortcut."
+            title: qsTranslate("SystemSettingsPage", "Configured layouts")
+            explanation: qsTranslate("SystemSettingsPage", "The system manages the layout list and its switching shortcut.")
             managed: true
         }
     }

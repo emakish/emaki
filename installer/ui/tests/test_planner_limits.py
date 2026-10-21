@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The window repeats planner limits before the review; these tests hold both to one number."""
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,10 +13,9 @@ UI = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(UI.parent))
 from emaki_installer.constants import GIB, MIB  # noqa: E402
 from emaki_installer.errors import Code, InstallError  # noqa: E402
-from emaki_installer.planner import Partition, storage_layout, validate_config, xkb_rules  # noqa: E402
-from emaki_installer.render import keyboard_summary  # noqa: E402
+from emaki_installer.planner import Partition, storage_layout, validate_config  # noqa: E402
 
-EVALUATE = ('const vm = require("node:vm"); const fs = require("node:fs"); const context = vm.createContext({});'
+EVALUATE = ('const vm = require("node:vm"); const fs = require("node:fs"); const context = vm.createContext({});require(require("node:path").join(require("node:path").dirname(process.argv[1]), "tests/translations.js")).install(context);'
             'vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), context);'
             'process.stdout.write(JSON.stringify(vm.runInContext(process.argv[2], context)));')
 
@@ -87,13 +87,25 @@ class PasswordCharacters(unittest.TestCase):
                     validate_config(config)
 
 
+@unittest.skipUnless(shutil.which('node'), 'node is unavailable')
 class ReviewKeyboardLine(unittest.TestCase):
-    def test_the_review_finds_the_planners_keyboard_line_by_its_first_word(self):
-        # InstallerView's Review page lifts this line to the top of the plan list.
-        self.assertIn('modelData.startsWith("Keyboard: ")', (UI / 'InstallerView.qml').read_text())
-        for layouts in (['us'], ['de'], ['cz', 'us'], ['us', 'ru', 'de']):
-            with self.subTest(layouts=layouts):
-                self.assertTrue(keyboard_summary(layouts, xkb_rules()).startswith('Keyboard: '))
+    def test_the_review_orders_keyboard_by_stable_key_not_translated_text(self):
+        # Evaluate the production delegates' visibility conditions with translated and
+        # misleading display text: only the structured keyboard key moves a row first.
+        source = (UI / 'InstallerView.qml').read_text().split('id: reviewPage', 1)[1]
+        conditions = re.findall(r'visible: (view\.controller\.session\.plan\?\.summary_keys[^\n]+)', source)
+        self.assertEqual(len(conditions), 2)
+        rows = ['Keyboard: unrelated display text', '[Translated layouts]', 'Other plan details']
+        for keys in (['', 'keyboard', ''], None):
+            with self.subTest(keys=keys):
+                plan = dict(summary=rows)
+                if keys is not None:
+                    plan['summary_keys'] = keys
+                result = window('(() => { const view = {controller: {session: {plan: ' +
+                                json.dumps(plan) + '}}}; return [' + ','.join(
+                                    'view.controller.session.plan.summary.filter((modelData, index) => ' +
+                                    condition + ')' for condition in conditions) + ']; })()')
+                self.assertEqual(result, [[rows[1]], [rows[0], rows[2]]] if keys else [[], rows])
 
 
 if __name__ == '__main__':

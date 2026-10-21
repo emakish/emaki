@@ -25,7 +25,6 @@ Item {
     readonly property color dim: glass ? glass.dim : LiquidPalette.dimOnDark
     readonly property color faint: glass ? glass.faint : LiquidPalette.faintOnDark
     readonly property color accent: glass ? glass.accent : LiquidPalette.accentOnDark
-    readonly property var monthNames: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     // Today's cell while its month is shown: a resting drop of the panel.
     readonly property GlassTarget todayTarget: current && dayRepeater.count === cellCount ? dayRepeater.itemAt(start + today.getDate() - 1) as GlassTarget : null
     function selectDate(value: string): void {
@@ -52,7 +51,8 @@ Item {
         width: 200
         height: 28
         verticalAlignment: Text.AlignVCenter
-        text: calendar.monthNames[calendar.month] + " " + calendar.year
+        //: Qt date pattern: MMMM and yyyy are fields; put literal words in single quotes, as in 'de'.
+        text: new Date(calendar.year, calendar.month, 1).toLocaleDateString(Qt.locale(), qsTranslate("CalendarMonth", "MMMM yyyy"))
         textFormat: Text.PlainText
         font.family: ShellPalette.uiFont
         font.pixelSize: 14
@@ -91,7 +91,7 @@ Item {
     Arrow {
         x: calendar.width - 28
         key: "month-next"
-        label: "Next month"
+        label: qsTranslate("CalendarMonth", "Next month")
         symbol: "pan-end-symbolic"
         glyph: "›"
         onClicked: calendar.shift(1)
@@ -99,7 +99,7 @@ Item {
     Arrow {
         x: calendar.width - 58
         key: "month-previous"
-        label: "Previous month"
+        label: qsTranslate("CalendarMonth", "Previous month")
         symbol: "pan-start-symbolic"
         glyph: "‹"
         onClicked: calendar.shift(-1)
@@ -108,7 +108,7 @@ Item {
         id: todayButton
         glass: calendar.glass
         key: "month-today"
-        label: "Today"
+        label: qsTranslate("CalendarMonth", "Today")
         visible: !calendar.current
         x: calendar.width - 60 - width
         y: 1
@@ -119,7 +119,7 @@ Item {
             id: todayLabel
             anchors.centerIn: parent
             anchors.verticalCenterOffset: .5
-            text: "Today"
+            text: qsTranslate("CalendarMonth", "Today")
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 13
@@ -128,7 +128,7 @@ Item {
         }
     }
     Repeater {
-        model: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+        model: [qsTranslate("CalendarMonth", "Mo"), qsTranslate("CalendarMonth", "Tu"), qsTranslate("CalendarMonth", "We"), qsTranslate("CalendarMonth", "Th"), qsTranslate("CalendarMonth", "Fr"), qsTranslate("CalendarMonth", "Sa"), qsTranslate("CalendarMonth", "Su")]
         Text {
             required property int index
             required property string modelData

@@ -307,6 +307,8 @@ class RecoveryStatus(unittest.TestCase):
         helper = installed / 'emaki-privacy-recovery'
         shutil.copyfile(ROOT / 'update-manager/privacy_recovery.py', helper)
         shutil.copyfile(ROOT / 'update-manager/restore.py', installed / 'emaki-update-restore')
+        for name in ('emaki_i18n.py', 'emaki_paths.py'):
+            shutil.copyfile(ROOT / 'scripts' / name, installed / name)
         helper.chmod(0o755)
         hostile = self.root / 'hostile'
         hostile.mkdir()
@@ -320,13 +322,15 @@ class RecoveryStatus(unittest.TestCase):
         self.assertEqual(result.stdout, '')
         self.assertFalse(marker.exists())
         self.assertEqual(sorted(path.name for path in installed.iterdir()),
-                         ['emaki-privacy-recovery', 'emaki-update-restore'])
+                         ['emaki-privacy-recovery', 'emaki-update-restore', 'emaki_i18n.py', 'emaki_paths.py'])
 
     def test_installed_layout_loads_extensionless_restore_without_writes(self):
         installed = self.root / 'installed'
         installed.mkdir()
         shutil.copyfile(ROOT / 'update-manager/privacy_recovery.py', installed / 'emaki-privacy-recovery')
         shutil.copyfile(ROOT / 'update-manager/restore.py', installed / 'emaki-update-restore')
+        for name in ('emaki_i18n.py', 'emaki_paths.py'):
+            shutil.copyfile(ROOT / 'scripts' / name, installed / name)
         # Invalid arguments load the installed module but deliberately query no
         # machine state. Use the real runner, outside the shared subprocess mock.
         with patch.object(recovery.subprocess, 'run', REAL_RUN):
@@ -334,7 +338,7 @@ class RecoveryStatus(unittest.TestCase):
                                     capture_output=True, text=True)
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertEqual(sorted(path.name for path in installed.iterdir()),
-                         ['emaki-privacy-recovery', 'emaki-update-restore'])
+                         ['emaki-privacy-recovery', 'emaki-update-restore', 'emaki_i18n.py', 'emaki_paths.py'])
 
 
 REAL_RUN = subprocess.run

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Artur Yakymenko
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod settings;
+use emaki_core::i18n::{format_text, tr};
 
 use std::env;
 use std::io::{self, Write};
@@ -95,7 +96,7 @@ fn output(text: &str, code: u8) -> ExitCode {
 }
 
 fn bad_arguments() -> ExitCode {
-    eprintln!("emaki: invalid arguments\n\n{HELP}");
+    eprintln!("{}\n\n{}", tr("emaki: invalid arguments"), tr(HELP));
     ExitCode::from(2)
 }
 
@@ -122,9 +123,20 @@ fn fetch() -> ExitCode {
         .arg(data.join("fetch/config.jsonc"))
         .exec();
     if error.kind() == io::ErrorKind::NotFound {
-        eprintln!("emaki: fastfetch is not installed or is not on PATH.\n\n{HELP}");
+        eprintln!(
+            "{}\n\n{}",
+            tr("emaki: fastfetch is not installed or is not on PATH."),
+            tr(HELP)
+        );
     } else {
-        eprintln!("emaki: cannot start fastfetch: {error}\n\n{HELP}");
+        eprintln!(
+            "{}\n\n{}",
+            format_text(
+                "emaki: cannot start fastfetch: {error}",
+                &[("error", error.to_string())]
+            ),
+            tr(HELP)
+        );
     }
     ExitCode::from(1)
 }
@@ -143,14 +155,14 @@ fn main() -> ExitCode {
             &format!(
                 "emaki {} [channel: {}]\n",
                 emaki_core::VERSION,
-                update_channel()
+                update_channel(),
             ),
             0,
         ),
         [] => fetch(),
-        ["help" | "--help" | "-h"] => output(&format!("{HELP}\n"), 0),
+        ["help" | "--help" | "-h"] => output(&format!("{}\n", tr(HELP)), 0),
         ["help", "--internal"] | ["map" | "state", "--help" | "-h"] => {
-            output(&format!("{INTERNAL_HELP}\n"), 0)
+            output(&format!("{}\n", tr(INTERNAL_HELP)), 0)
         }
         ["settings", tail @ ..] => settings::run(tail),
         ["map"] => {
@@ -172,7 +184,7 @@ fn main() -> ExitCode {
             | "close-window"
             | "switch-layout",
             "--help" | "-h",
-        ] => output(&format!("{NIRI_HELP}\n"), 0),
+        ] => output(&format!("{}\n", tr(NIRI_HELP)), 0),
         [
             "niri",
             command @ ("focus-window"
@@ -328,7 +340,7 @@ fn json_output(result: Result<String, serde_json::Error>, code: u8) -> ExitCode 
     match result {
         Ok(text) => output(&format!("{text}\n"), code),
         Err(_) => {
-            eprintln!("emaki: cannot serialize response");
+            eprintln!("{}", tr("emaki: cannot serialize response"));
             ExitCode::from(2)
         }
     }

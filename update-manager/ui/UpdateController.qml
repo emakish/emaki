@@ -126,7 +126,7 @@ Item {
             reminder = false;
             if (hideAfterDismiss) hideReady();
         } else {
-            message += "\nThe reminder could not be hidden. Press Later again.";
+            message += qsTranslate("UpdateController", "\nThe reminder could not be hidden. Press Later again.");
         }
     }
     function updateReminder(event: var): void {
@@ -164,6 +164,7 @@ Item {
                 }
             } else if (event.type === "progress") {
                 appendOutput(String(event.message ?? ""));
+                progress = Logic.progressEvent(progress, event);
             } else if (event.type === "finished") {
                 received = true;
                 succeeded = event.ok === true;
@@ -175,7 +176,7 @@ Item {
                 signOut = event.signOut === true;
             }
         } catch (_) {
-            message = "The update service sent an unreadable response.";
+            message = qsTranslate("UpdateController", "The update service sent an unreadable response.");
         }
     }
     Timer {
@@ -184,7 +185,7 @@ Item {
         onTriggered: if (root.busy && !process.running) {
             if (root.phase === "dismissing") { root.finishDismiss(false); return; }
             root.succeeded = false;
-            root.message = "The update service could not start. Check that Emaki updates are installed correctly.";
+            root.message = qsTranslate("UpdateController", "The update service could not start. Check that Emaki updates are installed correctly.");
             root.phase = "idle";
         }
     }
@@ -202,7 +203,7 @@ Item {
             }
             if (!root.received || code !== 0) {
                 root.succeeded = false;
-                if (!root.message) root.message = "The update service could not finish. Check the details and try again.";
+                if (!root.message) root.message = qsTranslate("UpdateController", "The update service could not finish. Check the details and try again.");
             }
             if (wasApply && root.succeeded) {
                 root.completedUpdates = root.applyingUpdates;
@@ -234,7 +235,7 @@ Item {
         onStarted: restoreWatch.stop()
         onExited: code => {
             if ((!received || code !== 0) && !root.restoreError)
-                root.restoreError = "The restore dates could not be loaded. Try again.";
+                root.restoreError = qsTranslate("UpdateController", "The restore dates could not be loaded. Try again.");
         }
         command: [Shell.Platform.libexecDir + "/update-manager-backend", "--restore-points"]
         stdout: SplitParser {
@@ -248,7 +249,7 @@ Item {
                         root.restorePending = root.restorePending || event.restorePending === true;
                         if (root.restorePending) root.restart = true;
                     }
-                } catch (_) { root.restoreError = "The restore dates could not be loaded. Try again."; }
+                } catch (_) { root.restoreError = qsTranslate("UpdateController", "The restore dates could not be loaded. Try again."); }
             }
         }
     }
@@ -256,7 +257,7 @@ Item {
         id: restoreWatch
         interval: 2000
         onTriggered: if (!restoreIndex.running && !restoreIndex.received)
-            root.restoreError = "The restore dates could not be loaded. Try again.";
+            root.restoreError = qsTranslate("UpdateController", "The restore dates could not be loaded. Try again.");
     }
     Process {
         id: completedCheck
@@ -274,19 +275,19 @@ Item {
                         root.countError = event.data.error || "";
                         root.data = event.data;
                     }
-                } catch (_) { root.countError = "The updates could not be checked. Press Check again."; }
+                } catch (_) { root.countError = qsTranslate("UpdateController", "The updates could not be checked. Press Check again."); }
             }
         }
         onExited: code => {
             if (requestGeneration === root.generation && (!received || code !== 0) && !root.countError)
-                root.countError = "The updates could not be checked. Press Check again.";
+                root.countError = qsTranslate("UpdateController", "The updates could not be checked. Press Check again.");
         }
     }
     Timer {
         id: countWatch
         interval: 2000
         onTriggered: if (!completedCheck.running && !completedCheck.received)
-            root.countError = "The updates could not be checked. Press Check again.";
+            root.countError = qsTranslate("UpdateController", "The updates could not be checked. Press Check again.");
     }
     Process {
         id: restartNotice

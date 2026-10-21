@@ -1,0 +1,190 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_XA\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#, python-brace-format
+msgid "  outputs={outputs_len} workspaces={workspaces_len} windows={windows_len} focused_output={focused_output} links_pending={links_pending} overview_open={overview_open}\n"
+msgstr "[  öûţþûţš={outputs_len} ŵöŕķšþàçéš={workspaces_len} ŵîñðöŵš={windows_len} ƒöçûšéð_öûţþûţ={focused_output} ļîñķš_þéñðîñĝ={links_pending} öṽéŕṽîéŵ_öþéñ={overview_open}························································]\n"
+
+#, python-brace-format
+msgid "  window id={id} workspace={workspace_id} focused={is_focused} floating={is_floating} urgent={is_urgent}\n"
+msgstr "[  ŵîñðöŵ îð={id} ŵöŕķšþàçé={workspace_id} ƒöçûšéð={is_focused} ƒļöàţîñĝ={is_floating} ûŕĝéñţ={is_urgent}···································]\n"
+
+#, python-brace-format
+msgid "  workspace id={id} idx={idx} output={output} active={is_active} focused={is_focused} window={active_window_id}\n"
+msgstr "[  ŵöŕķšþàçé îð={id} îðẋ={idx} öûţþûţ={output} àçţîṽé={is_active} ƒöçûšéð={is_focused} ŵîñðöŵ={active_window_id}·····································]\n"
+
+msgid "0..64 logical pixels"
+msgstr "[0..64 ļöĝîçàļ þîẋéļš·····]"
+
+msgid "1..4 distinct XKB layout codes, comma-separated (us,ru); empty unsets"
+msgstr "[1..4 ðîšţîñçţ ẊĶƁ ļàÿöûţ çöðéš, çöɱɱà-šéþàŕàţéð (ûš,ŕû); éɱþţÿ ûñšéţš·······················]"
+
+msgid "Arrows/Tab/j/k: select; Enter/e: edit; Esc/q: quit; r: reset; h: history; u: undo. Number + Enter: select."
+msgstr "[Àŕŕöŵš/Ţàƀ/ĵ/ķ: šéļéçţ; Éñţéŕ/é: éðîţ; Éšç/ǫ: ǫûîţ; ŕ: ŕéšéţ; ĥ: ĥîšţöŕÿ; û: ûñðö. Ñûɱƀéŕ + Éñţéŕ: šéļéçţ.····································]"
+
+msgid "Cannot read terminal settings"
+msgstr "[Çàññöţ ŕéàð ţéŕɱîñàļ šéţţîñĝš·········]"
+
+msgid "Cannot set terminal input mode"
+msgstr "[Çàññöţ šéţ ţéŕɱîñàļ îñþûţ ɱöðé·········]"
+
+msgid "Cannot set terminal input timing"
+msgstr "[Çàññöţ šéţ ţéŕɱîñàļ îñþûţ ţîɱîñĝ··········]"
+
+msgid "Change ID to undo (empty cancels)> "
+msgstr "[Çĥàñĝé ÎÐ ţö ûñðö (éɱþţÿ çàñçéļš)> ···········]"
+
+msgid "Emaki settings — draft keyboard menu"
+msgstr "[Éɱàķî šéţţîñĝš — ðŕàƒţ ķéÿƀöàŕð ɱéñû···········]"
+
+#, python-brace-format
+msgid "Emaki {emaki_version} — map format {schema_version} (expected paths, not an installed-file inventory)\n"
+msgstr "[Éɱàķî {emaki_version} — ɱàþ ƒöŕɱàţ {schema_version} (éẋþéçţéð þàţĥš, ñöţ àñ îñšţàļļéð-ƒîļé îñṽéñţöŕÿ)··································]\n"
+
+#, python-brace-format
+msgid "Emaki {emaki_version} — state format {schema_version}, {timeout_ms} ms per component\n"
+msgstr "[Éɱàķî {emaki_version} — šţàţé ƒöŕɱàţ {schema_version}, {timeout_ms} ɱš þéŕ çöɱþöñéñţ····························]\n"
+
+msgid "Esc: cancel; Enter: save."
+msgstr "[Éšç: çàñçéļ; Éñţéŕ: šàṽé.·······]"
+
+msgid "HH:MM local time, distinct from dark_time; empty unsets"
+msgstr "[ĤĤ:ṀṀ ļöçàļ ţîɱé, ðîšţîñçţ ƒŕöɱ ðàŕķ_ţîɱé; éɱþţÿ ûñšéţš··················]"
+
+msgid "HH:MM local time, distinct from light_time; empty unsets"
+msgstr "[ĤĤ:ṀṀ ļöçàļ ţîɱé, ðîšţîñçţ ƒŕöɱ ļîĝĥţ_ţîɱé; éɱþţÿ ûñšéţš··················]"
+
+msgid "Mod + optional Ctrl/Alt/Shift + one XKB keysym; <=80 ASCII bytes"
+msgstr "[Ṁöð + öþţîöñàļ Çţŕļ/Àļţ/Šĥîƒţ + öñé ẊĶƁ ķéÿšÿɱ; <=80 ÀŠÇÎÎ ƀÿţéš·····················]"
+
+msgid "Number: select; j/k: next/previous; e: edit; r: reset; h: history; u: undo; q: quit. Press Enter after each command."
+msgstr "[Ñûɱƀéŕ: šéļéçţ; ĵ/ķ: ñéẋţ/þŕéṽîöûš; é: éðîţ; ŕ: ŕéšéţ; ĥ: ĥîšţöŕÿ; û: ûñðö; ǫ: ǫûîţ. Þŕéšš Éñţéŕ àƒţéŕ éàçĥ çöɱɱàñð.·······································]"
+
+msgid "Super+Space | Alt+Shift | Caps Lock; empty unsets"
+msgstr "[Šûþéŕ+Šþàçé | Àļţ+Šĥîƒţ | Çàþš Ļöçķ; éɱþţÿ ûñšéţš················]"
+
+msgid "Unknown command. Choose a listed number or command."
+msgstr "[Ûñķñöŵñ çöɱɱàñð. Çĥööšé à ļîšţéð ñûɱƀéŕ öŕ çöɱɱàñð.················]"
+
+msgid "Usage: emaki <command> [options]\n\nCommands:\n  version                       Print the Emaki build version\n  map [--json]                  Expected paths and ownership; no filesystem writes\n  state [--json] [--timeout-ms N]\n                                Read session state; default 1000 ms per component\n  niri snapshot [--json] [--timeout-ms N]\n                                Initial window/workspace/output model (niri 26.04)\n  niri watch [--json] [--timeout-ms N]\n                                Observe changes; reconnect with a fresh model\n  niri focus-window --id N       Focus a window by niri ID\n  niri focus-workspace --id N    Focus a workspace by niri ID, never index\n  niri move-window-to-workspace --id N --workspace-id M\n                                Move explicit window; do not follow focus\n  niri close-window --id N       Request closing an explicit window\n\nOptions:\n  -h, --help                    Print help\n  -V, --version                 Print the Emaki build version\n  --timeout-ms N                State/niri: 10..10000 ms; default 1000\n\nExit codes:\n  0  Success; all state components available / all map paths resolved\n  1  Partial observation, unresolved paths or rejected niri command; valid JSON\n  2  Invalid arguments, serialization failure or output error\n  3  Niri command sent/possibly sent, but result not confirmed; never auto-retried\n\nState statuses: available, absent, denied, incomplete, timeout, error.\nAvailable means the documented probe succeeded, not full service health.\nRead-only queries never create directories or activate D-Bus services.\nState omits window titles, app IDs, SSIDs, credentials and personal paths.\nMap intentionally shows resolved paths; planned entries need not exist."
+msgstr "[Ûšàĝé: éɱàķî <command> [öþţîöñš]\n\nÇöɱɱàñðš:\n  ṽéŕšîöñ                       Þŕîñţ ţĥé Éɱàķî ƀûîļð ṽéŕšîöñ\n  ɱàþ [--ĵšöñ]                  Éẋþéçţéð þàţĥš àñð öŵñéŕšĥîþ; ñö ƒîļéšÿšţéɱ ŵŕîţéš\n  šţàţé [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n                                Ŕéàð šéššîöñ šţàţé; ðéƒàûļţ 1000 ɱš þéŕ çöɱþöñéñţ\n  ñîŕî šñàþšĥöţ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n                                Îñîţîàļ ŵîñðöŵ/ŵöŕķšþàçé/öûţþûţ ɱöðéļ (ñîŕî 26.04)\n  ñîŕî ŵàţçĥ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n                                Öƀšéŕṽé çĥàñĝéš; ŕéçöññéçţ ŵîţĥ à ƒŕéšĥ ɱöðéļ\n  ñîŕî ƒöçûš-ŵîñðöŵ --îð Ñ       Ƒöçûš à ŵîñðöŵ ƀÿ ñîŕî ÎÐ\n  ñîŕî ƒöçûš-ŵöŕķšþàçé --îð Ñ    Ƒöçûš à ŵöŕķšþàçé ƀÿ ñîŕî ÎÐ, ñéṽéŕ îñðéẋ\n  ñîŕî ɱöṽé-ŵîñðöŵ-ţö-ŵöŕķšþàçé --îð Ñ --ŵöŕķšþàçé-îð Ṁ\n                                Ṁöṽé éẋþļîçîţ ŵîñðöŵ; ðö ñöţ ƒöļļöŵ ƒöçûš\n  ñîŕî çļöšé-ŵîñðöŵ --îð Ñ       Ŕéǫûéšţ çļöšîñĝ àñ éẋþļîçîţ ŵîñðöŵ\n\nÖþţîöñš:\n  -ĥ, --ĥéļþ                    Þŕîñţ ĥéļþ\n  -Ṽ, --ṽéŕšîöñ                 Þŕîñţ ţĥé Éɱàķî ƀûîļð ṽéŕšîöñ\n  --ţîɱéöûţ-ɱš Ñ                Šţàţé/ñîŕî: 10..10000 ɱš; ðéƒàûļţ 1000\n\nÉẋîţ çöðéš:\n  0  Šûççéšš; àļļ šţàţé çöɱþöñéñţš àṽàîļàƀļé / àļļ ɱàþ þàţĥš ŕéšöļṽéð\n  1  Þàŕţîàļ öƀšéŕṽàţîöñ, ûñŕéšöļṽéð þàţĥš öŕ ŕéĵéçţéð ñîŕî çöɱɱàñð; ṽàļîð ĴŠÖÑ\n  2  Îñṽàļîð àŕĝûɱéñţš, šéŕîàļîžàţîöñ ƒàîļûŕé öŕ öûţþûţ éŕŕöŕ\n  3  Ñîŕî çöɱɱàñð šéñţ/þöššîƀļÿ šéñţ, ƀûţ ŕéšûļţ ñöţ çöñƒîŕɱéð; ñéṽéŕ àûţö-ŕéţŕîéð\n\nŠţàţé šţàţûšéš: àṽàîļàƀļé, àƀšéñţ, ðéñîéð, îñçöɱþļéţé, ţîɱéöûţ, éŕŕöŕ.\nÀṽàîļàƀļé ɱéàñš ţĥé ðöçûɱéñţéð þŕöƀé šûççééðéð, ñöţ ƒûļļ šéŕṽîçé ĥéàļţĥ.\nŔéàð-öñļÿ ǫûéŕîéš ñéṽéŕ çŕéàţé ðîŕéçţöŕîéš öŕ àçţîṽàţé Ð-Ɓûš šéŕṽîçéš.\nŠţàţé öɱîţš ŵîñðöŵ ţîţļéš, àþþ ÎÐš, ŠŠÎÐš, çŕéðéñţîàļš àñð þéŕšöñàļ þàţĥš.\nṀàþ îñţéñţîöñàļļÿ šĥöŵš ŕéšöļṽéð þàţĥš; þļàññéð éñţŕîéš ñééð ñöţ éẋîšţ.······························································································································································································································································································································································································································································································································································································································]"
+
+msgid "Usage: emaki [command]\n\nDesktop help:\n  Open apps: press Super + D.\n  Getting started: open Welcome to Emaki from the app list.\n  All shortcuts: press Super + Shift + /.\n  Your own shortcuts override Emaki defaults, including new ones (niri bindings).\n\nCommands:\n  emaki                         Show system information (fastfetch)\n  emaki settings [page]         Open settings, optionally at a page\n  emaki --version               Show the Emaki version\n  emaki help                    Show this help\n  emaki help --internal         Show diagnostic commands\n\nSuper is the Windows key, or Command on a Mac keyboard."
+msgstr "[Ûšàĝé: éɱàķî [çöɱɱàñð]\n\nÐéšķţöþ ĥéļþ:\n  Öþéñ àþþš: þŕéšš Šûþéŕ + Ð.\n  Ĝéţţîñĝ šţàŕţéð: öþéñ Ŵéļçöɱé ţö Éɱàķî ƒŕöɱ ţĥé àþþ ļîšţ.\n  Àļļ šĥöŕţçûţš: þŕéšš Šûþéŕ + Šĥîƒţ + /.\n  Ÿöûŕ öŵñ šĥöŕţçûţš öṽéŕŕîðé Éɱàķî ðéƒàûļţš, îñçļûðîñĝ ñéŵ öñéš (ñîŕî ƀîñðîñĝš).\n\nÇöɱɱàñðš:\n  éɱàķî                         Šĥöŵ šÿšţéɱ îñƒöŕɱàţîöñ (ƒàšţƒéţçĥ)\n  éɱàķî šéţţîñĝš [þàĝé]         Öþéñ šéţţîñĝš, öþţîöñàļļÿ àţ à þàĝé\n  éɱàķî --ṽéŕšîöñ               Šĥöŵ ţĥé Éɱàķî ṽéŕšîöñ\n  éɱàķî ĥéļþ                    Šĥöŵ ţĥîš ĥéļþ\n  éɱàķî ĥéļþ --îñţéŕñàļ         Šĥöŵ ðîàĝñöšţîç çöɱɱàñðš\n\nŠûþéŕ îš ţĥé Ŵîñðöŵš ķéÿ, öŕ Çöɱɱàñð öñ à Ṁàç ķéÿƀöàŕð.·····················································································································································································································]"
+
+msgid "Usage: emaki niri <command> [options]\n  snapshot | watch [--json] [--timeout-ms N]\n  focus-window --id N [--json] [--timeout-ms N]\n  focus-workspace --id N [--json] [--timeout-ms N]\n  move-window-to-workspace --id N --workspace-id M [--json] [--timeout-ms N]\n  close-window --id N [--json] [--timeout-ms N]\n  switch-layout --index N [--json] [--timeout-ms N]\nniri IPC 26.04 only. Separate observation/action JSON schemas, each version 1.\nSnapshot/watch are read-only. Actions require explicit decimal u64 niri IDs.\nSwitch-layout addresses a configured keyboard layout by its decimal index (0..255), never next/prev.\nActions check fresh target state, send once, and confirm a postcondition on the same socket.\nMove uses focus=false. Close is a request to the app, never force-kill.\nAction outcomes: confirmed=0, rejected=1, unconfirmed=3; invalid arguments/output=2.\nAction --json writes one compact JSON object followed by a newline, for every outcome.\nDelivery is not_sent/sent/unknown, independently of Handled acknowledgement.\nAction timeout covers preflight, send, reply and confirmation together; no retry.\nWatch emits complete JSON objects, one per changed model/connection; flushes each line.\nWindows/workspaces come from EventStream; outputs are polled every 1000 ms.\nEach reconnect replaces the entire model and increments generation; old IDs expire.\nDisconnected/incompatible: model=null, explicit reason; watch retries every 500 ms.\nNo titles, app IDs, PIDs, workspace names, monitor serials or socket paths in output.\nSnapshot has exit code 0 connected, 1 unavailable, 2 bad arguments/output error.\nWatch runs until interrupted (Ctrl+C); failures are observations, not silent exit.\n--timeout-ms: 10..10000, bounds startup/requests/partial lines, not idle watch duration."
+msgstr "[Ûšàĝé: éɱàķî ñîŕî <command> [öþţîöñš]\n  šñàþšĥöţ | ŵàţçĥ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n  ƒöçûš-ŵîñðöŵ --îð Ñ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n  ƒöçûš-ŵöŕķšþàçé --îð Ñ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n  ɱöṽé-ŵîñðöŵ-ţö-ŵöŕķšþàçé --îð Ñ --ŵöŕķšþàçé-îð Ṁ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n  çļöšé-ŵîñðöŵ --îð Ñ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\n  šŵîţçĥ-ļàÿöûţ --îñðéẋ Ñ [--ĵšöñ] [--ţîɱéöûţ-ɱš Ñ]\nñîŕî ÎÞÇ 26.04 öñļÿ. Šéþàŕàţé öƀšéŕṽàţîöñ/àçţîöñ ĴŠÖÑ šçĥéɱàš, éàçĥ ṽéŕšîöñ 1.\nŠñàþšĥöţ/ŵàţçĥ àŕé ŕéàð-öñļÿ. Àçţîöñš ŕéǫûîŕé éẋþļîçîţ ðéçîɱàļ û64 ñîŕî ÎÐš.\nŠŵîţçĥ-ļàÿöûţ àððŕéššéš à çöñƒîĝûŕéð ķéÿƀöàŕð ļàÿöûţ ƀÿ îţš ðéçîɱàļ îñðéẋ (0..255), ñéṽéŕ ñéẋţ/þŕéṽ.\nÀçţîöñš çĥéçķ ƒŕéšĥ ţàŕĝéţ šţàţé, šéñð öñçé, àñð çöñƒîŕɱ à þöšţçöñðîţîöñ öñ ţĥé šàɱé šöçķéţ.\nṀöṽé ûšéš ƒöçûš=ƒàļšé. Çļöšé îš à ŕéǫûéšţ ţö ţĥé àþþ, ñéṽéŕ ƒöŕçé-ķîļļ.\nÀçţîöñ öûţçöɱéš: çöñƒîŕɱéð=0, ŕéĵéçţéð=1, ûñçöñƒîŕɱéð=3; îñṽàļîð àŕĝûɱéñţš/öûţþûţ=2.\nÀçţîöñ --ĵšöñ ŵŕîţéš öñé çöɱþàçţ ĴŠÖÑ öƀĵéçţ ƒöļļöŵéð ƀÿ à ñéŵļîñé, ƒöŕ éṽéŕÿ öûţçöɱé.\nÐéļîṽéŕÿ îš ñöţ_šéñţ/šéñţ/ûñķñöŵñ, îñðéþéñðéñţļÿ öƒ Ĥàñðļéð àçķñöŵļéðĝéɱéñţ.\nÀçţîöñ ţîɱéöûţ çöṽéŕš þŕéƒļîĝĥţ, šéñð, ŕéþļÿ àñð çöñƒîŕɱàţîöñ ţöĝéţĥéŕ; ñö ŕéţŕÿ.\nŴàţçĥ éɱîţš çöɱþļéţé ĴŠÖÑ öƀĵéçţš, öñé þéŕ çĥàñĝéð ɱöðéļ/çöññéçţîöñ; ƒļûšĥéš éàçĥ ļîñé.\nŴîñðöŵš/ŵöŕķšþàçéš çöɱé ƒŕöɱ ÉṽéñţŠţŕéàɱ; öûţþûţš àŕé þöļļéð éṽéŕÿ 1000 ɱš.\nÉàçĥ ŕéçöññéçţ ŕéþļàçéš ţĥé éñţîŕé ɱöðéļ àñð îñçŕéɱéñţš ĝéñéŕàţîöñ; öļð ÎÐš éẋþîŕé.\nÐîšçöññéçţéð/îñçöɱþàţîƀļé: ɱöðéļ=ñûļļ, éẋþļîçîţ ŕéàšöñ; ŵàţçĥ ŕéţŕîéš éṽéŕÿ 500 ɱš.\nÑö ţîţļéš, àþþ ÎÐš, ÞÎÐš, ŵöŕķšþàçé ñàɱéš, ɱöñîţöŕ šéŕîàļš öŕ šöçķéţ þàţĥš îñ öûţþûţ.\nŠñàþšĥöţ ĥàš éẋîţ çöðé 0 çöññéçţéð, 1 ûñàṽàîļàƀļé, 2 ƀàð àŕĝûɱéñţš/öûţþûţ éŕŕöŕ.\nŴàţçĥ ŕûñš ûñţîļ îñţéŕŕûþţéð (Çţŕļ+Ç); ƒàîļûŕéš àŕé öƀšéŕṽàţîöñš, ñöţ šîļéñţ éẋîţ.\n--ţîɱéöûţ-ɱš: 10..10000, ƀöûñðš šţàŕţûþ/ŕéǫûéšţš/þàŕţîàļ ļîñéš, ñöţ îðļé ŵàţçĥ ðûŕàţîöñ.··············································································································································································································································································································································································································································································································································································································································]"
+
+msgid "Usage: emaki settings [page | command] [options]\nWithout a command, open settings inside the running shell launcher.\nUse a page name (for example, wifi) to open that page.\n  list                       List settings, current values, defaults and sources\n  get KEY                    Read one setting\n  set KEY VALUE              Validate, save and apply a setting\n  reset KEY                  Restore the package default\n  reset appearance           Restore theme, accent and schedule together\n  history                    List persisted changes\n  undo ID                    Restore changed keys, refusing later-key conflicts\nOptions:\n  --text                     Open the keyboard settings menu instead\n  --json                     Print a command reply as JSON (not for the menu)\n  --profile-root PATH        Use an isolated test profile with matching XDG paths\n  --timeout-ms N             Write/menu validation deadline: 10..10000 ms (default 2000)\nThe default store belongs to the logged-in person in Emaki's managed settings zone.\nPersonal niri configuration is never edited. Application failures are reported by\nthe core; session_applied describes the result, not just whether a value was saved.\nUse list for each key's type, allowed values and application details.\nExit codes: 0 success, 1 rejected/conflict, 2 arguments/output error,\n3 committed with incomplete durability/history; the next call recovers."
+msgstr "[Ûšàĝé: éɱàķî šéţţîñĝš [þàĝé | çöɱɱàñð] [öþţîöñš]\nŴîţĥöûţ à çöɱɱàñð, öþéñ šéţţîñĝš îñšîðé ţĥé ŕûññîñĝ šĥéļļ ļàûñçĥéŕ.\nÛšé à þàĝé ñàɱé (ƒöŕ éẋàɱþļé, ŵîƒî) ţö öþéñ ţĥàţ þàĝé.\n  ļîšţ                       Ļîšţ šéţţîñĝš, çûŕŕéñţ ṽàļûéš, ðéƒàûļţš àñð šöûŕçéš\n  ĝéţ ĶÉŸ                    Ŕéàð öñé šéţţîñĝ\n  šéţ ĶÉŸ ṼÀĻÛÉ              Ṽàļîðàţé, šàṽé àñð àþþļÿ à šéţţîñĝ\n  ŕéšéţ ĶÉŸ                  Ŕéšţöŕé ţĥé þàçķàĝé ðéƒàûļţ\n  ŕéšéţ àþþéàŕàñçé           Ŕéšţöŕé ţĥéɱé, àççéñţ àñð šçĥéðûļé ţöĝéţĥéŕ\n  ĥîšţöŕÿ                    Ļîšţ þéŕšîšţéð çĥàñĝéš\n  ûñðö ÎÐ                    Ŕéšţöŕé çĥàñĝéð ķéÿš, ŕéƒûšîñĝ ļàţéŕ-ķéÿ çöñƒļîçţš\nÖþţîöñš:\n  --ţéẋţ                     Öþéñ ţĥé ķéÿƀöàŕð šéţţîñĝš ɱéñû îñšţéàð\n  --ĵšöñ                     Þŕîñţ à çöɱɱàñð ŕéþļÿ àš ĴŠÖÑ (ñöţ ƒöŕ ţĥé ɱéñû)\n  --þŕöƒîļé-ŕööţ ÞÀŢĤ        Ûšé àñ îšöļàţéð ţéšţ þŕöƒîļé ŵîţĥ ɱàţçĥîñĝ ẊÐĜ þàţĥš\n  --ţîɱéöûţ-ɱš Ñ             Ŵŕîţé/ɱéñû ṽàļîðàţîöñ ðéàðļîñé: 10..10000 ɱš (ðéƒàûļţ 2000)\nŢĥé ðéƒàûļţ šţöŕé ƀéļöñĝš ţö ţĥé ļöĝĝéð-îñ þéŕšöñ îñ Éɱàķî'š ɱàñàĝéð šéţţîñĝš žöñé.\nÞéŕšöñàļ ñîŕî çöñƒîĝûŕàţîöñ îš ñéṽéŕ éðîţéð. Àþþļîçàţîöñ ƒàîļûŕéš àŕé ŕéþöŕţéð ƀÿ\nţĥé çöŕé; šéššîöñ_àþþļîéð ðéšçŕîƀéš ţĥé ŕéšûļţ, ñöţ ĵûšţ ŵĥéţĥéŕ à ṽàļûé ŵàš šàṽéð.\nÛšé ļîšţ ƒöŕ éàçĥ ķéÿ'š ţÿþé, àļļöŵéð ṽàļûéš àñð àþþļîçàţîöñ ðéţàîļš.\nÉẋîţ çöðéš: 0 šûççéšš, 1 ŕéĵéçţéð/çöñƒļîçţ, 2 àŕĝûɱéñţš/öûţþûţ éŕŕöŕ,\n3 çöɱɱîţţéð ŵîţĥ îñçöɱþļéţé ðûŕàƀîļîţÿ/ĥîšţöŕÿ; ţĥé ñéẋţ çàļļ ŕéçöṽéŕš.·············································································································································································································································································································································································································································································································]"
+
+#, python-brace-format
+msgid "Zones (package, managed, yours) are explained in {page}\n"
+msgstr "[Žöñéš (þàçķàĝé, ɱàñàĝéð, ÿöûŕš) àŕé éẋþļàîñéð îñ {page}··················]\n"
+
+msgid "absolute path to an existing regular image file; <=4096 bytes, no quotes/backslashes/control characters; empty unsets"
+msgstr "[àƀšöļûţé þàţĥ ţö àñ éẋîšţîñĝ ŕéĝûļàŕ îɱàĝé ƒîļé; <=4096 ƀÿţéš, ñö ǫûöţéš/ƀàçķšļàšĥéš/çöñţŕöļ çĥàŕàçţéŕš; éɱþţÿ ûñšéţš·······································]"
+
+msgid "always | desktop | fullscreen | never; empty unsets both visibility flags"
+msgstr "[àļŵàÿš | ðéšķţöþ | ƒûļļšçŕééñ | ñéṽéŕ; éɱþţÿ ûñšéţš ƀöţĥ ṽîšîƀîļîţÿ ƒļàĝš························]"
+
+#, python-brace-format
+msgid "conflict {conflict_key}: last change {conflict_actual_change}, requested {conflict_requested_change}\n"
+msgstr "[çöñƒļîçţ {conflict_key}: ļàšţ çĥàñĝé {conflict_actual_change}, ŕéǫûéšţéð {conflict_requested_change}·································]\n"
+
+msgid "desktop entry id ending in .desktop; empty unsets"
+msgstr "[ðéšķţöþ éñţŕÿ îð éñðîñĝ îñ .ðéšķţöþ; éɱþţÿ ûñšéţš················]"
+
+msgid "emaki: cannot serialize response"
+msgstr "[éɱàķî: çàññöţ šéŕîàļîžé ŕéšþöñšé··········]"
+
+#, python-brace-format
+msgid "emaki: cannot start fastfetch: {error}"
+msgstr "[éɱàķî: çàññöţ šţàŕţ ƒàšţƒéţçĥ: {error}············]"
+
+msgid "emaki: fastfetch is not installed or is not on PATH."
+msgstr "[éɱàķî: ƒàšţƒéţçĥ îš ñöţ îñšţàļļéð öŕ îš ñöţ öñ ÞÀŢĤ.·················]"
+
+msgid "emaki: invalid arguments"
+msgstr "[éɱàķî: îñṽàļîð àŕĝûɱéñţš·······]"
+
+msgid "full | half | third | twothirds; empty unsets"
+msgstr "[ƒûļļ | ĥàļƒ | ţĥîŕð | ţŵöţĥîŕðš; éɱþţÿ ûñšéţš··············]"
+
+msgid "isolated_profile_only, not connected yet"
+msgstr "[îšöļàţéð_þŕöƒîļé_öñļÿ, ñöţ çöññéçţéð ÿéţ············]"
+
+msgid "light | dark | automatic; empty unsets"
+msgstr "[ļîĝĥţ | ðàŕķ | àûţöɱàţîç; éɱþţÿ ûñšéţš············]"
+
+#, python-brace-format
+msgid "machine {key}: before {before}, after {after}\n"
+msgstr "[ɱàçĥîñé {key}: ƀéƒöŕé {before}, àƒţéŕ {after}··············]\n"
+
+#, python-brace-format
+msgid "niri {command}: {outcome} ({reason})\n  delivery={delivery}, acknowledged={acknowledged}, phase={phase}\n  before={before}\n  after={after}\n"
+msgstr "[ñîŕî {command}: {outcome} ({reason})\n  ðéļîṽéŕÿ={delivery}, àçķñöŵļéðĝéð={acknowledged}, þĥàšé={phase}\n  ƀéƒöŕé={before}\n  àƒţéŕ={after}··············································]\n"
+
+#, python-brace-format
+msgid "niri {connection_status}: {connection_reason}; generation={generation}, sequence={sequence}\n"
+msgstr "[ñîŕî {connection_status}: {connection_reason}; ĝéñéŕàţîöñ={generation}, šéǫûéñçé={sequence}······························]\n"
+
+msgid "orange | coral | rose | amber | green | teal | blue | violet; empty unsets"
+msgstr "[öŕàñĝé | çöŕàļ | ŕöšé | àɱƀéŕ | ĝŕééñ | ţéàļ | ƀļûé | ṽîöļéţ; éɱþţÿ ûñšéţš························]"
+
+#, python-brace-format
+msgid "recovery: {note}\n"
+msgstr "[ŕéçöṽéŕÿ: {note}····]\n"
+
+msgid "settings: launcher unavailable; use emaki settings --text for the keyboard menu.\n"
+msgstr "[šéţţîñĝš: ļàûñçĥéŕ ûñàṽàîļàƀļé; ûšé éɱàķî šéţţîñĝš --ţéẋţ ƒöŕ ţĥé ķéÿƀöàŕð ɱéñû.··························]\n"
+
+#, python-brace-format
+msgid "settings: {reason}\n"
+msgstr "[šéţţîñĝš: {reason}·····]\n"
+
+#, python-brace-format
+msgid "settings: {status} ({reason}); session_applied={session_applied}; generation={generation_status}\n"
+msgstr "[šéţţîñĝš: {status} ({reason}); šéššîöñ_àþþļîéð={session_applied}; ĝéñéŕàţîöñ={generation_status}································]\n"
+
+msgid "settings> "
+msgstr "[šéţţîñĝš> ··]"
+
+msgid "true | false; empty unsets"
+msgstr "[ţŕûé | ƒàļšé; éɱþţÿ ûñšéţš········]"
+
+msgid "true | false; false or empty restores inherited focus behavior"
+msgstr "[ţŕûé | ƒàļšé; ƒàļšé öŕ éɱþţÿ ŕéšţöŕéš îñĥéŕîţéð ƒöçûš ƀéĥàṽîöŕ····················]"
+
+msgid "unresolved"
+msgstr "[ûñŕéšöļṽéð··]"
+
+msgid "validated notification or sound policy; empty unsets"
+msgstr "[ṽàļîðàţéð ñöţîƒîçàţîöñ öŕ šöûñð þöļîçÿ; éɱþţÿ ûñšéţš·················]"
+
+msgid "value> "
+msgstr "[ṽàļûé> ·]"
+
+#, python-brace-format
+msgid "{c_id}: {c_status_as_str} ({c_reason})\n  source: {c_source}\n"
+msgstr "[{c_id}: {c_status_as_str} ({c_reason})\n  šöûŕçé: {c_source}···················]\n"
+
+#, python-brace-format
+msgid "{id}: {path}\n  zone: {zone}; on update: {on_update}; change via: {change_via}; history: {history}\n  owner: {owner}; {lifecycle}; source: {source}\n"
+msgstr "[{id}: {path}\n  žöñé: {zone}; öñ ûþðàţé: {on_update}; çĥàñĝé ṽîà: {change_via}; ĥîšţöŕÿ: {history}\n  öŵñéŕ: {owner}; {lifecycle}; šöûŕçé: {source}·················································]\n"
+
+#, python-brace-format
+msgid "{key} = {value} (source: {source}; default: {default})\n"
+msgstr "[{key} = {value} (šöûŕçé: {source}; ðéƒàûļţ: {default})·················]\n"
+
+#, python-brace-format
+msgid "{key}: {allowed}. Enter value; :cancel returns without changing it."
+msgstr "[{key}: {allowed}. Éñţéŕ ṽàļûé; :çàñçéļ ŕéţûŕñš ŵîţĥöûţ çĥàñĝîñĝ îţ.······················]"

@@ -32,7 +32,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "appearance"
             keys: ["appearance.theme", "appearance.accent", "appearance.light_time", "appearance.dark_time"]
-            description: "Choose light or dark, automatic hours and an accent colour."
+            description: qsTranslate("SettingsPageRegistry", "Choose light or dark, automatic hours and an accent colour.")
             component: Component {
                 SettingsAppearancePage {
                     catalog: registry.catalog
@@ -41,7 +41,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "privacy"
-            description: "Review recovery, encryption, sudo keys and remembered portal permissions."
+            description: qsTranslate("SettingsPageRegistry", "Review recovery, encryption, sudo keys and remembered portal permissions.")
             searchAnchors: ({
                     "privacy-recovery": "settings-privacy-recovery",
                     "privacy-encryption": "settings-privacy-encryption",
@@ -65,7 +65,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "panel"
             keys: ["bar.autohide_mode", "bar.overview_workspaces", "dock.on", "dock.auto_hide"]
-            description: "Choose when the panel and dock appear."
+            description: qsTranslate("SettingsPageRegistry", "Choose when the panel and dock appear.")
             component: Component {
                 SettingsCorePage {
                     catalog: registry.catalog
@@ -76,7 +76,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "windows"
             keys: ["appearance.gaps", "windows.default_column_width", "windows.focus_follows_mouse"]
-            description: "Choose window spacing, initial width and focus behavior."
+            description: qsTranslate("SettingsPageRegistry", "Choose window spacing, initial width and focus behavior.")
             component: Component {
                 SettingsCorePage {
                     catalog: registry.catalog
@@ -86,7 +86,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "wifi"
-            description: "Join networks, see saved ones, forget them, show a password."
+            description: qsTranslate("SettingsPageRegistry", "Join networks, see saved ones, forget them, show a password.")
             searchAnchors: ({
                     "wifi-hidden-network": "settings-wifi-networks",
                     "wifi-radio": "settings-wifi-power",
@@ -105,7 +105,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "bluetooth"
-            description: "Pair headphones, mice and other devices and see their battery."
+            description: qsTranslate("SettingsPageRegistry", "Pair headphones, mice and other devices and see their battery.")
             searchAnchors: ({
                     "bluetooth-radio": "settings-bluetooth-power",
                     "bluetooth-pairing": "settings-bluetooth-search",
@@ -120,7 +120,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "sound"
-            description: "Choose speakers and microphones, and adjust volume for each app."
+            description: qsTranslate("SettingsPageRegistry", "Choose speakers and microphones, and adjust volume for each app.")
             searchAnchors: ({
                     "sound-mute": "settings-sound-mute",
                     "sound-volume": "settings-sound-volume",
@@ -139,7 +139,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "displays"
-            description: "Arrange your screens and set their resolution, scale and refresh rate."
+            description: qsTranslate("SettingsPageRegistry", "Arrange your screens and set their resolution, scale and refresh rate.")
             searchAnchors: ({
                     "displays-night-light-end": "settings-night-schedule",
                     "displays-night-light-start": "settings-night-schedule",
@@ -165,7 +165,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "battery"
-            description: "See battery status and choose a power mode."
+            description: qsTranslate("SettingsPageRegistry", "See battery status and choose a power mode.")
             searchAnchors: ({
                     "battery-power-mode": "settings-power-profile",
                     "battery-blank-on-battery": "settings-blank-battery",
@@ -183,7 +183,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "keyboard"
             keys: ["keyboard.layouts", "keyboard.switch_key", "keyboard.repeat_delay", "keyboard.repeat_rate", "keybindings.toggle_window_floating"]
-            description: "Choose your layouts, key repeat and shortcuts."
+            description: qsTranslate("SettingsPageRegistry", "Choose your layouts, key repeat and shortcuts.")
             searchAnchors: ({
                     "keyboard-keyboard-shortcuts": "settings-keyboard-shortcuts"
                 })
@@ -197,7 +197,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "mouse"
             keys: ["mouse.speed", "mouse.natural_scroll", "touchpad.speed", "touchpad.natural_scroll", "touchpad.tap", "touchpad.two_finger_right_click", "touchpad.disable_while_typing", "gestures.dnd_edge_view_scroll", "gestures.dnd_edge_workspace_switch"]
-            description: "Choose pointer speed, scrolling and trackpad behavior."
+            description: qsTranslate("SettingsPageRegistry", "Choose pointer speed, scrolling and trackpad behavior.")
             component: Component {
                 MouseSettingsPage {
                     catalog: registry.catalog
@@ -226,7 +226,7 @@ QtObject {
                     "notifications-start": "settings-notifications-start"
                 })
             keys: ["notifications.dnd", "notifications.until", "notifications.schedule", "notifications.rules"]
-            description: "Choose which apps may notify you and when to stay quiet."
+            description: qsTranslate("SettingsPageRegistry", "Choose which apps may notify you and when to stay quiet.")
             component: Component {
                 NotificationsSettingsPage {
                     catalog: registry.catalog
@@ -237,7 +237,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "wallpaper"
             keys: ["appearance.wallpaper"]
-            description: "Choose an Emaki wallpaper or your own picture."
+            description: qsTranslate("SettingsPageRegistry", "Choose an Emaki wallpaper or your own picture.")
             searchAnchors: ({
                     "wallpaper-emaki-wallpapers": "appearance.wallpaper"
                 })
@@ -250,7 +250,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "region"
             keys: ["bar.clock_24_hour"]
-            description: "Choose your language, regional formats and clock settings."
+            description: qsTranslate("SettingsPageRegistry", "Choose your language, regional formats and clock settings.")
             searchAnchors: ({
                     "region-language": "settings-language",
                     "region-24-hour-clock": "settings-24-hour-clock",
@@ -267,7 +267,7 @@ QtObject {
         SettingsPageDefinition {
             pageId: "apps"
             keys: ["defaults.browser", "defaults.mail", "defaults.files", "defaults.terminal", "defaults.editor"]
-            description: "Choose default apps and what starts when you sign in."
+            description: qsTranslate("SettingsPageRegistry", "Choose default apps and what starts when you sign in.")
             searchAnchors: ({
                     "apps-startup-apps": "settings-startup-apps"
                 })
@@ -279,7 +279,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "storage"
-            description: "Inspect disk use and preview safe cleanup."
+            description: qsTranslate("SettingsPageRegistry", "Inspect disk use and preview safe cleanup.")
             searchAnchors: ({
                     "storage-disks": "settings-storage-disks",
                     "storage-snapshots": "settings-storage-snapshots",
@@ -293,7 +293,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "users"
-            description: "Your account, picture and password, and other people on this computer."
+            description: qsTranslate("SettingsPageRegistry", "Your account, picture and password, and other people on this computer.")
             searchAnchors: ({
                     "users-your-account": "settings-users-account",
                     "users-password": "settings-users-password",
@@ -306,7 +306,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "about"
-            description: "Your Emaki version and this computer."
+            description: qsTranslate("SettingsPageRegistry", "Your Emaki version and this computer.")
             searchAnchors: ({
                     "about-hardware": "settings-about-hardware",
                     "about-emaki-version": "settings-about-version",
@@ -321,7 +321,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "updates"
-            description: "Choose the release channel for future updates."
+            description: qsTranslate("SettingsPageRegistry", "Choose the release channel for future updates.")
             searchAnchors: ({
                     "updates-update-channel": "settings-update-channel"
                 })
@@ -334,7 +334,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "lock"
-            description: "Change your password and choose when to lock."
+            description: qsTranslate("SettingsPageRegistry", "Change your password and choose when to lock.")
             searchAnchors: ({
                     "lock-password": "settings-password",
                     "lock-when-to-lock": "settings-lock-delay"

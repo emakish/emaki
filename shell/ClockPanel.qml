@@ -59,6 +59,7 @@ Item {
         } else
             Keyboard.handle(panel, event);
     }
+    property var clockTools: null
     required property NotificationStore store
     property string serverState: "disabled"
     property bool mediaEnabled: false
@@ -184,13 +185,22 @@ Item {
     // day's events or their editor push the rows below them down.
     Connections {
         target: panel.body.scroller
-        function onContentYChanged(): void { panel.repositionDrops(); }
+        function onContentYChanged(): void {
+            panel.repositionDrops();
+        }
     }
     Connections {
         target: panel.body
-        function onNotesTopChanged(): void { panel.repositionDrops(); }
+        function onNotesTopChanged(): void {
+            panel.repositionDrops();
+        }
         // The Notes view hides the calendar's rows: their drops go with them.
-        function onShowingNotesChanged(): void { panel.repositionDrops(); }
+        function onShowingNotesChanged(): void {
+            panel.repositionDrops();
+        }
+        function onShowingClocksChanged(): void {
+            panel.repositionDrops();
+        }
     }
     function repositionDrops(): void {
         hoverTarget = null;
@@ -228,6 +238,14 @@ Item {
             return false;
         if (!drawerContent)
             return true;
+        // Drops live above the content, so honor every clipped viewport explicitly.
+        for (let ancestor = item.parent; ancestor && ancestor !== body; ancestor = ancestor.parent) {
+            if (!ancestor.clip)
+                continue;
+            const local = item.mapToItem(ancestor, 0, 0);
+            if (local.x < 0 || local.y < 0 || local.x + item.width > ancestor.width || local.y + item.height > ancestor.height)
+                return false;
+        }
         const position = item.mapToItem(body, 0, 0);
         return position.y >= body.header && position.y + item.height <= body.drawerHeight;
     }
@@ -497,6 +515,7 @@ Item {
                 visible: opacity > .001
                 glass: panel
                 store: panel.store
+                clockTools: panel.clockTools
                 opened: panel.drawerContent
                 peekIds: panel.peekIds
                 hidePreviewBodies: panel.hidePreviewBodies

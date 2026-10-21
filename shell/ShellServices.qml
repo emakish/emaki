@@ -18,6 +18,7 @@ Scope {
     readonly property alias services: services
     readonly property alias notifications: notes
     readonly property alias notificationService: notificationService
+    readonly property alias clockTools: clockTools
     readonly property alias clipboard: clipboard
     readonly property alias catalog: catalog
     readonly property alias identity: identity
@@ -60,6 +61,11 @@ Scope {
         id: notificationService
         store: notes
     }
+    ClockToolsService {
+        id: clockTools
+        store: notes
+        active: context.live
+    }
     SystemService {
         id: services
         live: context.live
@@ -74,7 +80,7 @@ Scope {
     }
     AppCatalog {
         id: catalog
-        onFailed: (id, name, reason) => notes.local("Emaki", "Couldn’t open " + (name || id), reason)
+        onFailed: (id, name, reason) => notes.local("Emaki", qsTranslate("ShellServices", "Couldn’t open %1").arg(name || id), reason)
     }
     AppIdentity {
         id: identity

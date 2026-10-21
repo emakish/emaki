@@ -145,16 +145,18 @@ impl ActionResult {
         }
     }
     pub fn human(&self) -> String {
-        format!(
-            "niri {:?}: {:?} ({})\n  delivery={:?}, acknowledged={}, phase={:?}\n  before={:?}\n  after={:?}\n",
-            self.command,
-            self.outcome,
-            self.reason,
-            self.delivery,
-            self.acknowledged,
-            self.phase,
-            self.before,
-            self.after
+        crate::i18n::format_text(
+            "niri {command}: {outcome} ({reason})\n  delivery={delivery}, acknowledged={acknowledged}, phase={phase}\n  before={before}\n  after={after}\n",
+            &[
+                ("command", format!("{:?}", self.command)),
+                ("outcome", format!("{:?}", self.outcome)),
+                ("reason", (self.reason).to_string()),
+                ("delivery", format!("{:?}", self.delivery)),
+                ("acknowledged", (self.acknowledged).to_string()),
+                ("phase", format!("{:?}", self.phase)),
+                ("before", format!("{:?}", self.before)),
+                ("after", format!("{:?}", self.after)),
+            ],
         )
     }
 }

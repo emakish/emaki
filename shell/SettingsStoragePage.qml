@@ -24,17 +24,17 @@ Column {
     property var personalTrash: null
     readonly property var kinds: ["snapshots", "cache", "logs", "trash"]
     readonly property var labels: ({
-            snapshots: "Snapshots",
-            cache: "Package cache",
-            logs: "Logs",
-            trash: "Trash"
+            snapshots: qsTranslate("SettingsStoragePage", "Snapshots"),
+            cache: qsTranslate("SettingsStoragePage", "Package cache"),
+            logs: qsTranslate("SettingsStoragePage", "Logs"),
+            trash: qsTranslate("SettingsStoragePage", "Trash")
         })
     function bytes(value): string {
-        return value === null || value === undefined ? "Unknown" : value.toLocaleString(Qt.locale("en_US"), "f", 0) + " B";
+        return value === null || value === undefined ? qsTranslate("SettingsStoragePage", "Unknown") : qsTranslate("SettingsStoragePage", "%1 B").arg(value.toLocaleString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_US") : Qt.locale(), "f", 0));
     }
     function unsharedBytes(details): string {
         if (details.reclaimable_bytes === null && number(details.reclaimable_lower_bound_bytes) && number(details.reclaimable_unknown_files))
-            return "At least " + bytes(details.reclaimable_lower_bound_bytes) + "; " + details.reclaimable_unknown_files + " files unknown";
+            return Translation.englishPlural(qsTranslate("SettingsStoragePage", "At least %1; %n file(s) unknown", "", details.reclaimable_unknown_files), details.reclaimable_unknown_files).arg(bytes(details.reclaimable_lower_bound_bytes));
         return bytes(details.reclaimable_bytes);
     }
     function number(value): bool {
@@ -122,7 +122,7 @@ Column {
             }
             message = operationMessage + (typeof result.message === "string" ? result.message : "");
             if (operation === "cleanup") {
-                message += "\nRemoved entries: " + result.removed_count + "\nSpace returned: " + bytes(result.reclaimed_bytes);
+                message += qsTranslate("SettingsStoragePage", "\nRemoved entries: %1\nSpace returned: %2").arg(result.removed_count).arg(bytes(result.reclaimed_bytes));
                 const completionMessage = message;
                 pending = true;
                 Qt.callLater(function () {
@@ -133,7 +133,7 @@ Column {
             }
         } catch (_) {
             preview = null;
-            message = operationMessage + (code === 126 ? "Authentication was cancelled. Preview again to continue." : "Storage could not be confirmed. Refresh and preview again.");
+            message = operationMessage + (code === 126 ? qsTranslate("SettingsStoragePage", "Authentication was cancelled. Preview again to continue.") : qsTranslate("SettingsStoragePage", "Storage could not be confirmed. Refresh and preview again."));
         }
     }
     Component.onCompleted: refresh(false)
@@ -150,7 +150,7 @@ Column {
                         root.pending = false;
                         root.preview = null;
                         console.warn("The storage helper could not be started.");
-                        root.message = "Storage information could not be opened. Try again.";
+                        root.message = qsTranslate("SettingsStoragePage", "Storage information could not be opened. Try again.");
                     }
                 });
         }
@@ -162,7 +162,7 @@ Column {
     Text {
         width: parent.width
         visible: root.pending || text !== ""
-        text: root.pending ? "Reading storage…" : root.message
+        text: root.pending ? qsTranslate("SettingsStoragePage", "Reading storage…") : root.message
         textFormat: Text.PlainText
         wrapMode: Text.WrapAnywhere
         color: SettingsTheme.dim
@@ -171,16 +171,16 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Disk use"
+        title: qsTranslate("SettingsStoragePage", "Disk use")
         SettingsRow {
             objectName: "settings-storage-disks"
             width: parent.width
-            title: "System and home"
-            explanation: "Shared filesystem totals describe the same pool; do not add them together."
+            title: qsTranslate("SettingsStoragePage", "System and home")
+            explanation: qsTranslate("SettingsStoragePage", "Shared filesystem totals describe the same pool; do not add them together.")
             busy: root.pending
             control: Component {
                 SettingsButton {
-                    text: "Refresh"
+                    text: qsTranslate("SettingsStoragePage", "Refresh")
                     onClicked: root.refresh(false)
                 }
             }
@@ -192,19 +192,19 @@ Column {
                 required property var modelData
                 width: parent.width
                 title: modelData.path + " (" + modelData.filesystem + ")"
-                explanation: "Used: " + root.bytes(modelData.used_bytes) + "\nAvailable: " + root.bytes(modelData.available_bytes) + "\nTotal: " + root.bytes(modelData.total_bytes) + (modelData.shared_with ? "\nShared pool with: " + modelData.shared_with : "")
+                explanation: qsTranslate("SettingsStoragePage", "Used: %1\nAvailable: %2\nTotal: %3").arg(root.bytes(modelData.used_bytes)).arg(root.bytes(modelData.available_bytes)).arg(root.bytes(modelData.total_bytes)) + (modelData.shared_with ? qsTranslate("SettingsStoragePage", "\nShared pool with: %1").arg(modelData.shared_with) : "")
                 controlWidth: 0
             }
         }
         SettingsRow {
             width: parent.width
-            title: "Protected storage details"
-            explanation: "Authenticate to inspect system snapshots, cache and logs."
+            title: qsTranslate("SettingsStoragePage", "Protected storage details")
+            explanation: qsTranslate("SettingsStoragePage", "Authenticate to inspect system snapshots, cache and logs.")
             busy: root.pending
             controlWidth: 180
             control: Component {
                 SettingsButton {
-                    text: "Inspect"
+                    text: qsTranslate("SettingsStoragePage", "Inspect")
                     onClicked: root.refresh(true)
                 }
             }
@@ -212,7 +212,7 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Space by category"
+        title: qsTranslate("SettingsStoragePage", "Space by category")
         Repeater {
             model: root.kinds
             delegate: SettingsRow {
@@ -225,14 +225,14 @@ Column {
                 objectName: "settings-storage-" + modelData
                 width: parent.width
                 title: root.labels[modelData]
-                explanation: root.bytes(details.bytes) + (details.reason ? "\n" + details.reason : "") + (modelData === "snapshots" ? "\nRead only. Cleanup never deletes snapshots." : "")
+                explanation: root.bytes(details.bytes) + (details.reason ? "\n" + details.reason : "") + (modelData === "snapshots" ? qsTranslate("SettingsStoragePage", "\nRead only. Cleanup never deletes snapshots.") : "")
                 busy: root.pending
                 controlWidth: modelData === "snapshots" ? 0 : 180
                 control: modelData === "snapshots" ? null : previewButton
                 Component {
                     id: previewButton
                     SettingsButton {
-                        text: "Preview"
+                        text: qsTranslate("SettingsStoragePage", "Preview")
                         onClicked: root.requestPreview(categoryRow.modelData)
                     }
                 }
@@ -243,10 +243,10 @@ Column {
         objectName: "settings-storage-preview"
         width: parent.width
         visible: root.preview !== null
-        title: "Review cleanup"
+        title: qsTranslate("SettingsStoragePage", "Review cleanup")
         Text {
             width: parent.width
-            text: root.preview ? root.labels[root.preview.kind] + "\nAllocated bytes in selected files: " + root.bytes(root.preview.allocated_bytes) + "\nUnshared file data: " + root.unsharedBytes(root.preview) + "\n" + root.preview.reason + "\nShared or compressed extents can make returned space smaller. Only these exact entries are selected." : ""
+            text: root.preview ? root.labels[root.preview.kind] + qsTranslate("SettingsStoragePage", "\nAllocated bytes in selected files: %1\nUnshared file data: %2\n%3\nShared or compressed extents can make returned space smaller. Only these exact entries are selected.").arg(root.bytes(root.preview.allocated_bytes)).arg(root.unsharedBytes(root.preview)).arg(root.preview.reason) : ""
             textFormat: Text.PlainText
             wrapMode: Text.WrapAnywhere
             color: SettingsTheme.dim
@@ -285,13 +285,13 @@ Column {
                 spacing: 8
                 SettingsButton {
                     objectName: "storage-cancel"
-                    text: "Cancel"
+                    text: qsTranslate("SettingsStoragePage", "Cancel")
                     enabled: !root.pending
                     onClicked: root.cancelPreview()
                 }
                 SettingsButton {
                     objectName: "storage-confirm"
-                    text: "Delete listed entries"
+                    text: qsTranslate("SettingsStoragePage", "Delete listed entries")
                     enabled: !root.pending && root.preview !== null && root.preview.entries.length > 0
                     onClicked: root.confirmPreview()
                 }

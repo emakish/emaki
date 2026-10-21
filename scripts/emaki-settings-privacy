@@ -14,6 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_paths
 import emaki_privacy_portals
 
+from emaki_i18n import translation
+
+_ = translation('shell').gettext
+
 
 def command(args, timeout=20):
     try:
@@ -49,11 +53,11 @@ def mount_encryption(mount, devices):
     def walk(nodes, ancestry=()):
         nonlocal count
         if not isinstance(nodes, list) or len(ancestry) > 32:
-            raise ValueError('invalid block tree')
+            raise ValueError(_('invalid block tree'))
         for node in nodes:
             count += 1
             if count > 4096 or not isinstance(node, dict):
-                raise ValueError('invalid block tree')
+                raise ValueError(_('invalid block tree'))
             branch = ancestry + (node.get('type'),)
             same_fs = (mount.get('fstype') == 'btrfs' and mount.get('uuid')
                        and node.get('uuid') == mount['uuid'])

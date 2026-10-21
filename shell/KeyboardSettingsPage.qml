@@ -58,22 +58,22 @@ Column {
         if (reason && reason.includes(" "))
             return reason;
         if (reason === "keyboard_requires_machine_settings" || reason === "machine_settings_unavailable" || reason === "machine_service_unavailable")
-            return "Keyboard layout changes need the machine settings service.";
+            return qsTranslate("KeyboardSettingsPage", "Keyboard layout changes need the machine settings service.");
         if (reason === "machine_setting_has_no_default")
-            return "Keyboard layouts have no universal default. Choose the languages you use.";
+            return qsTranslate("KeyboardSettingsPage", "Keyboard layouts have no universal default. Choose the languages you use.");
         if (reason === "authorization_refused" || reason === "authorization_required")
-            return "Administrator approval is needed to change keyboard layouts.";
+            return qsTranslate("KeyboardSettingsPage", "Administrator approval is needed to change keyboard layouts.");
         if (reason === "machine_service_timeout")
-            return "The machine settings service took too long to respond. Try again.";
+            return qsTranslate("KeyboardSettingsPage", "The machine settings service took too long to respond. Try again.");
         if (reason === "machine_settings_busy")
-            return "Another machine setting is being changed. Try again shortly.";
+            return qsTranslate("KeyboardSettingsPage", "Another machine setting is being changed. Try again shortly.");
         if (reason === "declared_by_system_configuration")
-            return "Keyboard layouts are set by the system configuration.";
+            return qsTranslate("KeyboardSettingsPage", "Keyboard layouts are set by the system configuration.");
         if (reason === "unknown_layout")
-            return "That keyboard layout is not available. Choose another layout.";
+            return qsTranslate("KeyboardSettingsPage", "That keyboard layout is not available. Choose another layout.");
         if (reason === "invalid_keybinding")
-            return "Enter a key combination such as Super+Shift+T.";
-        return "Could not change the setting. Your previous value is kept.";
+            return qsTranslate("KeyboardSettingsPage", "Enter a key combination such as Super+Shift+T.");
+        return qsTranslate("KeyboardSettingsPage", "Could not change the setting. Your previous value is kept.");
     }
     function shortcutExplanation(key, normal) {
         return lastShortcutKey === key && catalog.lastStatus === "rejected" ? failureLine(catalog.lastAction) : normal;
@@ -199,18 +199,18 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             width: 72
-            text: editor.recording ? "Cancel" : "Record"
-            Accessible.name: editor.recording ? "Cancel shortcut recording" : "Record shortcut"
+            text: editor.recording ? qsTranslate("KeyboardSettingsPage", "Cancel") : qsTranslate("KeyboardSettingsPage", "Record")
+            Accessible.name: editor.recording ? qsTranslate("KeyboardSettingsPage", "Cancel shortcut recording") : qsTranslate("KeyboardSettingsPage", "Record shortcut")
             onClicked: editor.recording ? editor.cancelRecording() : editor.startRecording()
         }
         ToolTip.visible: recording
-        ToolTip.text: "Press a key combination. Escape cancels."
+        ToolTip.text: qsTranslate("KeyboardSettingsPage", "Press a key combination. Escape cancels.")
     }
     Text {
         objectName: "keyboard-error"
         width: parent.width
         visible: ["rejected", "unconfirmed", "uncertain"].includes(page.catalog.lastStatus)
-        text: ["unconfirmed", "uncertain"].includes(page.catalog.lastStatus) ? "Could not confirm the change. Reopen Settings to check." : page.failureLine(page.catalog.lastAction)
+        text: ["unconfirmed", "uncertain"].includes(page.catalog.lastStatus) ? qsTranslate("KeyboardSettingsPage", "Could not confirm the change. Reopen Settings to check.") : page.failureLine(page.catalog.lastAction)
         textFormat: Text.PlainText
         color: SettingsTheme.error
         font.family: SettingsTheme.fontFamily
@@ -220,10 +220,10 @@ Column {
     SettingsCard {
         objectName: "setting-keyboard.layouts"
         width: parent.width
-        title: "Layouts"
+        title: qsTranslate("KeyboardSettingsPage", "Layouts")
         Text {
             width: parent.width
-            text: "The languages you type in, in the order the switch shortcut goes through them."
+            text: qsTranslate("KeyboardSettingsPage", "The languages you type in, in the order the switch shortcut goes through them.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13
@@ -238,7 +238,7 @@ Column {
                 objectName: "keyboard-layout-" + modelData
                 width: parent.width
                 title: page.layoutName(modelData)
-                explanation: index === 0 ? "First in the switching order." : "Layout " + (index + 1) + " in the switching order."
+                explanation: index === 0 ? qsTranslate("KeyboardSettingsPage", "First in the switching order.") : qsTranslate("KeyboardSettingsPage", "Layout %1 in the switching order.").arg(index + 1)
                 value: page.layouts
                 defaultValue: page.layouts
                 managed: page.layoutsRow?.editable === false
@@ -251,21 +251,21 @@ Column {
                             text: "↑"
                             width: 38
                             enabled: layout.index > 0
-                            Accessible.name: "Move " + layout.title + " up"
+                            Accessible.name: qsTranslate("KeyboardSettingsPage", "Move %1 up").arg(layout.title)
                             onClicked: page.moveLayout(layout.index, -1)
                         }
                         SettingsButton {
                             text: "↓"
                             width: 38
                             enabled: layout.index + 1 < page.layouts.length
-                            Accessible.name: "Move " + layout.title + " down"
+                            Accessible.name: qsTranslate("KeyboardSettingsPage", "Move %1 down").arg(layout.title)
                             onClicked: page.moveLayout(layout.index, 1)
                         }
                         SettingsButton {
                             text: "−"
                             width: 38
                             enabled: page.layouts.length > 1
-                            Accessible.name: "Remove " + layout.title
+                            Accessible.name: qsTranslate("KeyboardSettingsPage", "Remove %1").arg(layout.title)
                             onClicked: page.removeLayout(layout.index)
                         }
                     }
@@ -276,14 +276,14 @@ Column {
             objectName: "keyboard-layout-unavailable"
             width: parent.width
             visible: !page.layoutsRow || page.layoutsRow.editable === false || page.layouts.length === 0
-            text: page.layoutsRow?.source === "declared" ? "Keyboard layouts are set by the system configuration." : "Keyboard layouts are unavailable. Check the machine settings service."
+            text: page.layoutsRow?.source === "declared" ? qsTranslate("KeyboardSettingsPage", "Keyboard layouts are set by the system configuration.") : qsTranslate("KeyboardSettingsPage", "Keyboard layouts are unavailable. Check the machine settings service.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13
             wrapMode: Text.WordWrap
         }
         SettingsButton {
-            text: "Reset layouts to default"
+            text: qsTranslate("KeyboardSettingsPage", "Reset layouts to default")
             visible: page.layoutList(page.layoutsRow?.default).length > 0 && JSON.stringify(page.layouts) !== JSON.stringify(page.layoutList(page.layoutsRow.default))
             enabled: page.layoutsEditable
             onClicked: page.catalog.reset("keyboard.layouts")
@@ -292,7 +292,7 @@ Column {
             id: layoutSearch
             objectName: "keyboard-layout-search"
             width: parent.width
-            placeholderText: "Search languages to add"
+            placeholderText: qsTranslate("KeyboardSettingsPage", "Search languages to add")
             Accessible.name: placeholderText
             enabled: page.layoutsEditable && page.layouts.length < 4
         }
@@ -309,12 +309,12 @@ Column {
                 enabled: page.layoutsEditable && page.layouts.length < 4
                 font.family: SettingsTheme.fontFamily
                 font.pixelSize: 13
-                Accessible.name: "Language to add"
+                Accessible.name: qsTranslate("KeyboardSettingsPage", "Language to add")
             }
             SettingsButton {
                 id: addLayout
                 objectName: "keyboard-add-layout"
-                text: "Add layout"
+                text: qsTranslate("KeyboardSettingsPage", "Add layout")
                 enabled: page.layoutsEditable && page.layouts.length < 4 && layoutChoice.currentIndex >= 0
                 onClicked: page.addLayout(layoutChoice.currentValue)
             }
@@ -325,8 +325,8 @@ Column {
         SettingsChoiceRow {
             objectName: "setting-keyboard.switch_key"
             width: parent.width
-            title: "Switch layouts with"
-            explanation: "Go to the next language in your layout list."
+            title: qsTranslate("KeyboardSettingsPage", "Switch layouts with")
+            explanation: qsTranslate("KeyboardSettingsPage", "Go to the next language in your layout list.")
             value: page.value("keyboard.switch_key", "Super+Space")
             defaultValue: page.defaultValue("keyboard.switch_key", "Super+Space")
             options: ["Super+Space", "Alt+Shift", "Caps Lock"].map(value => ({
@@ -342,12 +342,12 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Key repeat"
+        title: qsTranslate("KeyboardSettingsPage", "Key repeat")
         SettingsSliderRow {
             objectName: "setting-keyboard.repeat_delay"
             width: parent.width
-            title: "Delay before repeat"
-            explanation: value + " ms before a held key starts repeating."
+            title: qsTranslate("KeyboardSettingsPage", "Delay before repeat")
+            explanation: qsTranslate("KeyboardSettingsPage", "%1 ms before a held key starts repeating.").arg(Number(value).toFixed(0))
             value: page.value("keyboard.repeat_delay", 600)
             defaultValue: page.defaultValue("keyboard.repeat_delay", 600)
             from: 100
@@ -361,8 +361,8 @@ Column {
         SettingsSliderRow {
             objectName: "setting-keyboard.repeat_rate"
             width: parent.width
-            title: "Repeat speed"
-            explanation: value + " characters per second while a key is held."
+            title: qsTranslate("KeyboardSettingsPage", "Repeat speed")
+            explanation: Translation.englishPlural(qsTranslate("KeyboardSettingsPage", "%n character(s) per second while a key is held.", "", Number(value)), Number(value))
             value: page.value("keyboard.repeat_rate", 25)
             defaultValue: page.defaultValue("keyboard.repeat_rate", 25)
             from: 1
@@ -379,7 +379,7 @@ Column {
             Entry {
                 id: repeatTrial
                 width: parent.width
-                placeholderText: "Hold a key here to try the delay and speed"
+                placeholderText: qsTranslate("KeyboardSettingsPage", "Hold a key here to try the delay and speed")
                 Accessible.name: placeholderText
             }
         }
@@ -387,17 +387,17 @@ Column {
     SettingsCard {
         objectName: "settings-keyboard-shortcuts"
         width: parent.width
-        title: "Shortcuts"
+        title: qsTranslate("KeyboardSettingsPage", "Shortcuts")
         Entry {
             id: shortcutSearch
             objectName: "keyboard-shortcut-search"
             width: parent.width
-            placeholderText: "Search shortcuts — a word or a key"
+            placeholderText: qsTranslate("KeyboardSettingsPage", "Search shortcuts — a word or a key")
             Accessible.name: placeholderText
         }
         Text {
             width: parent.width
-            text: "Enter a combination and press Enter. Super+Ctrl+Esc is reserved for revoking administrator access."
+            text: qsTranslate("KeyboardSettingsPage", "Enter a combination and press Enter. Super+Ctrl+Esc is reserved for revoking administrator access.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13
@@ -408,8 +408,8 @@ Column {
             objectName: "setting-keybindings.toggle_window_floating"
             width: parent.width
             visible: (title + " " + value).toLowerCase().includes(shortcutSearch.text.trim().toLowerCase())
-            title: "Toggle floating window"
-            explanation: page.shortcutExplanation("keybindings.toggle_window_floating", page.catalog.row("keybindings.toggle_window_floating")?.explanation || "Switch the focused window between floating and tiled.")
+            title: qsTranslate("KeyboardSettingsPage", "Toggle floating window")
+            explanation: page.shortcutExplanation("keybindings.toggle_window_floating", page.catalog.row("keybindings.toggle_window_floating")?.explanation || qsTranslate("KeyboardSettingsPage", "Switch the focused window between floating and tiled."))
             value: page.chord(page.value("keybindings.toggle_window_floating", null)) || null
             defaultValue: page.chord(page.defaultValue("keybindings.toggle_window_floating", null)) || null
             unavailable: !page.catalog.row("keybindings.toggle_window_floating") || page.catalog.row("keybindings.toggle_window_floating")?.editable === false
@@ -423,8 +423,8 @@ Column {
             control: Component {
                 ShortcutEntry {
                     text: floating.value || ""
-                    placeholderText: "No shortcut set"
-                    Accessible.name: floating.title + " shortcut"
+                    placeholderText: qsTranslate("KeyboardSettingsPage", "No shortcut set")
+                    Accessible.name: qsTranslate("KeyboardSettingsPage", "%1 shortcut").arg(floating.title)
                     onEditingFinished: {
                         if (text.trim() !== (floating.value || ""))
                             floating.requestValue(text.trim());
@@ -441,7 +441,7 @@ Column {
                 objectName: "setting-" + modelData.key
                 width: parent.width
                 title: modelData.title || modelData.key.slice(10)
-                explanation: page.shortcutExplanation(modelData.key, modelData.explanation || "Choose the keys that perform this action.")
+                explanation: page.shortcutExplanation(modelData.key, modelData.explanation || qsTranslate("KeyboardSettingsPage", "Choose the keys that perform this action."))
                 value: page.chord(modelData.value)
                 defaultValue: page.chord(modelData.default)
                 busy: page.catalog.writing
@@ -456,7 +456,7 @@ Column {
                     ShortcutEntry {
                         objectName: "shortcut-editor"
                         text: String(shortcut.value)
-                        Accessible.name: shortcut.title + " shortcut"
+                        Accessible.name: qsTranslate("KeyboardSettingsPage", "%1 shortcut").arg(shortcut.title)
                         onEditingFinished: {
                             if (text.trim() !== String(shortcut.value))
                                 shortcut.requestValue(text.trim());
@@ -468,7 +468,7 @@ Column {
         }
         Text {
             visible: page.shortcuts.length === 0 && !floating.visible
-            text: "No shortcuts found. Try another word."
+            text: qsTranslate("KeyboardSettingsPage", "No shortcuts found. Try another word.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13

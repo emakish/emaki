@@ -90,7 +90,7 @@ Item {
             width: parent.width
             wrapMode: Text.WordWrap
             visible: root.errorText !== "" || root.managed || root.unavailable
-            text: root.errorText || (root.managed ? "Set by the system" : "Unavailable")
+            text: root.errorText || (root.managed ? qsTranslate("SettingsRow", "Set by the system") : qsTranslate("SettingsRow", "Unavailable"))
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 11
@@ -127,7 +127,7 @@ Item {
         ToolTip {
             id: resetTip
             visible: reset.hovered || reset.activeFocus
-            text: "Reset to default: " + root.formatValue(root.defaultValue)
+            text: qsTranslate("SettingsRow", "Reset to default: %1").arg(root.formatValue(root.defaultValue))
             delay: 400
             contentItem: Text {
                 text: resetTip.text
@@ -143,7 +143,7 @@ Item {
                 border.color: SettingsTheme.rim
             }
         }
-        Accessible.name: "Reset " + root.title + " to default: " + root.formatValue(root.defaultValue)
+        Accessible.name: qsTranslate("SettingsRow", "Reset %1 to default: %2").replace(/%([12])/g, (_, index) => index === "1" ? root.title : root.formatValue(root.defaultValue))
         onClicked: root.requestReset()
     }
 }

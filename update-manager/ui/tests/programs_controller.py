@@ -246,12 +246,15 @@ def run(scenario):
         present = re.search(r'function present\(\): void \{([^}]+)\}', (UI / 'ManagerView.qml').read_text())
         assert present, 'window presentation hook exists'
         fixture = fixture.replace('/* PRESENT_BODY */', present.group(1))
-        (root / 'test.qml').write_text(fixture)
+        (root / 'test.qml').write_text(renderer['substitute'](fixture, values))
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                    QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1',
+                   QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'), EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
                    TEST_SCENARIO=scenario, TEST_CALLS=str(root / 'calls'), TEST_BACKEND=str(backend),
                    TEST_ROWS=str(replay_rows() if scenario == 'replay' else LARGE_ROWS),
                    TEST_REPLAY=os.environ.get('EMAKI_PROGRAMS_REPLAY', ''))
+        (root / 'home').mkdir()
+        env['HOME'] = str(root / 'home')
         for name in ('cache', 'config', 'data', 'state'):
             (root / name).mkdir()
             env['XDG_' + name.upper() + '_HOME'] = str(root / name)
@@ -275,7 +278,7 @@ def run(scenario):
             env['EMAKI_GTK_LAUNCH'] = str(launcher)
         if scenario == 'launch-fallback':
             (root / 'scope-mode').write_text('fail')
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET',
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME',
                      'EMAKI_SHELL_SESSION_ENV', 'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID'):
             env.pop(name, None)
         with tempfile.TemporaryDirectory(prefix='', dir=ROOT / '.cache') as runtime:

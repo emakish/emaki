@@ -1,0 +1,1078 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_XA\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(no reply)"
+msgstr "[(ñö ŕéþļÿ)··]"
+
+msgid "A good place to start"
+msgstr "[À ĝööð þļàçé ţö šţàŕţ······]"
+
+msgid "A recipe never runs as root."
+msgstr "[À ŕéçîþé ñéṽéŕ ŕûñš àš ŕööţ.········]"
+
+msgid "A repository update is already running. Waiting for its result…"
+msgstr "[À ŕéþöšîţöŕÿ ûþðàţé îš àļŕéàðÿ ŕûññîñĝ. Ŵàîţîñĝ ƒöŕ îţš ŕéšûļţ…·····················]"
+
+msgid "A system restore is ready. Restart before making another change."
+msgstr "[À šÿšţéɱ ŕéšţöŕé îš ŕéàðÿ. Ŕéšţàŕţ ƀéƒöŕé ɱàķîñĝ àñöţĥéŕ çĥàñĝé.·····················]"
+
+msgid "A verified system snapshot could not be created. Nothing was installed."
+msgstr "[À ṽéŕîƒîéð šÿšţéɱ šñàþšĥöţ çöûļð ñöţ ƀé çŕéàţéð. Ñöţĥîñĝ ŵàš îñšţàļļéð.·······················]"
+
+msgid "AUR could not be checked. Some program updates may be missing from this list."
+msgstr "[ÀÛŔ çöûļð ñöţ ƀé çĥéçķéð. Šöɱé þŕöĝŕàɱ ûþðàţéš ɱàÿ ƀé ɱîššîñĝ ƒŕöɱ ţĥîš ļîšţ.·························]"
+
+msgid "AUR could not be reached. Its listed versions come from an older check."
+msgstr "[ÀÛŔ çöûļð ñöţ ƀé ŕéàçĥéð. Îţš ļîšţéð ṽéŕšîöñš çöɱé ƒŕöɱ àñ öļðéŕ çĥéçķ.·······················]"
+
+msgid "AUR download sizes are not available. Development packages may need rebuilding even when their listed version has not changed."
+msgstr "[ÀÛŔ ðöŵñļöàð šîžéš àŕé ñöţ àṽàîļàƀļé. Ðéṽéļöþɱéñţ þàçķàĝéš ɱàÿ ñééð ŕéƀûîļðîñĝ éṽéñ ŵĥéñ ţĥéîŕ ļîšţéð ṽéŕšîöñ ĥàš ñöţ çĥàñĝéð.···········································]"
+
+msgid "AUR installs need system snapshots. This system does not support them, so nothing was installed."
+msgstr "[ÀÛŔ îñšţàļļš ñééð šÿšţéɱ šñàþšĥöţš. Ţĥîš šÿšţéɱ ðöéš ñöţ šûþþöŕţ ţĥéɱ, šö ñöţĥîñĝ ŵàš îñšţàļļéð.································]"
+
+msgid "AUR search could not finish. Narrow the search or try again later."
+msgstr "[ÀÛŔ šéàŕçĥ çöûļð ñöţ ƒîñîšĥ. Ñàŕŕöŵ ţĥé šéàŕçĥ öŕ ţŕÿ àĝàîñ ļàţéŕ.······················]"
+
+msgid "AUR search results come from an older check."
+msgstr "[ÀÛŔ šéàŕçĥ ŕéšûļţš çöɱé ƒŕöɱ àñ öļðéŕ çĥéçķ.··············]"
+
+msgid "AUR — update with your AUR tool"
+msgstr "[ÀÛŔ — ûþðàţé ŵîţĥ ÿöûŕ ÀÛŔ ţööļ·········]"
+
+msgid "AUR: Where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "[ÀÛŔ: Ŵĥéŕé àṽàîļàƀļé, öþéñ ţĥé þŕöĝŕàɱ’š þàĝé ţö ƀûîļð îţš ûþðàţé, öŕ ûšé ÿöûŕ ÀÛŔ ţööļ.·····························]"
+
+msgid "Additional Flatpak installations could not be read."
+msgstr "[Àððîţîöñàļ Ƒļàţþàķ îñšţàļļàţîöñš çöûļð ñöţ ƀé ŕéàð.················]"
+
+msgid "Administrator permission is required to refresh the restore point list."
+msgstr "[Àðɱîñîšţŕàţöŕ þéŕɱîššîöñ îš ŕéǫûîŕéð ţö ŕéƒŕéšĥ ţĥé ŕéšţöŕé þöîñţ ļîšţ.·······················]"
+
+msgid "Administrator permission is required to restore the system."
+msgstr "[Àðɱîñîšţŕàţöŕ þéŕɱîššîöñ îš ŕéǫûîŕéð ţö ŕéšţöŕé ţĥé šÿšţéɱ.···················]"
+
+msgid "All updates are installed."
+msgstr "[Àļļ ûþðàţéš àŕé îñšţàļļéð.········]"
+
+msgid "Allows password-free administrator commands for a chosen session. Read the warning before granting access."
+msgstr "[Àļļöŵš þàššŵöŕð-ƒŕéé àðɱîñîšţŕàţöŕ çöɱɱàñðš ƒöŕ à çĥöšéñ šéššîöñ. Ŕéàð ţĥé ŵàŕñîñĝ ƀéƒöŕé ĝŕàñţîñĝ àççéšš.····································]"
+
+msgid "An update check is already running. Check again in a moment."
+msgstr "[Àñ ûþðàţé çĥéçķ îš àļŕéàðÿ ŕûññîñĝ. Çĥéçķ àĝàîñ îñ à ɱöɱéñţ.···················]"
+
+msgid "An update is already running. Wait for it to finish."
+msgstr "[Àñ ûþðàţé îš àļŕéàðÿ ŕûññîñĝ. Ŵàîţ ƒöŕ îţ ţö ƒîñîšĥ.·················]"
+
+msgid "An update or restore is running. Wait for it to finish."
+msgstr "[Àñ ûþðàţé öŕ ŕéšţöŕé îš ŕûññîñĝ. Ŵàîţ ƒöŕ îţ ţö ƒîñîšĥ.··················]"
+
+msgid "Another package operation is running. Try again when it finishes."
+msgstr "[Àñöţĥéŕ þàçķàĝé öþéŕàţîöñ îš ŕûññîñĝ. Ţŕÿ àĝàîñ ŵĥéñ îţ ƒîñîšĥéš.·····················]"
+
+msgid "Another package operation is running. Wait for it to finish, then try again."
+msgstr "[Àñöţĥéŕ þàçķàĝé öþéŕàţîöñ îš ŕûññîñĝ. Ŵàîţ ƒöŕ îţ ţö ƒîñîšĥ, ţĥéñ ţŕÿ àĝàîñ.·························]"
+
+msgid "Another package operation may be running. Wait for it to finish before checking again."
+msgstr "[Àñöţĥéŕ þàçķàĝé öþéŕàţîöñ ɱàÿ ƀé ŕûññîñĝ. Ŵàîţ ƒöŕ îţ ţö ƒîñîšĥ ƀéƒöŕé çĥéçķîñĝ àĝàîñ.·····························]"
+
+msgid "Another package transaction is running."
+msgstr "[Àñöţĥéŕ þàçķàĝé ţŕàñšàçţîöñ îš ŕûññîñĝ.············]"
+
+msgid "Another package transaction is running. Wait for it to finish and try again."
+msgstr "[Àñöţĥéŕ þàçķàĝé ţŕàñšàçţîöñ îš ŕûññîñĝ. Ŵàîţ ƒöŕ îţ ţö ƒîñîšĥ àñð ţŕÿ àĝàîñ.·························]"
+
+msgid "Another program may be installing or updating software. Do not remove the lock while software changes may be running. Restart the computer, then try again."
+msgstr "[Àñöţĥéŕ þŕöĝŕàɱ ɱàÿ ƀé îñšţàļļîñĝ öŕ ûþðàţîñĝ šöƒţŵàŕé. Ðö ñöţ ŕéɱöṽé ţĥé ļöçķ ŵĥîļé šöƒţŵàŕé çĥàñĝéš ɱàÿ ƀé ŕûññîñĝ. Ŕéšţàŕţ ţĥé çöɱþûţéŕ, ţĥéñ ţŕÿ àĝàîñ.·····················································]"
+
+msgid "AppStream DTDs and entities are not supported."
+msgstr "[ÀþþŠţŕéàɱ ÐŢÐš àñð éñţîţîéš àŕé ñöţ šûþþöŕţéð.···············]"
+
+msgid "AppStream XML exceeds structural limits."
+msgstr "[ÀþþŠţŕéàɱ ẊṀĻ éẋçééðš šţŕûçţûŕàļ ļîɱîţš.············]"
+
+msgid "AppStream XML exceeds the scalar limit."
+msgstr "[ÀþþŠţŕéàɱ ẊṀĻ éẋçééðš ţĥé šçàļàŕ ļîɱîţ.············]"
+
+msgid "AppStream YAML aliases are not supported."
+msgstr "[ÀþþŠţŕéàɱ ŸÀṀĻ àļîàšéš àŕé ñöţ šûþþöŕţéð.·············]"
+
+msgid "AppStream YAML exceeds structural limits."
+msgstr "[ÀþþŠţŕéàɱ ŸÀṀĻ éẋçééðš šţŕûçţûŕàļ ļîɱîţš.·············]"
+
+msgid "AppStream YAML exceeds the scalar limit."
+msgstr "[ÀþþŠţŕéàɱ ŸÀṀĻ éẋçééðš ţĥé šçàļàŕ ļîɱîţ.············]"
+
+msgid "AppStream YAML parser unavailable."
+msgstr "[ÀþþŠţŕéàɱ ŸÀṀĻ þàŕšéŕ ûñàṽàîļàƀļé.··········]"
+
+msgid "AppStream catalog exceeds the component limit."
+msgstr "[ÀþþŠţŕéàɱ çàţàļöĝ éẋçééðš ţĥé çöɱþöñéñţ ļîɱîţ.···············]"
+
+#, python-brace-format
+msgid "AppStream discovery unavailable: {error}"
+msgstr "[ÀþþŠţŕéàɱ ðîšçöṽéŕÿ ûñàṽàîļàƀļé: {error}············]"
+
+msgid "AppStream expanded input exceeds the file limit."
+msgstr "[ÀþþŠţŕéàɱ éẋþàñðéð îñþûţ éẋçééðš ţĥé ƒîļé ļîɱîţ.···············]"
+
+msgid "AppStream input exceeds the file limit."
+msgstr "[ÀþþŠţŕéàɱ îñþûţ éẋçééðš ţĥé ƒîļé ļîɱîţ.············]"
+
+msgid "AppStream metadata could not be read."
+msgstr "[ÀþþŠţŕéàɱ ɱéţàðàţà çöûļð ñöţ ƀé ŕéàð.···········]"
+
+#, python-brace-format
+msgid "AppStream metadata {reason}: {path}: {error}"
+msgstr "[ÀþþŠţŕéàɱ ɱéţàðàţà {reason}: {path}: {error}··············]"
+
+msgid "Applying Flatpak transaction."
+msgstr "[Àþþļÿîñĝ Ƒļàţþàķ ţŕàñšàçţîöñ.·········]"
+
+msgid "Arch news could not be checked. Visit https://archlinux.org/news/ before updating."
+msgstr "[Àŕçĥ ñéŵš çöûļð ñöţ ƀé çĥéçķéð. Ṽîšîţ ĥţţþš://àŕçĥļîñûẋ.öŕĝ/ñéŵš/ ƀéƒöŕé ûþðàţîñĝ.···························]"
+
+msgid "Arch news could not be reached. The notices come from an older check."
+msgstr "[Àŕçĥ ñéŵš çöûļð ñöţ ƀé ŕéàçĥéð. Ţĥé ñöţîçéš çöɱé ƒŕöɱ àñ öļðéŕ çĥéçķ.·······················]"
+
+msgid "Authorization is required to install programs from the AUR."
+msgstr "[Àûţĥöŕîžàţîöñ îš ŕéǫûîŕéð ţö îñšţàļļ þŕöĝŕàɱš ƒŕöɱ ţĥé ÀÛŔ.···················]"
+
+msgid "Authorization is required to install repository programs."
+msgstr "[Àûţĥöŕîžàţîöñ îš ŕéǫûîŕéð ţö îñšţàļļ ŕéþöšîţöŕÿ þŕöĝŕàɱš.··················]"
+
+msgid "Bringing the system up to date first."
+msgstr "[Ɓŕîñĝîñĝ ţĥé šÿšţéɱ ûþ ţö ðàţé ƒîŕšţ.···········]"
+
+msgid "Build tools could not be removed. The install was not completed."
+msgstr "[Ɓûîļð ţööļš çöûļð ñöţ ƀé ŕéɱöṽéð. Ţĥé îñšţàļļ ŵàš ñöţ çöɱþļéţéð.·····················]"
+
+#, python-brace-format
+msgid "Building {package} did not finish. The details are above."
+msgstr "[Ɓûîļðîñĝ {package} ðîð ñöţ ƒîñîšĥ. Ţĥé ðéţàîļš àŕé àƀöṽé.··················]"
+
+#, python-brace-format
+msgid "Building {package} from the AUR as a separate user without access to your files."
+msgstr "[Ɓûîļðîñĝ {package} ƒŕöɱ ţĥé ÀÛŔ àš à šéþàŕàţé ûšéŕ ŵîţĥöûţ àççéšš ţö ÿöûŕ ƒîļéš.··························]"
+
+msgid "Checking AUR package versions…"
+msgstr "[Çĥéçķîñĝ ÀÛŔ þàçķàĝé ṽéŕšîöñš…·········]"
+
+msgid "Checking Arch news…"
+msgstr "[Çĥéçķîñĝ Àŕçĥ ñéŵš…·····]"
+
+msgid "Checking repository packages…"
+msgstr "[Çĥéçķîñĝ ŕéþöšîţöŕÿ þàçķàĝéš…·········]"
+
+msgid "Choose a fixed update operation or --restore with a restore point token."
+msgstr "[Çĥööšé à ƒîẋéð ûþðàţé öþéŕàţîöñ öŕ --ŕéšţöŕé ŵîţĥ à ŕéšţöŕé þöîñţ ţöķéñ.························]"
+
+msgid "Choose a restore point from the current list."
+msgstr "[Çĥööšé à ŕéšţöŕé þöîñţ ƒŕöɱ ţĥé çûŕŕéñţ ļîšţ.··············]"
+
+msgid "Choose list or restore with an exact restore point."
+msgstr "[Çĥööšé ļîšţ öŕ ŕéšţöŕé ŵîţĥ àñ éẋàçţ ŕéšţöŕé þöîñţ.················]"
+
+msgid "Could not check updates."
+msgstr "[Çöûļð ñöţ çĥéçķ ûþðàţéš.·······]"
+
+msgid "Could not check updates. The list is from the previous check."
+msgstr "[Çöûļð ñöţ çĥéçķ ûþðàţéš. Ţĥé ļîšţ îš ƒŕöɱ ţĥé þŕéṽîöûš çĥéçķ.····················]"
+
+msgid "Delete unneeded files or clear the package cache in Settings > Storage, then try again."
+msgstr "[Ðéļéţé ûññééðéð ƒîļéš öŕ çļéàŕ ţĥé þàçķàĝé çàçĥé îñ Šéţţîñĝš > Šţöŕàĝé, ţĥéñ ţŕÿ àĝàîñ.·····························]"
+
+msgid "Empty AUR metadata archive"
+msgstr "[Éɱþţÿ ÀÛŔ ɱéţàðàţà àŕçĥîṽé········]"
+
+msgid "Exclusive snapshot usage is unavailable."
+msgstr "[Éẋçļûšîṽé šñàþšĥöţ ûšàĝé îš ûñàṽàîļàƀļé.············]"
+
+msgid "Expected a package and a preview token."
+msgstr "[Éẋþéçţéð à þàçķàĝé àñð à þŕéṽîéŵ ţöķéñ.············]"
+
+msgid "Expected a receipt, its package and a preview token."
+msgstr "[Éẋþéçţéð à ŕéçéîþţ, îţš þàçķàĝé àñð à þŕéṽîéŵ ţöķéñ.·················]"
+
+#, python-brace-format
+msgid "Flathub AppStream metadata could not be read: {remote}"
+msgstr "[Ƒļàţĥûƀ ÀþþŠţŕéàɱ ɱéţàðàţà çöûļð ñöţ ƀé ŕéàð: {remote}·················]"
+
+#, python-brace-format
+msgid "Flathub AppStream metadata is not cached: {remote}"
+msgstr "[Ƒļàţĥûƀ ÀþþŠţŕéàɱ ɱéţàðàţà îš ñöţ çàçĥéð: {remote}················]"
+
+#, python-brace-format
+msgid "Flathub catalog could not be read: {source}"
+msgstr "[Ƒļàţĥûƀ çàţàļöĝ çöûļð ñöţ ƀé ŕéàð: {source}··············]"
+
+#, python-brace-format
+msgid "Flatpak ({scope})"
+msgstr "[Ƒļàţþàķ ({scope})····]"
+
+msgid "Flatpak changes apply to all users and require administrator authentication."
+msgstr "[Ƒļàţþàķ çĥàñĝéš àþþļÿ ţö àļļ ûšéŕš àñð ŕéǫûîŕé àðɱîñîšţŕàţöŕ àûţĥéñţîçàţîöñ.·························]"
+
+#, python-brace-format
+msgid "Flatpak installation could not be read: {scope}"
+msgstr "[Ƒļàţþàķ îñšţàļļàţîöñ çöûļð ñöţ ƀé ŕéàð: {scope}···············]"
+
+msgid "Flatpak installations could not be read."
+msgstr "[Ƒļàţþàķ îñšţàļļàţîöñš çöûļð ñöţ ƀé ŕéàð.············]"
+
+msgid "Flatpak installs are undone by their own backend"
+msgstr "[Ƒļàţþàķ îñšţàļļš àŕé ûñðöñé ƀÿ ţĥéîŕ öŵñ ƀàçķéñð···············]"
+
+msgid "Flatpak updates could not be checked. Check again before updating applications."
+msgstr "[Ƒļàţþàķ ûþðàţéš çöûļð ñöţ ƀé çĥéçķéð. Çĥéçķ àĝàîñ ƀéƒöŕé ûþðàţîñĝ àþþļîçàţîöñš.··························]"
+
+#, python-brace-format
+msgid "Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable."
+msgstr "[Îñðîṽîðûàļ šñàþšĥöţš ĥöļð àţ ļéàšţ {bytes} éẋçļûšîṽé ƀÿţéš; šþàçé šĥàŕéð ƀéţŵééñ šñàþšĥöţš îš ûñàṽàîļàƀļé.····································]"
+
+msgid "Installed dependencies could not be checked"
+msgstr "[Îñšţàļļéð ðéþéñðéñçîéš çöûļð ñöţ ƀé çĥéçķéð··············]"
+
+msgid "Installed package query failed"
+msgstr "[Îñšţàļļéð þàçķàĝé ǫûéŕÿ ƒàîļéð·········]"
+
+msgid "Installed packages changed during the check. Check again when the package operation finishes."
+msgstr "[Îñšţàļļéð þàçķàĝéš çĥàñĝéð ðûŕîñĝ ţĥé çĥéçķ. Çĥéçķ àĝàîñ ŵĥéñ ţĥé þàçķàĝé öþéŕàţîöñ ƒîñîšĥéš.·······························]"
+
+msgid "Installed packages changed during the check. Try again when the package operation finishes."
+msgstr "[Îñšţàļļéð þàçķàĝéš çĥàñĝéð ðûŕîñĝ ţĥé çĥéçķ. Ţŕÿ àĝàîñ ŵĥéñ ţĥé þàçķàĝé öþéŕàţîöñ ƒîñîšĥéš.······························]"
+
+msgid "Installed packages changed. Refresh the catalog and try again."
+msgstr "[Îñšţàļļéð þàçķàĝéš çĥàñĝéð. Ŕéƒŕéšĥ ţĥé çàţàļöĝ àñð ţŕÿ àĝàîñ.····················]"
+
+msgid "Installed packages could not be read"
+msgstr "[Îñšţàļļéð þàçķàĝéš çöûļð ñöţ ƀé ŕéàð···········]"
+
+msgid "Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change."
+msgstr "[Îñšţàļļîñĝ àļšö ûþðàţéš àļļ ŕéþöšîţöŕÿ þàçķàĝéš. Ţĥé ûþĝŕàðé çĥéçķš ƒŕéšĥ ɱéţàðàţà; ţĥé ƒîñàļ þàçķàĝé ļîšţ àñð šîžéš ɱàÿ çĥàñĝé.···········································]"
+
+msgid "Installing what the build needs from Arch."
+msgstr "[Îñšţàļļîñĝ ŵĥàţ ţĥé ƀûîļð ñééðš ƒŕöɱ Àŕçĥ.·············]"
+
+msgid "Installing with a full repository update. Closing this window does not stop it."
+msgstr "[Îñšţàļļîñĝ ŵîţĥ à ƒûļļ ŕéþöšîţöŕÿ ûþðàţé. Çļöšîñĝ ţĥîš ŵîñðöŵ ðöéš ñöţ šţöþ îţ.··························]"
+
+msgid "Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings."
+msgstr "[Îñšţàļļš ţĥé šûþþöŕţéð ÑṼÎÐÎÀ ðŕîṽéŕ, ĝŕàþĥîçš ļîƀŕàŕîéš àñð Éɱàķî'š šéššîöñ šéţţîñĝš.·····························]"
+
+msgid "Invalid AUR counters"
+msgstr "[Îñṽàļîð ÀÛŔ çöûñţéŕš·····]"
+
+msgid "Invalid AUR dependency"
+msgstr "[Îñṽàļîð ÀÛŔ ðéþéñðéñçÿ······]"
+
+msgid "Invalid AUR entry"
+msgstr "[Îñṽàļîð ÀÛŔ éñţŕÿ····]"
+
+msgid "Invalid AUR list"
+msgstr "[Îñṽàļîð ÀÛŔ ļîšţ····]"
+
+msgid "Invalid AUR list entry"
+msgstr "[Îñṽàļîð ÀÛŔ ļîšţ éñţŕÿ······]"
+
+msgid "Invalid AUR metadata archive"
+msgstr "[Îñṽàļîð ÀÛŔ ɱéţàðàţà àŕçĥîṽé········]"
+
+msgid "Invalid AUR name"
+msgstr "[Îñṽàļîð ÀÛŔ ñàɱé····]"
+
+msgid "Invalid AUR response"
+msgstr "[Îñṽàļîð ÀÛŔ ŕéšþöñšé·····]"
+
+msgid "Invalid AUR text"
+msgstr "[Îñṽàļîð ÀÛŔ ţéẋţ····]"
+
+msgid "Invalid AUR time"
+msgstr "[Îñṽàļîð ÀÛŔ ţîɱé····]"
+
+msgid "Invalid AUR version"
+msgstr "[Îñṽàļîð ÀÛŔ ṽéŕšîöñ·····]"
+
+msgid "Invalid Git reference advertisement"
+msgstr "[Îñṽàļîð Ĝîţ ŕéƒéŕéñçé àðṽéŕţîšéɱéñţ···········]"
+
+msgid "Invalid boot identity"
+msgstr "[Îñṽàļîð ƀööţ îðéñţîţÿ······]"
+
+msgid "Invalid build request."
+msgstr "[Îñṽàļîð ƀûîļð ŕéǫûéšţ.······]"
+
+msgid "Invalid catalog key"
+msgstr "[Îñṽàļîð çàţàļöĝ ķéÿ·····]"
+
+msgid "Invalid catalog scope"
+msgstr "[Îñṽàļîð çàţàļöĝ šçöþé······]"
+
+msgid "Invalid consent"
+msgstr "[Îñṽàļîð çöñšéñţ····]"
+
+msgid "Invalid discovery option"
+msgstr "[Îñṽàļîð ðîšçöṽéŕÿ öþţîöñ·······]"
+
+msgid "Invalid filters"
+msgstr "[Îñṽàļîð ƒîļţéŕš····]"
+
+msgid "Invalid installed package record"
+msgstr "[Îñṽàļîð îñšţàļļéð þàçķàĝé ŕéçöŕð··········]"
+
+msgid "Invalid package database path"
+msgstr "[Îñṽàļîð þàçķàĝé ðàţàƀàšé þàţĥ·········]"
+
+msgid "Invalid package filters"
+msgstr "[Îñṽàļîð þàçķàĝé ƒîļţéŕš·······]"
+
+msgid "Invalid package name."
+msgstr "[Îñṽàļîð þàçķàĝé ñàɱé.······]"
+
+msgid "Invalid parameters"
+msgstr "[Îñṽàļîð þàŕàɱéţéŕš·····]"
+
+msgid "Invalid plan token"
+msgstr "[Îñṽàļîð þļàñ ţöķéñ·····]"
+
+msgid "Invalid popular list"
+msgstr "[Îñṽàļîð þöþûļàŕ ļîšţ·····]"
+
+msgid "Invalid popularity data"
+msgstr "[Îñṽàļîð þöþûļàŕîţÿ ðàţà·······]"
+
+msgid "Invalid popularity response"
+msgstr "[Îñṽàļîð þöþûļàŕîţÿ ŕéšþöñšé········]"
+
+msgid "Invalid preview token."
+msgstr "[Îñṽàļîð þŕéṽîéŵ ţöķéñ.······]"
+
+msgid "Invalid program manager arguments."
+msgstr "[Îñṽàļîð þŕöĝŕàɱ ɱàñàĝéŕ àŕĝûɱéñţš.··········]"
+
+msgid "Invalid protocol version"
+msgstr "[Îñṽàļîð þŕöţöçöļ ṽéŕšîöñ·······]"
+
+msgid "Invalid receipt"
+msgstr "[Îñṽàļîð ŕéçéîþţ····]"
+
+msgid "Invalid receipt file"
+msgstr "[Îñṽàļîð ŕéçéîþţ ƒîļé·····]"
+
+msgid "Invalid receipt kind"
+msgstr "[Îñṽàļîð ŕéçéîþţ ķîñð·····]"
+
+msgid "Invalid removal result"
+msgstr "[Îñṽàļîð ŕéɱöṽàļ ŕéšûļţ······]"
+
+msgid "Invalid repository dependency"
+msgstr "[Îñṽàļîð ŕéþöšîţöŕÿ ðéþéñðéñçÿ·········]"
+
+msgid "Invalid repository name"
+msgstr "[Îñṽàļîð ŕéþöšîţöŕÿ ñàɱé·······]"
+
+msgid "Invalid request id"
+msgstr "[Îñṽàļîð ŕéǫûéšţ îð·····]"
+
+msgid "Invalid shelf"
+msgstr "[Îñṽàļîð šĥéļƒ···]"
+
+msgid "Invalid shelf item"
+msgstr "[Îñṽàļîð šĥéļƒ îţéɱ·····]"
+
+msgid "Invalid shelf text"
+msgstr "[Îñṽàļîð šĥéļƒ ţéẋţ·····]"
+
+msgid "Invalid shelf: a package twice"
+msgstr "[Îñṽàļîð šĥéļƒ: à þàçķàĝé ţŵîçé·········]"
+
+msgid "Invalid storefront"
+msgstr "[Îñṽàļîð šţöŕéƒŕöñţ·····]"
+
+msgid "Invalid storefront identities"
+msgstr "[Îñṽàļîð šţöŕéƒŕöñţ îðéñţîţîéš·········]"
+
+msgid "Invalid storefront row"
+msgstr "[Îñṽàļîð šţöŕéƒŕöñţ ŕöŵ······]"
+
+msgid "Invalid storefront text"
+msgstr "[Îñṽàļîð šţöŕéƒŕöñţ ţéẋţ·······]"
+
+msgid "Invalid transaction"
+msgstr "[Îñṽàļîð ţŕàñšàçţîöñ·····]"
+
+msgid "Invalid transaction record"
+msgstr "[Îñṽàļîð ţŕàñšàçţîöñ ŕéçöŕð········]"
+
+msgid "Invalid update status parameters"
+msgstr "[Îñṽàļîð ûþðàţé šţàţûš þàŕàɱéţéŕš··········]"
+
+msgid "Invalid warning choice"
+msgstr "[Îñṽàļîð ŵàŕñîñĝ çĥöîçé······]"
+
+msgid "Missing package version"
+msgstr "[Ṁîššîñĝ þàçķàĝé ṽéŕšîöñ·······]"
+
+msgid "Missing timezone"
+msgstr "[Ṁîššîñĝ ţîɱéžöñé····]"
+
+msgid "Missing transaction version"
+msgstr "[Ṁîššîñĝ ţŕàñšàçţîöñ ṽéŕšîöñ········]"
+
+msgid "NVIDIA support"
+msgstr "[ÑṼÎÐÎÀ šûþþöŕţ···]"
+
+msgid "NVIDIA support has no Undo button because removing graphics drivers can leave a black screen. A restore point is made before installation. To go back, open Updates, choose the restore point dated just before this installation, select Restore, then restart."
+msgstr "[ÑṼÎÐÎÀ šûþþöŕţ ĥàš ñö Ûñðö ƀûţţöñ ƀéçàûšé ŕéɱöṽîñĝ ĝŕàþĥîçš ðŕîṽéŕš çàñ ļéàṽé à ƀļàçķ šçŕééñ. À ŕéšţöŕé þöîñţ îš ɱàðé ƀéƒöŕé îñšţàļļàţîöñ. Ţö ĝö ƀàçķ, öþéñ Ûþðàţéš, çĥööšé ţĥé ŕéšţöŕé þöîñţ ðàţéð ĵûšţ ƀéƒöŕé ţĥîš îñšţàļļàţîöñ, šéļéçţ Ŕéšţöŕé, ţĥéñ ŕéšţàŕţ.························································································]"
+
+#, python-brace-format
+msgid "No Flathub programs are available in the cached catalog: {scope}"
+msgstr "[Ñö Ƒļàţĥûƀ þŕöĝŕàɱš àŕé àṽàîļàƀļé îñ ţĥé çàçĥéð çàţàļöĝ: {scope}·····················]"
+
+msgid "No enabled, verified Flathub remote is configured."
+msgstr "[Ñö éñàƀļéð, ṽéŕîƒîéð Ƒļàţĥûƀ ŕéɱöţé îš çöñƒîĝûŕéð.················]"
+
+msgid "No matching after-update snapshot is available."
+msgstr "[Ñö ɱàţçĥîñĝ àƒţéŕ-ûþðàţé šñàþšĥöţ îš àṽàîļàƀļé.···············]"
+
+msgid "No retained snapshots were found."
+msgstr "[Ñö ŕéţàîñéð šñàþšĥöţš ŵéŕé ƒöûñð.··········]"
+
+msgid "Not an AUR RPC address"
+msgstr "[Ñöţ àñ ÀÛŔ ŔÞÇ àððŕéšš······]"
+
+#, python-brace-format
+msgid "Not enough free space for this update: it needs about {needed}, {free} is free. {advice}"
+msgstr "[Ñöţ éñöûĝĥ ƒŕéé šþàçé ƒöŕ ţĥîš ûþðàţé: îţ ñééðš àƀöûţ {needed}, {free} îš ƒŕéé. {advice}·····························]"
+
+msgid "Not installed"
+msgstr "[Ñöţ îñšţàļļéð···]"
+
+msgid "Nothing was removed."
+msgstr "[Ñöţĥîñĝ ŵàš ŕéɱöṽéð.·····]"
+
+msgid "Only a full repository update is accepted."
+msgstr "[Öñļÿ à ƒûļļ ŕéþöšîţöŕÿ ûþðàţé îš àççéþţéð.·············]"
+
+msgid "Open Programs & Updates as a regular user."
+msgstr "[Öþéñ Þŕöĝŕàɱš & Ûþðàţéš àš à ŕéĝûļàŕ ûšéŕ.·············]"
+
+msgid "Open the AUR section and accept its warning before installing."
+msgstr "[Öþéñ ţĥé ÀÛŔ šéçţîöñ àñð àççéþţ îţš ŵàŕñîñĝ ƀéƒöŕé îñšţàļļîñĝ.····················]"
+
+msgid "Other installed software needs this program, so it stays."
+msgstr "[Öţĥéŕ îñšţàļļéð šöƒţŵàŕé ñééðš ţĥîš þŕöĝŕàɱ, šö îţ šţàÿš.··················]"
+
+msgid "Oversized AUR metadata archive"
+msgstr "[Öṽéŕšîžéð ÀÛŔ ɱéţàðàţà àŕçĥîṽé·········]"
+
+msgid "Oversized AUR response"
+msgstr "[Öṽéŕšîžéð ÀÛŔ ŕéšþöñšé······]"
+
+msgid "Oversized Git reference advertisement"
+msgstr "[Öṽéŕšîžéð Ĝîţ ŕéƒéŕéñçé àðṽéŕţîšéɱéñţ···········]"
+
+msgid "Oversized package metadata"
+msgstr "[Öṽéŕšîžéð þàçķàĝé ɱéţàðàţà········]"
+
+msgid "Package metadata is incomplete."
+msgstr "[Þàçķàĝé ɱéţàðàţà îš îñçöɱþļéţé.·········]"
+
+msgid "Package retention could not be verified. Nothing was removed."
+msgstr "[Þàçķàĝé ŕéţéñţîöñ çöûļð ñöţ ƀé ṽéŕîƒîéð. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.····················]"
+
+msgid "Packages changed. Refresh the installation preview."
+msgstr "[Þàçķàĝéš çĥàñĝéð. Ŕéƒŕéšĥ ţĥé îñšţàļļàţîöñ þŕéṽîéŵ.················]"
+
+msgid "Packages from AUR are not checked by Arch or Emaki. Where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "[Þàçķàĝéš ƒŕöɱ ÀÛŔ àŕé ñöţ çĥéçķéð ƀÿ Àŕçĥ öŕ Éɱàķî. Ŵĥéŕé àṽàîļàƀļé, öþéñ ţĥé þŕöĝŕàɱ’š þàĝé ţö ƀûîļð îţš ûþðàţé, öŕ ûšé ÿöûŕ ÀÛŔ ţööļ.··············································]"
+
+msgid "Packages from Arch the build needs could not be installed."
+msgstr "[Þàçķàĝéš ƒŕöɱ Àŕçĥ ţĥé ƀûîļð ñééðš çöûļð ñöţ ƀé îñšţàļļéð.···················]"
+
+msgid "Permission is required to remove a program."
+msgstr "[Þéŕɱîššîöñ îš ŕéǫûîŕéð ţö ŕéɱöṽé à þŕöĝŕàɱ.··············]"
+
+msgid "Permission is required to undo an install."
+msgstr "[Þéŕɱîššîöñ îš ŕéǫûîŕéð ţö ûñðö àñ îñšţàļļ.·············]"
+
+msgid "Permission is required to update repository packages."
+msgstr "[Þéŕɱîššîöñ îš ŕéǫûîŕéð ţö ûþðàţé ŕéþöšîţöŕÿ þàçķàĝéš.·················]"
+
+msgid "Picked by Emaki"
+msgstr "[Þîçķéð ƀÿ Éɱàķî····]"
+
+msgid "Popularity cache too large"
+msgstr "[Þöþûļàŕîţÿ çàçĥé ţöö ļàŕĝé········]"
+
+msgid "Popularity request timed out"
+msgstr "[Þöþûļàŕîţÿ ŕéǫûéšţ ţîɱéð öûţ········]"
+
+msgid "Popularity response too large"
+msgstr "[Þöþûļàŕîţÿ ŕéšþöñšé ţöö ļàŕĝé·········]"
+
+msgid "Program manager JSON protocol"
+msgstr "[Þŕöĝŕàɱ ɱàñàĝéŕ ĴŠÖÑ þŕöţöçöļ·········]"
+
+msgid "Program metadata contains an invalid identifier."
+msgstr "[Þŕöĝŕàɱ ɱéţàðàţà çöñţàîñš àñ îñṽàļîð îðéñţîƒîéŕ.···············]"
+
+msgid "Programs & Updates needs a user runtime directory"
+msgstr "[Þŕöĝŕàɱš & Ûþðàţéš ñééðš à ûšéŕ ŕûñţîɱé ðîŕéçţöŕÿ················]"
+
+msgid "Ratings could not be loaded. Check your connection."
+msgstr "[Ŕàţîñĝš çöûļð ñöţ ƀé ļöàðéð. Çĥéçķ ÿöûŕ çöññéçţîöñ.················]"
+
+msgid "Read the package list and notices before updating. These checks cannot guarantee that an update will work."
+msgstr "[Ŕéàð ţĥé þàçķàĝé ļîšţ àñð ñöţîçéš ƀéƒöŕé ûþðàţîñĝ. Ţĥéšé çĥéçķš çàññöţ ĝûàŕàñţéé ţĥàţ àñ ûþðàţé ŵîļļ ŵöŕķ.····································]"
+
+msgid "Reading what is new in Emaki…"
+msgstr "[Ŕéàðîñĝ ŵĥàţ îš ñéŵ îñ Éɱàķî…·········]"
+
+msgid "Refresh the installation preview."
+msgstr "[Ŕéƒŕéšĥ ţĥé îñšţàļļàţîöñ þŕéṽîéŵ.··········]"
+
+msgid "Removing build tools did not finish. Trying again."
+msgstr "[Ŕéɱöṽîñĝ ƀûîļð ţööļš ðîð ñöţ ƒîñîšĥ. Ţŕÿîñĝ àĝàîñ.················]"
+
+msgid "Removing packages added by the failed install. The completed system update will stay."
+msgstr "[Ŕéɱöṽîñĝ þàçķàĝéš àððéð ƀÿ ţĥé ƒàîļéð îñšţàļļ. Ţĥé çöɱþļéţéð šÿšţéɱ ûþðàţé ŵîļļ šţàÿ.····························]"
+
+msgid "Removing this program would remove part of Emaki, so it stays."
+msgstr "[Ŕéɱöṽîñĝ ţĥîš þŕöĝŕàɱ ŵöûļð ŕéɱöṽé þàŕţ öƒ Éɱàķî, šö îţ šţàÿš.····················]"
+
+msgid "Removing this program would remove part of the system, so it stays."
+msgstr "[Ŕéɱöṽîñĝ ţĥîš þŕöĝŕàɱ ŵöûļð ŕéɱöṽé þàŕţ öƒ ţĥé šÿšţéɱ, šö îţ šţàÿš.······················]"
+
+msgid "Repository AppStream data is missing. Install the platform application metadata package and refresh."
+msgstr "[Ŕéþöšîţöŕÿ ÀþþŠţŕéàɱ ðàţà îš ɱîššîñĝ. Îñšţàļļ ţĥé þļàţƒöŕɱ àþþļîçàţîöñ ɱéţàðàţà þàçķàĝé àñð ŕéƒŕéšĥ.·································]"
+
+msgid "Repository dependencies could not be resolved"
+msgstr "[Ŕéþöšîţöŕÿ ðéþéñðéñçîéš çöûļð ñöţ ƀé ŕéšöļṽéð··············]"
+
+msgid "Repository installation did not finish. Review the transaction details."
+msgstr "[Ŕéþöšîţöŕÿ îñšţàļļàţîöñ ðîð ñöţ ƒîñîšĥ. Ŕéṽîéŵ ţĥé ţŕàñšàçţîöñ ðéţàîļš.·······················]"
+
+msgid "Repository installation finished."
+msgstr "[Ŕéþöšîţöŕÿ îñšţàļļàţîöñ ƒîñîšĥéð.··········]"
+
+msgid "Repository metadata could not be refreshed. Cached programs are shown where available."
+msgstr "[Ŕéþöšîţöŕÿ ɱéţàðàţà çöûļð ñöţ ƀé ŕéƒŕéšĥéð. Çàçĥéð þŕöĝŕàɱš àŕé šĥöŵñ ŵĥéŕé àṽàîļàƀļé.·····························]"
+
+msgid "Repository metadata is incomplete. Refresh the catalog and try again."
+msgstr "[Ŕéþöšîţöŕÿ ɱéţàðàţà îš îñçöɱþļéţé. Ŕéƒŕéšĥ ţĥé çàţàļöĝ àñð ţŕÿ àĝàîñ.·······················]"
+
+#, python-brace-format
+msgid "Repository metadata is unavailable: {repositories}. Refresh the catalog and try again."
+msgstr "[Ŕéþöšîţöŕÿ ɱéţàðàţà îš ûñàṽàîļàƀļé: {repositories}. Ŕéƒŕéšĥ ţĥé çàţàļöĝ àñð ţŕÿ àĝàîñ.·····························]"
+
+#, python-brace-format
+msgid "Repository metadata is unavailable: {repository}."
+msgstr "[Ŕéþöšîţöŕÿ ɱéţàðàţà îš ûñàṽàîļàƀļé: {repository}.················]"
+
+msgid "Repository package information could not be read."
+msgstr "[Ŕéþöšîţöŕÿ þàçķàĝé îñƒöŕɱàţîöñ çöûļð ñöţ ƀé ŕéàð.················]"
+
+msgid "Repository package metadata could not be read. The catalog is incomplete."
+msgstr "[Ŕéþöšîţöŕÿ þàçķàĝé ɱéţàðàţà çöûļð ñöţ ƀé ŕéàð. Ţĥé çàţàļöĝ îš îñçöɱþļéţé.························]"
+
+msgid "Repository updates finished. AUR programs must be updated with your AUR tool."
+msgstr "[Ŕéþöšîţöŕÿ ûþðàţéš ƒîñîšĥéð. ÀÛŔ þŕöĝŕàɱš ɱûšţ ƀé ûþðàţéð ŵîţĥ ÿöûŕ ÀÛŔ ţööļ.·························]"
+
+msgid "Repository updates finished. Check again to refresh the list."
+msgstr "[Ŕéþöšîţöŕÿ ûþðàţéš ƒîñîšĥéð. Çĥéçķ àĝàîñ ţö ŕéƒŕéšĥ ţĥé ļîšţ.····················]"
+
+#, python-brace-format
+msgid "Repository {repository}"
+msgstr "[Ŕéþöšîţöŕÿ {repository}·······]"
+
+msgid "Request too large"
+msgstr "[Ŕéǫûéšţ ţöö ļàŕĝé····]"
+
+msgid "Restart into the normal system before changing programs. Nothing was removed."
+msgstr "[Ŕéšţàŕţ îñţö ţĥé ñöŕɱàļ šÿšţéɱ ƀéƒöŕé çĥàñĝîñĝ þŕöĝŕàɱš. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.·························]"
+
+msgid "Restart into the normal system before installing programs."
+msgstr "[Ŕéšţàŕţ îñţö ţĥé ñöŕɱàļ šÿšţéɱ ƀéƒöŕé îñšţàļļîñĝ þŕöĝŕàɱš.···················]"
+
+msgid "Restart into the normal system before removing programs. Nothing was removed."
+msgstr "[Ŕéšţàŕţ îñţö ţĥé ñöŕɱàļ šÿšţéɱ ƀéƒöŕé ŕéɱöṽîñĝ þŕöĝŕàɱš. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.·························]"
+
+msgid "Restart into the normal system before updating repository packages."
+msgstr "[Ŕéšţàŕţ îñţö ţĥé ñöŕɱàļ šÿšţéɱ ƀéƒöŕé ûþðàţîñĝ ŕéþöšîţöŕÿ þàçķàĝéš.······················]"
+
+msgid "Restart to finish the update"
+msgstr "[Ŕéšţàŕţ ţö ƒîñîšĥ ţĥé ûþðàţé········]"
+
+msgid "Restore is available only from the normal installed system."
+msgstr "[Ŕéšţöŕé îš àṽàîļàƀļé öñļÿ ƒŕöɱ ţĥé ñöŕɱàļ îñšţàļļéð šÿšţéɱ.···················]"
+
+msgid "Restore points are unavailable on this system."
+msgstr "[Ŕéšţöŕé þöîñţš àŕé ûñàṽàîļàƀļé öñ ţĥîš šÿšţéɱ.···············]"
+
+msgid "Restore-point protection for system changes. Read its setup instructions before relying on it."
+msgstr "[Ŕéšţöŕé-þöîñţ þŕöţéçţîöñ ƒöŕ šÿšţéɱ çĥàñĝéš. Ŕéàð îţš šéţûþ îñšţŕûçţîöñš ƀéƒöŕé ŕéļÿîñĝ öñ îţ.·······························]"
+
+msgid "Reviews cannot contain the “<” sign. Remove it and send again."
+msgstr "[Ŕéṽîéŵš çàññöţ çöñţàîñ ţĥé “<” šîĝñ. Ŕéɱöṽé îţ àñð šéñð àĝàîñ.····················]"
+
+msgid "Select one AUR program and its reviewed install."
+msgstr "[Šéļéçţ öñé ÀÛŔ þŕöĝŕàɱ àñð îţš ŕéṽîéŵéð îñšţàļļ.···············]"
+
+msgid "Select one repository program and its preview."
+msgstr "[Šéļéçţ öñé ŕéþöšîţöŕÿ þŕöĝŕàɱ àñð îţš þŕéṽîéŵ.···············]"
+
+msgid "Select one repository program."
+msgstr "[Šéļéçţ öñé ŕéþöšîţöŕÿ þŕöĝŕàɱ.·········]"
+
+msgid "Session sudo key"
+msgstr "[Šéššîöñ šûðö ķéÿ····]"
+
+msgid "Snapshot guard"
+msgstr "[Šñàþšĥöţ ĝûàŕð···]"
+
+#, python-brace-format
+msgid "Software changes are blocked by a lock left by an earlier operation. Close all software installers and updaters. An administrator must check that none is running before removing {path}. Then try again. Nothing was removed automatically."
+msgstr "[Šöƒţŵàŕé çĥàñĝéš àŕé ƀļöçķéð ƀÿ à ļöçķ ļéƒţ ƀÿ àñ éàŕļîéŕ öþéŕàţîöñ. Çļöšé àļļ šöƒţŵàŕé îñšţàļļéŕš àñð ûþðàţéŕš. Àñ àðɱîñîšţŕàţöŕ ɱûšţ çĥéçķ ţĥàţ ñöñé îš ŕûññîñĝ ƀéƒöŕé ŕéɱöṽîñĝ {path}. Ţĥéñ ţŕÿ àĝàîñ. Ñöţĥîñĝ ŵàš ŕéɱöṽéð àûţöɱàţîçàļļÿ.·················································································]"
+
+msgid "Some packages from the failed install remain. Restore the pre-install snapshot before trying again."
+msgstr "[Šöɱé þàçķàĝéš ƒŕöɱ ţĥé ƒàîļéð îñšţàļļ ŕéɱàîñ. Ŕéšţöŕé ţĥé þŕé-îñšţàļļ šñàþšĥöţ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·································]"
+
+msgid "Space exclusively held by retained snapshots, including their shared extents."
+msgstr "[Šþàçé éẋçļûšîṽéļÿ ĥéļð ƀÿ ŕéţàîñéð šñàþšĥöţš, îñçļûðîñĝ ţĥéîŕ šĥàŕéð éẋţéñţš.·························]"
+
+msgid "Starting repository installation."
+msgstr "[Šţàŕţîñĝ ŕéþöšîţöŕÿ îñšţàļļàţîöñ.··········]"
+
+msgid "Starting the install from the AUR."
+msgstr "[Šţàŕţîñĝ ţĥé îñšţàļļ ƒŕöɱ ţĥé ÀÛŔ.··········]"
+
+msgid "Storage inventory took too long. Nothing was removed."
+msgstr "[Šţöŕàĝé îñṽéñţöŕÿ ţööķ ţöö ļöñĝ. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.·················]"
+
+msgid "System and Flatpak updates finished. For AUR updates, where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "[Šÿšţéɱ àñð Ƒļàţþàķ ûþðàţéš ƒîñîšĥéð. Ƒöŕ ÀÛŔ ûþðàţéš, ŵĥéŕé àṽàîļàƀļé, öþéñ ţĥé þŕöĝŕàɱ’š þàĝé ţö ƀûîļð îţš ûþðàţé, öŕ ûšé ÿöûŕ ÀÛŔ ţööļ.··············································]"
+
+msgid "System restore points could not be read or restored."
+msgstr "[Šÿšţéɱ ŕéšţöŕé þöîñţš çöûļð ñöţ ƀé ŕéàð öŕ ŕéšţöŕéð.·················]"
+
+msgid "System updates finished, but Flatpak updates did not finish. Review the details before trying again."
+msgstr "[Šÿšţéɱ ûþðàţéš ƒîñîšĥéð, ƀûţ Ƒļàţþàķ ûþðàţéš ðîð ñöţ ƒîñîšĥ. Ŕéṽîéŵ ţĥé ðéţàîļš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·································]"
+
+msgid "The AUR could not be checked for this program."
+msgstr "[Ţĥé ÀÛŔ çöûļð ñöţ ƀé çĥéçķéð ƒöŕ ţĥîš þŕöĝŕàɱ.···············]"
+
+msgid "The AUR did not answer for this program. Try again later."
+msgstr "[Ţĥé ÀÛŔ ðîð ñöţ àñšŵéŕ ƒöŕ ţĥîš þŕöĝŕàɱ. Ţŕÿ àĝàîñ ļàţéŕ.··················]"
+
+msgid "The AUR package information could not be read."
+msgstr "[Ţĥé ÀÛŔ þàçķàĝé îñƒöŕɱàţîöñ çöûļð ñöţ ƀé ŕéàð.···············]"
+
+msgid "The AUR packages of this program depend on each other in a circle."
+msgstr "[Ţĥé ÀÛŔ þàçķàĝéš öƒ ţĥîš þŕöĝŕàɱ ðéþéñð öñ éàçĥ öţĥéŕ îñ à çîŕçļé.······················]"
+
+msgid "The AUR program or its packages changed. Review the install again."
+msgstr "[Ţĥé ÀÛŔ þŕöĝŕàɱ öŕ îţš þàçķàĝéš çĥàñĝéð. Ŕéṽîéŵ ţĥé îñšţàļļ àĝàîñ.······················]"
+
+msgid "The AUR recipe has no published commit"
+msgstr "[Ţĥé ÀÛŔ ŕéçîþé ĥàš ñö þûƀļîšĥéð çöɱɱîţ············]"
+
+msgid "The AUR redirected an RPC request"
+msgstr "[Ţĥé ÀÛŔ ŕéðîŕéçţéð àñ ŔÞÇ ŕéǫûéšţ··········]"
+
+msgid "The AUR redirected the metadata archive"
+msgstr "[Ţĥé ÀÛŔ ŕéðîŕéçţéð ţĥé ɱéţàðàţà àŕçĥîṽé············]"
+
+msgid "The AUR redirected the recipe address"
+msgstr "[Ţĥé ÀÛŔ ŕéðîŕéçţéð ţĥé ŕéçîþé àððŕéšš···········]"
+
+msgid "The AUR section is off. Open it and read the warning first."
+msgstr "[Ţĥé ÀÛŔ šéçţîöñ îš öƒƒ. Öþéñ îţ àñð ŕéàð ţĥé ŵàŕñîñĝ ƒîŕšţ.···················]"
+
+msgid "The Arch news feed could not be read."
+msgstr "[Ţĥé Àŕçĥ ñéŵš ƒééð çöûļð ñöţ ƀé ŕéàð.···········]"
+
+msgid "The Flatpak installation could not be read."
+msgstr "[Ţĥé Ƒļàţþàķ îñšţàļļàţîöñ çöûļð ñöţ ƀé ŕéàð.··············]"
+
+msgid "The Flatpak package list contains duplicate entries."
+msgstr "[Ţĥé Ƒļàţþàķ þàçķàĝé ļîšţ çöñţàîñš ðûþļîçàţé éñţŕîéš.·················]"
+
+msgid "The Flatpak package list could not be read."
+msgstr "[Ţĥé Ƒļàţþàķ þàçķàĝé ļîšţ çöûļð ñöţ ƀé ŕéàð.··············]"
+
+msgid "The JSON service takes requests on standard input."
+msgstr "[Ţĥé ĴŠÖÑ šéŕṽîçé ţàķéš ŕéǫûéšţš öñ šţàñðàŕð îñþûţ.················]"
+
+msgid "The NVIDIA support packages are not available. Refresh repository updates and try again."
+msgstr "[Ţĥé ÑṼÎÐÎÀ šûþþöŕţ þàçķàĝéš àŕé ñöţ àṽàîļàƀļé. Ŕéƒŕéšĥ ŕéþöšîţöŕÿ ûþðàţéš àñð ţŕÿ àĝàîñ.·····························]"
+
+#, python-brace-format
+msgid "The Programs & Updates window could not be shown: {0}"
+msgstr "[Ţĥé Þŕöĝŕàɱš & Ûþðàţéš ŵîñðöŵ çöûļð ñöţ ƀé šĥöŵñ: {0}·················]"
+
+msgid "The available package list could not be read."
+msgstr "[Ţĥé àṽàîļàƀļé þàçķàĝé ļîšţ çöûļð ñöţ ƀé ŕéàð.··············]"
+
+#, python-brace-format
+msgid "The build of {package} did not produce: {missing}."
+msgstr "[Ţĥé ƀûîļð öƒ {package} ðîð ñöţ þŕöðûçé: {missing}.················]"
+
+msgid "The date of the last full update is unknown. Review all the available Arch news notices."
+msgstr "[Ţĥé ðàţé öƒ ţĥé ļàšţ ƒûļļ ûþðàţé îš ûñķñöŵñ. Ŕéṽîéŵ àļļ ţĥé àṽàîļàƀļé Àŕçĥ ñéŵš ñöţîçéš.·····························]"
+
+msgid "The desktop will change. Save your work, sign out and sign in again after updating."
+msgstr "[Ţĥé ðéšķţöþ ŵîļļ çĥàñĝé. Šàṽé ÿöûŕ ŵöŕķ, šîĝñ öûţ àñð šîĝñ îñ àĝàîñ àƒţéŕ ûþðàţîñĝ.····························]"
+
+msgid "The free-space check could not finish. The update was not started."
+msgstr "[Ţĥé ƒŕéé-šþàçé çĥéçķ çöûļð ñöţ ƒîñîšĥ. Ţĥé ûþðàţé ŵàš ñöţ šţàŕţéð.······················]"
+
+msgid "The install could not be saved for Undo. The added packages will be removed."
+msgstr "[Ţĥé îñšţàļļ çöûļð ñöţ ƀé šàṽéð ƒöŕ Ûñðö. Ţĥé àððéð þàçķàĝéš ŵîļļ ƀé ŕéɱöṽéð.·························]"
+
+msgid "The install was taken back."
+msgstr "[Ţĥé îñšţàļļ ŵàš ţàķéñ ƀàçķ.········]"
+
+msgid "The installed package list could not be read."
+msgstr "[Ţĥé îñšţàļļéð þàçķàĝé ļîšţ çöûļð ñöţ ƀé ŕéàð.··············]"
+
+msgid "The installed package versions could not be read."
+msgstr "[Ţĥé îñšţàļļéð þàçķàĝé ṽéŕšîöñš çöûļð ñöţ ƀé ŕéàð.················]"
+
+msgid "The kernel will change. Restart the computer after updating."
+msgstr "[Ţĥé ķéŕñéļ ŵîļļ çĥàñĝé. Ŕéšţàŕţ ţĥé çöɱþûţéŕ àƒţéŕ ûþðàţîñĝ.···················]"
+
+msgid "The list of packages to remove changed. Review it again."
+msgstr "[Ţĥé ļîšţ öƒ þàçķàĝéš ţö ŕéɱöṽé çĥàñĝéð. Ŕéṽîéŵ îţ àĝàîñ.··················]"
+
+msgid "The new kernel and system services start after a restart. Save your work first."
+msgstr "[Ţĥé ñéŵ ķéŕñéļ àñð šÿšţéɱ šéŕṽîçéš šţàŕţ àƒţéŕ à ŕéšţàŕţ. Šàṽé ÿöûŕ ŵöŕķ ƒîŕšţ.··························]"
+
+msgid "The online information could not be checked. Check your connection, then try again."
+msgstr "[Ţĥé öñļîñé îñƒöŕɱàţîöñ çöûļð ñöţ ƀé çĥéçķéð. Çĥéçķ ÿöûŕ çöññéçţîöñ, ţĥéñ ţŕÿ àĝàîñ.····························]"
+
+msgid "The package source redirected to an insecure address."
+msgstr "[Ţĥé þàçķàĝé šöûŕçé ŕéðîŕéçţéð ţö àñ îñšéçûŕé àððŕéšš.·················]"
+
+msgid "The package source returned too much data."
+msgstr "[Ţĥé þàçķàĝé šöûŕçé ŕéţûŕñéð ţöö ɱûçĥ ðàţà.·············]"
+
+msgid "The package state after the failed install could not be restored. Use the pre-install snapshot."
+msgstr "[Ţĥé þàçķàĝé šţàţé àƒţéŕ ţĥé ƒàîļéð îñšţàļļ çöûļð ñöţ ƀé ŕéšţöŕéð. Ûšé ţĥé þŕé-îñšţàļļ šñàþšĥöţ.································]"
+
+msgid "The packages to install could not be checked."
+msgstr "[Ţĥé þàçķàĝéš ţö îñšţàļļ çöûļð ñöţ ƀé çĥéçķéð.··············]"
+
+msgid "The popular AUR list comes from an older check."
+msgstr "[Ţĥé þöþûļàŕ ÀÛŔ ļîšţ çöɱéš ƒŕöɱ àñ öļðéŕ çĥéçķ.···············]"
+
+msgid "The popular AUR list could not be read. Search still works."
+msgstr "[Ţĥé þöþûļàŕ ÀÛŔ ļîšţ çöûļð ñöţ ƀé ŕéàð. Šéàŕçĥ šţîļļ ŵöŕķš.···················]"
+
+msgid "The program could not be removed. Nothing was changed."
+msgstr "[Ţĥé þŕöĝŕàɱ çöûļð ñöţ ƀé ŕéɱöṽéð. Ñöţĥîñĝ ŵàš çĥàñĝéð.·················]"
+
+msgid "The program from the AUR is installed."
+msgstr "[Ţĥé þŕöĝŕàɱ ƒŕöɱ ţĥé ÀÛŔ îš îñšţàļļéð.············]"
+
+msgid "The program manager operation could not finish."
+msgstr "[Ţĥé þŕöĝŕàɱ ɱàñàĝéŕ öþéŕàţîöñ çöûļð ñöţ ƒîñîšĥ.···············]"
+
+msgid "The program manager request is invalid."
+msgstr "[Ţĥé þŕöĝŕàɱ ɱàñàĝéŕ ŕéǫûéšţ îš îñṽàļîð.············]"
+
+msgid "The program was removed."
+msgstr "[Ţĥé þŕöĝŕàɱ ŵàš ŕéɱöṽéð.·······]"
+
+msgid "The ratings index could not be read."
+msgstr "[Ţĥé ŕàţîñĝš îñðéẋ çöûļð ñöţ ƀé ŕéàð.···········]"
+
+msgid "The ratings index is not an object."
+msgstr "[Ţĥé ŕàţîñĝš îñðéẋ îš ñöţ àñ öƀĵéçţ.···········]"
+
+msgid "The ratings service did not accept the review."
+msgstr "[Ţĥé ŕàţîñĝš šéŕṽîçé ðîð ñöţ àççéþţ ţĥé ŕéṽîéŵ.···············]"
+
+msgid "The ratings service redirected to an insecure address."
+msgstr "[Ţĥé ŕàţîñĝš šéŕṽîçé ŕéðîŕéçţéð ţö àñ îñšéçûŕé àððŕéšš.·················]"
+
+msgid "The ratings service returned too much data."
+msgstr "[Ţĥé ŕàţîñĝš šéŕṽîçé ŕéţûŕñéð ţöö ɱûçĥ ðàţà.··············]"
+
+msgid "The recipe is not the reviewed commit."
+msgstr "[Ţĥé ŕéçîþé îš ñöţ ţĥé ŕéṽîéŵéð çöɱɱîţ.············]"
+
+msgid "The release page could not be read."
+msgstr "[Ţĥé ŕéļéàšé þàĝé çöûļð ñöţ ƀé ŕéàð.···········]"
+
+msgid "The release page has an unexpected address."
+msgstr "[Ţĥé ŕéļéàšé þàĝé ĥàš àñ ûñéẋþéçţéð àððŕéšš.··············]"
+
+msgid "The removal could not be checked. Nothing was removed."
+msgstr "[Ţĥé ŕéɱöṽàļ çöûļð ñöţ ƀé çĥéçķéð. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.·················]"
+
+msgid "The removal did not finish as expected. Check the installed programs again."
+msgstr "[Ţĥé ŕéɱöṽàļ ðîð ñöţ ƒîñîšĥ àš éẋþéçţéð. Çĥéçķ ţĥé îñšţàļļéð þŕöĝŕàɱš àĝàîñ.·························]"
+
+msgid "The removal preview lists a package twice."
+msgstr "[Ţĥé ŕéɱöṽàļ þŕéṽîéŵ ļîšţš à þàçķàĝé ţŵîçé.·············]"
+
+msgid "The restart was not authorized. Try again from the power menu."
+msgstr "[Ţĥé ŕéšţàŕţ ŵàš ñöţ àûţĥöŕîžéð. Ţŕÿ àĝàîñ ƒŕöɱ ţĥé þöŵéŕ ɱéñû.····················]"
+
+msgid "The restore point from before this install changed or is no longer available. Nothing was restored."
+msgstr "[Ţĥé ŕéšţöŕé þöîñţ ƒŕöɱ ƀéƒöŕé ţĥîš îñšţàļļ çĥàñĝéð öŕ îš ñö ļöñĝéŕ àṽàîļàƀļé. Ñöţĥîñĝ ŵàš ŕéšţöŕéð.·································]"
+
+msgid "The restore point from before this install is unavailable."
+msgstr "[Ţĥé ŕéšţöŕé þöîñţ ƒŕöɱ ƀéƒöŕé ţĥîš îñšţàļļ îš ûñàṽàîļàƀļé.···················]"
+
+msgid "The restore point list is unavailable. Try again shortly."
+msgstr "[Ţĥé ŕéšţöŕé þöîñţ ļîšţ îš ûñàṽàîļàƀļé. Ţŕÿ àĝàîñ šĥöŕţļÿ.··················]"
+
+msgid "The result could not be checked. Look at Installed before trying again."
+msgstr "[Ţĥé ŕéšûļţ çöûļð ñöţ ƀé çĥéçķéð. Ļööķ àţ Îñšţàļļéð ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·······················]"
+
+msgid "The review could not be sent. Check your connection and try again."
+msgstr "[Ţĥé ŕéṽîéŵ çöûļð ñöţ ƀé šéñţ. Çĥéçķ ÿöûŕ çöññéçţîöñ àñð ţŕÿ àĝàîñ.······················]"
+
+msgid "The review could not be sent. Its key could not be saved in your home folder."
+msgstr "[Ţĥé ŕéṽîéŵ çöûļð ñöţ ƀé šéñţ. Îţš ķéÿ çöûļð ñöţ ƀé šàṽéð îñ ÿöûŕ ĥöɱé ƒöļðéŕ.·························]"
+
+msgid "The review identity could not be saved."
+msgstr "[Ţĥé ŕéṽîéŵ îðéñţîţÿ çöûļð ñöţ ƀé šàṽéð.············]"
+
+msgid "The reviews answer is not a list."
+msgstr "[Ţĥé ŕéṽîéŵš àñšŵéŕ îš ñöţ à ļîšţ.··········]"
+
+msgid "The selected system restore point is ready. Restart to use it. Your home folder was left untouched."
+msgstr "[Ţĥé šéļéçţéð šÿšţéɱ ŕéšţöŕé þöîñţ îš ŕéàðÿ. Ŕéšţàŕţ ţö ûšé îţ. Ÿöûŕ ĥöɱé ƒöļðéŕ ŵàš ļéƒţ ûñţöûçĥéð.·································]"
+
+msgid "The service result could not be observed. Check its journal before retrying."
+msgstr "[Ţĥé šéŕṽîçé ŕéšûļţ çöûļð ñöţ ƀé öƀšéŕṽéð. Çĥéçķ îţš ĵöûŕñàļ ƀéƒöŕé ŕéţŕÿîñĝ.·························]"
+
+msgid "The snapshot check could not be cleaned up. Nothing was installed."
+msgstr "[Ţĥé šñàþšĥöţ çĥéçķ çöûļð ñöţ ƀé çļéàñéð ûþ. Ñöţĥîñĝ ŵàš îñšţàļļéð.······················]"
+
+msgid "The system restore connection ended. Check the restore status before trying again."
+msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé çöññéçţîöñ éñðéð. Çĥéçķ ţĥé ŕéšţöŕé šţàţûš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.···························]"
+
+msgid "The system restore did not finish. Review the details before trying again."
+msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé ðîð ñöţ ƒîñîšĥ. Ŕéṽîéŵ ţĥé ðéţàîļš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.························]"
+
+msgid "The system restore request was not authorized."
+msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé ŕéǫûéšţ ŵàš ñöţ àûţĥöŕîžéð.···············]"
+
+msgid "The system restore status could not be checked. Nothing was installed."
+msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé šţàţûš çöûļð ñöţ ƀé çĥéçķéð. Ñöţĥîñĝ ŵàš îñšţàļļéð.·······················]"
+
+msgid "The system restore status could not be checked. The update was not started."
+msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé šţàţûš çöûļð ñöţ ƀé çĥéçķéð. Ţĥé ûþðàţé ŵàš ñöţ šţàŕţéð.·························]"
+
+msgid "The system restore status could not be read."
+msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé šţàţûš çöûļð ñöţ ƀé ŕéàð.··············]"
+
+msgid "The system restore status is invalid."
+msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé šţàţûš îš îñṽàļîð.···········]"
+
+msgid "The system update did not finish, so nothing was built."
+msgstr "[Ţĥé šÿšţéɱ ûþðàţé ðîð ñöţ ƒîñîšĥ, šö ñöţĥîñĝ ŵàš ƀûîļţ.··················]"
+
+msgid "The transaction connection ended. Check the installed state before trying again."
+msgstr "[Ţĥé ţŕàñšàçţîöñ çöññéçţîöñ éñðéð. Çĥéçķ ţĥé îñšţàļļéð šţàţé ƀéƒöŕé ţŕÿîñĝ àĝàîñ.··························]"
+
+msgid "The transaction plan changed. Review it again."
+msgstr "[Ţĥé ţŕàñšàçţîöñ þļàñ çĥàñĝéð. Ŕéṽîéŵ îţ àĝàîñ.···············]"
+
+msgid "The transaction result could not be checked. Check repository updates before trying again."
+msgstr "[Ţĥé ţŕàñšàçţîöñ ŕéšûļţ çöûļð ñöţ ƀé çĥéçķéð. Çĥéçķ ŕéþöšîţöŕÿ ûþðàţéš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.······························]"
+
+msgid "The transaction was not authorized."
+msgstr "[Ţĥé ţŕàñšàçţîöñ ŵàš ñöţ àûţĥöŕîžéð.···········]"
+
+msgid "The undo could not be checked. Nothing was removed."
+msgstr "[Ţĥé ûñðö çöûļð ñöţ ƀé çĥéçķéð. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.················]"
+
+msgid "The undo did not finish as expected. Check the installed programs again."
+msgstr "[Ţĥé ûñðö ðîð ñöţ ƒîñîšĥ àš éẋþéçţéð. Çĥéçķ ţĥé îñšţàļļéð þŕöĝŕàɱš àĝàîñ.························]"
+
+msgid "The undo did not finish. Nothing was removed."
+msgstr "[Ţĥé ûñðö ðîð ñöţ ƒîñîšĥ. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.··············]"
+
+msgid "The update connection ended. Reopen the window to check the result; a started update keeps running."
+msgstr "[Ţĥé ûþðàţé çöññéçţîöñ éñðéð. Ŕéöþéñ ţĥé ŵîñðöŵ ţö çĥéçķ ţĥé ŕéšûļţ; à šţàŕţéð ûþðàţé ķééþš ŕûññîñĝ.·································]"
+
+msgid "The update did not finish. Open the update details with an administrator before trying again."
+msgstr "[Ţĥé ûþðàţé ðîð ñöţ ƒîñîšĥ. Öþéñ ţĥé ûþðàţé ðéţàîļš ŵîţĥ àñ àðɱîñîšţŕàţöŕ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·······························]"
+
+msgid "The update did not finish. Review the details before trying again."
+msgstr "[Ţĥé ûþðàţé ðîð ñöţ ƒîñîšĥ. Ŕéṽîéŵ ţĥé ðéţàîļš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.······················]"
+
+msgid "The update did not finish. Some packages changed. Review the details before trying again."
+msgstr "[Ţĥé ûþðàţé ðîð ñöţ ƒîñîšĥ. Šöɱé þàçķàĝéš çĥàñĝéð. Ŕéṽîéŵ ţĥé ðéţàîļš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.······························]"
+
+msgid "The update download list could not be read."
+msgstr "[Ţĥé ûþðàţé ðöŵñļöàð ļîšţ çöûļð ñöţ ƀé ŕéàð.··············]"
+
+msgid "The update operation could not start. Check that the update manager is installed correctly."
+msgstr "[Ţĥé ûþðàţé öþéŕàţîöñ çöûļð ñöţ šţàŕţ. Çĥéçķ ţĥàţ ţĥé ûþðàţé ɱàñàĝéŕ îš îñšţàļļéð çöŕŕéçţļÿ.······························]"
+
+msgid "The update service could not be started or observed. A started update keeps running; check its result before trying again."
+msgstr "[Ţĥé ûþðàţé šéŕṽîçé çöûļð ñöţ ƀé šţàŕţéð öŕ öƀšéŕṽéð. À šţàŕţéð ûþðàţé ķééþš ŕûññîñĝ; çĥéçķ îţš ŕéšûļţ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.·········································]"
+
+msgid "The update was not started."
+msgstr "[Ţĥé ûþðàţé ŵàš ñöţ šţàŕţéð.········]"
+
+msgid "The upgrade checks the repositories again. Its final package list and download size may change."
+msgstr "[Ţĥé ûþĝŕàðé çĥéçķš ţĥé ŕéþöšîţöŕîéš àĝàîñ. Îţš ƒîñàļ þàçķàĝé ļîšţ àñð ðöŵñļöàð šîžé ɱàÿ çĥàñĝé.································]"
+
+msgid "There is no recorded install of this program to take back."
+msgstr "[Ţĥéŕé îš ñö ŕéçöŕðéð îñšţàļļ öƒ ţĥîš þŕöĝŕàɱ ţö ţàķé ƀàçķ.···················]"
+
+#, python-brace-format
+msgid "These installed packages were not found in AUR: {packages}."
+msgstr "[Ţĥéšé îñšţàļļéð þàçķàĝéš ŵéŕé ñöţ ƒöûñð îñ ÀÛŔ: {packages}.···················]"
+
+msgid "These packages will be removed."
+msgstr "[Ţĥéšé þàçķàĝéš ŵîļļ ƀé ŕéɱöṽéð.·········]"
+
+msgid "This additional Flatpak installation is read-only in this program manager."
+msgstr "[Ţĥîš àððîţîöñàļ Ƒļàţþàķ îñšţàļļàţîöñ îš ŕéàð-öñļÿ îñ ţĥîš þŕöĝŕàɱ ɱàñàĝéŕ.························]"
+
+msgid "This existing Flatpak program can be removed from your account without administrator authentication."
+msgstr "[Ţĥîš éẋîšţîñĝ Ƒļàţþàķ þŕöĝŕàɱ çàñ ƀé ŕéɱöṽéð ƒŕöɱ ÿöûŕ àççöûñţ ŵîţĥöûţ àðɱîñîšţŕàţöŕ àûţĥéñţîçàţîöñ.·································]"
+
+msgid "This hardware uses the built-in graphics driver. NVIDIA support is not needed."
+msgstr "[Ţĥîš ĥàŕðŵàŕé ûšéš ţĥé ƀûîļţ-îñ ĝŕàþĥîçš ðŕîṽéŕ. ÑṼÎÐÎÀ šûþþöŕţ îš ñöţ ñééðéð.··························]"
+
+msgid "This install can no longer be taken back as it was."
+msgstr "[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš.················]"
+
+msgid "This install can no longer be taken back as it was. Nothing was removed."
+msgstr "[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.························]"
+
+msgid "This install changed existing packages. Undo restores the whole system to the snapshot before the install and discards system changes made since then. Restart to use it. Your /home files stay untouched."
+msgstr "[Ţĥîš îñšţàļļ çĥàñĝéð éẋîšţîñĝ þàçķàĝéš. Ûñðö ŕéšţöŕéš ţĥé ŵĥöļé šÿšţéɱ ţö ţĥé šñàþšĥöţ ƀéƒöŕé ţĥé îñšţàļļ àñð ðîšçàŕðš šÿšţéɱ çĥàñĝéš ɱàðé šîñçé ţĥéñ. Ŕéšţàŕţ ţö ûšé îţ. Ÿöûŕ /ĥöɱé ƒîļéš šţàÿ ûñţöûçĥéð.·····································································]"
+
+msgid "This package is not a program you can remove here."
+msgstr "[Ţĥîš þàçķàĝé îš ñöţ à þŕöĝŕàɱ ÿöû çàñ ŕéɱöṽé ĥéŕé.················]"
+
+msgid "This program has no ratings yet."
+msgstr "[Ţĥîš þŕöĝŕàɱ ĥàš ñö ŕàţîñĝš ÿéţ.··········]"
+
+msgid "This program is already installed in its newest version."
+msgstr "[Ţĥîš þŕöĝŕàɱ îš àļŕéàðÿ îñšţàļļéð îñ îţš ñéŵéšţ ṽéŕšîöñ.··················]"
+
+msgid "This program is no longer in the catalog. Refresh the catalog."
+msgstr "[Ţĥîš þŕöĝŕàɱ îš ñö ļöñĝéŕ îñ ţĥé çàţàļöĝ. Ŕéƒŕéšĥ ţĥé çàţàļöĝ.····················]"
+
+msgid "This program is no longer installed."
+msgstr "[Ţĥîš þŕöĝŕàɱ îš ñö ļöñĝéŕ îñšţàļļéð.···········]"
+
+msgid "This program is not installed."
+msgstr "[Ţĥîš þŕöĝŕàɱ îš ñöţ îñšţàļļéð.·········]"
+
+msgid "This program needs a package that is neither in Arch nor in the AUR."
+msgstr "[Ţĥîš þŕöĝŕàɱ ñééðš à þàçķàĝé ţĥàţ îš ñéîţĥéŕ îñ Àŕçĥ ñöŕ îñ ţĥé ÀÛŔ.······················]"
+
+msgid "This program pulls in too many packages to build here."
+msgstr "[Ţĥîš þŕöĝŕàɱ þûļļš îñ ţöö ɱàñÿ þàçķàĝéš ţö ƀûîļð ĥéŕé.·················]"
+
+msgid "This repository program is no longer available."
+msgstr "[Ţĥîš ŕéþöšîţöŕÿ þŕöĝŕàɱ îš ñö ļöñĝéŕ àṽàîļàƀļé.···············]"
+
+msgid "This restore point changed or is no longer available. Load the list again."
+msgstr "[Ţĥîš ŕéšţöŕé þöîñţ çĥàñĝéð öŕ îš ñö ļöñĝéŕ àṽàîļàƀļé. Ļöàð ţĥé ļîšţ àĝàîñ.························]"
+
+msgid "This review cannot be sent. Choose the stars and write a title and a few words."
+msgstr "[Ţĥîš ŕéṽîéŵ çàññöţ ƀé šéñţ. Çĥööšé ţĥé šţàŕš àñð ŵŕîţé à ţîţļé àñð à ƒéŵ ŵöŕðš.··························]"
+
+msgid "Truncated AUR metadata archive"
+msgstr "[Ţŕûñçàţéð ÀÛŔ ɱéţàðàţà àŕçĥîṽé·········]"
+
+msgid "Unexpected popularity redirect"
+msgstr "[Ûñéẋþéçţéð þöþûļàŕîţÿ ŕéðîŕéçţ·········]"
+
+msgid "Unknown method"
+msgstr "[Ûñķñöŵñ ɱéţĥöð···]"
+
+msgid "Untrusted receipt file"
+msgstr "[Ûñţŕûšţéð ŕéçéîþţ ƒîļé······]"
+
+msgid "Update service failed; details: journalctl -u emaki-update.service"
+msgstr "[Ûþðàţé šéŕṽîçé ƒàîļéð; ðéţàîļš: ĵöûŕñàļçţļ -û éɱàķî-ûþðàţé.šéŕṽîçé······················]"
+
+msgid "Updated"
+msgstr "[Ûþðàţéð·]"
+
+msgid "Updates always include the full system"
+msgstr "[Ûþðàţéš àļŵàÿš îñçļûðé ţĥé ƒûļļ šÿšţéɱ············]"
+
+msgid "Updating Flatpak applications"
+msgstr "[Ûþðàţîñĝ Ƒļàţþàķ àþþļîçàţîöñš·········]"
+
+#, python-brace-format
+msgid "Updating Flatpak applications ({scope})…"
+msgstr "[Ûþðàţîñĝ Ƒļàţþàķ àþþļîçàţîöñš ({scope})…············]"
+
+msgid "Updating all repository packages. You can hide this window; the update will keep running."
+msgstr "[Ûþðàţîñĝ àļļ ŕéþöšîţöŕÿ þàçķàĝéš. Ÿöû çàñ ĥîðé ţĥîš ŵîñðöŵ; ţĥé ûþðàţé ŵîļļ ķééþ ŕûññîñĝ.······························]"
+
+msgid "Usage: emaki-programs list|preview PACKAGE|remove PACKAGE TOKEN --json"
+msgstr "[Ûšàĝé: éɱàķî-þŕöĝŕàɱš ļîšţ|þŕéṽîéŵ ÞÀÇĶÀĜÉ|ŕéɱöṽé ÞÀÇĶÀĜÉ ŢÖĶÉÑ --ĵšöñ·······················]"
+
+msgid "Usage: emaki-programs ratings ID... | reviews ID... | review JSON"
+msgstr "[Ûšàĝé: éɱàķî-þŕöĝŕàɱš ŕàţîñĝš ÎÐ... | ŕéṽîéŵš ÎÐ... | ŕéṽîéŵ ĴŠÖÑ·····················]"
+
+msgid "Usage: emaki-update-manager [--status|--check|--updates]"
+msgstr "[Ûšàĝé: éɱàķî-ûþðàţé-ɱàñàĝéŕ [--šţàţûš|--çĥéçķ|--ûþðàţéš]··················]"
+
+msgid "Waiting for permission to update…"
+msgstr "[Ŵàîţîñĝ ƒöŕ þéŕɱîššîöñ ţö ûþðàţé…··········]"
+
+msgid "Warning: the update space check is unavailable; the package transaction will continue."
+msgstr "[Ŵàŕñîñĝ: ţĥé ûþðàţé šþàçé çĥéçķ îš ûñàṽàîļàƀļé; ţĥé þàçķàĝé ţŕàñšàçţîöñ ŵîļļ çöñţîñûé.·····························]"
+
+msgid "What the undo removes changed. Review it again."
+msgstr "[Ŵĥàţ ţĥé ûñðö ŕéɱöṽéš çĥàñĝéð. Ŕéṽîéŵ îţ àĝàîñ.···············]"
+
+msgid "You have already reviewed this program."
+msgstr "[Ÿöû ĥàṽé àļŕéàðÿ ŕéṽîéŵéð ţĥîš þŕöĝŕàɱ.············]"
+
+#, python-brace-format
+msgid "Your package settings hold back these updates: {packages}."
+msgstr "[Ÿöûŕ þàçķàĝé šéţţîñĝš ĥöļð ƀàçķ ţĥéšé ûþðàţéš: {packages}.···················]"
+
+msgid "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
+msgstr "[Ÿöûŕ šÿšţéɱ îš ŕéàðÿ ţö ŕéţûŕñ ţö îţš šţàţé ƀéƒöŕé ţĥîš îñšţàļļ. Ŕéšţàŕţ ţö ƒîñîšĥ. Ƒîļéš îñ ÿöûŕ ĥöɱé ƒöļðéŕ àŕé ûñçĥàñĝéð.··········································]"
+
+msgid "invalid"
+msgstr "[îñṽàļîð·]"
+
+msgid "open the update manager as a regular user"
+msgstr "[öþéñ ţĥé ûþðàţé ɱàñàĝéŕ àš à ŕéĝûļàŕ ûšéŕ·············]"
+
+msgid "parser unavailable"
+msgstr "[þàŕšéŕ ûñàṽàîļàƀļé·····]"
+
+msgid "unreadable"
+msgstr "[ûñŕéàðàƀļé··]"
+
+#, python-brace-format
+msgid "{command} failed with status {status}"
+msgstr "[{command} ƒàîļéð ŵîţĥ šţàţûš {status}···········]"
+
+#, python-brace-format
+msgid "{error} The unused snapshot will be removed by scheduled cleanup."
+msgstr "[{error} Ţĥé ûñûšéð šñàþšĥöţ ŵîļļ ƀé ŕéɱöṽéð ƀÿ šçĥéðûļéð çļéàñûþ.·····················]"
+
+#, python-brace-format
+msgid "{package} was built but could not be installed."
+msgstr "[{package} ŵàš ƀûîļţ ƀûţ çöûļð ñöţ ƀé îñšţàļļéð.···············]"

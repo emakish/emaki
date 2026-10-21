@@ -13,7 +13,7 @@ Item {
     height: 32
     activeFocusOnTab: true
     Accessible.role: Accessible.CheckBox
-    Accessible.name: revealed ? "Hide password" : "Show password"
+    Accessible.name: revealed ? qsTranslate("PasswordToggle", "Hide password") : qsTranslate("PasswordToggle", "Show password")
     Accessible.checkable: true
     Accessible.checked: revealed
     Accessible.onToggleAction: if (enabled)

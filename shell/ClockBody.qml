@@ -19,6 +19,15 @@ Item {
     property bool keyboardMode: false
     property bool historyExpanded: false
     property bool showingNotes: false
+    property bool showingClocks: false
+    property var clockTools: null
+    readonly property var clockWords: ({
+            clocks: qsTranslate("ClockBody", "Clocks  ›"),
+            back: qsTranslate("ClockBody", "‹ Calendar & notifications")
+        })
+    property bool clocksVisited: false
+    onShowingClocksChanged: if (showingClocks)
+        clocksVisited = true
     property bool notesVisited: false
     onShowingNotesChanged: if (showingNotes)
         notesVisited = true
@@ -26,6 +35,7 @@ Item {
         if (!calendarEvents.editing)
             calendar.showToday();
         showingNotes = false;
+        showingClocks = false;
         mainScroll.contentY = 0;
     } else {
         historyExpanded = false;
@@ -132,7 +142,7 @@ Item {
     readonly property real addedHeight: notesTop - legacyNotesTop
     readonly property bool serverNote: serverState !== "active"
     readonly property real listTop: notesTop + 36 + (store.scheduleResumeNote ? 22 : 0) + (serverNote ? 22 : 0)
-    readonly property string actionNote: store.actionState === "action_unavailable" ? "This notification has no available action" : ""
+    readonly property string actionNote: store.actionState === "action_unavailable" ? qsTranslate("ClockBody", "This notification has no available action") : ""
     // Keep the initial drawer compact; scrolling or the overflow action opens history.
     readonly property var plan: {
         if (keyboardMode || historyExpanded)
@@ -148,7 +158,7 @@ Item {
     // The plate grows with the day's events and the Notes row, so the notifications stay in view;
     // past the screen's height its body scrolls. The Notes view gets room for a list and a note.
     readonly property real fullHeight: listTop + plan.height + (actionNote ? 22 : 0) + 14
-    readonly property real drawerHeight: Math.min(maxHeight, showingNotes ? Math.max(fullHeight, 600) : fullHeight)
+    readonly property real drawerHeight: Math.min(maxHeight, (showingNotes || showingClocks) ? Math.max(fullHeight, 600) : fullHeight)
     readonly property real peekHeight: peekNotes.length === 1 ? 40 + noteHeight(peekNotes[0]) + 10 : peekNotes.length > 1 ? 120 : 36
     readonly property real desiredHeight: opened ? drawerHeight : peekHeight
     function actionsOf(note: var): var {
@@ -282,7 +292,7 @@ Item {
     }
     function age(time: double): string {
         const minutes = Math.max(0, Math.floor((store.now - (time ?? store.now)) / 60000));
-        return minutes < 1 ? "now" : minutes < 60 ? minutes + " min" : minutes < 1440 ? Math.floor(minutes / 60) + " h" : Math.floor(minutes / 1440) + " d";
+        return minutes < 1 ? qsTranslate("ClockBody", "now") : minutes < 60 ? qsTranslate("ClockBody", "%n min", "", minutes) : minutes < 1440 ? qsTranslate("ClockBody", "%n h", "", Math.floor(minutes / 60)) : qsTranslate("ClockBody", "%n d", "", Math.floor(minutes / 1440));
     }
     // A themed icon by name. Programs & Updates draws its icon in the accent, as the dock
     // and the launcher do; its installed SVG keeps the default accent.
@@ -352,7 +362,7 @@ Item {
 
     Flickable {
         id: mainScroll
-        visible: body.opened && !body.showingNotes
+        visible: body.opened && !body.showingNotes && !body.showingClocks
         y: body.header
         width: body.width
         height: Math.max(1, body.drawerHeight - y)
@@ -371,12 +381,15 @@ Item {
         }
     }
     Word {
-        visible: body.opened && body.showingNotes
+        visible: body.opened && (body.showingNotes || body.showingClocks)
         x: body.side
         y: body.header
         key: "notes-back"
-        label: "‹ Calendar & notifications"
-        onClicked: body.showingNotes = false
+        label: body.clockWords.back
+        onClicked: {
+            body.showingNotes = false;
+            body.showingClocks = false;
+        }
     }
     Loader {
         id: notesLoader
@@ -390,6 +403,21 @@ Item {
             objectName: "clock-notes-view"
             compact: true
             onOpenRequested: noteId => Quickshell.execDetached(["emaki-notes", "--note", noteId])
+        }
+    }
+
+    Loader {
+        id: clocksLoader
+        active: body.clocksVisited
+        visible: body.showingClocks && body.opened
+        x: body.side
+        y: body.header + 36
+        width: body.inner
+        height: Math.max(1, body.drawerHeight - y - 14)
+        sourceComponent: ClockTools {
+            objectName: "clock-tools-view"
+            service: body.clockTools
+            glass: body.glass
         }
     }
 
@@ -436,8 +464,18 @@ Item {
         x: body.side
         y: calendarEvents.y + calendarEvents.height + 4
         key: "shade-notes"
-        label: "Notes · " + NotesService.notes.length + "  ›"
+        label: qsTranslate("ClockBody", "Notes · %1  ›").arg(NotesService.notes.length)
         onClicked: body.showingNotes = true
+    }
+
+    Word {
+        parent: scrollContent
+        x: body.side + body.inner - width
+        y: calendarEvents.y + calendarEvents.height + 4
+        key: "shade-clocks"
+        objectName: "shade-clocks"
+        label: body.clockWords.clocks
+        onClicked: body.showingClocks = true
     }
 
     // ---- Notifications: heading, Do not disturb, the groups ----
@@ -451,7 +489,7 @@ Item {
             x: body.side
             height: 28
             verticalAlignment: Text.AlignVCenter
-            text: "Notifications · " + body.store.count
+            text: qsTranslate("ClockBody", "Notifications · %1").arg(body.store.count)
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
@@ -462,7 +500,7 @@ Item {
             x: body.side + body.inner - 48 - width
             height: 28
             verticalAlignment: Text.AlignVCenter
-            text: "Do not disturb"
+            text: qsTranslate("ClockBody", "Do not disturb")
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 13
@@ -474,7 +512,7 @@ Item {
             id: dndToggle
             glass: body.glass
             key: "dnd"
-            label: "Do not disturb"
+            label: qsTranslate("ClockBody", "Do not disturb")
             drop: false
             accent: body.store.effectiveDnd
             x: body.side + body.inner - 38
@@ -493,7 +531,7 @@ Item {
     }
     // The knob's place (clock.js 'knob'): 20 × 22 at the track's left or right end.
     readonly property rect knobRect: Qt.rect(side + inner - 38 + (store.effectiveDnd ? 18 : 0), notesTop + 3 - mainScroll.contentY, 20, 22)
-    readonly property bool knobShown: opened && !showingNotes && knobRect.y >= header && knobRect.y + knobRect.height <= drawerHeight
+    readonly property bool knobShown: opened && !showingNotes && !showingClocks && knobRect.y >= header && knobRect.y + knobRect.height <= drawerHeight
     Text {
         parent: scrollContent
         objectName: "dnd-schedule-resume"
@@ -521,7 +559,7 @@ Item {
         height: 18
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
-        text: body.serverState === "owned_elsewhere" ? "Notifications are shown by another program" : body.serverState === "disabled" ? "Notifications are off" : body.serverState === "checking" || body.serverState === "registering" ? "Notifications are starting…" : "Notifications are unavailable"
+        text: body.serverState === "owned_elsewhere" ? qsTranslate("ClockBody", "Notifications are shown by another program") : body.serverState === "disabled" ? qsTranslate("ClockBody", "Notifications are off") : body.serverState === "checking" || body.serverState === "registering" ? qsTranslate("ClockBody", "Notifications are starting…") : qsTranslate("ClockBody", "Notifications are unavailable")
         textFormat: Text.PlainText
         font.family: ShellPalette.uiFont
         font.pixelSize: 11
@@ -564,7 +602,7 @@ Item {
         Text {
             anchors.centerIn: appIcon
             visible: appIcon.status !== Image.Ready
-            text: (row.note.app || "?").slice(0, 1).toLocaleUpperCase()
+            text: (body.store.displayApp(row.note.app) || "?").slice(0, 1).toLocaleUpperCase()
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 15
@@ -581,7 +619,7 @@ Item {
             height: 20
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
-            text: row.note.summary || row.note.app
+            text: row.note.summary || body.store.displayApp(row.note.app)
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
@@ -612,7 +650,7 @@ Item {
             y: 25 - 8 - 10
             height: 20
             verticalAlignment: Text.AlignVCenter
-            text: row.note.app + " · " + body.age(row.note.time)
+            text: body.store.displayApp(row.note.app) + " · " + body.age(row.note.time)
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 11
@@ -624,7 +662,7 @@ Item {
             glass: body.glass
             owner: row
             key: row.key + ":x"
-            label: "Dismiss"
+            label: qsTranslate("ClockBody", "Dismiss")
             x: row.width - 30
             y: 25 + 10 - 12
             width: 24
@@ -762,7 +800,7 @@ Item {
                     height: 28
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    text: "No notifications"
+                    text: qsTranslate("ClockBody", "No notifications")
                     textFormat: Text.PlainText
                     font.family: ShellPalette.uiFont
                     font.pixelSize: 13
@@ -785,7 +823,7 @@ Item {
                     height: 26
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
-                    text: entry.kind === "hidden" ? "+" + entry.modelData.count + " more" : entry.kind === "more" ? (entry.modelData.group.expanded ? entry.modelData.group.count + " from " + entry.modelData.group.app : "+" + (entry.modelData.group.count - 1) + " more from " + entry.modelData.group.app) : ""
+                    text: entry.kind === "hidden" ? qsTranslate("ClockBody", "+%n more", "", entry.modelData.count) : entry.kind === "more" ? (entry.modelData.group.expanded ? qsTranslate("ClockBody", "%n from %1", "", entry.modelData.group.count).arg(body.store.displayApp(entry.modelData.group.app)) : qsTranslate("ClockBody", "+%n more from %1", "", entry.modelData.group.count - 1).arg(body.store.displayApp(entry.modelData.group.app))) : ""
                     textFormat: Text.PlainText
                     font.family: ShellPalette.uiFont
                     font.pixelSize: 13
@@ -796,7 +834,7 @@ Item {
                     visible: entry.kind === "hidden"
                     x: body.side
                     key: entry.kind === "hidden" ? "history-more" : ""
-                    label: entry.kind === "hidden" ? "+" + entry.modelData.count + " more" : ""
+                    label: entry.kind === "hidden" ? qsTranslate("ClockBody", "+%n more", "", entry.modelData.count) : ""
                     color: body.dim
                     onClicked: body.revealHistory(entry.modelData.y)
                 }
@@ -807,12 +845,12 @@ Item {
                         spacing: 4
                         Word {
                             key: "more-" + entry.modelData.group.key
-                            label: entry.modelData.group.expanded ? "Show less" : "Show all"
+                            label: entry.modelData.group.expanded ? qsTranslate("ClockBody", "Show less") : qsTranslate("ClockBody", "Show all")
                             onClicked: body.store.expand(entry.modelData.group.key, !entry.modelData.group.expanded)
                         }
                         Word {
                             key: "clear-" + entry.modelData.group.key
-                            label: "Clear"
+                            label: qsTranslate("ClockBody", "Clear")
                             onClicked: body.store.dismiss(entry.modelData.group.ids)
                         }
                     }
@@ -822,7 +860,7 @@ Item {
                     x: body.side + body.inner - implicitWidth
                     sourceComponent: Word {
                         key: "clear-all"
-                        label: "Clear all"
+                        label: qsTranslate("ClockBody", "Clear all")
                         onClicked: body.store.dismiss(body.store.entries.map(n => n.id))
                     }
                 }
@@ -868,7 +906,7 @@ Item {
             height: 20
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
-            text: body.peekApps.length === 1 ? body.peekApps[0] + " · " + body.peekNotes.length + " new" : body.peekNotes.length + " new notifications"
+            text: body.peekApps.length === 1 ? qsTranslate("ClockBody", "%1 · %n new", "", body.peekNotes.length).arg(body.store.displayApp(body.peekApps[0])) : Translation.englishPlural(qsTranslate("ClockBody", "%n new notification(s)", "", body.peekNotes.length), body.peekNotes.length)
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
@@ -881,7 +919,7 @@ Item {
             height: 18
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
-            text: body.peekApps.length === 1 ? (body.peekNotes[body.peekNotes.length - 1]?.summary ?? "") : body.peekApps.slice(0, 3).join(", ")
+            text: body.peekApps.length === 1 ? (body.peekNotes[body.peekNotes.length - 1]?.summary ?? "") : body.peekApps.slice(0, 3).map(app => body.store.displayApp(app)).join(", ")
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 13
@@ -892,7 +930,7 @@ Item {
             x: -10
             y: 44
             key: "peek-all"
-            label: "Click to see all"
+            label: qsTranslate("ClockBody", "Click to see all")
             onClicked: body.openHistory()
         }
     }

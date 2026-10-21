@@ -59,6 +59,26 @@ class StorageTests(unittest.TestCase):
         self.request('notes.create', body=body)
         return self.store.snapshot()['notes'][0]
 
+    def test_installed_reminder_imports_in_isolated_mode(self):
+        root = Path(self.temp.name)
+        installed = root / 'libexec' / 'emaki'
+        installed.mkdir(parents=True)
+        shutil.copyfile(BACKEND, installed / 'notes-backend')
+        shutil.copyfile(BACKEND.parent.parent / 'scripts' / 'emaki_i18n.py', installed / 'emaki_i18n.py')
+        env = dict(os.environ, HOME=str(root), XDG_DATA_HOME=str(root / 'data'),
+                   XDG_STATE_HOME=str(root / 'state'), EMAKI_LOCALE_DIR=str(root / 'locale'))
+        result = subprocess.run([sys.executable, '-I', str(installed / 'notes-backend'), 'remind'],
+                                env=env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {'delivered': 0})
+
+    def test_notification_identity_is_not_translated(self):
+        with mock.patch.object(backend, '_', side_effect=lambda value: '[' + value + ']'), \
+                mock.patch.object(backend.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            self.assertTrue(backend.desktop_notify(dict(title='Event', date='2026-10-21', duration='all-day')))
+            self.assertIn('--app-name=Emaki Calendar', run.call_args.args[0])
+
     def test_markdown_checklist_and_sidecar(self):
         note = self.create()
         changed = self.request('notes.toggle', noteId=note['id'], revision=note['revision'], line=1)
@@ -407,6 +427,11 @@ class StorageTests(unittest.TestCase):
         self.addCleanup(cleanup)
         lines = Lines(self, process.stdout.fileno())
         note = lines.receive(lambda value: value['type'] == 'snapshot')['notes'][0]
+        process.stdin.write(b'[]\n')
+        process.stdin.flush()
+        invalid = lines.receive(lambda value: value['type'] == 'result' and value['id'] is None)
+        self.assertFalse(invalid['ok'])
+        self.assertIn('object', invalid['error'])
         def send(request):
             process.stdin.write(json.dumps(request).encode() + b'\n')
             process.stdin.flush()

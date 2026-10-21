@@ -21,6 +21,8 @@ Scope {
     property string startTime: "20:00"
     property string endTime: "07:00"
     property string error: ""
+    property string errorCode: ""
+    onErrorChanged: errorCode = ""
     property bool failed: false
     property bool stopping: false
     function validTime(value: string): bool {
@@ -39,7 +41,7 @@ Scope {
     }
     function setSchedule(value: string): bool {
         if (!["always", "manual"].includes(value)) {
-            error = "Choose a valid night light schedule.";
+            error = qsTranslate("NightLight", "Choose a valid night light schedule.");
             return false;
         }
         schedule = value;
@@ -48,7 +50,7 @@ Scope {
     }
     function setStartTime(value: string): bool {
         if (!validTime(value) || value === endTime) {
-            error = "Use different start and end times in HH:MM format.";
+            error = qsTranslate("NightLight", "Use different start and end times in HH:MM format.");
             return false;
         }
         startTime = value;
@@ -57,7 +59,7 @@ Scope {
     }
     function setEndTime(value: string): bool {
         if (!validTime(value) || value === startTime) {
-            error = "Use different start and end times in HH:MM format.";
+            error = qsTranslate("NightLight", "Use different start and end times in HH:MM format.");
             return false;
         }
         endTime = value;
@@ -77,7 +79,7 @@ Scope {
     property bool restartPending: false
     function setOn(value: bool): bool {
         if (!enabled || !installed) {
-            error = "Night Light is unavailable in this session.";
+            error = qsTranslate("NightLight", "Night Light is unavailable in this session.");
             return false;
         }
         error = "";
@@ -150,8 +152,11 @@ Scope {
         blockLoading: true
         atomicWrites: true
         printErrors: false
-        onSaveFailed: night.error = "Night light settings could not be saved. Check your storage and try again."
-        onSaved: if (night.error === "Night light settings could not be saved. Check your storage and try again.")
+        onSaveFailed: {
+            night.error = qsTranslate("NightLight", "Night light settings could not be saved. Check your storage and try again.");
+            night.errorCode = "save-failed";
+        }
+        onSaved: if (night.errorCode === "save-failed")
             night.error = ""
     }
     Timer {
@@ -181,13 +186,13 @@ Scope {
             night.installed = r.installed === true;
             night.checkState = r.state;
             if (!night.installed)
-                night.error = "Night Light is unavailable in this session.";
+                night.error = qsTranslate("NightLight", "Night Light is unavailable in this session.");
             night.apply();
         }
         onStateChanged: {
             if (["timeout", "helper_failed", "invalid_response"].includes(state)) {
                 night.checkState = state;
-                night.error = "Night Light availability could not be checked. Reopen the session and try again.";
+                night.error = qsTranslate("NightLight", "Night Light availability could not be checked. Reopen the session and try again.");
             }
         }
     }
@@ -208,7 +213,7 @@ Scope {
                 Qt.callLater(night.apply);
             } else if (!expected && night.on && night.enabled) {
                 night.failed = true;
-                night.error = "Night light could not start or stopped unexpectedly. Try turning it on again.";
+                night.error = qsTranslate("NightLight", "Night light could not start or stopped unexpectedly. Try turning it on again.");
             }
         }
     }

@@ -511,6 +511,16 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.request('prepare_reboot')[0]['remaining_s'], 0)
         self.assertEqual(self.request('hello', proto=1)[0]['restart']['remaining_s'], 0)
 
+    def test_reboot_recovery_hint_is_explicit(self):
+        self.controller.job = Job('finished')
+        self.controller.emit('done', seconds=1)
+        for included in (False, True):
+            with patch.object(self.controller, 'reboot_fn', side_effect=InstallError(
+                    Code.COMMAND_FAILED, 'Translated restart message', recovery_included=included)):
+                reply = self.request('reboot')[0]
+            self.assertFalse(reply['ok'])
+            self.assertEqual(reply['recovery_included'], included)
+
     def test_reboot_only_after_done_and_blocks_new_jobs(self):
         calls = []
         self.controller.reboot_fn = lambda: calls.append('reboot')

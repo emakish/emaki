@@ -265,10 +265,10 @@ class Transactions(unittest.TestCase):
 
     def test_absent_or_empty_holds_skip_checker_and_failed_estimate_warns(self):
         # The marker reports its startup; the space launcher replaces failed
-        # interpreter output with one warning and does not mistake exit 3 for proof.
+        # interpreter output with one warning. Status 3 is reserved for a shortage.
         self.assertTrue((self.root / 'var/lib/pacman/emaki-package-lock.json').is_file())
         python = self.root / 'usr/bin/python3'
-        python.write_text('#!/bin/sh\necho python-started "$@" >&2\nexit 3\n')
+        python.write_text('#!/bin/sh\necho python-started "$@" >&2\nexit 1\n')
         python.chmod(0o755)
         for empty in (False, True):
             state = self.root / holds.STATE

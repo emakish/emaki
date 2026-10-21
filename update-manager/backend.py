@@ -2,10 +2,23 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Unprivileged package discovery and the update window's line protocol."""
+
+try:
+    from emaki_i18n import translation, selected_languages
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation, selected_languages
+
+_ = translation('programs').gettext
+
 import argparse
 from datetime import datetime, timezone
 import fcntl
 import hashlib
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -106,17 +119,17 @@ def fetch(url, cache, validator):
         request = Request(url, headers={'User-Agent': 'Emaki-update-manager', 'Accept': '*/*'})
         with urlopen(request, timeout=15) as response:
             if not response.url.startswith('https://'):
-                raise ValueError('The package source redirected to an insecure address.')
+                raise ValueError(_('The package source redirected to an insecure address.'))
             raw = response.read(4 * 1024 * 1024 + 1)
         if len(raw) > 4 * 1024 * 1024:
-            raise ValueError('The package source returned too much data.')
+            raise ValueError(_('The package source returned too much data.'))
         parsed = validator(raw)
         save_json(path, dict(time=time.time(), body=raw.decode('utf-8')))
         return parsed, False
-    except (OSError, ValueError, catalog.ET.ParseError) as error:
+    except (OSError, ValueError, HTTPException, catalog.ET.ParseError) as error:
         if cached is not None:
             return cached, True
-        raise RuntimeError('The online information could not be checked. Check your connection, then try again.') from error
+        raise RuntimeError(_('The online information could not be checked. Check your connection, then try again.')) from error
 
 
 def compare(new, old):
@@ -162,9 +175,9 @@ def discover(cache):
     database, logfile = package_paths()
     initial = fingerprint(database)
     if (database / 'db.lck').exists():
-        raise RuntimeError('Another package operation may be running. Wait for it to finish before checking again.')
+        raise RuntimeError(_('Another package operation may be running. Wait for it to finish before checking again.'))
     warnings = []
-    emit('progress', message='Checking repository packages…')
+    emit('progress', message=_('Checking repository packages…'))
     # As in checkupdates: only the private sync database is refreshed. Copy local
     # metadata too, so the query cannot write through a link into the installed DB.
     with tempfile.TemporaryDirectory(prefix='database-', dir=cache) as temporary:
@@ -186,12 +199,12 @@ def discover(cache):
         if not aur.consent(aur.consent_path(config))['enabled']:
             foreign = {}
     if (database / 'db.lck').exists() or fingerprint(database) != initial:
-        raise RuntimeError('Installed packages changed during the check. Check again when the package operation finishes.')
+        raise RuntimeError(_('Installed packages changed during the check. Check again when the package operation finishes.'))
     ignored = [name for name, row in available.items() if row['ignored']]
     if ignored:
-        warnings.append('Your package settings hold back these updates: ' + ', '.join(ignored) + '.')
+        warnings.append(_('Your package settings hold back these updates: {packages}.').format(packages=', '.join(ignored)))
     if foreign:
-        emit('progress', message='Checking AUR package versions…')
+        emit('progress', message=_('Checking AUR package versions…'))
     missing = set()
     names = sorted(foreign)
     for offset in range(0, len(names), 100):
@@ -204,16 +217,16 @@ def discover(cache):
             updates.extend(entries)
             missing.update(set(batch) - found)
             if stale:
-                warnings.append('AUR could not be reached. Its listed versions come from an older check.')
+                warnings.append(_('AUR could not be reached. Its listed versions come from an older check.'))
         except (RuntimeError, ValueError):
-            warnings.append('AUR could not be checked. Some program updates may be missing from this list.')
+            warnings.append(_('AUR could not be checked. Some program updates may be missing from this list.'))
             break
         if offset + 100 < len(names):
             time.sleep(1)
     if missing:
-        warnings.append('These installed packages were not found in AUR: ' + ', '.join(sorted(missing)) + '.')
+        warnings.append(_('These installed packages were not found in AUR: {packages}.').format(packages=', '.join(sorted(missing))))
     if foreign:
-        warnings.append('AUR download sizes are not available. Development packages may need rebuilding even when their listed version has not changed.')
+        warnings.append(_('AUR download sizes are not available. Development packages may need rebuilding even when their listed version has not changed.'))
     news = []
     if any(not row.get('aur') for row in updates):
         try:
@@ -223,33 +236,33 @@ def discover(cache):
         if since is None:
             since = install_date()
         if since is None:
-            warnings.append('The date of the last full update is unknown. Review all the available Arch news notices.')
-        emit('progress', message='Checking Arch news…')
+            warnings.append(_('The date of the last full update is unknown. Review all the available Arch news notices.'))
+        emit('progress', message=_('Checking Arch news…'))
         try:
             news, stale = fetch('https://archlinux.org/feeds/news/', cache,
                                 lambda raw: catalog.news_items(raw, since))
             if stale:
-                warnings.append('Arch news could not be reached. The notices come from an older check.')
+                warnings.append(_('Arch news could not be reached. The notices come from an older check.'))
         except (RuntimeError, ValueError, catalog.ET.ParseError):
             news = []
-            warnings.append('Arch news could not be checked. Visit https://archlinux.org/news/ before updating.')
+            warnings.append(_('Arch news could not be checked. Visit https://archlinux.org/news/ before updating.'))
     warnings += catalog.warnings_for(updates)
     try:
         updates.extend(flatpaks.discover(command))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-        warnings.append('Flatpak updates could not be checked. Check again before updating applications.')
-    warnings.append('The upgrade checks the repositories again. Its final package list and download size may change.')
+        warnings.append(_('Flatpak updates could not be checked. Check again before updating applications.'))
+    warnings.append(_('The upgrade checks the repositories again. Its final package list and download size may change.'))
     data = catalog.summary(updates, news, list(dict.fromkeys(warnings)), datetime.now(timezone.utc).isoformat())
     data['databaseStamp'] = initial
     data['foreignPackageCount'] = foreign_count
     # A pending Emaki release brings its published notes; nothing is fetched otherwise.
     version = next(filter(None, (catalog.release_version(row) for row in updates)), '')
     if version:
-        emit('progress', message='Reading what is new in Emaki…')
+        emit('progress', message=_('Reading what is new in Emaki…'))
         data['release'] = catalog.release_card(version, lambda url, validate: fetch(url, cache, validate))
     helpers = [name for name in ('paru', 'yay', 'pikaur', 'trizen', 'aura', 'pamac') if shutil.which(name)]
     data['aurHelpers'] = helpers
-    data['aurNotice'] = 'AUR: Where available, open the program’s page to build its update, or use your AUR tool.'
+    data['aurNotice'] = _('AUR: Where available, open the program’s page to build its update, or use your AUR tool.')
     if not any(row.get('aur') for row in updates):
         data['aurNotice'] = ''
     return data
@@ -257,16 +270,20 @@ def discover(cache):
 
 def check(cache, refresh):
     previous = read_json(cache / 'updates.json')
+    language = ':'.join(selected_languages())
+    legacy_language = language if language in ('en', 'C', 'C.UTF-8', 'C.utf8', 'en_US.UTF-8') else ''
+    if previous.get('language', legacy_language) != language:
+        previous = {}
     with (cache / 'check.lock').open('w') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             data = previous or catalog.summary([], [], [], '')
-            data['error'] = 'An update check is already running. Check again in a moment.'
+            data['error'] = _('An update check is already running. Check again in a moment.')
             return data
         try:
             cleanup_databases(cache)
-            database, _ = package_paths()
+            database, _unused = package_paths()
             if (not refresh and previous and not previous.get('error')
                     and time.time() - catalog.utc(previous['checkedAt']).timestamp() < DAY
                     and previous.get('databaseStamp') == fingerprint(database)):
@@ -274,10 +291,11 @@ def check(cache, refresh):
             data = discover(cache)
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             data = previous or catalog.summary([], [], [], '')
-            data['error'] = 'Could not check updates.'
+            data['error'] = _('Could not check updates.')
             data['errorDetails'] = str(error)[:2500]
             if previous:
-                data['error'] += ' The list is from the previous check.'
+                data['error'] = _('Could not check updates. The list is from the previous check.')
+        data['language'] = language
         save_json(cache / 'updates.json', data)
         return data
 
@@ -343,8 +361,8 @@ def restore(operation, token=None):
                 pass
         code = process.wait()
     if not received:
-        message = ('The system restore request was not authorized.' if code in (126, 127) else
-                   'The system restore connection ended. Check the restore status before trying again.')
+        message = (_('The system restore request was not authorized.') if code in (126, 127) else
+                   _('The system restore connection ended. Check the restore status before trying again.'))
         pending = rollback_pending()
         if listing:
             emit(expected, points=[], error=message, restorePending=pending)
@@ -365,7 +383,7 @@ def observe_existing(cache):
     state = service_state()
     if state.get('ActiveState') not in ('activating', 'active', 'deactivating'):
         return False
-    emit('progress', message='A repository update is already running. Waiting for its result…')
+    emit('progress', message=_('A repository update is already running. Waiting for its result…'))
     while state.get('ActiveState') in ('activating', 'active', 'deactivating'):
         time.sleep(2)
         state = service_state()
@@ -375,20 +393,19 @@ def observe_existing(cache):
     changed = [row for row in previous.get('updates', [])
                if not row.get('aur') and row.get('kind') != 'flatpak'
                and row.get('old') != installed.get(row.get('name'))]
-    notices = catalog.warnings_for(changed)
     emit('finished', ok=ok,
-         message=('Repository updates finished. Check again to refresh the list.' if ok else
-                  'The update did not finish. Open the update details with an administrator before trying again.'),
+         message=(_('Repository updates finished. Check again to refresh the list.') if ok else
+                  _('The update did not finish. Open the update details with an administrator before trying again.')),
          **local_state(cache),
-         signOut=any('sign out' in line for line in notices))
+         signOut=catalog.session_changes({row['name'] for row in changed}))
     if not ok:
-        print('Update service failed; details: journalctl -u emaki-update.service', file=sys.stderr)
+        print(_('Update service failed; details: journalctl -u emaki-update.service'), file=sys.stderr)
         reminder.offer_report('update')
     return True
 
 
 def apply(cache):
-    emit('progress', message='Waiting for permission to update…')
+    emit('progress', message=_('Waiting for permission to update…'))
     finished = None
     with subprocess.Popen(['/usr/bin/pkexec', '/usr/libexec/emaki/emaki-update-apply', 'apply'],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as process:
@@ -403,8 +420,8 @@ def apply(cache):
                 pass
         code = process.wait()
     if finished is None:
-        message = ('The update was not started.' if code in (126, 127)
-                   else 'The update connection ended. Reopen the window to check the result; a started update keeps running.')
+        message = (_('The update was not started.') if code in (126, 127)
+                   else _('The update connection ended. Reopen the window to check the result; a started update keeps running.'))
         emit('finished', ok=False, notStarted=code in (126, 127), message=message,
              signOut=False, **local_state(cache))
         if code not in (126, 127):
@@ -416,10 +433,10 @@ def apply(cache):
         if finished.get('ok'):
             try:
                 if flatpaks.update(command, emit):
-                    finished['message'] = 'System and Flatpak updates finished. For AUR updates, where available, open the program’s page to build its update, or use your AUR tool.'
+                    finished['message'] = _('System and Flatpak updates finished. For AUR updates, where available, open the program’s page to build its update, or use your AUR tool.')
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 emit('progress', stage='failed', message=str(error)[:2500])
-                finished.update(ok=False, message='System updates finished, but Flatpak updates did not finish. Review the details before trying again.')
+                finished.update(ok=False, message=_('System updates finished, but Flatpak updates did not finish. Review the details before trying again.'))
         finished.update(local_state(cache))
         emit('finished', **finished)
         if finished.get('ok') and not finished.get('restart'):
@@ -437,9 +454,9 @@ def main():
     restoring = (len(sys.argv) == 3 and sys.argv[1] == '--restore'
                  and re.fullmatch(r'[1-9][0-9]{0,18}:[0-9a-f]{64}', sys.argv[2]))
     if not restoring and (len(sys.argv) != 2 or sys.argv[1] not in operations):
-        parser.error('Choose a fixed update operation or --restore with a restore point token.')
+        parser.error(_('Choose a fixed update operation or --restore with a restore point token.'))
     if os.geteuid() == 0:
-        parser.error('open the update manager as a regular user')
+        parser.error(_('open the update manager as a regular user'))
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, interrupted)
     os.umask(0o077)
@@ -463,10 +480,10 @@ def main():
         else:
             result = subprocess.run(['/usr/bin/systemctl', 'reboot'], capture_output=True, text=True)
             if result.returncode:
-                emit('finished', ok=False, message='The restart was not authorized. Try again from the power menu.',
+                emit('finished', ok=False, message=_('The restart was not authorized. Try again from the power menu.'),
                      signOut=False, **local_state(cache))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-        emit('finished', ok=False, message='The update operation could not start. Check that the update manager is installed correctly.', restart=False, signOut=False)
+        emit('finished', ok=False, message=_('The update operation could not start. Check that the update manager is installed correctly.'), restart=False, signOut=False)
         return 1
     return 0
 

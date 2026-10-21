@@ -273,7 +273,7 @@ ShellRoot {
             test.activate(test.button("Cancel"));
             test.check(!programs.previewOpen && programs.executions === 0, "cancel preserves program");
             view.showProgram(programs.allRows[4]); input.wait(50); test.shot("program-installed");
-            test.check(!!test.button("Undo this install") && !!test.label("Installed 12 Oct 2026, " + Qt.formatDateTime(new Date("2026-10-12T19:40:00+00:00"), "HH:mm") + " with 1 package it needed"), "a recorded install offers Undo this install with its date");
+            test.check(!!test.button("Undo this install") && !!test.label("Installed " + Qt.formatDateTime(new Date("2026-10-12T19:40:00+00:00"), "d MMM yyyy, HH:mm") + " with 1 package it needed"), "a recorded install offers Undo this install with its date");
             test.activate(test.button("Undo this install"));
             test.check(programs.previewOpen && programs.planAction === "undo" && programs.executions === 0, "undo previews before any change");
             test.check(!!test.label("Undo the install of Inkscape?") && !!test.label("libinkscape") && !!test.label("came with it") && !!test.label("THESE STAY") && !!test.label("you installed it yourself"), "undo preview names what goes and what stays");
@@ -295,7 +295,10 @@ ShellRoot {
             test.check(!!test.label("Undoing the install…"), "undo shows its own progress");
             programs.mutating = false; programs.busy = false; programs.phase = "idle"; programs.executions = 0;
             programs.busy = true; programs.phase = "catalog"; programs.heldByRefresh = true;
-            view.navigate("browse"); view.installProgram(programs.allPrograms.find(row => row.package === "gimp")); input.wait(30);
+            view.navigate("browse"); input.wait(30);
+            test.check(!!test.find(view, item => item.visible && item.text === "Install" && typeof item.clicked === "function" && item.enabled),
+                       "cached Browse entries stay installable during a quiet refresh");
+            view.installProgram(programs.allPrograms.find(row => row.package === "gimp")); input.wait(30);
             test.check(view.page === "program" && !programs.previewOpen && !!test.label("Refreshing…"),
                        "a quiet catalog refresh opens the program and says why Install waits");
             programs.busy = false; programs.phase = "idle"; programs.heldByRefresh = false;
@@ -430,7 +433,7 @@ ShellRoot {
             const searchField = test.named("program-search");
             searchField.text = "code ".repeat(24).trim(); searchField.textEdited(); input.wait(80);
             const longTitle = test.find(view, item => item.objectName === "heading-title" && item.visible && item.text.startsWith("Results for"));
-            const longNote = test.label(view.count(view.regularResults.length, "program from Arch and Flathub", "programs from Arch and Flathub"));
+            const longNote = test.label(view.regularResults.length.toLocaleString(Qt.locale(), "f", 0) + (view.regularResults.length === 1 ? " program from Arch and Flathub" : " programs from Arch and Flathub"));
             const searchList = test.named("row-list");
             test.check(view.page === "search" && !!longTitle && longTitle.truncated && !!longNote
                 && longTitle.mapToItem(window.contentItem, 0, 0).x + longTitle.width <= window.width

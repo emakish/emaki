@@ -23,7 +23,7 @@ FocusScope {
     implicitWidth: 720
     implicitHeight: 700
     focus: true
-    readonly property string subject: controller.part === "shell" ? "About the panel that stopped." : controller.part === "update" ? "About the system update that did not finish." : controller.part === "install" ? "About the program that could not be installed." : "Describe the problem; the details below help to find its cause."
+    readonly property string subject: controller.part === "shell" ? qsTranslate("ReportView", "About the panel that stopped.") : controller.part === "update" ? qsTranslate("ReportView", "About the system update that did not finish.") : controller.part === "install" ? qsTranslate("ReportView", "About the program that could not be installed.") : qsTranslate("ReportView", "Describe the problem; the details below help to find its cause.")
     function takeFocus(): void {
         whatField.forceActiveFocus();
     }
@@ -36,23 +36,25 @@ FocusScope {
             scroller.contentY = Math.min(scroller.contentHeight - scroller.height, top + item.height - scroller.height + 16);
     }
     function removedText(removed: var): string {
-        const names = {
-            user: ["user name", "user names"],
-            host: ["computer name", "computer names"],
-            email: ["e-mail address", "e-mail addresses"],
-            ip: ["IP address", "IP addresses"],
-            mac: ["MAC address", "MAC addresses"],
-            serial: ["serial number", "serial numbers"],
-            secret: ["password or token", "passwords or tokens"]
-        };
+        const counts = removed || {};
         const parts = [];
-        for (const key of Object.keys(names)) {
-            const count = Number(removed?.[key] ?? 0);
-            if (count > 0)
-                parts.push(count + " " + names[key][count === 1 ? 0 : 1]);
-        }
-        const notice = "Known kinds of sensitive information are removed. Review the preview before sending.";
-        return notice + (parts.length ? " Removed: " + parts.join(", ") + "." : " No known kinds of sensitive information were found.");
+        if (Number(counts.user) > 0)
+            parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n user name(s)", "", Number(counts.user)), Number(counts.user)));
+        if (Number(counts.host) > 0)
+            parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n computer name(s)", "", Number(counts.host)), Number(counts.host)));
+        if (Number(counts.email) > 0)
+            parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n e-mail address(es)", "", Number(counts.email)), Number(counts.email)));
+        if (Number(counts.ip) > 0)
+            parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n IP address(es)", "", Number(counts.ip)), Number(counts.ip)));
+        if (Number(counts.mac) > 0)
+            parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n MAC address(es)", "", Number(counts.mac)), Number(counts.mac)));
+        if (Number(counts.serial) > 0)
+            parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n serial number(s)", "", Number(counts.serial)), Number(counts.serial)));
+        if (Number(counts.secret) > 0)
+            parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n password(s) or token(s)", "", Number(counts.secret)), Number(counts.secret)));
+        return parts.length
+            ? qsTranslate("ReportView", "Known kinds of sensitive information are removed. Review the preview before sending. Removed: %1.").arg(parts.join(", "))
+            : qsTranslate("ReportView", "Known kinds of sensitive information are removed. Review the preview before sending. No known kinds of sensitive information were found.");
     }
     Keys.onEscapePressed: event => {
         if (view.controller.previewOpen)
@@ -86,12 +88,12 @@ FocusScope {
             spacing: 18
             SettingsPageHeader {
                 width: parent.width
-                title: "Report a problem"
+                title: qsTranslate("ReportView", "Report a problem")
                 explanation: view.subject
             }
             SettingsCard {
                 width: parent.width
-                title: "What happened?"
+                title: qsTranslate("ReportView", "What happened?")
                 ScrollView {
                     width: parent.width
                     height: 112
@@ -99,14 +101,14 @@ FocusScope {
                         id: whatField
                         objectName: "report-what"
                         text: view.controller.what
-                        placeholderText: "What you were doing, and what went wrong."
+                        placeholderText: qsTranslate("ReportView", "What you were doing, and what went wrong.")
                         placeholderTextColor: SettingsTheme.faint
                         wrapMode: TextArea.Wrap
                         selectByMouse: true
                         color: SettingsTheme.ink
                         font.family: SettingsTheme.fontFamily
                         font.pixelSize: 14
-                        Accessible.name: "What happened?"
+                        Accessible.name: qsTranslate("ReportView", "What happened?")
                         // The field itself holds no more than the report takes, so
                         // nothing shown here is silently left out.
                         onTextChanged: {
@@ -136,16 +138,16 @@ FocusScope {
                     color: view.controller.what.length >= view.controller.whatLimit ? SettingsTheme.ink : SettingsTheme.faint
                     font.family: SettingsTheme.fontFamily
                     font.pixelSize: 12
-                    Accessible.name: "Characters used: " + text
+                    Accessible.name: qsTranslate("ReportView", "Characters used: %1").arg(text)
                 }
             }
             SettingsCard {
                 width: parent.width
-                title: "Attached"
+                title: qsTranslate("ReportView", "Attached")
                 Text {
                     width: parent.width
                     visible: view.controller.state !== "ready"
-                    text: view.controller.state === "composing" ? "Collecting the details…" : view.controller.message
+                    text: view.controller.state === "composing" ? qsTranslate("ReportView", "Collecting the details…") : view.controller.message
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                     color: SettingsTheme.dim
@@ -155,7 +157,7 @@ FocusScope {
                 SettingsButton {
                     visible: view.controller.state === "failed"
                     objectName: "report-retry"
-                    text: "Try again"
+                    text: qsTranslate("ReportView", "Try again")
                     onClicked: view.controller.compose(view.controller.part, false)
                 }
                 Repeater {
@@ -247,7 +249,7 @@ FocusScope {
             SettingsButton {
                 id: previewButton
                 objectName: "report-preview"
-                text: view.controller.previewOpen ? "Hide what will be sent" : "See what will be sent"
+                text: view.controller.previewOpen ? qsTranslate("ReportView", "Hide what will be sent") : qsTranslate("ReportView", "See what will be sent")
                 enabled: view.controller.state === "ready"
                 onClicked: view.controller.togglePreview()
                 onActiveFocusChanged: if (activeFocus)
@@ -256,13 +258,13 @@ FocusScope {
             SettingsCard {
                 width: parent.width
                 visible: view.controller.previewOpen
-                title: "What will be sent"
+                title: qsTranslate("ReportView", "What will be sent")
                 // An older preview stays dimmed until the new one replaces it.
                 Text {
                     width: parent.width
                     visible: view.controller.previewStale
                     objectName: "report-preview-updating"
-                    text: "Updating the preview…"
+                    text: qsTranslate("ReportView", "Updating the preview…")
                     textFormat: Text.PlainText
                     color: SettingsTheme.dim
                     font.family: SettingsTheme.fontFamily
@@ -283,7 +285,7 @@ FocusScope {
                     color: SettingsTheme.ink
                     font.family: "monospace"
                     font.pixelSize: 12
-                    Accessible.name: "What will be sent"
+                    Accessible.name: qsTranslate("ReportView", "What will be sent")
                     onActiveFocusChanged: if (activeFocus)
                         view.reveal(previewText)
                 }
@@ -315,7 +317,7 @@ FocusScope {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(0, footer.width - closeButton.width - sendButton.width - 20)
                 objectName: "report-send-notice"
-                text: "Nothing leaves this computer until you choose Send. Send opens a new public GitHub issue form in your browser; it is posted only when you submit it there."
+                text: qsTranslate("ReportView", "Nothing leaves this computer until you choose Send. Send opens a new public GitHub issue form in your browser; it is posted only when you submit it there.")
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 color: SettingsTheme.dim
@@ -325,13 +327,13 @@ FocusScope {
             SettingsButton {
                 id: closeButton
                 objectName: "report-close"
-                text: view.controller.sent ? "Close" : "Cancel"
+                text: view.controller.sent ? qsTranslate("ReportView", "Close") : qsTranslate("ReportView", "Cancel")
                 onClicked: view.closeRequested()
             }
             SettingsButton {
                 id: sendButton
                 objectName: "report-send"
-                text: "Send"
+                text: qsTranslate("ReportView", "Send")
                 enabled: view.controller.state === "ready" && !view.controller.busy
                 onClicked: view.controller.send()
                 background: Rectangle {

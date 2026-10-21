@@ -72,6 +72,7 @@ known = []
 # Qt 6.11.2 still checks QProcess::ExitStatus metadata for zero-parameter
 # arrow handlers, including DisplaysService and NightLight.
 additional_metadata = {
+    ('ClockToolsService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('CaptureController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     # The installed polkit plugin exposes AuthFlow at runtime but omits its
     # declarative name from the flow property's qmltypes entry.
@@ -134,7 +135,8 @@ for file in report['files']:
 # Secure Boot's status and enrolment handlers add three (0.9.0), signing again one more.
 # The 0.9.0 greeter, start-up repair and recovery branches each counted against 54 alone;
 # merged into one tree they reach 55, every one listed above by file.
-assert len(known) <= 55, known
+# Clock tools add two Process exit handlers, covered by the isolated service test.
+assert len(known) <= 57, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 

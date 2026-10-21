@@ -6,6 +6,7 @@ Device IDs prefer udev's /dev/disk/by-id links. Machines without a disk serial
 (notably QEMU's default virtio disk) use /dev paths; confirmation must compare
 the private identity and geometry again before permitting a write.
 """
+from .i18n import _
 
 import json
 import hashlib
@@ -38,23 +39,17 @@ WINDOWS_MANAGED_GUIDS = frozenset({
 })
 MIN_ROOT = 32 * GIB
 WINDOWS_RESERVE = 2 * GIB
-HIBERNATION_REFUSAL = ('Windows is asleep, not shut down (hibernation or Fast Startup is on). '
-                      'In Windows, open Command Prompt as administrator, type powercfg /hibernate off '
-                      'and press Enter. Then shut Windows down and start from the USB stick again.')
-BITLOCKER_REFUSAL = ('Windows is encrypted with BitLocker, so Emaki cannot make room next to it. '
-                     'Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, '
-                     'then shut down and start from the USB stick again. '
-                     'If Windows stopped starting after you changed Secure Boot, change it back. '
-                     'Never delete or reset the firmware keys.')
+HIBERNATION_REFUSAL = (_('Windows is asleep, not shut down (hibernation or Fast Startup is on). In Windows, open Command Prompt as administrator, type powercfg /hibernate off and press Enter. Then shut Windows down and start from the USB stick again.'))
+BITLOCKER_REFUSAL = (_('Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys.'))
 
 
 def alongside_type_refusal(disk, part):
     """A filesystem signature cannot establish a safe Windows partition map."""
     if any(str(p.get('_parttype', '')).lower() in WINDOWS_MANAGED_GUIDS
            for p in disk['partitions']):
-        return 'Windows uses this disk as a dynamic disk or in Storage Spaces. Emaki cannot share such a disk.'
+        return _('Windows uses this disk as a dynamic disk or in Storage Spaces. Emaki cannot share such a disk.')
     if str(part.get('_parttype', '')).lower() != MICROSOFT_BASIC_DATA_GUID:
-        return 'The Windows part of this disk is set up in a way Emaki cannot safely shrink.'
+        return _('The Windows part of this disk is set up in a way Emaki cannot safely shrink.')
     return None
 
 
@@ -114,7 +109,7 @@ def other_system(part):
 def require_verified():
     # Read at call time: constants.ALONGSIDE is the only switch.
     require(constants.ALONGSIDE, Code.UNSUPPORTED_MODE,
-            'Installing alongside Windows is not available in this version.')
+            _('Installing alongside Windows is not available in this version.'))
 
 
 def ntfs_error(output):
@@ -124,9 +119,9 @@ def ntfs_error(output):
     if any(word in text for word in ('hibernat', 'fast startup', 'windows cache')):
         return HIBERNATION_REFUSAL
     if any(word in text for word in ('dirty', 'scheduled for check', 'unclean', 'inconsistent', 'chkdsk /f')):
-        return 'NTFS is dirty or needs a Windows consistency check. Run chkdsk in Windows and fully shut down first.'
+        return _('NTFS is dirty or needs a Windows consistency check. Run chkdsk in Windows and fully shut down first.')
     if any(word in text for word in ('mounted', 'busy', 'already opened')):
-        return 'The Windows partition is mounted, held, or in use. Unmount it before trying again.'
+        return _('The Windows partition is mounted, held, or in use. Unmount it before trying again.')
     if re.search(r'\b(error|failed|refused|bad sectors?)\b', text):
         return 'ntfsresize reported an error; shrinking Windows is refused.'
     return None
@@ -137,7 +132,7 @@ def parse_ntfs_minimum(output):
     require(not reason, Code.SHRINK_BOUNDS, reason or '')
     matches = re.findall(r'^You might resize at ([0-9]+) bytes\b', output, re.M)
     require(len(matches) == 1 and int(matches[0]) > 0, Code.SHRINK_BOUNDS,
-            'ntfsresize did not report one unambiguous minimum size.')
+            _('ntfsresize did not report one unambiguous minimum size.'))
     return int(matches[0])
 
 
@@ -150,14 +145,13 @@ def usable_size(size):
 
 def shrink_offer(minimum, size, start):
     require(type(minimum) is int and 0 < minimum < size, Code.SHRINK_BOUNDS,
-            'NTFS minimum size is invalid.')
+            _('NTFS minimum size is invalid.'))
     require(start > 0 and start % MIB == 0, Code.SHRINK_BOUNDS,
-            'The Windows partition does not start on a 1 MiB boundary; this layout is unsupported.')
+            _('The Windows partition does not start on a 1 MiB boundary; this layout is unsupported.'))
     keep = (minimum + WINDOWS_RESERVE + MIB - 1) // MIB * MIB
     free = max(0, usable_size(size) - keep)
     require(free >= MIN_ROOT, Code.SHRINK_BOUNDS,
-            'Not enough free space. Emaki needs about 35 GB that Windows does not use. '
-            'Delete or move files in Windows, then shut it down and start from the USB stick again.')
+            _('Not enough free space. Emaki needs about 35 GB that Windows does not use. Delete or move files in Windows, then shut it down and start from the USB stick again.'))
     return {'min_bytes': minimum, 'max_free_bytes': free}
 
 
@@ -171,7 +165,7 @@ def hibernation_reason(root):
     if not matches:
         return None
     if len(matches) != 1 or matches[0].is_symlink() or not matches[0].is_file():
-        return 'Cannot safely inspect the Windows hibernation file.'
+        return _('Cannot safely inspect the Windows hibernation file.')
     with matches[0].open('rb') as stream:
         header = stream.read(4096)
     if len(header) != 4096 or any(header):
@@ -183,7 +177,7 @@ def bitlocker_signature(path):
     with Path(path).open('rb', buffering=0) as stream:
         stream.seek(3)
         signature = stream.read(8)
-    require(len(signature) == 8, Code.SHRINK_BOUNDS, 'Cannot read the Windows volume signature.')
+    require(len(signature) == 8, Code.SHRINK_BOUNDS, _('Cannot read the Windows volume signature.'))
     return signature == b'-FVE-FS-'
 
 
@@ -210,38 +204,38 @@ def verify_ntfs_size(path, size):
     with Path(path).open('rb', buffering=0) as stream:
         boot = stream.read(512)
         require(len(boot) == 512 and boot[3:11] == b'NTFS    ' and boot[510:512] == b'\x55\xaa',
-                Code.UNSAFE_DISK, 'Unreadable NTFS boot record after resize.')
+                Code.UNSAFE_DISK, _('Unreadable NTFS boot record after resize.'))
         sector = int.from_bytes(boot[11:13], 'little')
         encoded = boot[13]
         clusters = 1 << (256 - encoded) if encoded > 128 else encoded
         require(sector in (512, 1024, 2048, 4096) and clusters > 0
                 and clusters & (clusters - 1) == 0 and clusters * sector < size,
-                Code.UNSAFE_DISK, 'Unsupported NTFS sector or cluster geometry.')
+                Code.UNSAFE_DISK, _('Unsupported NTFS sector or cluster geometry.'))
         cluster = sector * clusters
         sectors = int.from_bytes(boot[40:48], 'little')
         require(sectors * sector == (size - sector) // cluster * cluster,
-                Code.UNSAFE_DISK, 'NTFS size does not match the approved shrink.')
+                Code.UNSAFE_DISK, _('NTFS size does not match the approved shrink.'))
         for offset in (48, 56):
             location = int.from_bytes(boot[offset:offset + 8], 'little')
             require(0 < location < sectors // clusters, Code.UNSAFE_DISK,
-                    'NTFS metadata lies outside the resized filesystem.')
+                    _('NTFS metadata lies outside the resized filesystem.'))
         stream.seek(size - sector)
         require(stream.read(512) == boot, Code.UNSAFE_DISK,
-                'NTFS backup boot record does not match after resize.')
+                _('NTFS backup boot record does not match after resize.'))
 
 
 def verify_resized_ntfs(runner, path, size):
     require(runner.run(['blockdev', '--getsize64', path]).strip() == str(size),
-            Code.UNSAFE_DISK, 'Kernel partition size differs after resize.')
+            Code.UNSAFE_DISK, _('Kernel partition size differs after resize.'))
     verify_ntfs_size(path, size)
     root = Path(tempfile.mkdtemp(prefix='ntfs-check-', dir='/run/emaki-installer'))
     mounted = False
     try:
         runner.run(['ntfs-3g', '-o', 'ro,norecover,nodev,nosuid,noexec,show_sys_files', path, str(root)])
         mounted = True
-        require(windows_system(root), Code.UNSAFE_DISK, 'Windows system metadata is unreadable after resize.')
+        require(windows_system(root), Code.UNSAFE_DISK, _('Windows system metadata is unreadable after resize.'))
         # Opening the directory and volume bitmap also exercises NTFS metadata.
-        require(os.statvfs(root).f_blocks > 0, Code.UNSAFE_DISK, 'NTFS allocation metadata is unreadable.')
+        require(os.statvfs(root).f_blocks > 0, Code.UNSAFE_DISK, _('NTFS allocation metadata is unreadable.'))
     finally:
         if mounted:
             runner.run(['umount', '--', str(root)])
@@ -261,15 +255,15 @@ def parse_gpt_info(text):
     result = {}
     for key, pattern in patterns.items():
         values = re.findall(pattern, text, re.M)
-        require(len(values) == 1, Code.UNSAFE_DISK, 'Cannot verify GPT partition ' + key + '.')
+        require(len(values) == 1, Code.UNSAFE_DISK, _('Cannot verify GPT partition ') + key + '.')
         result[key] = values[0]
     for key in ('guid', 'type'):
         require(re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', result[key]),
-                Code.UNSAFE_DISK, 'Invalid GPT GUID.')
+                Code.UNSAFE_DISK, _('Invalid GPT GUID.'))
         result[key] = result[key].lower()
     result['start'], result['end'] = int(result['start']), int(result['end'])
     require(result['end'] >= result['start'] > 0 and
-            not any(ord(c) < 32 for c in result['name']), Code.UNSAFE_DISK, 'Invalid GPT geometry or name.')
+            not any(ord(c) < 32 for c in result['name']), Code.UNSAFE_DISK, _('Invalid GPT geometry or name.'))
     return result
 
 
@@ -292,14 +286,14 @@ def verify_gpt(runner, disk):
     output = UNALIGNED_END.sub('', runner.run(['sgdisk', '--verify', disk]))
     output = FIRST_USABLE_GAP.sub('', output)
     require('No problems found.' in output and not re.search(r'warning|error|caution', output, re.I),
-            Code.UNSAFE_DISK, 'GPT validation failed; Windows will not be resized.')
+            Code.UNSAFE_DISK, _('GPT validation failed; Windows will not be resized.'))
 
 
 EFI_MANIFEST_MAX_ENTRIES = 4096
 EFI_MANIFEST_MAX_BYTES = 256 * MIB
 EFI_MANIFEST_MAX_FILE_BYTES = 64 * MIB
 EFI_MANIFEST_MAX_DEPTH = 16
-EFI_MANIFEST_UNSAFE = "The disk's startup files could not be checked safely, so Emaki stopped."
+EFI_MANIFEST_UNSAFE = _("The disk's startup files could not be checked safely, so Emaki stopped.")
 
 
 def efi_loaders(root):
@@ -333,7 +327,7 @@ def efi_loaders(root):
         require(depth <= EFI_MANIFEST_MAX_DEPTH, Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
         info = path.lstat()
         require(not stat.S_ISLNK(info.st_mode), Code.UNSAFE_DISK,
-                'EFI loader path contains a symlink.')
+                _('EFI loader path contains a symlink.'))
         if stat.S_ISDIR(info.st_mode):
             for child, name in children(path):
                 if key == 'efi' and name == 'emaki':
@@ -345,7 +339,7 @@ def efi_loaders(root):
             return
         require(stat.S_ISREG(info.st_mode) and info.st_size <= EFI_MANIFEST_MAX_FILE_BYTES
                 and (not key.endswith('.efi') or info.st_size > 0),
-                Code.UNSAFE_DISK, 'EFI loader is not a valid bounded file.')
+                Code.UNSAFE_DISK, _('EFI loader is not a valid bounded file.'))
         total += info.st_size
         require(total <= EFI_MANIFEST_MAX_BYTES, Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
         digest = hashlib.sha256()
@@ -376,7 +370,7 @@ def efi_loaders(root):
 
 
 EFI = Path("/sys/firmware/efi")
-BUSY_REASON = "This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again."
+BUSY_REASON = _('This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again.')
 ENCRYPTED_TYPES = {
     "crypto_LUKS": "encrypted Linux system (LUKS)",
     "BitLocker": "encrypted Windows drive (BitLocker)",
@@ -540,14 +534,14 @@ def busy_reason(nodes, holders):
         path = _path(node)
         mounts = _mountpoints(node)
         if mounts:
-            details.append(f"{path} is open at {', '.join(mounts)} [mount]. Close files there, then unmount it [umount].")
+            details.append(_('{value1} is open at {value2} [mount]. Close files there, then unmount it [umount].').format(value1=path, value2=', '.join(mounts)))
         held = holders.get(path)
         if isinstance(held, list) and held:
-            details.append(f"{path} is held by {', '.join('/dev/' + item for item in held)} [device mapper or RAID]. Deactivate that volume or stop that array before trying again.")
+            details.append(_('{value1} is held by {value2} [device mapper or RAID]. Deactivate that volume or stop that array before trying again.').format(value1=path, value2=', '.join(('/dev/' + item for item in held))))
         elif node.get('type') not in {'disk', 'part'}:
             kind = node.get('type')
-            action = 'Close it [cryptsetup close]' if kind == 'crypt' else ('Deactivate it [lvchange -an]' if kind == 'lvm' else 'Stop it [mdadm --stop]')
-            details.append(f"{path} is active [{kind}]. {action}, then try again.")
+            action = _('Close it [cryptsetup close]') if kind == 'crypt' else (_('Deactivate it [lvchange -an]') if kind == 'lvm' else _('Stop it [mdadm --stop]'))
+            details.append(_('{value1} is active [{value2}]. {value3}, then try again.').format(value1=path, value2=kind, value3=action))
     return ' '.join(details) or BUSY_REASON
 
 
@@ -843,7 +837,7 @@ class Inventory:
         if count == 1:
             return None
         if not count:
-            return f"Cannot verify that {path} is the only device of {kind}."
+            return _('Cannot verify that {value1} is the only device of {value2}.').format(value1=path, value2=kind)
         return f"{path} is one of {count} devices of {kind}; erasing it would damage the other devices."
 
     def _member_reason(self, path, fs):
@@ -970,11 +964,11 @@ class Inventory:
         """The origin stays read-only; writable checks use a disposable snapshot."""
         refusal = {'min_bytes': 0, 'max_free_bytes': 0}
         if disk['_busy'] or part.get('_busy') or part.get('mountpoint'):
-            return dict(refusal, reason='The Windows partition or its disk is mounted, held, or in use.')
+            return dict(refusal, reason=_('The Windows partition or its disk is mounted, held, or in use.'))
         if disk['_read_only'] or disk['is_boot_medium']:
-            return dict(refusal, reason='The disk is read-only or is the live boot medium.')
+            return dict(refusal, reason=_('The disk is read-only or is the live boot medium.'))
         if disk['_pttype'] != 'gpt' or not any(p['esp'] for p in disk['partitions']):
-            return dict(refusal, reason='Installing next to Windows requires a GPT disk with an existing startup partition.')
+            return dict(refusal, reason=_('Installing next to Windows requires a GPT disk with an existing startup partition.'))
         type_refusal = alongside_type_refusal(disk, part)
         if type_refusal:
             return dict(refusal, reason=type_refusal)
@@ -984,14 +978,14 @@ class Inventory:
                 return dict(refusal, reason=BITLOCKER_REFUSAL)
             esps = [p for p in disk['partitions'] if p['esp']]
             require(len(esps) == 1 and esps[0]['fs'] == 'vfat', Code.ESP_SPACE,
-                    'Installing next to Windows requires exactly one FAT32 startup partition.')
+                    _('Installing next to Windows requires exactly one FAT32 startup partition.'))
             esp = esps[0]
             if esp.get('_efi_error'):
                 return dict(refusal, reason=esp['_efi_error'])
             # Its free space does not matter: Emaki creates its own ESP in the freed space and
             # never writes this one. Its Microsoft loader is read for GRUB's Windows entry.
             require('EFI/Microsoft/Boot/bootmgfw.efi' in esp.get('_efi_loaders', {}), Code.SHRINK_BOUNDS,
-                    'No verified Microsoft EFI loader exists on this disk.')
+                    _('No verified Microsoft EFI loader exists on this disk.'))
             verify_gpt(self.runner, disk['path'])
             for original in disk['partitions']:
                 metadata = read_gpt(self.runner, disk['path'], original['number'])
@@ -1001,7 +995,7 @@ class Inventory:
                         and metadata['guid'] == str(original.get('_partuuid')).lower()
                         and metadata['type'] == original.get('_parttype')
                         and metadata['name'] == original.get('_partlabel', ''), Code.UNSAFE_DISK,
-                        'GPT identity or geometry could not be verified.')
+                        _('GPT identity or geometry could not be verified.'))
                 original['_gpt'] = metadata
             output = self.runner.run(['ntfsresize', '--info', '--no-action', part['path']])
             minimum = parse_ntfs_minimum(output)
@@ -1013,7 +1007,7 @@ class Inventory:
                              part['path'], str(root)])
             mounted = True
             require(windows_system(root), Code.SHRINK_BOUNDS,
-                    'This NTFS partition is not a verified Windows system volume.')
+                    _('This NTFS partition is not a verified Windows system volume.'))
             reason = hibernation_reason(root)
             if reason:
                 return dict(refusal, reason=reason)
@@ -1024,7 +1018,7 @@ class Inventory:
                 reason = ntfs_error(output) if output else None
                 return dict(refusal, reason=reason or exc.message)
             reason = ntfs_error(output or str(exc))
-            return dict(refusal, reason=reason or 'Cannot verify NTFS, hibernation state or GPT metadata: ' + str(exc))
+            return dict(refusal, reason=reason or _('Cannot verify NTFS, hibernation state or GPT metadata: ') + str(exc))
         finally:
             if mounted:
                 self.runner.run(['umount', '--', str(root)])
@@ -1042,11 +1036,11 @@ class Inventory:
         for part in candidates:
             part['os_hint'] = 'windows'
             offer = (self._ntfs_shrink(disk, part) if boot_known else
-                     {'min_bytes': 0, 'max_free_bytes': 0, 'reason': 'Cannot identify the live boot medium.'})
+                     {'min_bytes': 0, 'max_free_bytes': 0, 'reason': _('Cannot identify the live boot medium.')})
             part['_shrink_probe'] = dict(offer)
             if part['size_bytes'] != largest or tied:
-                offer['reason'] = ('Windows candidates have equal sizes; selection is ambiguous.' if tied else
-                                   'Only the largest Windows/NTFS partition is considered; this partition is not offered.')
+                offer['reason'] = (_('Windows candidates have equal sizes; selection is ambiguous.') if tied else
+                                   _('Only the largest Windows/NTFS partition is considered; this partition is not offered.'))
             part['shrink'] = offer
         selected = next(p for p in candidates if p['size_bytes'] == largest)
         disk['shrink'] = dict(selected['shrink'], partition_id=selected['id'])
@@ -1057,16 +1051,16 @@ class Inventory:
             try:
                 refresh()
             except InstallError as exc:
-                safe_log(self.runner.log, f'Partition recovery for {path}: {exc.code}; {exc}; '
+                safe_log(self.runner.log, _('Partition recovery for {value1}: {value2}; {value3}; ').format(value1=path, value2=exc.code, value3=exc)
                          + ('will retry on the next probe.' if exc.retryable else 'recovery discarded.'))
                 if not exc.retryable:
                     del self.pending_partition_refresh[path]
                 # Changed or missing media can be listed afresh. Otherwise its kernel
                 # entries may still be stale: refuse this disk, not the entire inventory.
                 if exc.retryable or exc.code not in (Code.DISK_CHANGED, Code.DISK_NOT_FOUND, Code.DISK_BUSY):
-                    refresh_failures[path] = ('The disk is still being read. Try again in a moment.'
+                    refresh_failures[path] = (_('The disk is still being read. Try again in a moment.')
                                               if exc.retryable else
-                                              'The disk could not be read. Installation stopped.'
+                                              _('The disk could not be read. Installation stopped.')
                                               if exc.code == Code.COMMAND_FAILED else str(exc))
             else:
                 del self.pending_partition_refresh[path]
@@ -1089,8 +1083,7 @@ class Inventory:
             # whole-disk member of a set spanning other disks is caught here.
             tags = self._signature(disk["path"])
             if tags is None:
-                self._refuse(disk, f"Cannot read the signature of {disk['path']}; "
-                                   "it may be part of a multi-device set.")
+                self._refuse(disk, _('Cannot read the signature of {value1}; it may be part of a multi-device set.').format(value1=disk['path']))
             else:
                 disk["_fs"] = tags.get("TYPE") or disk["_fs"]
                 self._record_encrypted(disk, disk["path"], disk["_fs"], tags)
@@ -1103,8 +1096,7 @@ class Inventory:
                 # Bypass blkid's cache; metadata is used only for this probe.
                 tags = self._signature(part["path"])
                 if tags is None:
-                    self._refuse(disk, f"Cannot read the signature of {part['path']}; "
-                                       "it may be part of a multi-device set.")
+                    self._refuse(disk, _('Cannot read the signature of {value1}; it may be part of a multi-device set.').format(value1=part['path']))
                     break
                 if tags.get("TYPE"):
                     part["fs"] = tags["TYPE"]
@@ -1140,7 +1132,7 @@ class Inventory:
         if graphics:
             # Keep hybrid discrete GPUs asleep: even the display label uses
             # cached attributes once NVIDIA hardware has been identified.
-            gpu = "; ".join(f"Graphics controller (PCI {row['vendor']:04x}:"
+            gpu = "; ".join(_('Graphics controller (PCI {value1:04x}:').format(value1=row['vendor'])
                             + (f"{row['device']:04x}" if row['device'] is not None else "unknown") + ")"
                             for row in graphics['_graphics']['devices'])
         else:
@@ -1148,7 +1140,7 @@ class Inventory:
             gpu = "; ".join(line for line in pci.splitlines()
                             if any(kind in line for kind in ("VGA compatible controller", "3D controller", "Display controller")))
         cpu = next((line.split(":", 1)[1].strip() for line in _read("/proc/cpuinfo").splitlines()
-                    if line.startswith(("model name", "Hardware")) and ":" in line), "Unknown CPU")
+                    if line.startswith(("model name", "Hardware")) and ":" in line), _('Unknown CPU'))
         uefi, uefi_bits = firmware()
         hardware = {}
         state = secure_boot(self.root)
@@ -1161,8 +1153,8 @@ class Inventory:
             hardware["disk_notice"] = VMD_MESSAGE
         if discover_repo(self.root) is None:
             hardware["media_notice"] = MISSING_NOTICE if online else (
-                "The installation files are missing. Connect to the internet before installing (Ventoy or copytoram).")
-        return {**graphics, "hardware": hardware, "disks": disks, "gpu": gpu or "Unknown GPU", "cpu": cpu,
+                _('The installation files are missing. Connect to the internet before installing (Ventoy or copytoram).'))
+        return {**graphics, "hardware": hardware, "disks": disks, "gpu": gpu or _('Unknown GPU'), "cpu": cpu,
                 "memory_bytes": memory_size(),
                 "uefi": uefi, "uefi_bits": uefi_bits, "network": {"online": online},
                 "tz_guess": self.tz_guess, "scale_guess": None,

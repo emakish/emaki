@@ -143,8 +143,8 @@ class RenderMutationTests(unittest.TestCase):
             shutil.copytree(render.UI, root / 'ui', ignore=shutil.ignore_patterns('__pycache__', 'artifacts'))
             view = root / 'ui/InstallerView.qml'
             original = view.read_text()
-            mutations = [('text: "Welcome to Emaki"', 'text: ""'),
-                         ('"Install · "', '"Setup · "')]
+            mutations = [('text: qsTranslate("InstallerView", "Welcome to Emaki")', 'text: ""'),
+                         ('"Install · %1"', '"Setup · %1"')]
             for before, after in mutations:
                 with self.subTest(before=before):
                     self.assertIn(before, original)
@@ -181,7 +181,7 @@ class RenderMutationTests(unittest.TestCase):
             view = root / 'ui/InstallerView.qml'
             original = view.read_text()
             mutations = [
-                ('you-valid', 'text: error || "Use only letters, digits and symbols of the English (US) keyboard."', 'text: error'),
+                ('you-valid', 'text: error || qsTranslate("InstallerView", "Use only letters, digits and symbols of the English (US) keyboard.")', 'text: error'),
                 ('you-cyrillic', 'color: error ? view.danger : view.dim', 'color: view.dim'),
                 ('you-emoji', 'view.accountBlocked === ""', 'true'),
                 ('you-cyrillic', 'text: /[^\\x20-\\x7e]/.test(password.text) ? "" : Protocol.consoleWarning', 'text: Protocol.consoleWarning'),

@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Carry the Wi-Fi network the person joined in the live session into the installed system."""
+from .i18n import _
 import configparser
 from dataclasses import dataclass
 import os
@@ -15,8 +16,7 @@ from .errors import Code, InstallError
 PROFILE_DIRS = (Path('/etc/NetworkManager/system-connections'),
                 Path('/run/NetworkManager/system-connections'))
 WIFI_TYPES = ('wifi', '802-11-wireless')
-UNAVAILABLE = ('Could not save the Wi-Fi connection [NetworkManager]. '
-               'Connect to that network again before installing.')
+UNAVAILABLE = (_('Could not save the Wi-Fi connection [NetworkManager]. Connect to that network again before installing.'))
 UUID = r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 
 
@@ -38,14 +38,14 @@ def private_command(argv, *, input=None):
         result = subprocess.run(argv, input=input, capture_output=True, timeout=35,
                                 env=dict(os.environ, LC_ALL="C"))
     except subprocess.TimeoutExpired:
-        raise WifiNotCopied('NetworkManager did not answer within 35 seconds.') from None
+        raise WifiNotCopied(_('NetworkManager did not answer within 35 seconds.')) from None
     except OSError:
-        raise WifiNotCopied('nmcli could not be started.') from None
+        raise WifiNotCopied(_('nmcli could not be started.')) from None
     refuse(result.returncode == 0, f'nmcli failed (exit {result.returncode}).')
     try:
         return result.stdout.decode("utf-8")
     except UnicodeError:
-        raise WifiNotCopied('nmcli printed text that is not UTF-8.') from None
+        raise WifiNotCopied(_('nmcli printed text that is not UTF-8.')) from None
 
 
 @dataclass(frozen=True)
@@ -121,7 +121,7 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
     """Read one root-owned keyfile, active or not; never log its contents or saved secrets."""
     refuse(isinstance(uuid, str) and re.fullmatch(UUID, uuid), 'the profile ID is not a UUID.')
     paths = [p.filename for p in saved_wifi(run=run) if p.uuid == uuid]
-    refuse(len(paths) == 1, f'NetworkManager lists {len(paths)} Wi-Fi profiles with this UUID.')
+    refuse(len(paths) == 1, _('NetworkManager lists {value1} Wi-Fi profiles with this UUID.').format(value1=len(paths)))
     refuse(bool(paths[0]), 'the profile has no keyfile (NetworkManager keeps it only in memory).')
     path = Path(paths[0])
     refuse(path.parent in directories, 'the keyfile is outside NetworkManager\'s connection '
@@ -130,7 +130,7 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError as error:
-        raise WifiNotCopied(f'the keyfile could not be opened ({error.strerror}).') from None
+        raise WifiNotCopied(_('the keyfile could not be opened ({value1}).').format(value1=error.strerror)) from None
     with os.fdopen(fd, 'rb') as stream:
         info = os.fstat(stream.fileno())
         refuse(stat.S_ISREG(info.st_mode), 'the keyfile is not a regular file.')
@@ -147,7 +147,7 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
                     'connection.permissions', '',
                     'connection.interface-name', ''],
                    input=data)
-    refuse(bool(prepared.strip()), 'NetworkManager returned an empty profile.')
+    refuse(bool(prepared.strip()), _('NetworkManager returned an empty profile.'))
     try:
         profile = configparser.ConfigParser(interpolation=None, strict=True)
         profile.read_string(prepared)
@@ -175,7 +175,7 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
             else:
                 refuse(method == 'owe', f'key management {method or "unknown"} is not supported.')
     except (configparser.Error, UnicodeError, KeyError, ValueError):
-        raise WifiNotCopied('NetworkManager\'s normalized profile could not be read.') from None
+        raise WifiNotCopied(_("NetworkManager's normalized profile could not be read.")) from None
     if note:
         secret = 'no secret (open network)' if method in ('open', 'owe') else \
             'secret saved in the keyfile'

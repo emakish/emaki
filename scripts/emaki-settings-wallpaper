@@ -10,6 +10,12 @@ import sys
 import time
 import tomllib
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_i18n import translation
+
+_ = translation('shell').gettext
+
 
 def command(*args):
     result = subprocess.run(['wpaperctl', *args], capture_output=True, text=True, timeout=3)
@@ -118,5 +124,5 @@ if __name__ == '__main__':
     try:
         main(sys.argv[1:])
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
-        print('emaki-settings-wallpaper: wallpaper apply or verification failed', file=sys.stderr)
+        print(_('emaki-settings-wallpaper: wallpaper apply or verification failed'), file=sys.stderr)
         raise SystemExit(1)

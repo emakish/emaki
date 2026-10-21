@@ -56,7 +56,7 @@ Scope {
         WelcomeButton {
             id: stopButton
             anchors.centerIn: stopPlate
-            text: overlay.controller.recording ? CaptureText.stop : overlay.controller.stopping ? CaptureText.finishing : CaptureText.starting
+            text: overlay.controller.recording ? CaptureText.stop() : overlay.controller.stopping ? CaptureText.finishing() : CaptureText.starting()
             primary: true
             enabled: !overlay.controller.stopping
             onClicked: overlay.controller.stop()

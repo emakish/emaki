@@ -217,15 +217,16 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('auth       substack    emaki-greetd-auth', (ROOT / 'greetd/pam').read_text())
         self.assertIn('auth       include     system-local-login', (ROOT / 'greetd/pam-auth').read_text())
 
-    def test_release_versions(self, marker_release='1'):
+    def test_release_versions(self, marker_release='3'):
         # test_qt612_activation reruns this on an activated tree, where the marker release may have moved.
         for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia', 'emaki-sudo-key'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                # 0.10.0 ships without an image: only the marker and emaki-config (with the CLI) were rebuilt.
-                self.assertEqual(info['pkgver'], ['0.10.0'] if name in ('emaki', 'emaki-config') else ['0.9.0'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
+                # 0.11.0 rebuilds the marker and emaki-config (with the CLI), 0.11.0-2 turns on Spanish and Portuguese on updated
+                # systems; emaki-apps and emaki-installer keep the image's 0.9.0 as 0.9.0-2 (Discover left the Rich set).
+                self.assertEqual(info['pkgver'], ['0.11.0'] if name in ('emaki', 'emaki-config') else ['0.9.0'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['3'] if name in ('emaki-config', 'emaki-installer') else ['2'] if name == 'emaki-apps' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera);
                 # emaki-config also ships Plymouth's password prompt pictures (GPL-2.0-or-later).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
@@ -234,11 +235,11 @@ class MetadataTests(unittest.TestCase):
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         self.assertTrue({'kimageformats', 'libjxl'} <= set(self.recipes['emaki-config']['depends']))
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.10.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.11.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.10.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.11.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.10.0-1', 'emaki-desktop=0.9.0-1', 'niri-emaki=26.04-28',
+            'emaki-config=0.11.0-3', 'emaki-desktop=0.9.0-1', 'niri-emaki=26.04-28',
             'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.9.0-1', 'emaki-mirrorlist>=0.9.0-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
@@ -365,7 +366,7 @@ class MetadataTests(unittest.TestCase):
                 'adwaita-fonts'})
         # Other global shell configurations can remain installed.
         self.assertEqual(info['conflicts'], ['emaki-core'])
-        self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools', 'cmake', 'gcc', 'pkgconf'})
+        self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools', 'qt6-tools', 'gettext', 'cmake', 'gcc', 'pkgconf'})
         self.assertEqual(set(info['checkdepends']), {'niri', 'nodejs'})
         required = {
             'niri-emaki=26.04-28', 'quickshell-emaki>=0.3.1-13', 'python', 'python-gobject', 'python-pillow',
@@ -574,7 +575,7 @@ class MetadataTests(unittest.TestCase):
         # Programs a person may remove are optional: the installer installs them explicitly.
         programs = {'gwenview', 'ark', 'okular', 'thunderbird', 'qbittorrent',
                     'haruna', 'elisa', 'kate', 'libreoffice-fresh', 'spectacle', 'obs-studio',
-                    'plasma-systemmonitor', 'partitionmanager', 'filelight', 'discover',
+                    'plasma-systemmonitor', 'partitionmanager', 'filelight',
                     'isoimagewriter', 'skanlite', 'kcharselect', 'keepassxc'}
         required = {'emaki-desktop', 'flatpak', 'fwupd', 'cups', 'print-manager',
                     '7zip', 'unrar', 'ffmpeg', 'qt6-multimedia-ffmpeg',
@@ -623,8 +624,9 @@ class MetadataTests(unittest.TestCase):
         # The worker runs the snapshot and zram steps inside the target, never on the live host.
         for name in ('snapper', 'snap-pac', 'grub-btrfs', 'zram-generator'):
             self.assertNotIn(name, depends)
-        # The installer UI imports the shell modules and shaders under /usr/share/emaki/shell.
-        self.assertIn('emaki-config', depends)
+        # The installer UI imports the shell modules and shaders under /usr/share/emaki/shell, and
+        # Emaki.I18n, which emaki-config ships from 0.11 on.
+        self.assertIn('emaki-config>=0.11', depends)
 
     def test_snapguard_recipe_pins_its_public_release(self):
         info = self.recipes['snapguard']
@@ -744,8 +746,7 @@ class MetadataTests(unittest.TestCase):
                                  '/usr/share/emaki/mirrors/channel.conf',
                                  '/usr/share/emaki/mirrors/stable.conf', '/usr/share/emaki/mirrors/testing.conf'},
             'emaki': set(),
-            'emaki-apps': {'/etc/xdg/autostart/emaki-discover-notifier.desktop',
-                           '/usr/lib/systemd/system-preset/45-emaki-apps.preset',
+            'emaki-apps': {'/usr/lib/systemd/system-preset/45-emaki-apps.preset',
                            '/usr/share/applications/emaki-printers.desktop'},
         }
         with tempfile.TemporaryDirectory(prefix='emaki-small-') as temporary:
@@ -1512,7 +1513,8 @@ class PayloadTests(unittest.TestCase):
             stub.chmod(0o755)
         result = run(['make', 'install', 'install-niri-emaki', 'INSTALL_SUDO_TURN_INTEGRATION=0',
                       f'DESTDIR={cls.dest}', f'SUDO_BUILD={cls.base / "sudo-build"}',
-                      f'CAPTURE_BUILD={cls.base / "capture-build"}'],
+                      f'CAPTURE_BUILD={cls.base / "capture-build"}',
+                      f'I18N_BUILD={cls.base / "i18n-build"}'],
                      env=dict(os.environ, PATH=str(forbidden) + ':' + os.environ['PATH'],
                               SUDO_USER='must-not-be-used'))
         if result.returncode:
@@ -1636,7 +1638,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.10.0 [channel: unknown]\n')
+                         'emaki 0.11.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1675,7 +1677,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.10.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.11.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',
@@ -1720,9 +1722,11 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
 
     def test_boot_refresh_has_its_own_shared_renderer_and_assets(self):
         package = self.dest / 'usr/lib/emaki/boot/emaki_boot'
-        for module in ('boot', 'errors', 'grub_screen'):
-            self.assertEqual((package / (module + '.py')).read_bytes(),
-                             (ROOT / 'installer/emaki_installer' / (module + '.py')).read_bytes())
+        for module in ('boot', 'errors', 'grub_screen', 'secureboot', 'i18n'):
+            source = (ROOT / 'installer/emaki_installer' / (module + '.py')).read_bytes()
+            # The boot library's copy of i18n.py learns where the package installed the catalogues.
+            source = source.replace(b'@EMAKI_DATADIR@', b'/usr/share/emaki') if module == 'i18n' else source
+            self.assertEqual((package / (module + '.py')).read_bytes(), source, module)
         for module in ('__init__', 'refresh'):
             self.assertEqual((package / (module + '.py')).read_bytes(),
                              (ROOT / 'grub/emaki_boot' / (module + '.py')).read_bytes())

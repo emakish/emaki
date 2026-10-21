@@ -30,9 +30,9 @@ DEMO_MARK = ('M3 22L7.161 22L12.896 2L8.735 2Z', '#e2733f', 'mark.svg', 'mark-la
 
 
 def content_contract():
-    script = (ROOT / 'shell/WelcomeContent.js').read_text().replace('.pragma library', '')
+    script = (ROOT / 'tests/qml-translation.js').read_text() + '\n' + (ROOT / 'shell/WelcomeContent.js').read_text().replace('.pragma library', '')
     pages = json.loads(subprocess.check_output(
-        ['node', '-e', script + '\nconsole.log(JSON.stringify(pages.map(page => Object.assign({}, page, {allBinds: binds(page)}))));'], text=True))
+        ['node', '-e', script + '\nconsole.log(JSON.stringify(pages().map(page => Object.assign({}, page, {allBinds: binds(page)}))));'], text=True))
     # A short tour: a few pages, one idea each, a big title and a line or two.
     assert [page['id'] for page in pages] == ['welcome', 'super', 'move', 'system', 'keys'], pages
     for page in pages:

@@ -35,6 +35,27 @@ fn version_is_available_without_session_or_home() {
 }
 
 #[test]
+fn version_is_stable_in_a_translated_session() {
+    let _spawn = CHILD_SPAWN.lock().unwrap();
+    let result = Command::new(env!("CARGO_BIN_EXE_emaki"))
+        .arg("--version")
+        .env_clear()
+        .env("PATH", "/nonexistent-emaki-channel-test")
+        .env("EMAKI_LANGUAGE", "en_XA")
+        .env(
+            "EMAKI_LOCALE_DIR",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../i18n/locale"),
+        )
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap(),
+        format!("emaki {} [channel: unknown]\n", emaki_core::VERSION)
+    );
+}
+
+#[test]
 fn version_reports_the_effective_channel() {
     let _spawn = CHILD_SPAWN.lock().unwrap();
     use std::fs;

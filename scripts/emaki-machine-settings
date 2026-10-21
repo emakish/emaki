@@ -49,6 +49,12 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_i18n import translation
+
+_ = translation('shell').gettext
+
 SCHEMA = 1
 DECLARATIONS = '/etc/emaki/machine-settings.json'
 LOCALE1 = ('org.freedesktop.locale1', '/org/freedesktop/locale1', 'org.freedesktop.locale1')
@@ -76,22 +82,22 @@ LOCALE = re.compile(r'(?:[a-z]{2,3}(?:_[A-Z]{2})?(?:@[a-z]{1,16})?|C)\.UTF-8')
 KEYS = {
     'keyboard.layouts': {
         'service': 'locale1', 'type': 'string_list', 'authorization': 'org.freedesktop.locale1.set-keyboard',
-        'allowed': '1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it'},
+        'allowed': _('1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it')},
     'keyboard.switch_key': {
         'service': 'locale1', 'type': 'choice', 'authorization': 'org.freedesktop.locale1.set-keyboard',
         'allowed': ' | '.join(SWITCH_KEYS)},
     'time.zone': {
         'service': 'timedate1', 'type': 'time_zone', 'authorization': 'org.freedesktop.timedate1.set-timezone',
-        'allowed': 'a time zone name of the tz database (Europe/Berlin, UTC)'},
+        'allowed': _('a time zone name of the tz database (Europe/Berlin, UTC)')},
     'time.automatic': {
         'service': 'timedate1', 'type': 'boolean', 'authorization': 'org.freedesktop.timedate1.set-ntp',
         'allowed': 'true | false'},
     'locale.language': {
         'service': 'locale1', 'type': 'locale', 'authorization': 'org.freedesktop.locale1.set-locale',
-        'allowed': 'an installed UTF-8 locale (en_US.UTF-8)'},
+        'allowed': _('an installed UTF-8 locale (en_US.UTF-8)')},
     'locale.formats': {
         'service': 'locale1', 'type': 'locale', 'authorization': 'org.freedesktop.locale1.set-locale',
-        'allowed': 'an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language'},
+        'allowed': _('an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language')},
 }
 
 
@@ -519,9 +525,8 @@ def change(machine, key, value, declared, declared_reason):
         return answer({'status': 'uncertain', 'reason': failure or 'machine_setting_unconfirmed',
                        'key': key, 'before': before['value'], 'requested': target,
                        'after': after['value'], 'settings': [after],
-                       'recovery': [f'read the machine: emaki-machine-settings get {key} --json',
-                                    'set the before value again to go back once that read '
-                                    'shows the change; do not repeat the change blindly']}, 3)
+                       'recovery': [_('read the machine: emaki-machine-settings get {value1} --json').format(value1=key),
+                                    _('set the before value again to go back once that read shows the change; do not repeat the change blindly')]}, 3)
     return answer({'status': 'applied', 'reason': 'machine_setting_applied', 'key': key,
                    'before': before['value'], 'after': after['value'], 'settings': [after]})
 

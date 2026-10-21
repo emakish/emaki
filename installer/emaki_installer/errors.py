@@ -40,7 +40,8 @@ class Code(StrEnum):
 
 
 class InstallError(RuntimeError):
-    def __init__(self, code, message, *, retryable=False, output='', returncode=None):
+    def __init__(self, code, message, *, retryable=False, output='', returncode=None, recovery_included=False):
+        self.recovery_included = recovery_included
         self.code = Code(code)
         self.message = message
         self.retryable = retryable
@@ -49,6 +50,6 @@ class InstallError(RuntimeError):
         super().__init__(message)
 
 
-def require(condition, code, message):
+def require(condition, code, message, *, recovery_included=False):
     if not condition:
-        raise InstallError(code, message)
+        raise InstallError(code, message, recovery_included=recovery_included)

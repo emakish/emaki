@@ -2,6 +2,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """List pre-update and pre-install restore points and delegate confirmed restoration to rollback."""
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from datetime import datetime, timezone
 import fcntl
 import hashlib
@@ -36,7 +48,7 @@ INDEX = Path('/run/emaki-restore-points.json')
 INDEX_LIMIT = 8 * 1024 * 1024
 # Allow the five-minute refresh and timer coalescing; restoration rechecks live receipts.
 INDEX_MAX_AGE = 600
-INDEX_UNAVAILABLE = 'The restore point list is unavailable. Try again shortly.'
+INDEX_UNAVAILABLE = _('The restore point list is unavailable. Try again shortly.')
 
 
 class Refused(RuntimeError):
@@ -92,7 +104,7 @@ def receipt(directory):
 def list_points(root=None):
     root = SNAPSHOTS if root is None else root
     if root.is_symlink() or not root.is_dir():
-        raise Refused('Restore points are unavailable on this system.')
+        raise Refused(_('Restore points are unavailable on this system.'))
     rows = []
     for directory in root.iterdir():
         try:
@@ -113,14 +125,14 @@ def list_points(root=None):
                            operation='install' if install else 'update',
                            completed=post is not None, postDate=post['date'] if post else '',
                            packages=post['description'] if post else '',
-                           notice='' if post or install else 'No matching after-update snapshot is available.'))
+                           notice='' if post or install else _('No matching after-update snapshot is available.')))
     return sorted(result, key=lambda row: (row['timestamp'], int(row['id'].split(':')[0])), reverse=True)
 
 
 def refresh_index():
     """Publish a bounded public inventory, without changing private snapshot modes."""
     if os.geteuid() != 0:
-        raise Refused('Administrator permission is required to refresh the restore point list.')
+        raise Refused(_('Administrator permission is required to refresh the restore point list.'))
     try:
         value = dict(points=list_points(), error='')
     except (OSError, ValueError, RuntimeError):
@@ -191,28 +203,28 @@ def run(arguments, timeout=30):
 def boot_state():
     result = run([ROLLBACK, 'status', '--json'])
     if result.returncode:
-        raise Refused('The system restore status could not be read.')
+        raise Refused(_('The system restore status could not be read.'))
     value = json.loads(result.stdout)
     if not isinstance(value, dict) or value.get('mode') not in ('normal', 'snapshot', 'pending', 'unsupported'):
-        raise Refused('The system restore status is invalid.')
+        raise Refused(_('The system restore status is invalid.'))
     return value
 
 
 def require_normal(state):
     if state['mode'] == 'pending':
-        raise Refused('A system restore is ready. Restart before making another change.')
+        raise Refused(_('A system restore is ready. Restart before making another change.'))
     if state['mode'] != 'normal':
-        raise Refused('Restore is available only from the normal installed system.')
+        raise Refused(_('Restore is available only from the normal installed system.'))
 
 
 def restore_point(token, root=None):
     match = TOKEN.fullmatch(token)
     if match is None:
-        raise Refused('Choose a restore point from the current list.')
+        raise Refused(_('Choose a restore point from the current list.'))
     require_normal(boot_state())
     points = list_points(root)
     if not any(point['id'] == token for point in points):
-        raise Refused('This restore point changed or is no longer available. Load the list again.')
+        raise Refused(_('This restore point changed or is no longer available. Load the list again.'))
     return _apply_snapshot(match[1])
 
 
@@ -220,7 +232,7 @@ def restore_install_point(token, root=None):
     """Restore an exact pre-install point authenticated by the install receipt."""
     match = TOKEN.fullmatch(token)
     if match is None:
-        raise Refused('The restore point from before this install is unavailable.')
+        raise Refused(_('The restore point from before this install is unavailable.'))
     require_normal(boot_state())
     root = SNAPSHOTS if root is None else root
     try:
@@ -230,7 +242,7 @@ def restore_install_point(token, root=None):
         if point['kind'] != 'pre' or point['digest'] != match[2]:
             raise ValueError('changed pre-install snapshot')
     except (OSError, ValueError, ET.ParseError) as error:
-        raise Refused('The restore point from before this install changed or is no longer available. Nothing was restored.') from error
+        raise Refused(_('The restore point from before this install changed or is no longer available. Nothing was restored.')) from error
     return _apply_snapshot(match[1])
 
 
@@ -247,10 +259,10 @@ def _apply_snapshot(number):
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             pending = False
         return dict(type='restoreFinished', ok=False, restart=pending,
-                    message='The system restore did not finish. Review the details before trying again.',
+                    message=_('The system restore did not finish. Review the details before trying again.'),
                     details=clean_text(result.stderr or result.stdout))
     return dict(type='restoreFinished', ok=True, restart=True,
-                message='The selected system restore point is ready. Restart to use it. Your home folder was left untouched.',
+                message=_('The selected system restore point is ready. Restart to use it. Your home folder was left untouched.'),
                 details=clean_text(result.stdout))
 
 
@@ -259,7 +271,7 @@ def validate(arguments):
         return
     if len(arguments) == 2 and arguments[0] == 'restore' and TOKEN.fullmatch(arguments[1]):
         return
-    raise Refused('Choose list or restore with an exact restore point.')
+    raise Refused(_('Choose list or restore with an exact restore point.'))
 
 
 def main(arguments=None):
@@ -275,17 +287,17 @@ def main(arguments=None):
             return 1 if value['error'] else 0
         else:
             if os.geteuid() != 0:
-                raise Refused('Administrator permission is required to restore the system.')
+                raise Refused(_('Administrator permission is required to restore the system.'))
             os.umask(0o077)
             descriptor = os.open(LOCK, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
             with os.fdopen(descriptor, 'w') as lock:
                 try:
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
-                    raise Refused('An update or restore is running. Wait for it to finish.') from None
+                    raise Refused(_('An update or restore is running. Wait for it to finish.')) from None
                 answer = restore_point(arguments[1])
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        message = str(error) if isinstance(error, Refused) else 'System restore points could not be read or restored.'
+        message = str(error) if isinstance(error, Refused) else _('System restore points could not be read or restored.')
         answer = (dict(type='restorePoints', points=[], error=message) if listing else
                   dict(type='restoreFinished', ok=False, restart=False, message=message))
     print(json.dumps(answer), flush=True)

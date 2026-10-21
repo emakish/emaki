@@ -25,6 +25,7 @@ SOURCE = ROOT / 'shell/helpers/wallpaper_chooser.py'
 
 def load(source=None):
     module = types.ModuleType('wallpaper_chooser_test')
+    module.__file__ = str(SOURCE)
     exec(compile(source or SOURCE.read_text(), str(SOURCE), 'exec'), module.__dict__)
     return module
 

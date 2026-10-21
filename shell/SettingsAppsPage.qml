@@ -24,7 +24,7 @@ Column {
     function options(role, current) {
         let result = [
             {
-                label: "System default: " + (defaults[role]?.name || "unavailable"),
+                label: qsTranslate("SettingsAppsPage", "System default: %1").arg(defaults[role]?.name || qsTranslate("SettingsAppsPage", "unavailable")),
                 value: null
             }
         ];
@@ -110,7 +110,7 @@ Column {
             if (!running)
                 Qt.callLater(function () {
                     if (!request.completed)
-                        page.error = "Apps could not be read. Try again.";
+                        page.error = qsTranslate("SettingsAppsPage", "Apps could not be read. Try again.");
                 });
         }
         stdout: StdioCollector {
@@ -121,7 +121,7 @@ Column {
             try {
                 const reply = JSON.parse(output);
                 if (_code !== 0 || !reply.ok)
-                    throw new Error(reply.error || "Could not read apps.");
+                    throw new Error(reply.error || qsTranslate("SettingsAppsPage", "Could not read apps."));
                 page.applications = reply.applications;
                 page.startup = reply.startup;
                 page.defaults = reply.defaults || {};
@@ -145,7 +145,7 @@ Column {
                 Qt.callLater(function () {
                     if (programRequest.serial === serial && !programRequest.completed) {
                         page.preview = {};
-                        page.programsMessage = "Installed programs could not be read. Try again later.";
+                        page.programsMessage = qsTranslate("SettingsAppsPage", "Installed programs could not be read. Try again later.");
                         page.programsFailed = true;
                     }
                 });
@@ -170,16 +170,16 @@ Column {
                     page.programsFailed = false;
                 } else {
                     page.programsFailed = true;
-                    page.programsMessage = "Installed programs could not be read. Try again later.";
+                    page.programsMessage = qsTranslate("SettingsAppsPage", "Installed programs could not be read. Try again later.");
                 }
             } else if (operation === "preview") {
                 page.preview = reply ? Object.assign({
                     target: page.preview.target
                 }, reply) : {};
                 if (!reply)
-                    page.programsMessage = "The removal could not be checked. Nothing was removed.";
+                    page.programsMessage = qsTranslate("SettingsAppsPage", "The removal could not be checked. Nothing was removed.");
             } else if (operation === "remove") {
-                page.programsMessage = reply && reply.message ? reply.message : "The removal did not finish as expected. Check the installed programs again.";
+                page.programsMessage = reply && reply.message ? reply.message : qsTranslate("SettingsAppsPage", "The removal did not finish as expected. Check the installed programs again.");
                 // The helper passed the new list through every refusal rule; the person
                 // reviews it and confirms again.
                 if (reply && reply.code === "changed" && reply.token)
@@ -201,7 +201,7 @@ Column {
         objectName: "settings-apps-retry"
         visible: page.error !== ""
         enabled: !request.running
-        text: "Retry"
+        text: qsTranslate("SettingsAppsPage", "Retry")
         onClicked: page.run(["status"])
     }
     Text {
@@ -214,33 +214,33 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Default apps"
+        title: qsTranslate("SettingsAppsPage", "Default apps")
         Repeater {
             model: [
                 {
                     key: "browser",
-                    title: "Web browser",
-                    explanation: "Open web links with this app."
+                    title: qsTranslate("SettingsAppsPage", "Web browser"),
+                    explanation: qsTranslate("SettingsAppsPage", "Open web links with this app.")
                 },
                 {
                     key: "mail",
-                    title: "Mail",
-                    explanation: "Open email links with this app."
+                    title: qsTranslate("SettingsAppsPage", "Mail"),
+                    explanation: qsTranslate("SettingsAppsPage", "Open email links with this app.")
                 },
                 {
                     key: "files",
-                    title: "Files",
-                    explanation: "Open folders with this app."
+                    title: qsTranslate("SettingsAppsPage", "Files"),
+                    explanation: qsTranslate("SettingsAppsPage", "Open folders with this app.")
                 },
                 {
                     key: "terminal",
-                    title: "Terminal",
-                    explanation: "Open a terminal with this app."
+                    title: qsTranslate("SettingsAppsPage", "Terminal"),
+                    explanation: qsTranslate("SettingsAppsPage", "Open a terminal with this app.")
                 },
                 {
                     key: "editor",
-                    title: "Text editor",
-                    explanation: "Open plain text files with this app."
+                    title: qsTranslate("SettingsAppsPage", "Text editor"),
+                    explanation: qsTranslate("SettingsAppsPage", "Open plain text files with this app.")
                 }
             ]
             SettingsChoiceRow {
@@ -264,14 +264,14 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-startup-apps"
-        title: "Startup apps"
+        title: qsTranslate("SettingsAppsPage", "Startup apps")
         Repeater {
             model: page.startup
             SettingsToggleRow {
                 required property var modelData
                 width: parent.width
                 title: modelData.name
-                explanation: "Start this app when you sign in."
+                explanation: qsTranslate("SettingsAppsPage", "Start this app when you sign in.")
                 value: modelData.enabled
                 defaultValue: true
                 busy: request.running
@@ -281,14 +281,14 @@ Column {
         }
         SettingsChoiceRow {
             width: parent.width
-            title: "Add a startup app"
-            explanation: "Choose an installed app to start when you sign in."
+            title: qsTranslate("SettingsAppsPage", "Add a startup app")
+            explanation: qsTranslate("SettingsAppsPage", "Choose an installed app to start when you sign in.")
             value: ""
             defaultValue: ""
             busy: request.running
             options: [
                 {
-                    label: "Choose an app",
+                    label: qsTranslate("SettingsAppsPage", "Choose an app"),
                     value: ""
                 }
             ].concat(page.applications.filter(app => !page.startup.some(entry => entry.id === app.id)).map(app => ({
@@ -304,12 +304,12 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-installed-programs"
-        title: "Installed programs"
+        title: qsTranslate("SettingsAppsPage", "Installed programs")
         SettingsButton {
             objectName: "settings-programs-retry"
             visible: page.programsFailed
             enabled: !page.programsBusy
-            text: "Retry"
+            text: qsTranslate("SettingsAppsPage", "Retry")
             onClicked: page.refreshPrograms()
         }
         Text {
@@ -317,7 +317,7 @@ Column {
             topPadding: 14
             bottomPadding: 14
             visible: text !== ""
-            text: page.programsMessage || (page.programs.length === 0 && !page.programsBusy ? "No programs can be removed here." : "")
+            text: page.programsMessage || (page.programs.length === 0 && !page.programsBusy ? qsTranslate("SettingsAppsPage", "No programs can be removed here.") : "")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: SettingsTheme.dim
@@ -348,7 +348,7 @@ Column {
                                 id: remove
                                 objectName: "program-remove"
                                 anchors.right: parent.right
-                                text: "Remove…"
+                                text: qsTranslate("SettingsAppsPage", "Remove…")
                                 Accessible.name: text + " " + program.modelData.names.join(", ")
                                 onClicked: page.previewProgram(program.modelData.package)
                             }
@@ -385,7 +385,7 @@ Column {
                     Text {
                         width: parent.width
                         visible: text !== ""
-                        text: (page.preview.requiredBy || []).length ? "Needed by: " + page.preview.requiredBy.join(", ") : (page.preview.blocked || []).length ? "Kept: " + page.preview.blocked.join(", ") : ""
+                        text: (page.preview.requiredBy || []).length ? qsTranslate("SettingsAppsPage", "Needed by: %1").arg(page.preview.requiredBy.join(", ")) : (page.preview.blocked || []).length ? qsTranslate("SettingsAppsPage", "Kept: %1").arg(page.preview.blocked.join(", ")) : ""
                         textFormat: Text.PlainText
                         wrapMode: Text.WordWrap
                         color: SettingsTheme.dim
@@ -396,7 +396,7 @@ Column {
                         spacing: 8
                         SettingsButton {
                             objectName: "program-cancel"
-                            text: "Cancel"
+                            text: qsTranslate("SettingsAppsPage", "Cancel")
                             enabled: !page.programsBusy
                             onClicked: page.preview = {}
                         }
@@ -404,7 +404,7 @@ Column {
                             objectName: "program-confirm"
                             visible: page.preview.ok === true
                             enabled: !page.programsBusy
-                            text: "Remove " + (page.preview.packages || []).length + " packages"
+                            text: Translation.englishPlural(qsTranslate("SettingsAppsPage", "Remove %n package(s)", "", (page.preview.packages || []).length), (page.preview.packages || []).length)
                             onClicked: page.removeProgram()
                         }
                     }

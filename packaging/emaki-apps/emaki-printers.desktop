@@ -3,10 +3,16 @@
 [Desktop Entry]
 Type=Application
 Name=Printers
+Name[es]=Impresoras
+Name[pt_BR]=Impressoras
 Comment=Add and manage printers
+Comment[es]=Agrega y administra impresoras
+Comment[pt_BR]=Adicione e gerencie impressoras
 Exec=kcmshell6 kcm_printer_manager
 TryExec=kcmshell6
 Icon=printer
 Terminal=false
 Categories=Settings;HardwareSettings;
 Keywords=Printer;Printing;CUPS;
+Keywords[es]=impresora;imprimir;CUPS;
+Keywords[pt_BR]=impressora;imprimir;CUPS;

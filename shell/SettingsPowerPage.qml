@@ -23,39 +23,39 @@ Column {
     readonly property var delays: [
         {
             value: 0,
-            label: "Never"
+            label: qsTranslate("SettingsPowerPage", "Never")
         },
         {
             value: 60,
-            label: "1 minute"
+            label: qsTranslate("SettingsPowerPage", "1 minute")
         },
         {
             value: 120,
-            label: "2 minutes"
+            label: qsTranslate("SettingsPowerPage", "2 minutes")
         },
         {
             value: 300,
-            label: "5 minutes"
+            label: qsTranslate("SettingsPowerPage", "5 minutes")
         },
         {
             value: 330,
-            label: "5½ minutes"
+            label: qsTranslate("SettingsPowerPage", "5½ minutes")
         },
         {
             value: 600,
-            label: "10 minutes"
+            label: qsTranslate("SettingsPowerPage", "10 minutes")
         },
         {
             value: 900,
-            label: "15 minutes"
+            label: qsTranslate("SettingsPowerPage", "15 minutes")
         },
         {
             value: 1800,
-            label: "30 minutes"
+            label: qsTranslate("SettingsPowerPage", "30 minutes")
         },
         {
             value: 3600,
-            label: "1 hour"
+            label: qsTranslate("SettingsPowerPage", "1 hour")
         }
     ]
     readonly property bool pending: process.running
@@ -105,7 +105,7 @@ Column {
         return delays.concat([
             {
                 value: current,
-                label: current + " seconds"
+                label: Translation.englishPlural(qsTranslate("SettingsPowerPage", "%n second(s)", "", current), current)
             }
         ]);
     }
@@ -118,7 +118,7 @@ Column {
         if (current !== null && current !== undefined && !values.includes(current))
             options.push({
                 value: current,
-                label: current + "% (current)"
+                label: qsTranslate("SettingsPowerPage", "%1% (current)").arg(current.toFixed(0))
             });
         return options;
     }
@@ -148,7 +148,7 @@ Column {
             if (!running)
                 Qt.callLater(function () {
                     if (!root.received && !root.error)
-                        root.error = "Power settings are unavailable. Try again when the system service is ready.";
+                        root.error = qsTranslate("SettingsPowerPage", "Power settings are unavailable. Try again when the system service is ready.");
                 });
         }
         stdout: StdioCollector {
@@ -162,15 +162,15 @@ Column {
                         root.snapshot = result;
                         root.error = result.message || "";
                     } else
-                        root.error = result.message || "Could not apply the power setting.";
+                        root.error = result.message || qsTranslate("SettingsPowerPage", "Could not apply the power setting.");
                 } catch (_) {
-                    root.error = "Could not read the power settings.";
+                    root.error = qsTranslate("SettingsPowerPage", "Could not read the power settings.");
                 }
             }
         }
         onExited: (code, status) => {
             if (code !== 0 && !root.error)
-                root.error = "Could not apply the power setting.";
+                root.error = qsTranslate("SettingsPowerPage", "Could not apply the power setting.");
         }
     }
     Timer {
@@ -197,14 +197,14 @@ Column {
         objectName: "settings-power-retry"
         visible: root.error !== ""
         enabled: !root.pending
-        text: "Retry"
+        text: qsTranslate("SettingsPowerPage", "Retry")
         onClicked: root.send(["status"])
     }
     Text {
         objectName: "settings-power-action-status"
         visible: !root.lockOnly && !["idle", "confirmed", "applied", "ready"].includes(root.actionResult)
         width: parent.width
-        text: root.awaitingAction ? "Working…" : "Could not confirm the power mode change."
+        text: root.awaitingAction ? qsTranslate("SettingsPowerPage", "Working…") : qsTranslate("SettingsPowerPage", "Could not confirm the power mode change.")
         textFormat: Text.PlainText
         color: SettingsTheme.dim
         font.family: SettingsTheme.fontFamily
@@ -215,7 +215,7 @@ Column {
         objectName: "settings-no-battery"
         visible: !root.lockOnly && root.snapshot.state === "ready" && root.snapshot.batteries?.length === 0
         width: parent.width
-        text: "No battery"
+        text: qsTranslate("SettingsPowerPage", "No battery")
         textFormat: Text.PlainText
         color: SettingsTheme.dim
         font.family: SettingsTheme.fontFamily
@@ -225,13 +225,13 @@ Column {
     SettingsCard {
         width: parent.width
         visible: !root.lockOnly
-        title: "Screen and lid"
+        title: qsTranslate("SettingsPowerPage", "Screen and lid")
         SettingsChoiceRow {
             width: parent.width
             objectName: "settings-blank-battery"
             visible: root.snapshot.idle_available === true
-            title: "Blank the screen on battery"
-            explanation: "Turn off the screen after this much inactivity on battery power."
+            title: qsTranslate("SettingsPowerPage", "Blank the screen on battery")
+            explanation: qsTranslate("SettingsPowerPage", "Turn off the screen after this much inactivity on battery power.")
             options: root.delayOptions(root.snapshot.values.blank_battery)
             value: root.snapshot.values.blank_battery ?? 0
             defaultValue: (root.snapshot.defaults || {}).blank_battery ?? value
@@ -243,8 +243,8 @@ Column {
             width: parent.width
             objectName: "settings-blank-ac"
             visible: root.snapshot.idle_available === true
-            title: "Blank the screen when plugged in"
-            explanation: "Turn off the screen after this much inactivity on external power."
+            title: qsTranslate("SettingsPowerPage", "Blank the screen when plugged in")
+            explanation: qsTranslate("SettingsPowerPage", "Turn off the screen after this much inactivity on external power.")
             options: root.delayOptions(root.snapshot.values.blank_ac)
             value: root.snapshot.values.blank_ac ?? 0
             defaultValue: (root.snapshot.defaults || {}).blank_ac ?? value
@@ -254,21 +254,21 @@ Column {
         }
         SettingsRow {
             width: parent.width
-            title: "Lid behavior"
-            explanation: "Lid behavior is managed by the system."
+            title: qsTranslate("SettingsPowerPage", "Lid behavior")
+            explanation: qsTranslate("SettingsPowerPage", "Lid behavior is managed by the system.")
             defaultValue: value
         }
     }
     SettingsCard {
         width: parent.width
         visible: root.lockOnly
-        title: "Automatic lock"
+        title: qsTranslate("SettingsPowerPage", "Automatic lock")
         SettingsChoiceRow {
             width: parent.width
             objectName: "settings-lock-delay"
             visible: root.snapshot.idle_available === true
-            title: "Lock after inactivity"
-            explanation: "Require your password after this much time without input."
+            title: qsTranslate("SettingsPowerPage", "Lock after inactivity")
+            explanation: qsTranslate("SettingsPowerPage", "Require your password after this much time without input.")
             options: root.delayOptions(root.snapshot.values.lock_delay)
             value: root.snapshot.values.lock_delay ?? 0
             defaultValue: (root.snapshot.defaults || {}).lock_delay ?? value
@@ -280,18 +280,18 @@ Column {
     SettingsCard {
         width: parent.width
         visible: !root.lockOnly && root.service.profiles.state === "ready" && root.service.profiles.profiles.length > 0
-        title: "Power mode"
+        title: qsTranslate("SettingsPowerPage", "Power mode")
         SettingsChoiceRow {
             width: parent.width
             objectName: "settings-power-profile"
-            title: "Power mode"
-            explanation: "Balance energy use and performance."
+            title: qsTranslate("SettingsPowerPage", "Power mode")
+            explanation: qsTranslate("SettingsPowerPage", "Balance energy use and performance.")
             options: Array.from(root.service.profiles.profiles ?? []).map(profile => ({
                         value: profile,
                         label: ({
-                                "power-saver": "Power saver",
-                                balanced: "Balanced",
-                                performance: "Performance"
+                                "power-saver": qsTranslate("SettingsPowerPage", "Power saver"),
+                                balanced: qsTranslate("SettingsPowerPage", "Balanced"),
+                                performance: qsTranslate("SettingsPowerPage", "Performance")
                             })[profile] || profile
                     }))
             value: root.service.profiles.current
@@ -307,26 +307,26 @@ Column {
             id: batteryCard
             required property var modelData
             width: root.width
-            title: "Battery"
+            title: qsTranslate("SettingsPowerPage", "Battery")
             SettingsRow {
                 width: parent.width
-                title: "Battery level"
-                explanation: batteryCard.modelData.percent === null || batteryCard.modelData.percent === undefined ? "Battery level is not reported by this hardware." : batteryCard.modelData.percent + "% remaining" + (batteryCard.modelData.charging ? ", charging." : ".")
+                title: qsTranslate("SettingsPowerPage", "Battery level")
+                explanation: batteryCard.modelData.percent === null || batteryCard.modelData.percent === undefined ? qsTranslate("SettingsPowerPage", "Battery level is not reported by this hardware.") : (batteryCard.modelData.charging ? qsTranslate("SettingsPowerPage", "%1% remaining, charging.") : qsTranslate("SettingsPowerPage", "%1% remaining.")).arg(batteryCard.modelData.percent.toFixed(0))
                 defaultValue: value
             }
             SettingsRow {
                 width: parent.width
                 objectName: "settings-battery-health"
-                title: "Battery health"
-                explanation: batteryCard.modelData.health === null ? "Battery health is not reported by this hardware." : batteryCard.modelData.health + "% of the original full-charge capacity."
+                title: qsTranslate("SettingsPowerPage", "Battery health")
+                explanation: batteryCard.modelData.health === null ? qsTranslate("SettingsPowerPage", "Battery health is not reported by this hardware.") : qsTranslate("SettingsPowerPage", "%1% of the original full-charge capacity.").arg(batteryCard.modelData.health.toFixed(0))
                 defaultValue: value
             }
             SettingsChoiceRow {
                 width: parent.width
                 visible: batteryCard.modelData.charge_limit !== null
                 objectName: "settings-charge-limit"
-                title: "Charge limit"
-                explanation: "Stop charging at this percentage. The limit is restored at startup."
+                title: qsTranslate("SettingsPowerPage", "Charge limit")
+                explanation: qsTranslate("SettingsPowerPage", "Stop charging at this percentage. The limit is restored at startup.")
                 options: root.chargeOptions(batteryCard.modelData.charge_limit)
                 value: batteryCard.modelData.charge_limit
                 defaultValue: 100

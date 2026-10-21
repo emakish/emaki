@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 const source = fs.readFileSync(new URL('../shell/Switcher.js', import.meta.url), 'utf8');
 const logic = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), logic);
 vm.runInContext(source.replace(/^\.pragma library\s*$/m, ''), logic);
 const plain = value => JSON.parse(JSON.stringify(value));
 

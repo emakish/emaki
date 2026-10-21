@@ -83,7 +83,7 @@ Item {
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
             textFormat: Text.PlainText
-            text: media.player?.trackTitle || "Unknown track"
+            text: media.player?.trackTitle || qsTranslate("MediaBlock", "Unknown track")
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
             font.weight: Font.DemiBold
@@ -109,17 +109,17 @@ Item {
                 {
                     action: "previous",
                     icon: "media-skip-backward-symbolic",
-                    label: "Previous track"
+                    label: qsTranslate("MediaBlock", "Previous track")
                 },
                 {
                     action: "toggle",
                     icon: media.playing ? "media-playback-pause-symbolic" : "media-playback-start-symbolic",
-                    label: media.playing ? "Pause" : "Play"
+                    label: media.playing ? qsTranslate("MediaBlock", "Pause") : qsTranslate("MediaBlock", "Play")
                 },
                 {
                     action: "next",
                     icon: "media-skip-forward-symbolic",
-                    label: "Next track"
+                    label: qsTranslate("MediaBlock", "Next track")
                 }
             ]
             GlassTarget {
@@ -182,7 +182,7 @@ Item {
                 glass: media.glass
                 accent: active
                 key: "player-" + (modelData.dbusName || modelData.identity)
-                label: modelData.identity || "Player"
+                label: modelData.identity || qsTranslate("MediaBlock", "Player")
                 width: playerLabel.implicitWidth + 20
                 height: 26
                 onClicked: media.chosen = modelData.dbusName

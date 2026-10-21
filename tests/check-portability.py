@@ -38,7 +38,7 @@ ALLOW = 'tests/portability-allow.txt'
 
 # Every top-level directory is either checked or exempt with a reason; a new one must be
 # classified here before the check passes. Files at the top level (docs, build files) are exempt.
-CHECKED = ('shell', 'crates', 'scripts', 'update-manager', 'notes', 'niri', 'greetd', 'systemd', 'sudo', 'capture')
+CHECKED = ('shell', 'crates', 'scripts', 'update-manager', 'notes', 'niri', 'greetd', 'systemd', 'sudo', 'capture', 'i18n')
 EXEMPT_TOP = {
     # Build-time directories a package build creates next to the sources (no git there to ignore them).
     '.cache': 'build cache of the package build, not shipped source',

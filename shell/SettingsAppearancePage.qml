@@ -24,27 +24,27 @@ Column {
 
     SettingsCard {
         width: parent.width
-        title: "Theme"
+        title: qsTranslate("SettingsAppearancePage", "Theme")
         SettingsSegmentedRow {
             width: parent.width
             catalog: page.catalog
             settingKey: "appearance.theme"
-            title: "Appearance"
-            explanation: "Choose light, dark or your own hours."
+            title: qsTranslate("SettingsAppearancePage", "Appearance")
+            explanation: qsTranslate("SettingsAppearancePage", "Choose light, dark or your own hours.")
             fallbackValue: "light"
             controlWidth: 304
             options: [
                 {
                     value: "light",
-                    label: "Light"
+                    label: qsTranslate("SettingsAppearancePage", "Light")
                 },
                 {
                     value: "dark",
-                    label: "Dark"
+                    label: qsTranslate("SettingsAppearancePage", "Dark")
                 },
                 {
                     value: "automatic",
-                    label: "Automatic"
+                    label: qsTranslate("SettingsAppearancePage", "Automatic")
                 }
             ]
         }
@@ -52,14 +52,14 @@ Column {
             model: [
                 {
                     key: "appearance.light_time",
-                    title: "Light starts",
+                    title: qsTranslate("SettingsAppearancePage", "Light starts"),
                     fallback: "07:00",
                     other: "appearance.dark_time",
                     otherDefault: "19:00"
                 },
                 {
                     key: "appearance.dark_time",
-                    title: "Dark starts",
+                    title: qsTranslate("SettingsAppearancePage", "Dark starts"),
                     fallback: "19:00",
                     other: "appearance.light_time",
                     otherDefault: "07:00"
@@ -73,7 +73,7 @@ Column {
                 catalog: page.catalog
                 settingKey: modelData.key
                 title: modelData.title
-                explanation: "Use local time in 24-hour format (HH:MM)."
+                explanation: qsTranslate("SettingsAppearancePage", "Use local time in 24-hour format (HH:MM).")
                 fallbackValue: modelData.fallback
                 control: Component {
                     TextField {
@@ -90,9 +90,9 @@ Column {
                         }
                         onEditingFinished: {
                             if (!acceptableInput)
-                                timeRow.errorText = "Enter a time such as 07:00.";
+                                timeRow.errorText = qsTranslate("SettingsAppearancePage", "Enter a time such as 07:00.");
                             else if (text === (page.catalog.value(timeRow.modelData.other) || timeRow.modelData.otherDefault))
-                                timeRow.errorText = "Choose two different times.";
+                                timeRow.errorText = qsTranslate("SettingsAppearancePage", "Choose two different times.");
                             else {
                                 timeRow.errorText = "";
                                 if (text !== timeRow.value)
@@ -112,14 +112,14 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Accent colour"
+        title: qsTranslate("SettingsAppearancePage", "Accent colour")
         SettingsRow {
             id: accentRow
             width: parent.width
             catalog: page.catalog
             settingKey: "appearance.accent"
-            title: "Accent colour"
-            explanation: "Colour for icons, highlights and controls."
+            title: qsTranslate("SettingsAppearancePage", "Accent colour")
+            explanation: qsTranslate("SettingsAppearancePage", "Colour for icons, highlights and controls.")
             fallbackValue: ShellPalette.defaultAccent
             formatValue: value => ShellPalette.accents.find(choice => choice.id === value)?.name || value
             controlWidth: 304

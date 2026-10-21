@@ -198,7 +198,7 @@ Item {
         visible: island.shown
         TipTarget {
             tip: island.tip
-            label: "Notifications and calendar"
+            label: qsTranslate("ClockIsland", "Notifications and calendar")
             shortcut: "Super+N"
         }
         // Passive, like the tooltip's: a hovering MouseArea would take the hover from it.
@@ -211,7 +211,7 @@ Item {
             onClicked: island.clicked()
         }
         Accessible.role: Accessible.Button
-        Accessible.name: "Open notifications and calendar"
+        Accessible.name: qsTranslate("ClockIsland", "Open notifications and calendar")
         Accessible.onPressAction: island.clicked()
     }
 }

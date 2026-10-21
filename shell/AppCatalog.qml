@@ -82,9 +82,9 @@ Scope {
     // What the notice says: an internal code or a program's message never reaches the screen.
     function failureText(state: string): string {
         return ({
-                terminal_missing: "The terminal it needs isn’t installed.",
-                desktop_missing: "The app is no longer installed."
-            })[state] ?? "The app didn’t start.";
+                terminal_missing: qsTranslate("AppCatalog", "The terminal it needs isn’t installed."),
+                desktop_missing: qsTranslate("AppCatalog", "The app is no longer installed.")
+            })[state] ?? qsTranslate("AppCatalog", "The app didn’t start.");
     }
     PrivateJob {
         id: frequency

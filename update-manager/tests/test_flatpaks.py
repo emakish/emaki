@@ -85,7 +85,9 @@ class Flatpaks(unittest.TestCase):
 
     def test_updates_have_sleep_and_lid_inhibition_and_only_fixed_arguments(self):
         command = Mock(side_effect=[f'{REF}\t{OLD}\t1\tflathub\tuser\n', 'updated'])
-        self.assertTrue(flatpaks.update(command, Mock()))
+        emit = Mock()
+        self.assertTrue(flatpaks.update(command, emit))
+        self.assertEqual(emit.call_args_list[0].kwargs['phase'], 'flatpak')
         args = command.call_args.args[0]
         self.assertEqual(args[0], 'systemd-inhibit')
         self.assertIn('--what=sleep:handle-lid-switch', args)

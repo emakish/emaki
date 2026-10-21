@@ -11,6 +11,7 @@ import "file:@EMAKI_DATADIR@/shell/SystemIcons.js" as SystemIcons
 
 Rectangle {
     id: view
+    readonly property bool translationsReady: Shell.Translation.initialize()
     required property var controller
     required property var programs
     property string wallpaperTexture: ""
@@ -24,7 +25,7 @@ Rectangle {
     property string listId: ""
     property string installedQuery: ""
     // Where the open program page came from; its back control returns there.
-    property var returnTo: ({page: "browse", label: "Browse", tab: "browse"})
+    property var returnTo: ({page: "browse", label: qsTranslate("ManagerView", "Browse"), tab: "browse"})
     // The AUR's warning was accepted in this window (or it asked not to be shown again).
     property bool aurAcknowledged: false
     // Each tab owns its top: Browse its catalog search and categories, AUR and Installed their own search.
@@ -61,9 +62,9 @@ Rectangle {
         if (inList !== headInList) headInList = inList;
     }
     readonly property var categoryRows: [
-        {id: "Network", name: "Internet"}, {id: "Office", name: "Office"}, {id: "Graphics", name: "Graphics"},
-        {id: "AudioVideo", name: "Audio & Video"}, {id: "Game", name: "Games"}, {id: "Development", name: "Development"},
-        {id: "Education", name: "Education"}, {id: "System", name: "System"}, {id: "Utility", name: "Utilities"}
+        {id: "Network", name: qsTranslate("ManagerView", "Internet")}, {id: "Office", name: qsTranslate("ManagerView", "Office")}, {id: "Graphics", name: qsTranslate("ManagerView", "Graphics")},
+        {id: "AudioVideo", name: qsTranslate("ManagerView", "Audio & Video")}, {id: "Game", name: qsTranslate("ManagerView", "Games")}, {id: "Development", name: qsTranslate("ManagerView", "Development")},
+        {id: "Education", name: qsTranslate("ManagerView", "Education")}, {id: "System", name: qsTranslate("ManagerView", "System")}, {id: "Utility", name: qsTranslate("ManagerView", "Utilities")}
     ]
     // Picks are data (update-manager/storefront.json, read by the engine), never ids written here.
     readonly property var storefront: programs.storefront
@@ -75,14 +76,14 @@ Rectangle {
     readonly property var essentials: programs.essentials.minimal ? Logic.essentials(programs.allPrograms, programs.essentials.programs).map(row => shortName(row)) : []
     readonly property var fresh: Logic.fresh(programs.allPrograms).map(row => shortName(row))
     readonly property var lists: ({
-        popular: {title: "Popular", rows: popular},
-        essentials: {title: "Essentials", rows: essentials},
-        fresh: {title: "New and updated", rows: fresh}
+        popular: {title: qsTranslate("ManagerView", "Popular"), rows: popular},
+        essentials: {title: qsTranslate("ManagerView", "Essentials"), rows: essentials},
+        fresh: {title: qsTranslate("ManagerView", "New and updated"), rows: fresh}
     })
     readonly property var regularResults: programs.programs.filter(row => row.kind !== "aur")
     readonly property var aurList: programs.aurQuery.trim().length >= 2 ? programs.aurRows : Logic.byVotes(programs.aurPopular)
     readonly property var selfRow: ({key: "self:emaki-update-manager", id: "emaki-update-manager", package: "emaki-update-manager",
-        name: "Programs & Updates", summary: "This window", kind: "arch", installed: true, self: true,
+        name: qsTranslate("ManagerView", "Programs & Updates"), summary: qsTranslate("ManagerView", "This window"), kind: "arch", installed: true, self: true,
         icon: String(brandIconSource), actions: []})
     readonly property var installedList: Logic.installedWithSelf(programs.installedPrograms, installedQuery, selfRow)
     radius: 16
@@ -134,24 +135,24 @@ Rectangle {
     }
     function place(): var {
         if (page === "category") return {page: page, category: category, categoryName: categoryName, label: categoryName, tab: "browse"};
-        if (page === "search") return {page: page, query: query, label: "Results", tab: "browse"};
-        if (page === "list") return {page: page, listId: listId, label: lists[listId]?.title || "Browse", tab: "browse"};
+        if (page === "search") return {page: page, query: query, label: qsTranslate("ManagerView", "Results"), tab: "browse"};
+        if (page === "list") return {page: page, listId: listId, label: lists[listId]?.title || qsTranslate("ManagerView", "Browse"), tab: "browse"};
         if (page === "aur") return {page: page, label: "AUR", tab: "aur"};
-        if (page === "installed") return {page: page, label: "Installed", tab: "installed"};
+        if (page === "installed") return {page: page, label: qsTranslate("ManagerView", "Installed"), tab: "installed"};
         if (page === "program") return returnTo;
-        return {page: "browse", label: "Browse", tab: "browse"};
+        return {page: "browse", label: qsTranslate("ManagerView", "Browse"), tab: "browse"};
     }
     function showProgram(row: var): void {
-        if ((programs.busy && !programs.quietRefresh) || !row || row.self) return;
+        if ((programs.busy && !programs.backgroundBusy) || !row || row.self) return;
         returnTo = place();
         programs.openProgram(row); page = "program"; resetScroll();
     }
     function installProgram(row: var): void {
         // Install from a list: the program's page opens behind its install preview.
-        // During a quiet catalog refresh the page opens and shows "Refreshing…" until Install is ready.
-        if ((programs.busy && !programs.quietRefresh) || programs.externalBusy) return;
+        // During background work the page opens at once and the preview follows when that work ends.
+        if ((programs.busy && !programs.backgroundBusy) || programs.externalBusy) return;
         showProgram(row);
-        if (!programs.quietRefresh) programs.prepareInstall();
+        programs.prepareInstall();
     }
     function goBack(): void {
         const back = returnTo;
@@ -179,8 +180,8 @@ Rectangle {
     }
     function planDownload(): string {
         const rows = programs.plan?.transaction?.packages || [];
-        if (!rows.length || rows.some(row => row.downloadSize === null || row.downloadSize === undefined)) return "Download size unknown";
-        return Math.ceil(rows.reduce((total, row) => total + row.downloadSize, 0) / 1048576) + " MB to download in total";
+        if (!rows.length || rows.some(row => row.downloadSize === null || row.downloadSize === undefined)) return qsTranslate("ManagerView", "Download size unknown");
+        return qsTranslate("ManagerView", "%1 MB to download in total").arg(Math.ceil(rows.reduce((total, row) => total + row.downloadSize, 0) / 1048576).toFixed(0));
     }
     readonly property var previewPlanRows: programs.planAction === "install"
         ? programs.planRows.filter(row => isPlanTarget(row)).concat(programs.planRows.filter(row => !isPlanTarget(row)))
@@ -190,10 +191,9 @@ Rectangle {
         return row.name === selected.package || row.name === selected.ref
             || selected.kind === "flatpak" && String(row.name).split("/")[1] === selected.id;
     }
-    readonly property string noSnapshotsText: "This computer does not support system snapshots, so AUR installs are unavailable. Emaki needs a snapshot before installing from the AUR. You can still browse."
-    readonly property string installedNote: "Programs marked “Part of Emaki” keep the system working and cannot be removed here."
+    readonly property string noSnapshotsText: qsTranslate("ManagerView", "This computer does not support system snapshots, so AUR installs are unavailable. Emaki needs a snapshot before installing from the AUR. You can still browse.")
+    readonly property string installedNote: qsTranslate("ManagerView", "Programs marked “Part of Emaki” keep the system working and cannot be removed here.")
     function source(row: var): string { return row.sourceLabel || (row.kind === "flatpak" ? "Flathub" : row.kind === "aur" ? "AUR" : "Arch"); }
-    function count(value: int, one: string, many: string): string { return value.toLocaleString(Qt.locale("en_US"), "f", 0) + " " + (value === 1 ? one : many); }
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Slash && !(Window.activeFocusItem instanceof TextInput)) {
             const field = tab === "aur" ? aurSearch : tab === "installed" ? installedSearch : search;
@@ -241,7 +241,7 @@ Rectangle {
                 anchors { left: parent.left; leftMargin: view.width < 300 ? 6 : view.gutter - 6; right: parent.right; rightMargin: view.width < 300 ? 6 : view.gutter - 6; verticalCenter: parent.verticalCenter }
                 spacing: 4
                 Repeater {
-                    model: [{id: "browse", name: "Browse"}, {id: "aur", name: "AUR"}, {id: "installed", name: "Installed"}, {id: "updates", name: "Updates"}]
+                    model: [{id: "browse", name: qsTranslate("ManagerView", "Browse")}, {id: "aur", name: "AUR"}, {id: "installed", name: qsTranslate("ManagerView", "Installed")}, {id: "updates", name: qsTranslate("ManagerView", "Updates")}]
                     TabButton {
                         required property var modelData
                         objectName: "tab-" + modelData.id
@@ -272,7 +272,7 @@ Rectangle {
                     id: search
                     objectName: "program-search"
                     Layout.fillWidth: true
-                    placeholderText: view.programs.scope === "packages" ? "Search all packages" : "Search programs"
+                    placeholderText: view.programs.scope === "packages" ? qsTranslate("ManagerView", "Search all packages") : qsTranslate("ManagerView", "Search programs")
                     text: view.query
                     onTextEdited: {
                         view.query = text; view.category = "";
@@ -285,7 +285,7 @@ Rectangle {
                 ManagerButton {
                     // Every Arch package, not only programs with a window.
                     objectName: "scope-packages"
-                    text: "All packages"
+                    text: qsTranslate("ManagerView", "All packages")
                     quiet: view.programs.scope !== "packages"
                     primary: view.programs.scope === "packages"
                     Accessible.role: Accessible.CheckBox
@@ -319,7 +319,7 @@ Rectangle {
                 id: aurSearch
                 objectName: "aur-search"
                 Layout.fillWidth: true
-                placeholderText: "Search the AUR"
+                placeholderText: qsTranslate("ManagerView", "Search the AUR")
                 enabled: view.programs.aurEnabled
                 // A recreated window shows the search its results still follow.
                 text: view.programs.aurQuery
@@ -328,7 +328,7 @@ Rectangle {
             }
             ManagerButton {
                 objectName: "close-aur"
-                text: "Close the AUR section"
+                text: qsTranslate("ManagerView", "Close the AUR section")
                 quiet: true
                 enabled: view.programs.aurEnabled && !view.programs.mutating
                 visible: !view.shortWindow
@@ -347,7 +347,7 @@ Rectangle {
             visible: view.page === "installed"
             Layout.fillWidth: true
             Layout.leftMargin: view.gutter; Layout.rightMargin: view.gutter; Layout.topMargin: 20
-            placeholderText: "Search installed"
+            placeholderText: qsTranslate("ManagerView", "Search installed")
             onTextEdited: { view.installedQuery = text; view.resetScroll(); }
             onCleared: view.installedQuery = ""
         }
@@ -363,7 +363,7 @@ Rectangle {
                 Layout.topMargin: 10
                 objectName: "back"
                 visible: view.page === "program" || view.page === "category" || view.page === "list"
-                text: "‹  " + (view.page === "program" ? view.returnTo.label || "Browse" : "Browse")
+                text: "‹  " + (view.page === "program" ? view.returnTo.label || qsTranslate("ManagerView", "Browse") : qsTranslate("ManagerView", "Browse"))
                 onClicked: view.page === "program" ? view.goBack() : view.navigate("browse")
             }
             ManagerLabel {
@@ -378,7 +378,7 @@ Rectangle {
                 // A window narrower than the label shortens it.
                 Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
                 squeezed: parent.width < implicitWidth
-                text: "Restore before this install…"
+                text: qsTranslate("ManagerView", "Restore before this install…")
                 visible: !!view.programs.recoveryPoint && view.page !== "updates"
                 enabled: !view.programs.busy && !view.controller.busy && !view.controller.restorePending
                 onClicked: updatesPage.confirmRestore(view.programs.recoveryPoint)
@@ -391,7 +391,7 @@ Rectangle {
                 Layout.topMargin: 10
                 visible: view.programs.foregroundBusy && view.page !== "updates" && view.page !== "installed"
                 C.BusyIndicator { running: parent.visible; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
-                ManagerLabel { text: view.programs.phase === "planning" ? "Checking what will change…" : view.programs.quietRefresh ? "Refreshing…" : "Loading programs…"; color: Shell.ShellPalette.managerDim }
+                ManagerLabel { text: view.programs.phase === "planning" ? qsTranslate("ManagerView", "Checking what will change…") : view.programs.quietRefresh ? qsTranslate("ManagerView", "Refreshing…") : qsTranslate("ManagerView", "Loading programs…"); color: Shell.ShellPalette.managerDim }
             }
         }
         Loader {
@@ -423,19 +423,19 @@ Rectangle {
                     visible: view.page === "list"
                     Layout.fillWidth: true
                     spacing: 0
-                    Heading { title: view.lists[view.listId]?.title || ""; note: view.count((view.lists[view.listId]?.rows || []).length, "program", "programs") }
+                    Heading { title: view.lists[view.listId]?.title || ""; note: Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 program(s)", "", (view.lists[view.listId]?.rows || []).length), (view.lists[view.listId]?.rows || []).length).arg(Logic.groupedCount((view.lists[view.listId]?.rows || []).length)) }
                 }
                 ColumnLayout {
                     objectName: "category-page"
                     visible: view.page === "category"
                     Layout.fillWidth: true
                     spacing: 0
-                    Heading { title: view.categoryName; note: view.count(view.regularResults.length, "program", "programs") }
+                    Heading { title: view.categoryName; note: Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 program(s)", "", view.regularResults.length), view.regularResults.length).arg(Logic.groupedCount(view.regularResults.length)) }
                     ManagerLabel {
                         objectName: "category-empty"
                         visible: view.page === "category" && !view.regularResults.length && !view.programs.busy
-                        text: view.programs.allPrograms.length ? "There are no programs in " + view.categoryName + " yet."
-                            : "There are no programs here yet: the catalog could not be loaded. Check the internet connection, then Refresh on Browse."
+                        text: view.programs.allPrograms.length ? qsTranslate("ManagerView", "There are no programs in %1 yet.").arg(view.categoryName)
+                            : qsTranslate("ManagerView", "There are no programs here yet: the catalog could not be loaded. Check the internet connection, then Refresh on Browse.")
                         color: Shell.ShellPalette.managerDim
                         Layout.topMargin: 12
                     }
@@ -445,7 +445,7 @@ Rectangle {
                     visible: view.page === "search"
                     Layout.fillWidth: true
                     spacing: 0
-                    Heading { title: "Results for “" + view.query + "”"; note: view.count(view.regularResults.length, "program from Arch and Flathub", "programs from Arch and Flathub") }
+                    Heading { title: qsTranslate("ManagerView", "Results for “%1”").arg(view.query); note: Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 program(s) from Arch and Flathub", "", view.regularResults.length), view.regularResults.length).arg(Logic.groupedCount(view.regularResults.length)) }
                 }
                 ColumnLayout {
                     objectName: "aur-page"
@@ -456,7 +456,7 @@ Rectangle {
                         // In a very short window the AUR's close control scrolls with its list.
                         objectName: "close-aur-in-list"
                         visible: view.shortWindow && view.aurOpen
-                        text: "Close the AUR section"
+                        text: qsTranslate("ManagerView", "Close the AUR section")
                         quiet: true
                         enabled: view.programs.aurEnabled && !view.programs.mutating
                         onClicked: view.closeAur()
@@ -488,42 +488,42 @@ Rectangle {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 4
-                                ManagerLabel { text: "AUR — programs from the community"; font.weight: Font.DemiBold }
+                                ManagerLabel { text: qsTranslate("ManagerView", "AUR — programs from the community"); font.weight: Font.DemiBold }
                                 ManagerLabel {
-                                    text: view.programs.aurEnabled ? "Open. Anyone can publish there and nobody checks it, neither Emaki nor Arch."
-                                        : "What Arch and Flathub do not have, published by other people. Closed until you read what it means and open it."
+                                    text: view.programs.aurEnabled ? qsTranslate("ManagerView", "Open. Anyone can publish there and nobody checks it, neither Emaki nor Arch.")
+                                        : qsTranslate("ManagerView", "What Arch and Flathub do not have, published by other people. Closed until you read what it means and open it.")
                                     color: Shell.ShellPalette.managerDim; font.pixelSize: 13
                                 }
                             }
                             ManagerButton {
                                 objectName: "open-aur"
-                                text: "Open the AUR…"
+                                text: qsTranslate("ManagerView", "Open the AUR…")
                                 primary: true
                                 enabled: view.programs.aurKnown
                                 onClicked: { aurWarning.dontShow = false; aurWarning.open(); }
                             }
                         }
                     }
-                    ManagerLabel { visible: !view.programs.aurKnown || view.programs.phase === "aur"; text: "Opening the AUR…"; color: Shell.ShellPalette.managerDim }
+                    ManagerLabel { visible: !view.programs.aurKnown || view.programs.phase === "aur"; text: qsTranslate("ManagerView", "Opening the AUR…"); color: Shell.ShellPalette.managerDim }
                     Heading {
                         objectName: "aur-popular"
                         visible: view.aurOpen && view.programs.aurQuery.trim().length < 2
-                        title: "Popular on the AUR"
-                        note: "By votes"
+                        title: qsTranslate("ManagerView", "Popular on the AUR")
+                        note: qsTranslate("ManagerView", "By votes")
                     }
                     ManagerLabel {
                         visible: view.aurOpen && view.programs.aurQuery.trim().length < 2 && view.programs.aurPopularLoaded && !view.programs.aurPopular.length && view.programs.phase !== "aurPopular"
-                        text: "The list could not be loaded. Search still works."
+                        text: qsTranslate("ManagerView", "The list could not be loaded. Search still works.")
                         color: Shell.ShellPalette.managerDim
                     }
                     Heading {
                         visible: view.aurOpen && view.programs.aurQuery.trim().length >= 2
-                        title: "Results for “" + view.programs.aurQuery.trim() + "”"
-                        note: view.programs.aurSearched ? view.count(view.programs.aurRows.length, "package", "packages") : "Searching…"
+                        title: qsTranslate("ManagerView", "Results for “%1”").arg(view.programs.aurQuery.trim())
+                        note: view.programs.aurSearched ? Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 package(s)", "", view.programs.aurRows.length), view.programs.aurRows.length).arg(Logic.groupedCount(view.programs.aurRows.length)) : qsTranslate("ManagerView", "Searching…")
                     }
                     ManagerLabel {
                         visible: view.aurOpen && view.programs.aurSearched && !view.programs.aurRows.length && view.programs.aurQuery.trim().length >= 2
-                        text: "Nothing found in the AUR for “" + view.programs.aurQuery + "”."
+                        text: qsTranslate("ManagerView", "Nothing found in the AUR for “%1”.").arg(view.programs.aurQuery)
                         color: Shell.ShellPalette.managerDim
                     }
                 }
@@ -533,18 +533,18 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 0
                     ManagerLabel { visible: view.programs.inventoryError !== ""; text: view.programs.inventoryError; color: Shell.ShellPalette.managerError }
-                    ManagerLabel { visible: view.programs.inventoryLoading; text: "Loading programs…"; color: Shell.ShellPalette.managerDim }
-                    Heading { title: "Installed"; note: view.count(view.installedList.length, "program", "programs") }
+                    ManagerLabel { visible: view.programs.inventoryLoading && !view.programs.installedPrograms.length; text: qsTranslate("ManagerView", "Loading programs…"); color: Shell.ShellPalette.managerDim }
+                    Heading { title: qsTranslate("ManagerView", "Installed"); note: Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 program(s)", "", view.installedList.length), view.installedList.length).arg(Logic.groupedCount(view.installedList.length)) }
                 }
                 ManagerLabel {
                     visible: view.page === "search" && !view.regularResults.length && !view.programs.busy
-                    text: "Nothing found for “" + view.query + "”. Try another word, or look in the AUR tab."
+                    text: qsTranslate("ManagerView", "Nothing found for “%1”. Try another word, or look in the AUR tab.").arg(view.query)
                     color: Shell.ShellPalette.managerDim
                     Layout.topMargin: 24
                 }
                 ManagerLabel {
                     visible: view.page === "installed" && view.installedQuery.trim() !== "" && !view.installedList.length
-                    text: "Nothing installed matches “" + view.installedQuery.trim() + "”."
+                    text: qsTranslate("ManagerView", "Nothing installed matches “%1”.").arg(view.installedQuery.trim())
                     color: Shell.ShellPalette.managerDim
                     Layout.topMargin: 12
                 }
@@ -631,17 +631,17 @@ Rectangle {
                         readonly property bool stacked: width < allTitle.implicitWidth + allCount.implicitWidth + allRefresh.implicitWidth + 2 * columnSpacing
                         Layout.fillWidth: true
                         columns: stacked ? 2 : 3
-                        ManagerLabel { id: allTitle; text: "All packages"; font.pixelSize: 17; font.weight: Font.DemiBold; Layout.fillWidth: packageTitle.stacked; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.row: 0; Layout.column: 0 }
-                        ManagerLabel { id: allCount; text: view.count(view.programs.packageTotal, "package", "packages"); color: Shell.ShellPalette.managerDim; font.pixelSize: 13; Layout.row: packageTitle.stacked ? 1 : 0; Layout.column: packageTitle.stacked ? 0 : 1; Layout.columnSpan: packageTitle.stacked ? 2 : 1 }
-                        ManagerButton { id: allRefresh; text: "Refresh"; quiet: true; enabled: !view.programs.busy; onClicked: view.programs.refresh(); Layout.row: 0; Layout.column: packageTitle.stacked ? 1 : 2 }
+                        ManagerLabel { id: allTitle; text: qsTranslate("ManagerView", "All packages"); font.pixelSize: 17; font.weight: Font.DemiBold; Layout.fillWidth: packageTitle.stacked; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.row: 0; Layout.column: 0 }
+                        ManagerLabel { id: allCount; text: Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 package(s)", "", view.programs.packageTotal), view.programs.packageTotal).arg(Logic.groupedCount(view.programs.packageTotal)); color: Shell.ShellPalette.managerDim; font.pixelSize: 13; Layout.row: packageTitle.stacked ? 1 : 0; Layout.column: packageTitle.stacked ? 0 : 1; Layout.columnSpan: packageTitle.stacked ? 2 : 1 }
+                        ManagerButton { id: allRefresh; text: qsTranslate("ManagerView", "Refresh"); quiet: true; enabled: !view.programs.busy; onClicked: view.programs.refresh(); Layout.row: 0; Layout.column: packageTitle.stacked ? 1 : 2 }
                     }
                     ManagerLabel { visible: view.programs.message !== ""; text: view.programs.message; color: view.programs.messageIsError ? Shell.ShellPalette.managerError : Shell.ShellPalette.managerSuccess }
                     Repeater {
                         model: view.programs.warnings
                         ManagerLabel { required property var modelData; text: modelData; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
                     }
-                    ManagerLabel { visible: view.programs.busy; text: view.programs.mutating ? view.programs.output.split("\n").slice(-1)[0] : "Loading packages…"; color: Shell.ShellPalette.managerDim }
-                    ManagerLabel { visible: view.programs.packagesReceived && !view.programs.packageRows.length; text: "Nothing found for “" + view.query + "”."; color: Shell.ShellPalette.managerDim }
+                    ManagerLabel { visible: view.programs.busy; text: view.programs.mutating ? view.programs.output.split("\n").slice(-1)[0] : qsTranslate("ManagerView", "Loading packages…"); color: Shell.ShellPalette.managerDim }
+                    ManagerLabel { visible: view.programs.packagesReceived && !view.programs.packageRows.length; text: qsTranslate("ManagerView", "Nothing found for “%1”.").arg(view.query); color: Shell.ShellPalette.managerDim }
                     Item { implicitHeight: 4 }
                 }
             }
@@ -682,7 +682,7 @@ Rectangle {
                 spacing: 18
                 ManagerLabel {
                     visible: view.programs.mutating && view.page !== "program" && view.page !== "updates"
-                    text: view.programs.phase === "removing" ? "Removing…" : view.programs.phase === "undoing" ? "Undoing the install…" : "Installing…"
+                    text: view.programs.phase === "removing" ? qsTranslate("ManagerView", "Removing…") : view.programs.phase === "undoing" ? qsTranslate("ManagerView", "Undoing the install…") : qsTranslate("ManagerView", "Installing…")
                     font.weight: Font.DemiBold
                 }
                 ColumnLayout {
@@ -715,7 +715,7 @@ Rectangle {
                                     program: modelData
                                     featured: index === 0
                                     compact: featuredRow.width < 360
-                                    installEnabled: !view.programs.busy && !view.programs.externalBusy && (modelData.actions || []).includes("install")
+                                    installEnabled: (!view.programs.busy || view.programs.backgroundBusy) && !view.programs.externalBusy && (modelData.actions || []).includes("install")
                                     Layout.fillWidth: true
                                     Layout.preferredWidth: index === 0 ? 14 : 10
                                     Layout.fillHeight: true
@@ -725,25 +725,25 @@ Rectangle {
                             }
                         }
                     }
-                    ManagerLabel { visible: (view.storefront.featured?.programs || []).length > 0 && !view.featured.length && !view.programs.busy; text: "Our picks are not available right now. Try Refresh."; color: Shell.ShellPalette.managerDim }
+                    ManagerLabel { visible: (view.storefront.featured?.programs || []).length > 0 && !view.featured.length && !view.programs.busy; text: qsTranslate("ManagerView", "Our picks are not available right now. Try Refresh."); color: Shell.ShellPalette.managerDim }
                     Shelf {
                         objectName: "shelf-popular"
-                        title: "Popular"
-                        note: view.popularMeasured ? "Most installed this month" : ""
+                        title: qsTranslate("ManagerView", "Popular")
+                        note: view.popularMeasured ? qsTranslate("ManagerView", "Most installed this month") : ""
                         more: view.popular.length > 4 ? "popular" : ""
                         visible: view.popular.length > 0
                         CardRow { rows: view.popular.slice(0, 4) }
                     }
                     Shelf {
                         objectName: "shelf-essentials"
-                        title: "Essentials"
-                        note: "What the full install adds"
+                        title: qsTranslate("ManagerView", "Essentials")
+                        note: qsTranslate("ManagerView", "What the full install adds")
                         visible: view.essentials.length > 0
                         CardRow { rows: view.essentials.slice(0, 3); allCount: view.essentials.length > 3 ? view.essentials.length : 0; allList: "essentials" }
                     }
                     Shelf {
                         objectName: "shelf-fresh"
-                        title: "New and updated"
+                        title: qsTranslate("ManagerView", "New and updated")
                         more: view.fresh.length > 4 ? "fresh" : ""
                         visible: view.fresh.length > 0
                         CardRow { rows: view.fresh.slice(0, 4) }
@@ -751,8 +751,8 @@ Rectangle {
                     Shelf {
                         // Emaki's own optional packages; which ones is data (update-manager/emaki-shelf.json).
                         objectName: "emaki-shelf"
-                        title: "From Emaki"
-                        note: "Emaki’s own extras. Each installs with one button."
+                        title: qsTranslate("ManagerView", "From Emaki")
+                        note: qsTranslate("ManagerView", "Emaki’s own extras. Each installs with one button.")
                         visible: view.programs.shelf.length > 0
                         GridLayout {
                             Layout.fillWidth: true
@@ -786,9 +786,9 @@ Rectangle {
                                         }
                                         ManagerButton {
                                             objectName: "shelf-install-" + shelfItem.modelData.package
-                                            text: shelfItem.modelData.installed ? "Installed" : "Install"
+                                            text: shelfItem.modelData.installed ? qsTranslate("ManagerView", "Installed") : qsTranslate("ManagerView", "Install")
                                             primary: !shelfItem.modelData.installed
-                                            enabled: !shelfItem.modelData.installed && !view.programs.busy && !view.programs.externalBusy
+                                            enabled: !shelfItem.modelData.installed && (!view.programs.busy || view.programs.backgroundBusy) && !view.programs.externalBusy
                                                 && (shelfItem.modelData.actions || []).includes("install")
                                             onClicked: view.programs.preparePackage(shelfItem.modelData, "install")
                                         }
@@ -800,10 +800,10 @@ Rectangle {
                     ManagerLabel {
                         objectName: "browse-empty"
                         visible: view.programs.catalogReceived && !view.programs.busy && !view.programs.allPrograms.length
-                        text: "No programs could be loaded. Check the internet connection, then Refresh."
+                        text: qsTranslate("ManagerView", "No programs could be loaded. Check the internet connection, then Refresh.")
                         color: Shell.ShellPalette.managerDim
                     }
-                    ManagerButton { objectName: "refresh"; text: "Refresh"; quiet: true; enabled: !view.programs.busy; onClicked: view.programs.refresh() }
+                    ManagerButton { objectName: "refresh"; text: qsTranslate("ManagerView", "Refresh"); quiet: true; enabled: !view.programs.busy; onClicked: view.programs.refresh() }
                 }
                 ManagerProgram { visible: view.page === "program"; Layout.fillWidth: true; controller: view.programs }
                 ManagerUpdates { id: updatesPage; visible: view.page === "updates"; Layout.fillWidth: true; controller: view.controller; programs: view.programs.allRows; launchEntries: view.programs.launchEntries || []; transactionBusy: view.programs.mutating; aurKnown: view.programs.aurKnown; aurEnabled: view.programs.aurEnabled }
@@ -877,7 +877,7 @@ Rectangle {
     component CategoryStrip: Flow {
         Layout.fillWidth: true
         spacing: 8
-        Chip { objectName: "category-all"; text: "All"; selected: view.page === "browse"; onClicked: view.navigate("browse") }
+        Chip { objectName: "category-all"; text: qsTranslate("ManagerView", "All"); selected: view.page === "browse"; onClicked: view.navigate("browse") }
         Repeater {
             model: view.categoryRows
             Chip {
@@ -911,7 +911,7 @@ Rectangle {
             width: 30; height: 30; padding: 0; leftPadding: 0; rightPadding: 0
             visible: field.text !== ""
             text: "×"; quiet: true
-            Accessible.name: "Clear"
+            Accessible.name: qsTranslate("ManagerView", "Clear")
             onClicked: { field.text = ""; field.cleared(); }
         }
     }
@@ -948,7 +948,8 @@ Rectangle {
             objectName: "heading-title"
             text: heading.title; font.pixelSize: 17; font.weight: Font.DemiBold; wrapMode: Text.NoWrap; elide: Text.ElideRight
             // Fills only up to its text, so the count sits beside it; may shrink to nothing.
-            Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: implicitWidth
+            Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: Math.ceil(implicitWidth)
+            Layout.preferredWidth: Math.ceil(implicitWidth)
         }
         ManagerLabel { id: headingNote; text: heading.note; color: Shell.ShellPalette.managerDim; font.pixelSize: 13; visible: text !== ""; wrapMode: heading.columns > 1 ? Text.NoWrap : Text.Wrap; Layout.fillWidth: heading.columns === 1 }
         Item { Layout.fillWidth: true; visible: heading.columns > 1 }
@@ -980,7 +981,7 @@ Rectangle {
                 id: seeAll
                 objectName: "see-all-" + shelf.more
                 visible: shelf.more !== ""
-                text: "See all ›"
+                text: qsTranslate("ManagerView", "See all ›")
                 quiet: true
                 onClicked: view.showList(shelf.more)
             }
@@ -1011,8 +1012,8 @@ Rectangle {
         ProgramCard {
             objectName: "see-all-" + cardRow.allList
             visible: cardRow.allCount > 0
-            program: ({name: "All " + cardRow.allCount + " ›", icon: ""})
-            hint: "See the whole set"
+            program: ({name: qsTranslate("ManagerView", "All %1 ›").arg(cardRow.allCount), icon: ""})
+            hint: qsTranslate("ManagerView", "See the whole set")
             Layout.fillWidth: true
             Layout.preferredWidth: 1
             onClicked: view.showList(cardRow.allList)
@@ -1033,7 +1034,7 @@ Rectangle {
         ManagerLabel {
             id: stripeText
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 14 }
-            text: "AUR — nobody checked these programs."
+            text: qsTranslate("ManagerView", "AUR — nobody checked these programs.")
             font.pixelSize: 13; font.weight: Font.DemiBold; color: Shell.ShellPalette.accentDeepForeground
         }
     }
@@ -1087,7 +1088,7 @@ Rectangle {
                 enabled: !rowItem.row.self && (!rowItem.packageRow || !!rowItem.row.programKey)
                 onClicked: {
                     if (rowItem.packageRow) {
-                        if (view.programs.busy && !view.programs.quietRefresh) return;
+                        if (view.programs.busy && !view.programs.backgroundBusy) return;
                         view.returnTo = view.place();
                         view.programs.openPackage(rowItem.row); view.page = "program"; view.resetScroll();
                     } else view.showProgram(rowItem.row);
@@ -1134,25 +1135,25 @@ Rectangle {
                 ManagerLabel {
                     id: flagsLabel
                     visible: rowEnd.flags
-                    text: [rowItem.row.orphan ? "no maintainer" : "", rowItem.row.outOfDate ? "out of date" : ""].filter(Boolean).join(" · ")
+                    text: [rowItem.row.orphan ? qsTranslate("ManagerView", "no maintainer") : "", rowItem.row.outOfDate ? qsTranslate("ManagerView", "out of date") : ""].filter(Boolean).join(" · ")
                     Layout.fillWidth: rowEnd.columns === 1; Layout.maximumWidth: implicitWidth; font.pixelSize: 12; color: Shell.ShellPalette.managerError
                 }
                 Tag {
                     id: votesTag
                     objectName: "aur-votes"
                     visible: rowItem.aur
-                    text: rowItem.row.votes === null || rowItem.row.votes === undefined ? "Votes unknown" : view.count(rowItem.row.votes, "vote", "votes")
+                    text: rowItem.row.votes === null || rowItem.row.votes === undefined ? qsTranslate("ManagerView", "Votes unknown") : Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 vote(s)", "", rowItem.row.votes), rowItem.row.votes).arg(Logic.groupedCount(rowItem.row.votes))
                 }
                 Tag {
                     id: emakiTag
                     objectName: "part-of-emaki"
                     visible: rowItem.partOfEmaki
-                    text: "Part of Emaki"
+                    text: qsTranslate("ManagerView", "Part of Emaki")
                 }
                 Tag {
                     id: installedTagItem
                     visible: rowEnd.installedTag
-                    text: "Installed"
+                    text: qsTranslate("ManagerView", "Installed")
                 }
                 ManagerButton {
                     id: removeButton
@@ -1161,7 +1162,7 @@ Rectangle {
                     Layout.fillWidth: rowEnd.columns === 1; Layout.maximumWidth: implicitWidth; Layout.minimumWidth: rowEnd.columns === 1 ? 0 : implicitWidth
                     squeezed: rowEnd.columns === 1 && rowEnd.room < implicitWidth
                     visible: rowEnd.removable
-                    text: "Remove"; danger: true
+                    text: qsTranslate("ManagerView", "Remove"); danger: true
                     enabled: !view.programs.busy && !view.programs.externalBusy && (rowItem.row.actions || []).includes("remove")
                     onClicked: rowItem.packageRow ? view.programs.preparePackage(rowItem.row, "remove") : view.programs.prepareRemove(rowItem.row)
                 }
@@ -1171,9 +1172,9 @@ Rectangle {
                     Layout.fillWidth: rowEnd.columns === 1; Layout.maximumWidth: implicitWidth; Layout.minimumWidth: rowEnd.columns === 1 ? 0 : implicitWidth
                     squeezed: rowEnd.columns === 1 && rowEnd.room < implicitWidth
                     visible: rowEnd.installable
-                    text: rowItem.aur ? "Build and install" : "Install"
+                    text: rowItem.aur ? qsTranslate("ManagerView", "Build and install") : qsTranslate("ManagerView", "Install")
                     primary: true
-                    enabled: !view.programs.busy && !view.programs.externalBusy && !rowItem.aurRefused
+                    enabled: (!view.programs.busy || view.programs.backgroundBusy) && !view.programs.externalBusy && !rowItem.aurRefused
                         && !view.programs.refreshPending && ((rowItem.packageRow || rowItem.aur ? rowItem.row : Logic.edition(rowItem.row) || {}).actions || []).includes("install")
                     onClicked: rowItem.packageRow ? view.programs.preparePackage(rowItem.row, "install") : view.installProgram(rowItem.row)
                 }
@@ -1222,24 +1223,24 @@ Rectangle {
                     width: previewBody.availableWidth
                     spacing: 14
                     ManagerLabel {
-                        text: previewColumn.action === "remove" ? "Remove " + previewColumn.programName + "?"
-                            : previewColumn.action === "undo" ? "Undo the install of " + previewColumn.programName + "?"
-                            : previewColumn.aurPlan ? "Build " + previewColumn.programName + " from the AUR?"
-                            : view.programs.selectedEdition?.kind === "arch" ? "Installing also brings the system up to date."
-                            : "Install " + previewColumn.programName + "?"
+                        text: previewColumn.action === "remove" ? qsTranslate("ManagerView", "Remove %1?").arg(previewColumn.programName)
+                            : previewColumn.action === "undo" ? qsTranslate("ManagerView", "Undo the install of %1?").arg(previewColumn.programName)
+                            : previewColumn.aurPlan ? qsTranslate("ManagerView", "Build %1 from the AUR?").arg(previewColumn.programName)
+                            : view.programs.selectedEdition?.kind === "arch" ? qsTranslate("ManagerView", "Installing also brings the system up to date.")
+                            : qsTranslate("ManagerView", "Install %1?").arg(previewColumn.programName)
                         font.pixelSize: 21; font.weight: Font.DemiBold
                     }
                     ManagerLabel { objectName: "program-preview-error"; text: view.programs.message; visible: text !== ""; color: Shell.ShellPalette.managerError }
                     ManagerLabel {
                         visible: previewColumn.aurPlan
-                        text: "Nobody checked how these programs are built, neither Emaki nor Arch. Their build instructions run on this computer while the program is built. Building also brings the system up to date first."
+                        text: qsTranslate("ManagerView", "Nobody checked how these programs are built, neither Emaki nor Arch. Their build instructions run on this computer while the program is built. Building also brings the system up to date first.")
                         font.pixelSize: 13
                     }
                     ManagerLabel {
                         visible: !previewColumn.snapshotUndo && (previewColumn.planning || !!view.programs.plan && !previewColumn.aurPlan)
-                        text: previewColumn.planning ? (previewColumn.aurPlan ? "Reading the build instructions and what they need…" : "Checking what will change…")
-                            : previewColumn.action === "remove" || previewColumn.action === "undo" ? (view.programs.planRows.length === 1 ? "This goes:" : "These " + view.programs.planRows.length + " packages go:")
-                            : view.programs.planRows.length === 1 ? "This changes:" : "These " + view.programs.planRows.length + " packages change:"
+                        text: previewColumn.planning ? (previewColumn.aurPlan ? qsTranslate("ManagerView", "Reading the build instructions and what they need…") : qsTranslate("ManagerView", "Checking what will change…"))
+                            : previewColumn.action === "remove" || previewColumn.action === "undo" ? (view.programs.planRows.length === 1 ? qsTranslate("ManagerView", "This goes:") : qsTranslate("ManagerView", "These %n packages go:", "", view.programs.planRows.length))
+                            : view.programs.planRows.length === 1 ? qsTranslate("ManagerView", "This changes:") : qsTranslate("ManagerView", "These %n packages change:", "", view.programs.planRows.length)
                     }
                     ManagerLabel {
                         visible: previewColumn.action === "install" && view.programs.selectedEdition?.kind === "arch" && !!view.programs.plan && !previewColumn.planning
@@ -1268,14 +1269,14 @@ Rectangle {
                                         Layout.fillWidth: false; color: Shell.ShellPalette.managerDim; font.pixelSize: 12
                                     }
                                     ManagerLabel {
-                                        text: view.isPlanTarget(parent.modelData) ? "the program"
-                                            : view.programs.planAction === "undo" ? "came with it"
-                                            : view.programs.planAction === "remove" && view.programs.selectedEdition?.kind !== "flatpak" ? "nothing else needs it" : parent.modelData.detail || ""
+                                        text: view.isPlanTarget(parent.modelData) ? qsTranslate("ManagerView", "the program")
+                                            : view.programs.planAction === "undo" ? qsTranslate("ManagerView", "came with it")
+                                            : view.programs.planAction === "remove" && view.programs.selectedEdition?.kind !== "flatpak" ? qsTranslate("ManagerView", "nothing else needs it") : parent.modelData.detail || ""
                                         Layout.fillWidth: false; color: Shell.ShellPalette.managerDim; font.pixelSize: 12
                                     }
                                 }
                             }
-                            ManagerLabel { visible: previewColumn.builds.length > 0; text: "BUILT FROM THE AUR (" + previewColumn.builds.length + ")"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
+                            ManagerLabel { visible: previewColumn.builds.length > 0; text: qsTranslate("ManagerView", "BUILT FROM THE AUR (%1)").arg(previewColumn.builds.length); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
                             Repeater {
                                 model: previewColumn.builds
                                 ColumnLayout {
@@ -1286,15 +1287,15 @@ Rectangle {
                                     PlanRow {
                                         Layout.fillWidth: true
                                         ManagerLabel { text: buildRow.modelData.name; font.family: "Iosevka Nerd Font Mono"; font.pixelSize: 13 }
-                                        ManagerLabel { text: buildRow.modelData.target ? "the program" : "it needs this"; Layout.fillWidth: false; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
+                                        ManagerLabel { text: buildRow.modelData.target ? qsTranslate("ManagerView", "the program") : qsTranslate("ManagerView", "it needs this"); Layout.fillWidth: false; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
                                     }
                                     ManagerLabel {
                                         text: [buildRow.modelData.version, buildRow.modelData.maintainer, buildRow.modelData.outOfDate].filter(Boolean).join(" · ")
-                                        color: buildRow.modelData.outOfDate || buildRow.modelData.maintainer === "nobody maintains it" ? Shell.ShellPalette.managerError : Shell.ShellPalette.managerDim; font.pixelSize: 12
+                                        color: buildRow.modelData.outOfDate || buildRow.modelData.orphan ? Shell.ShellPalette.managerError : Shell.ShellPalette.managerDim; font.pixelSize: 12
                                     }
                                     ManagerButton {
                                         visible: buildRow.modelData.recipe !== ""
-                                        text: "See how it is built · " + buildRow.modelData.commit
+                                        text: qsTranslate("ManagerView", "See how it is built · %1").arg(buildRow.modelData.commit)
                                         // A narrow preview shortens the commit rather than widening the list.
                                         Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
                                         squeezed: buildRow.width < implicitWidth
@@ -1303,7 +1304,7 @@ Rectangle {
                                     }
                                 }
                             }
-                            ManagerLabel { visible: previewColumn.runPulls.length > 0; text: "FROM ARCH, STAYS INSTALLED (" + previewColumn.runPulls.length + ")"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; Layout.topMargin: 6 }
+                            ManagerLabel { visible: previewColumn.runPulls.length > 0; text: qsTranslate("ManagerView", "FROM ARCH, STAYS INSTALLED (%1)").arg(previewColumn.runPulls.length); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; Layout.topMargin: 6 }
                             Repeater {
                                 model: previewColumn.runPulls
                                 PlanRow {
@@ -1313,7 +1314,7 @@ Rectangle {
                                     ManagerLabel { text: parent.modelData.repository; Layout.fillWidth: false; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
                                 }
                             }
-                            ManagerLabel { visible: previewColumn.buildPulls.length > 0; text: "FROM ARCH, ONLY TO BUILD IT (" + previewColumn.buildPulls.length + ") — removed afterwards"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; Layout.topMargin: 6 }
+                            ManagerLabel { visible: previewColumn.buildPulls.length > 0; text: qsTranslate("ManagerView", "FROM ARCH, ONLY TO BUILD IT (%1) — removed afterwards").arg(previewColumn.buildPulls.length); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; Layout.topMargin: 6 }
                             Repeater {
                                 model: previewColumn.buildPulls
                                 PlanRow {
@@ -1323,7 +1324,7 @@ Rectangle {
                                     ManagerLabel { text: parent.modelData.repository; Layout.fillWidth: false; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
                                 }
                             }
-                            ManagerLabel { visible: previewColumn.kept.length > 0; text: "THESE STAY"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; Layout.topMargin: 6 }
+                            ManagerLabel { visible: previewColumn.kept.length > 0; text: qsTranslate("ManagerView", "THESE STAY"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; Layout.topMargin: 6 }
                             Repeater {
                                 model: previewColumn.kept
                                 PlanRow {
@@ -1337,23 +1338,23 @@ Rectangle {
                     }
                     ManagerLabel {
                         visible: previewColumn.action === "remove"
-                        text: view.programs.selectedEdition?.kind === "flatpak" ? "Your files stay. The program’s own settings stay too, so they are back if you install it again." : "Your files and the program’s settings in your home folder stay as they are."
+                        text: view.programs.selectedEdition?.kind === "flatpak" ? qsTranslate("ManagerView", "Your files stay. The program’s own settings stay too, so they are back if you install it again.") : qsTranslate("ManagerView", "Your files and the program’s settings in your home folder stay as they are.")
                         color: Shell.ShellPalette.managerDim; font.pixelSize: 13
                     }
                     ManagerLabel {
                         visible: previewColumn.action === "undo" && !previewColumn.planning
-                        text: previewColumn.snapshotUndo ? (view.programs.plan?.transaction?.message || "") : ["Exactly what this install added goes, in one step. Your files and the program’s settings in your home folder stay.",
-                               (view.programs.plan?.transaction?.upgraded || []).length ? "Updates that came with the install stay." : "",
-                               view.programs.plan?.transaction?.snapshot ? "The system saved before the install is still in Updates, under If something broke." : ""].filter(Boolean).join(" ")
+                        text: previewColumn.snapshotUndo ? (view.programs.plan?.transaction?.message || "") : [qsTranslate("ManagerView", "Exactly what this install added goes, in one step. Your files and the program’s settings in your home folder stay."),
+                               (view.programs.plan?.transaction?.upgraded || []).length ? qsTranslate("ManagerView", "Updates that came with the install stay.") : "",
+                               view.programs.plan?.transaction?.snapshot ? qsTranslate("ManagerView", "The system saved before the install is still in Updates, under If something broke.") : ""].filter(Boolean).join(" ")
                         color: Shell.ShellPalette.managerDim; font.pixelSize: 13
                     }
                 }
             }
             ManagerActions {
-                ManagerButton { text: "Cancel"; enabled: !view.programs.busy; onClicked: view.programs.cancelPlan() }
+                ManagerButton { text: qsTranslate("ManagerView", "Cancel"); enabled: !view.programs.busy; onClicked: view.programs.cancelPlan() }
                 ManagerButton {
                     objectName: "confirm-program-operation"
-                    text: previewColumn.snapshotUndo ? "Restore and restart later" : previewColumn.action === "remove" ? "Remove" : previewColumn.action === "undo" ? "Undo install" : previewColumn.aurPlan ? "Build and install" : "Install"
+                    text: previewColumn.snapshotUndo ? qsTranslate("ManagerView", "Restore and restart later") : previewColumn.action === "remove" ? qsTranslate("ManagerView", "Remove") : previewColumn.action === "undo" ? qsTranslate("ManagerView", "Undo install") : previewColumn.aurPlan ? qsTranslate("ManagerView", "Build and install") : qsTranslate("ManagerView", "Install")
                     primary: true; danger: previewColumn.action === "remove" || previewColumn.action === "undo"
                     enabled: !view.programs.busy && !view.programs.externalBusy && view.programs.plan?.ok === true && !!view.programs.plan?.token
                     onClicked: {
@@ -1394,14 +1395,14 @@ Rectangle {
                 x: (aurWarning.width - width) / 2
                 spacing: 16
                 Item { implicitHeight: 34 }
-                ManagerLabel { text: "AUR — programs from the community"; font.pixelSize: 28; font.weight: Font.DemiBold }
-                ManagerLabel { text: "WHY IT IS USEFUL"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
-                ManagerLabel { text: "Here is what the regular catalog lacks: programs that are not in Arch or Flathub, official builds of some programs, the newest versions, rare tools, drivers and fonts. If a program is nowhere else, it is probably here. Someone from the community published it and maintains it."; lineHeight: 1.35 }
-                ManagerLabel { text: "WHAT YOU RISK"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
-                ManagerLabel { text: "Anyone can publish a program here and nobody checks it, neither Emaki nor Arch. A program can fail to work, break your system, or contain malware — for example, code that steals passwords or files. You cannot tell a good one from a bad one in advance here."; lineHeight: 1.35 }
-                ManagerLabel { text: "WHAT EMAKI DOES"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
+                ManagerLabel { text: qsTranslate("ManagerView", "AUR — programs from the community"); font.pixelSize: 28; font.weight: Font.DemiBold }
+                ManagerLabel { text: qsTranslate("ManagerView", "WHY IT IS USEFUL"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
+                ManagerLabel { text: qsTranslate("ManagerView", "Here is what the regular catalog lacks: programs that are not in Arch or Flathub, official builds of some programs, the newest versions, rare tools, drivers and fonts. If a program is nowhere else, it is probably here. Someone from the community published it and maintains it."); lineHeight: 1.35 }
+                ManagerLabel { text: qsTranslate("ManagerView", "WHAT YOU RISK"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
+                ManagerLabel { text: qsTranslate("ManagerView", "Anyone can publish a program here and nobody checks it, neither Emaki nor Arch. A program can fail to work, break your system, or contain malware — for example, code that steals passwords or files. You cannot tell a good one from a bad one in advance here."); lineHeight: 1.35 }
+                ManagerLabel { text: qsTranslate("ManagerView", "WHAT EMAKI DOES"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
                 ManagerLabel {
-                    text: "A system snapshot before every install. If something broke, the install can be undone. A snapshot does not protect against stolen data."
+                    text: qsTranslate("ManagerView", "A system snapshot before every install. If something broke, the install can be undone. A snapshot does not protect against stolen data.")
                     lineHeight: 1.35
                 }
                 ManagerLabel {
@@ -1410,8 +1411,8 @@ Rectangle {
                     text: view.noSnapshotsText
                     color: Shell.ShellPalette.managerError; font.weight: Font.DemiBold; lineHeight: 1.35
                 }
-                ManagerLabel { text: "THE DECISION IS YOURS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
-                ManagerLabel { text: "Installing from here, you are responsible for the consequences."; lineHeight: 1.35 }
+                ManagerLabel { text: qsTranslate("ManagerView", "THE DECISION IS YOURS"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim; font.letterSpacing: .8 }
+                ManagerLabel { text: qsTranslate("ManagerView", "Installing from here, you are responsible for the consequences."); lineHeight: 1.35 }
                 Item { implicitHeight: 8 }
                 Loader {
                     // In a very short window the choice scrolls after the text instead of covering most of it.
@@ -1438,7 +1439,7 @@ Rectangle {
                 C.CheckBox {
                     id: dontShowBox
                     objectName: "aur-dont-show"
-                    text: "Don’t show this again"
+                    text: qsTranslate("ManagerView", "Don’t show this again")
                     checked: aurWarning.dontShow
                     onToggled: aurWarning.dontShow = checked
                     font.family: "Noto Sans"
@@ -1463,10 +1464,10 @@ Rectangle {
                     }
                 }
                 ManagerActions {
-                    ManagerButton { objectName: "aur-not-now"; text: "Not now"; onClicked: aurWarning.close() }
+                    ManagerButton { objectName: "aur-not-now"; text: qsTranslate("ManagerView", "Not now"); onClicked: aurWarning.close() }
                     ManagerButton {
                         objectName: "aur-accept"
-                        text: "Got it, open the AUR"
+                        text: qsTranslate("ManagerView", "Got it, open the AUR")
                         primary: true
                         enabled: view.programs.aurKnown && !view.programs.externalBusy
                         onClicked: {

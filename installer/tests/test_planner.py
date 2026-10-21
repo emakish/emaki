@@ -107,8 +107,9 @@ class PlannerTests(unittest.TestCase):
 
         def line(layouts, text=rules):
             with patch('emaki_installer.planner.xkb_rules', return_value=text):
-                found = [x for x in make_plan(dict(config(), layouts=layouts), inventory()).summary
-                         if x.startswith('Keyboard:')]
+                plan = make_plan(dict(config(), layouts=layouts), inventory())
+                self.assertEqual(len(plan.summary_keys), len(plan.summary))
+                found = [text for text, key in zip(plan.summary, plan.summary_keys) if key == 'keyboard']
             self.assertEqual(len(found), 1)
             return found[0]
 

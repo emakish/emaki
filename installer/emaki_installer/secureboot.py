@@ -10,6 +10,7 @@ installed without Secure Boot stays exactly as before.
 Every command goes through a caller's run(argv, input=None) -> stdout, which raises on a
 non-zero exit: the installer runs in the target chroot, the boot refresh on the machine.
 """
+from .i18n import _
 import hashlib
 import json
 import os
@@ -106,7 +107,7 @@ def efi_variable(root, name, guid):
     except FileNotFoundError:
         return None
     if len(data) < 4:
-        raise SecureBootError(f'The firmware variable {name} is unreadable.')
+        raise SecureBootError(_('The firmware variable {value1} is unreadable.').format(value1=name))
     return data[4:]
 
 
@@ -115,13 +116,13 @@ def signature_list_certificates(data):
     certificates, offset = [], 0
     while offset < len(data):
         if offset + 28 > len(data):
-            raise SecureBootError('The firmware signature database is truncated.')
+            raise SecureBootError(_('The firmware signature database is truncated.'))
         kind = data[offset:offset + 16]
         list_size, header_size, size = struct.unpack_from('<III', data, offset + 16)
         end = offset + list_size
         if list_size < 28 + header_size or end > len(data) or size < 16 or (
                 list_size - 28 - header_size) % size:
-            raise SecureBootError('The firmware signature database is malformed.')
+            raise SecureBootError(_('The firmware signature database is malformed.'))
         entry = offset + 28 + header_size
         while entry < end:
             if kind == X509_TYPE:
@@ -134,17 +135,17 @@ def signature_list_certificates(data):
 def _der(data, offset):
     """(tag, content start, content end) of the DER element at offset."""
     if offset + 2 > len(data):
-        raise ValueError('truncated')
+        raise ValueError(_('truncated'))
     tag, length = data[offset], data[offset + 1]
     offset += 2
     if length & 0x80:
         count = length & 0x7f
         if not 1 <= count <= 4 or offset + count > len(data):
-            raise ValueError('bad length')
+            raise ValueError(_('bad length'))
         length = int.from_bytes(data[offset:offset + count], 'big')
         offset += count
     if offset + length > len(data):
-        raise ValueError('truncated')
+        raise ValueError(_('truncated'))
     return tag, offset, offset + length
 
 
@@ -158,16 +159,16 @@ def _children(data, start, end):
 def subject_common_names(certificate):
     """The subject's CN values of a DER certificate; () when it cannot be parsed."""
     try:
-        _, start, end = _der(certificate, 0)
-        _, start, end = _der(certificate, start)  # tbsCertificate
+        ignored, start, end = _der(certificate, 0)
+        ignored, start, end = _der(certificate, start)  # tbsCertificate
         fields = list(_children(certificate, start, end))
         if fields and fields[0][0] == 0xa0:  # explicit version
             fields = fields[1:]
         # serialNumber, signature, issuer, validity, subject
-        _, start, end = fields[4]
+        ignored, start, end = fields[4]
         names = []
-        for _, set_start, set_end in _children(certificate, start, end):
-            for _, pair_start, pair_end in _children(certificate, set_start, set_end):
+        for ignored, set_start, set_end in _children(certificate, start, end):
+            for ignored, pair_start, pair_end in _children(certificate, set_start, set_end):
                 pair = list(_children(certificate, pair_start, pair_end))
                 if len(pair) == 2 and certificate[pair[0][1]:pair[0][2]] == CN_OID:
                     names.append(certificate[pair[1][1]:pair[1][2]].decode('utf-8', 'replace'))
@@ -205,7 +206,7 @@ def setup_mode(root=Path('/')):
 def openssl_config(label=None):
     label = label or secrets.token_hex(4)
     if not re.fullmatch(r'[0-9a-f]{8}', label):
-        raise SecureBootError('The machine key label is invalid.')
+        raise SecureBootError(_('The machine key label is invalid.'))
     return OPENSSL_CONFIG.format(name=f'Emaki Secure Boot machine key {label}')
 
 
@@ -233,9 +234,9 @@ def sbat(arch_csv, version, generation=None):
     """
     lines = [line for line in arch_csv.splitlines() if line.strip()]
     if not lines or not lines[0].startswith('sbat,1,') or not any(line.startswith('grub,') for line in lines):
-        raise SecureBootError("GRUB's SBAT data is missing or unrecognized.")
+        raise SecureBootError(_("GRUB's SBAT data is missing or unrecognized."))
     if not re.fullmatch(r'[0-9A-Za-z.:+~_-]{1,64}', version):
-        raise SecureBootError('The GRUB version for SBAT is invalid.')
+        raise SecureBootError(_('The GRUB version for SBAT is invalid.'))
     lines = [line for line in lines if not line.startswith('grub.emaki,')]
     if generation is not None:
         raised = []
@@ -260,7 +261,7 @@ def sign(run, source, output=None, state=STATE):
     run(['sbsign', '--key', str(state / KEY.name), '--cert', str(state / CERT.name),
          '--output', str(output), str(source)])
     if not signed(run, output, state):
-        raise SecureBootError(f'{output} does not verify with the machine key after signing.')
+        raise SecureBootError(_('{value1} does not verify with the machine key after signing.').format(value1=output))
 
 
 def signed(run, path, state=STATE):
@@ -274,13 +275,13 @@ def signed(run, path, state=STATE):
 
 def one_time_password():
     """Digits only: firmware keyboards map keys as US QWERTY, which digits survive."""
-    return ''.join(secrets.choice('0123456789') for _ in range(PASSWORD_DIGITS))
+    return ''.join(secrets.choice('0123456789') for ignored in range(PASSWORD_DIGITS))
 
 
 def request_enrollment(run, password, state=STATE):
     """Queue the certificate for MokManager at the next start, protected by password."""
     if not re.fullmatch(r'[0-9]{%d}' % PASSWORD_DIGITS, password):
-        raise SecureBootError('The one-time password is invalid.')
+        raise SecureBootError(_('The one-time password is invalid.'))
     run(['mokutil', '--import', str(state / DER.name)], input=f'{password}\n{password}\n')
 
 
@@ -362,14 +363,14 @@ def slot_files_names():
 def slot_dir(esp, slot):
     """EFI/Emaki/<slot> under the mounted ESP."""
     if slot not in SLOTS:
-        raise SecureBootError(f'Unknown startup copy {slot!r}.')
+        raise SecureBootError(_('Unknown startup copy {value1!r}.').format(value1=slot))
     return Path(esp) / VENDOR_DIR / slot
 
 
 def slot_entry(slot):
     r"""The loader a firmware entry names for a slot: \EFI\Emaki\<slot>\shimx64.efi."""
     if slot not in SLOTS:
-        raise SecureBootError(f'Unknown startup copy {slot!r}.')
+        raise SecureBootError(_('Unknown startup copy {value1!r}.').format(value1=slot))
     return '\\' + VENDOR_DIR.replace('/', '\\') + '\\' + slot + '\\' + SHIM
 
 
@@ -471,7 +472,7 @@ def write_slot(esp, slot, files, generation=None, check=None):
         raise SecureBootError('A startup copy needs exactly ' + ', '.join(names) + '.')
     directory = slot_dir(esp, slot)
     if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
-        raise SecureBootError(f'{directory} is not a directory.')
+        raise SecureBootError(_('{value1} is not a directory.').format(value1=directory))
     manifest = directory / SLOT_MANIFEST
     if manifest.exists() or manifest.is_symlink():
         manifest.unlink()
@@ -482,7 +483,7 @@ def write_slot(esp, slot, files, generation=None, check=None):
         # Leftovers of a cut update: a slot holds only its own names.
         if path.name not in names:
             if path.is_dir() and not path.is_symlink():
-                raise SecureBootError(f'{path} is a directory inside a startup copy.')
+                raise SecureBootError(_('{value1} is a directory inside a startup copy.').format(value1=path))
             path.unlink()
     _sync_directory(directory)
     for name in names:
@@ -493,14 +494,14 @@ def write_slot(esp, slot, files, generation=None, check=None):
     for name in names:
         path = directory / name
         if path.read_bytes() != files[name]:
-            raise SecureBootError(f'{path} could not be read back after it was written.')
+            raise SecureBootError(_('{value1} could not be read back after it was written.').format(value1=path))
         if check is not None:
             check(path, files[name])
     _durable(manifest, slot_manifest_bytes(slot, files, generation))
     _sync_directory(directory)
     record = read_slot(esp, slot)
     if record is None:
-        raise SecureBootError(f'The startup copy {slot} could not be read back after it was written.')
+        raise SecureBootError(_('The startup copy {value1} could not be read back after it was written.').format(value1=slot))
     return record
 
 
@@ -585,7 +586,7 @@ def slot_entries(parsed, partuuid, usable=False):
     load-options.c). Every entry, usable or not, is withdrawn before its slot is rewritten.
     """
     found = {slot: [] for slot in SLOTS}
-    for number, (active, _, partition, loader) in sorted(parsed['entries'].items()):
+    for number, (active, ignored, partition, loader) in sorted(parsed['entries'].items()):
         slot = entry_slot(loader)
         if slot and partition == str(partuuid).lower():
             if usable and (not active or parsed.get('data', {}).get(number)):
@@ -664,10 +665,10 @@ def repo_archives(repo, names=(GRUB_PACKAGE, SHIM_PACKAGE, CONFIG_PACKAGE)):
                 if package_name(path) in found:
                     found[package_name(path)].append(path)
     except OSError as error:
-        raise SecureBootError(f'The package repository could not be read: {error}') from error
+        raise SecureBootError(_('The package repository could not be read: {value1}').format(value1=error)) from error
     for name, paths in found.items():
         if len(paths) != 1:
-            raise SecureBootError(f'The package repository holds {len(paths)} archives of {name}.')
+            raise SecureBootError(_('The package repository holds {value1} archives of {value2}.').format(value1=len(paths), value2=name))
     return [found[name][0] for name in names]
 
 
@@ -682,7 +683,7 @@ def archive_files(archive, read=()):
                     if member.name in read:
                         contents[member.name] = package.extractfile(member).read()
     except (OSError, tarfile.TarError, EOFError) as error:
-        raise SecureBootError(f'{Path(archive).name} could not be read: {error}') from error
+        raise SecureBootError(_('{value1} could not be read: {value2}').format(value1=Path(archive).name, value2=error)) from error
     return sizes, contents
 
 
@@ -703,9 +704,9 @@ def signed_grub_bytes(archives, modules, extra_memdisk=None):
     by_name = {package_name(archive): archive for archive in archives}
     missing = [name for name in (GRUB_PACKAGE, CONFIG_PACKAGE) if name not in by_name]
     if missing:
-        raise SecureBootError('The packages ' + ', '.join(missing) + ' are not in this installation.')
+        raise SecureBootError(_('The packages {value1} are not in this installation.').format(value1=', '.join(missing)))
     grub, contents = archive_files(by_name[GRUB_PACKAGE], (GRUB_PLATFORM + 'moddep.lst',))
-    config, _ = archive_files(by_name[CONFIG_PACKAGE])
+    config, ignored = archive_files(by_name[CONFIG_PACKAGE])
     memdisk = dict(MEMDISK_SMALL)
     for name, size in grub.items():
         base = name[len(GRUB_PLATFORM):] if name.startswith(GRUB_PLATFORM) else None
@@ -723,10 +724,10 @@ def signed_grub_bytes(archives, modules, extra_memdisk=None):
     kernel = grub.get(GRUB_PLATFORM + 'kernel.img')
     moddep = contents.get(GRUB_PLATFORM + 'moddep.lst')
     if kernel is None or moddep is None:
-        raise SecureBootError('The grub package has no kernel.img or moddep.lst for x86_64-efi.')
+        raise SecureBootError(_('The grub package has no kernel.img or moddep.lst for x86_64-efi.'))
     depends = {}
     for line in moddep.decode('ascii', 'replace').splitlines():
-        name, _, rest = line.partition(':')
+        name, ignored, rest = line.partition(':')
         depends[name.strip()] = rest.split()
     core, pending = set(), list(modules)
     while pending:
@@ -736,7 +737,7 @@ def signed_grub_bytes(archives, modules, extra_memdisk=None):
             pending += depends.get(name, [])
     absent = sorted(name for name in core if GRUB_PLATFORM + name + '.mod' not in grub)
     if absent:
-        raise SecureBootError('The grub package lacks the modules ' + ', '.join(absent) + '.')
+        raise SecureBootError(_('The grub package lacks the modules ') + ', '.join(absent) + '.')
     built_in = sum(grub[GRUB_PLATFORM + name + '.mod'] for name in core)
     return tar_bytes(memdisk.values()) + kernel + built_in + SIGNED_GRUB_MARGIN
 
@@ -752,12 +753,12 @@ def secure_boot_esp_need(archives, cluster, modules, extra_memdisk=None, removab
     """
     shim_archive = next((archive for archive in archives if package_name(archive) == SHIM_PACKAGE), None)
     if shim_archive is None:
-        raise SecureBootError('The package emaki-shim-signed is not in this installation.')
-    sizes, _ = archive_files(shim_archive)
+        raise SecureBootError(_('The package emaki-shim-signed is not in this installation.'))
+    sizes, ignored = archive_files(shim_archive)
     shim_dir = str(SHIM_DIR).lstrip('/') + '/'
     shim, mok = sizes.get(shim_dir + SHIM), sizes.get(shim_dir + MOK_MANAGER)
     if shim is None or mok is None:
-        raise SecureBootError('emaki-shim-signed does not hold shimx64.efi and mmx64.efi.')
+        raise SecureBootError(_('emaki-shim-signed does not hold shimx64.efi and mmx64.efi.'))
     grub = signed_grub_bytes(archives, modules, extra_memdisk)
     return slots_need({SHIM: shim, MOK_MANAGER: mok, GRUB: grub, ESP_CERT: ESP_CERT_BOUND}, cluster,
                       removable=removable, stage=grub) + SHARED_ESP_RESERVE
@@ -774,7 +775,7 @@ def sbat_version(arch_csv):
         fields = line.split(',')
         if fields[0] == 'grub' and len(fields) == 6:
             return fields[4]
-    raise SecureBootError("GRUB's SBAT data names no GRUB version.")
+    raise SecureBootError(_("GRUB's SBAT data names no GRUB version."))
 
 
 def build_signed_grub(run, write, mkimage, sbat_path, arch_csv, state=STATE):
@@ -787,7 +788,7 @@ def build_signed_grub(run, write, mkimage, sbat_path, arch_csv, state=STATE):
     """
     outputs = [argument.split('=', 1)[1] for argument in mkimage if argument.startswith('--output=')]
     if len(outputs) != 1:
-        raise SecureBootError('The GRUB image command names no single output.')
+        raise SecureBootError(_('The GRUB image command names no single output.'))
     version = sbat_version(arch_csv)
     command = ['sh', '-c', '"$@" 2>&1', 'sh', mkimage[0], '--sbat=' + str(sbat_path), *mkimage[1:]]
     write(sbat_path, sbat(arch_csv, version))
@@ -795,7 +796,7 @@ def build_signed_grub(run, write, mkimage, sbat_path, arch_csv, state=STATE):
     if level is not None:
         write(sbat_path, sbat(arch_csv, version, level))
         if sbat_generation(run(command) or '') is not None:
-            raise SecureBootError('grub-mkimage still rejects the SBAT level of the signed image.')
+            raise SecureBootError(_('grub-mkimage still rejects the SBAT level of the signed image.'))
     sign(run, outputs[0], state=state)
     return outputs[0]
 

@@ -1,6 +1,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Parse package metadata and advisory news without trusting remote markup."""
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from fnmatch import fnmatchcase
@@ -12,7 +24,7 @@ import xml.etree.ElementTree as ET
 
 NAME = re.compile(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+:-]*\Z')
 VERSION = re.compile(r'[^\s|\x00-\x1f]{1,256}\Z')
-AUR_SOURCE = 'AUR — update with your AUR tool'
+AUR_SOURCE = _('AUR — update with your AUR tool')
 # Keep this list identical to zzz-emaki-session-update.hook.
 SESSION_TARGETS = ('emaki-config', 'niri', 'niri-emaki', 'quickshell-emaki', 'qt6-*')
 
@@ -26,7 +38,7 @@ def packages(text):
     for line in text.splitlines():
         fields = line.split()
         if len(fields) != 2 or not NAME.fullmatch(fields[0]) or not VERSION.fullmatch(fields[1]):
-            raise ValueError('The installed package list could not be read.')
+            raise ValueError(_('The installed package list could not be read.'))
         result[fields[0]] = fields[1]
     return result
 
@@ -39,7 +51,7 @@ def upgrade_lines(text):
                 or not NAME.fullmatch(fields[0]) or not VERSION.fullmatch(fields[1])
                 or not VERSION.fullmatch(fields[3])
                 or (len(fields) == 5 and fields[4] != '[ignored]')):
-            raise ValueError('The available package list could not be read.')
+            raise ValueError(_('The available package list could not be read.'))
         result[fields[0]] = dict(old=fields[1], new=fields[3], ignored=len(fields) == 5)
     return result
 
@@ -49,7 +61,7 @@ def source_label(repo):
         return 'Emaki'
     if repo in ('core', 'extra', 'multilib', 'core-testing', 'extra-testing', 'multilib-testing'):
         return 'Arch ' + repo
-    return 'Repository ' + repo
+    return _('Repository {repository}').format(repository=repo)
 
 
 def transaction(text, installed):
@@ -61,12 +73,14 @@ def transaction(text, installed):
         if (len(fields) != 4 or not NAME.fullmatch(fields[0]) or not NAME.fullmatch(fields[1])
                 or not VERSION.fullmatch(fields[2]) or not fields[3].isascii()
                 or not fields[3].isdigit() or fields[1] in seen):
-            raise ValueError('The update download list could not be read.')
+            raise ValueError(_('The update download list could not be read.'))
         repo, name, version, size = fields
         seen.add(name)
         result.append(dict(source=source_label(repo), name=name,
                            old=installed.get(name, 'Not installed'), new=version,
                            downloadSize=int(size), aur=False))
+        if name not in installed:
+            result[-1]['oldDisplay'] = _('Not installed')
     return result
 
 
@@ -74,15 +88,15 @@ def aur_updates(payload, installed, compare):
     if (not isinstance(payload, dict) or payload.get('version') != 5
             or payload.get('type') != 'multiinfo' or not isinstance(payload.get('results'), list)
             or payload.get('resultcount') != len(payload['results'])):
-        raise ValueError('The AUR package information could not be read.')
+        raise ValueError(_('The AUR package information could not be read.'))
     result, found = [], set()
     for item in payload['results']:
         if not isinstance(item, dict):
-            raise ValueError('The AUR package information could not be read.')
+            raise ValueError(_('The AUR package information could not be read.'))
         name, version = item.get('Name'), item.get('Version')
         if (not isinstance(name, str) or not NAME.fullmatch(name) or name not in installed
                 or name in found or not isinstance(version, str) or not VERSION.fullmatch(version)):
-            raise ValueError('The AUR package information could not be read.')
+            raise ValueError(_('The AUR package information could not be read.'))
         found.add(name)
         if compare(version, installed[name]) > 0:
             result.append(dict(source=AUR_SOURCE, name=name, old=installed[name], new=version,
@@ -93,7 +107,7 @@ def aur_updates(payload, installed, compare):
 def utc(text):
     value = datetime.fromisoformat(text.replace('Z', '+00:00'))
     if value.tzinfo is None:
-        raise ValueError('Missing timezone')
+        raise ValueError(_('Missing timezone'))
     return value.astimezone(timezone.utc)
 
 
@@ -125,10 +139,10 @@ def last_upgrade(text):
 
 def news_items(raw, since):
     if b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
-        raise ValueError('The Arch news feed could not be read.')
+        raise ValueError(_('The Arch news feed could not be read.'))
     root = ET.fromstring(raw)
     if root.tag != 'rss' or root.find('channel') is None:
-        raise ValueError('The Arch news feed could not be read.')
+        raise ValueError(_('The Arch news feed could not be read.'))
     result = []
     for item in root.findall('./channel/item'):
         title = item.findtext('title', '')
@@ -178,12 +192,12 @@ def release_notes(raw, version):
     value = json.loads(raw)
     if (not isinstance(value, dict) or value.get('tag_name') != 'v' + version
             or value.get('draft') is not False or not isinstance(value.get('body'), str)):
-        raise ValueError('The release page could not be read.')
+        raise ValueError(_('The release page could not be read.'))
     url = value.get('html_url')
     parsed = urlsplit(url if isinstance(url, str) else '')
     if (parsed.scheme != 'https' or parsed.netloc != 'github.com' or parsed.query or parsed.fragment
             or parsed.path != '/emakish/emaki/releases/tag/v' + version):
-        raise ValueError('The release page has an unexpected address.')
+        raise ValueError(_('The release page has an unexpected address.'))
     items, section = [], None
     for line in value['body'][:65536].splitlines():
         heading = re.match(r'#{1,3}\s+(.*)', line)
@@ -202,21 +216,21 @@ def release_card(version, fetch):
     """What the Updates tab shows about a pending Emaki release; never fails the check."""
     card = dict(version=version, url=RELEASES, items=[], published=False)
     try:
-        notes, _ = fetch(RELEASE_API + version, lambda raw: release_notes(raw, version))
+        notes, _unused = fetch(RELEASE_API + version, lambda raw: release_notes(raw, version))
         return notes
     except (OSError, ValueError, RuntimeError):
         return card
 
 
 def warnings_for(updates):
-    warnings = ['Read the package list and notices before updating. These checks cannot guarantee that an update will work.']
+    warnings = [_('Read the package list and notices before updating. These checks cannot guarantee that an update will work.')]
     names = {item['name'] for item in updates}
     if any(re.fullmatch(r'linux(?:-lts|-zen|-hardened|-rt|-rt-lts)?', name) for name in names):
-        warnings.append('The kernel will change. Restart the computer after updating.')
+        warnings.append(_('The kernel will change. Restart the computer after updating.'))
     if session_changes(names):
-        warnings.append('The desktop will change. Save your work, sign out and sign in again after updating.')
+        warnings.append(_('The desktop will change. Save your work, sign out and sign in again after updating.'))
     if any(item['aur'] for item in updates):
-        warnings.append('Packages from AUR are not checked by Arch or Emaki. Where available, open the program’s page to build its update, or use your AUR tool.')
+        warnings.append(_('Packages from AUR are not checked by Arch or Emaki. Where available, open the program’s page to build its update, or use your AUR tool.'))
     return warnings
 
 

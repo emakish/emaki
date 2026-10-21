@@ -26,6 +26,7 @@ import time
 sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from emaki_lock_fallback import FallbackHeartbeat
+from emaki_i18n import selected_languages
 
 # confirm is additive; existing version-1 lock/wait/status clients keep their semantics.
 VERSION = 1
@@ -350,7 +351,7 @@ class Supervisor:
         self.secure = self.poured = self.authenticated_exit = False
         self.phase = 'starting'
         self.started = self.last_heartbeat = self.readiness_since = time.monotonic()
-        env = dict(os.environ, LC_MESSAGES='C')
+        env = dict(os.environ, LC_MESSAGES='C', EMAKI_LANGUAGE=':'.join(selected_languages()))
         env.pop('LC_ALL', None)  # Keep LANG/LC_CTYPE for Unicode; stabilize PAM prompt language.
         # Never allow debug logs to record typed key events from the production locker.
         env.pop('WAYLAND_DEBUG', None)

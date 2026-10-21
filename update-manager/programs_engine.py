@@ -6,6 +6,18 @@ Each request is a JSON object; each response and progress event carries its id.
 Catalog keys identify a source edition, never a display name. Plans are data,
 not commands, and execution always resolves the key and plans again.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import argparse
 from copy import deepcopy
 import hashlib
@@ -56,22 +68,22 @@ MAX_SHELF = 8
 SYSFS = Path('/sys')
 NVIDIA = 0x10de
 MESSAGES = {
-    'invalid-request': 'The program manager request is invalid.',
-    'not-found': 'This program is no longer in the catalog. Refresh the catalog.',
-    'changed': 'The transaction plan changed. Review it again.',
-    'aur-closed': 'The AUR section is off. Open it and read the warning first.',
-    'missing-dependency': 'This program needs a package that is neither in Arch nor in the AUR.',
+    'invalid-request': _('The program manager request is invalid.'),
+    'not-found': _('This program is no longer in the catalog. Refresh the catalog.'),
+    'changed': _('The transaction plan changed. Review it again.'),
+    'aur-closed': _('The AUR section is off. Open it and read the warning first.'),
+    'missing-dependency': _('This program needs a package that is neither in Arch nor in the AUR.'),
     'metadata-unavailable': str(arch.MetadataUnavailable()),
-    'dependency-cycle': 'The AUR packages of this program depend on each other in a circle.',
-    'recipe-unavailable': 'The AUR did not answer for this program. Try again later.',
-    'too-large': 'This program pulls in too many packages to build here.',
-    'up-to-date': 'This program is already installed in its newest version.',
-    'nothing-to-undo': 'There is no recorded install of this program to take back.',
-    'cannot-undo': 'This install can no longer be taken back as it was.',
-    'not-authorized': 'The transaction was not authorized.',
-    'failed': 'The program manager operation could not finish.',
-    'unknown': 'The transaction connection ended. Check the installed state before trying again.',
-    'not-installed': 'This program is not installed.',
+    'dependency-cycle': _('The AUR packages of this program depend on each other in a circle.'),
+    'recipe-unavailable': _('The AUR did not answer for this program. Try again later.'),
+    'too-large': _('This program pulls in too many packages to build here.'),
+    'up-to-date': _('This program is already installed in its newest version.'),
+    'nothing-to-undo': _('There is no recorded install of this program to take back.'),
+    'cannot-undo': _('This install can no longer be taken back as it was.'),
+    'not-authorized': _('The transaction was not authorized.'),
+    'failed': _('The program manager operation could not finish.'),
+    'unknown': _('The transaction connection ended. Check the installed state before trying again.'),
+    'not-installed': _('This program is not installed.'),
 }
 
 
@@ -242,31 +254,46 @@ def storefront(paths=None):
     return dict(featured=dict(title='', note='', programs=[]), rows=[], names={})
 
 
+def catalog_text(value):
+    """Translate bundled editorial text after validating its source value."""
+    messages = {
+        'Picked by Emaki': _('Picked by Emaki'),
+        'A good place to start': _('A good place to start'),
+        'Session sudo key': _('Session sudo key'),
+        'Snapshot guard': _('Snapshot guard'),
+        'NVIDIA support': _('NVIDIA support'),
+        'Allows password-free administrator commands for a chosen session. Read the warning before granting access.': _('Allows password-free administrator commands for a chosen session. Read the warning before granting access.'),
+        'Restore-point protection for system changes. Read its setup instructions before relying on it.': _('Restore-point protection for system changes. Read its setup instructions before relying on it.'),
+        "Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings.": _("Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings."),
+    }
+    return messages.get(value, value)
+
+
 def storefront_value(value):
     def text(item):
         if not isinstance(item, str) or not 0 < len(item) <= 64 or item != removal.clean_text(item):
-            raise ValueError('Invalid storefront text')
+            raise ValueError(_('Invalid storefront text'))
         return item
 
     def identities(items, limit):
         # Lower case without .desktop, as the window compares program identities.
         if (not isinstance(items, list) or len(items) > limit
                 or not all(isinstance(item, str) and STOREFRONT_ID.fullmatch(item) for item in items)):
-            raise ValueError('Invalid storefront identities')
+            raise ValueError(_('Invalid storefront identities'))
         return list(dict.fromkeys(item.removesuffix('.desktop').lower() for item in items))
 
     if not isinstance(value, dict) or value.get('version') != 1 or set(value) != {'version', 'featured', 'rows', 'names'}:
-        raise ValueError('Invalid storefront')
+        raise ValueError(_('Invalid storefront'))
     featured, rows, names = value['featured'], value['rows'], value['names']
     if (not isinstance(featured, dict) or set(featured) != {'title', 'note', 'programs'}
             or not isinstance(rows, list) or len(rows) > 8 or not isinstance(names, dict) or len(names) > 64):
-        raise ValueError('Invalid storefront')
+        raise ValueError(_('Invalid storefront'))
     for row in rows:
         if (not isinstance(row, dict) or set(row) != {'category', 'first'} or not isinstance(row['category'], str)
                 or not STOREFRONT_CATEGORY.fullmatch(row['category'])):
-            raise ValueError('Invalid storefront row')
+            raise ValueError(_('Invalid storefront row'))
     return dict(
-        featured=dict(title=text(featured['title']), note=text(featured['note']),
+        featured=dict(title=catalog_text(text(featured['title'])), note=catalog_text(text(featured['note'])),
                       programs=identities(featured['programs'], MAX_FEATURED)),
         rows=[dict(category=row['category'], first=identities(row['first'], MAX_FIRST)) for row in rows],
         names={identities([key], 1)[0]: text(name) for key, name in names.items()})
@@ -287,24 +314,24 @@ def shelf_items(paths=None):
 def shelf_value(value):
     def text(item, limit):
         if not isinstance(item, str) or not 0 < len(item) <= limit or item != removal.clean_text(item):
-            raise ValueError('Invalid shelf text')
+            raise ValueError(_('Invalid shelf text'))
         return item
 
     if (not isinstance(value, dict) or value.get('version') != 1 or set(value) != {'version', 'items'}
             or not isinstance(value['items'], list) or len(value['items']) > MAX_SHELF):
-        raise ValueError('Invalid shelf')
+        raise ValueError(_('Invalid shelf'))
     items = []
     for item in value['items']:
         if (not isinstance(item, dict) or set(item) - {'when'} != {'package', 'title', 'summary'}
                 or 'when' in item and not (isinstance(item['when'], str) and SHELF_WHEN.fullmatch(item['when']))):
-            raise ValueError('Invalid shelf item')
-        found = dict(package=removal.valid_name(item['package']), title=text(item['title'], 64),
-                     summary=text(item['summary'], 160))
+            raise ValueError(_('Invalid shelf item'))
+        found = dict(package=removal.valid_name(item['package']), title=catalog_text(text(item['title'], 64)),
+                     summary=catalog_text(text(item['summary'], 160)))
         if 'when' in item:
             found['when'] = item['when']
         items.append(found)
     if len({item['package'] for item in items}) != len(items):
-        raise ValueError('Invalid shelf: a package twice')
+        raise ValueError(_('Invalid shelf: a package twice'))
     return items
 
 
@@ -363,7 +390,7 @@ def select(rows, query='', source='', category='', installed=None, offset=0, lim
             or not isinstance(category, str) or len(category) > 128
             or (installed is not None and not isinstance(installed, bool))
             or type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 500):
-        raise ValueError('Invalid filters')
+        raise ValueError(_('Invalid filters'))
     terms = query.casefold().split()
     found = []
     for row in rows:
@@ -413,7 +440,7 @@ class Engine:
     def aur_status(self, accept=None, showWarning=True):
         if accept is not None:
             if not isinstance(accept, bool):
-                raise ValueError('Invalid consent')
+                raise ValueError(_('Invalid consent'))
             aur.set_consent(self.consent_file, accept, showWarning)
             self.foreign_read = False
         state = aur.consent(self.consent_file)
@@ -450,13 +477,13 @@ class Engine:
             try:
                 installed = self.legacy.pacman('-Q')
                 if getattr(installed, 'returncode', 0) != 0:
-                    raise RuntimeError('Installed package query failed')
+                    raise RuntimeError(_('Installed package query failed'))
                 self.installed = arch.parse_versions(installed.stdout)
                 self.installed_known = True
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                 self.installed = {}
                 self.installed_known = False
-            self.warnings.append('Repository package metadata could not be read. The catalog is incomplete.')
+            self.warnings.append(_('Repository package metadata could not be read. The catalog is incomplete.'))
         # The package recipe owns the Rich set. No installer module or second
         # package list is needed on the installed desktop.
         self.rich_programs = next((list(dict.fromkeys(package.get('optionalPackages', [])))
@@ -478,7 +505,7 @@ class Engine:
                     row['packages'] = [owners[row['sourcePath']][0]]
         rows = arch_rows(metadata, available, self.installed)
         if not any(row.get('origin') for row in metadata if row.get('packages')):
-            self.warnings.append('Repository AppStream data is missing. Install the platform application metadata package and refresh.')
+            self.warnings.append(_('Repository AppStream data is missing. Install the platform application metadata package and refresh.'))
         optional, warnings = flatpak.discover(refresh=refresh)
         self.warnings.extend(warnings)
         for row in optional:
@@ -505,7 +532,7 @@ class Engine:
             identities = [row.get(field, '') for field in
                           ('key', 'id', 'target', 'package', 'installation', 'origin', 'ref', 'programKey')]
             if any(value != removal.clean_text(value) for value in identities):
-                self.warnings.append('Program metadata contains an invalid identifier.')
+                self.warnings.append(_('Program metadata contains an invalid identifier.'))
                 continue
             row = removal.clean_display(row)
             if row['kind'] == 'flatpak' and (row.get('manageable') is False
@@ -562,9 +589,9 @@ class Engine:
     def offer_undo(self, row):
         """An installed program whose install was recorded can be taken back exactly."""
         if row['kind'] != 'flatpak' and row.get('package') == 'emaki-nvidia':
-            row['description'] = ('NVIDIA support has no Undo button because removing graphics drivers can leave a black screen. '
+            row['description'] = (_('NVIDIA support has no Undo button because removing graphics drivers can leave a black screen. '
                                   'A restore point is made before installation. To go back, open Updates, choose the '
-                                  'restore point dated just before this installation, select Restore, then restart.')
+                                  'restore point dated just before this installation, select Restore, then restart.'))
         found = self.receipt_for(row)
         row.pop('undo', None)
         if found is not None and (found['added'] or found['kind'] == 'flatpak' or receipts.needs_restore(found)):
@@ -588,9 +615,9 @@ class Engine:
                 self.offer_undo(row)
             self.aur.update({row['key']: row for row in self.match_aur(rows)})
             if stale:
-                self.warnings.append('AUR search results come from an older check.')
+                self.warnings.append(_('AUR search results come from an older check.'))
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-            self.warnings.append('AUR search could not finish. Narrow the search or try again later.')
+            self.warnings.append(_('AUR search could not finish. Narrow the search or try again later.'))
 
     def installed_aur(self):
         """Installed AUR programs keep their AUR identity, facts and Undo in a freshly started window.
@@ -619,7 +646,7 @@ class Engine:
             try:
                 backend = update_backend()
                 self.cache.mkdir(mode=0o700, parents=True, exist_ok=True)
-                rows, _ = backend.fetch(aur.info_url(lookup), self.cache,
+                rows, _unused = backend.fetch(aur.info_url(lookup), self.cache,
                                         lambda raw: aur_records(json.loads(raw), self.installed))
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                 pass
@@ -646,12 +673,12 @@ class Engine:
         include_aur = options.pop('includeAur', False)
         scope = options.pop('scope', 'programs')
         if not isinstance(refresh, bool) or not isinstance(include_aur, bool):
-            raise ValueError('Invalid discovery option')
+            raise ValueError(_('Invalid discovery option'))
         if scope not in ('programs', 'packages'):
-            raise ValueError('Invalid catalog scope')
+            raise ValueError(_('Invalid catalog scope'))
         if scope == 'packages' and (include_aur or options.get('source', '') not in ('', 'arch')
                                     or options.get('category', '')):
-            raise ValueError('Invalid package filters')
+            raise ValueError(_('Invalid package filters'))
         select([], **options)
         enabled = self.aur_enabled()
         if options.get('source') == 'aur' and not enabled:
@@ -700,10 +727,10 @@ class Engine:
         try:
             names, stale = aur.popular_names(self.cache / 'aur-popular.json')
             backend = update_backend()
-            rows, _ = backend.fetch(aur.info_url(names), self.cache,
+            rows, _unused = backend.fetch(aur.info_url(names), self.cache,
                                     lambda raw: aur_records(json.loads(raw), self.installed))
         except (OSError, ValueError, RuntimeError, EOFError, zlib.error):
-            return dict(ok=True, programs=[], warnings=['The popular AUR list could not be read. Search still works.'])
+            return dict(ok=True, programs=[], warnings=[_('The popular AUR list could not be read. Search still works.')])
         rows = sorted(self.match_aur(rows), key=lambda row: (
             -(row['popularity'] if row['popularity'] is not None else -1),
             -(row['votes'] if row['votes'] is not None else -1), row['package']))
@@ -711,11 +738,11 @@ class Engine:
             self.offer_undo(row)
         self.aur.update({row['key']: row for row in rows})
         return dict(ok=True, programs=rows,
-                    warnings=['The popular AUR list comes from an older check.'] if stale else [])
+                    warnings=[_('The popular AUR list comes from an older check.')] if stale else [])
 
     def details(self, key):
         if not isinstance(key, str) or not 0 < len(key) <= 2048:
-            raise ValueError('Invalid catalog key')
+            raise ValueError(_('Invalid catalog key'))
         self.load()
         if key.startswith('aur:') and not self.aur_enabled():
             self.installed_aur()
@@ -727,7 +754,7 @@ class Engine:
             name = removal.valid_name(key[4:])
             backend = update_backend()
             self.cache.mkdir(mode=0o700, parents=True, exist_ok=True)
-            rows, _ = backend.fetch(aur.info_url([name]), self.cache,
+            rows, _unused = backend.fetch(aur.info_url([name]), self.cache,
                                     lambda raw: aur_records(json.loads(raw), self.installed))
             for row in rows:
                 self.offer_undo(row)
@@ -740,7 +767,7 @@ class Engine:
     def related(self, key):
         """AUR editions of an Arch or Flathub program, once the AUR section is open."""
         if not isinstance(key, str) or not 0 < len(key) <= 2048:
-            raise ValueError('Invalid catalog key')
+            raise ValueError(_('Invalid catalog key'))
         if not self.aur_enabled():
             return dict(ok=True, programs=[])
         self.load()
@@ -753,10 +780,10 @@ class Engine:
         backend = update_backend()
         self.cache.mkdir(mode=0o700, parents=True, exist_ok=True)
         try:
-            rows, _ = backend.fetch(aur.info_url(names), self.cache,
+            rows, _unused = backend.fetch(aur.info_url(names), self.cache,
                                     lambda raw: aur_records(json.loads(raw), self.installed))
         except (OSError, ValueError, RuntimeError):
-            return dict(ok=True, programs=[], warnings=['The AUR could not be checked for this program.'])
+            return dict(ok=True, programs=[], warnings=[_('The AUR could not be checked for this program.')])
         found = [aur_row for aur_row in self.match_aur(rows) if aur_row.get('sameAs') == key]
         for aur_row in found:
             self.offer_undo(aur_row)
@@ -768,7 +795,7 @@ class Engine:
             return failure('aur-closed')
         if not self.aur_status().get('snapshots'):
             return dict(ok=False, code='snapshots-unavailable', message=
-                        'AUR installs need system snapshots. This system does not support them, so nothing was installed.')
+                        _('AUR installs need system snapshots. This system does not support them, so nothing was installed.'))
         system = aur.System(aur.fetch_json, dict(arch.ENV), cache=self.cache, refresh=True)
         try:
             native = aur.build_plan(name, system)
@@ -807,7 +834,7 @@ class Engine:
     def _plan(self, action, key=''):
         if action == 'update':
             if key:
-                raise ValueError('Updates always include the full system')
+                raise ValueError(_('Updates always include the full system'))
             backend = update_backend()
             backend.emit = lambda *_args, **_fields: None
             self.cache.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -819,7 +846,7 @@ class Engine:
             plan['token'] = digest(plan)
             return plan
         if action not in ('install', 'remove', 'undo'):
-            raise ValueError('Invalid transaction')
+            raise ValueError(_('Invalid transaction'))
         answer = self.details(key)
         if not answer['ok']:
             return answer
@@ -911,7 +938,7 @@ class Engine:
         try:
             answer = json.loads(result.stdout)
             if not isinstance(answer, dict) or type(answer.get('ok')) is not bool:
-                raise ValueError('Invalid removal result')
+                raise ValueError(_('Invalid removal result'))
             if result.returncode:
                 answer['ok'] = False
             return answer
@@ -920,7 +947,7 @@ class Engine:
 
     def _execute(self, action, key, token, emit):
         if not isinstance(token, str) or not re.fullmatch('[0-9a-f]{64}', token):
-            raise ValueError('Invalid plan token')
+            raise ValueError(_('Invalid plan token'))
         # State is reloaded locally, without refreshing remotes or system databases.
         self.rows = None
         plan = self.plan(action, key)
@@ -986,11 +1013,11 @@ class Engine:
 
     def request(self, request, emit):
         if not isinstance(request, dict) or request.get('version') != PROTOCOL:
-            raise ValueError('Invalid protocol version')
+            raise ValueError(_('Invalid protocol version'))
         operation = request.get('method')
         params = request.get('params', {})
         if not isinstance(params, dict):
-            raise ValueError('Invalid parameters')
+            raise ValueError(_('Invalid parameters'))
         if operation in ('catalog', 'search'):
             return self.catalog(**params)
         if operation == 'details':
@@ -1009,9 +1036,9 @@ class Engine:
             backend = update_backend()
             self.cache.mkdir(mode=0o700, parents=True, exist_ok=True)
             if params:
-                raise ValueError('Invalid update status parameters')
+                raise ValueError(_('Invalid update status parameters'))
             return dict(ok=True, **backend.status(self.cache))
-        raise ValueError('Unknown method')
+        raise ValueError(_('Unknown method'))
 
 
 def serve(engine, source, output):
@@ -1026,16 +1053,16 @@ def serve(engine, source, output):
                 # Drain the entire oversized request, never execute its suffix.
                 while raw and not raw.endswith('\n'):
                     raw = source.readline(MAX_REQUEST + 1)
-                raise ValueError('Request too large')
+                raise ValueError(_('Request too large'))
             request = json.loads(raw)
             if isinstance(request, dict):
                 identity = request.get('id')
                 if not (identity is None or type(identity) is int or isinstance(identity, str) and len(identity) <= 128):
                     identity = None
-                    raise ValueError('Invalid request id')
+                    raise ValueError(_('Invalid request id'))
                 if isinstance(identity, str) and identity != removal.clean_text(identity):
                     identity = None
-                    raise ValueError('Invalid request id')
+                    raise ValueError(_('Invalid request id'))
             def emit(event_type, **fields):
                 write(dict(version=PROTOCOL, id=identity, type=event_type, **fields))
             answer = engine.request(request, emit)
@@ -1052,7 +1079,7 @@ def main(argv, legacy):
     if os.geteuid() == 0:
         print(json.dumps(dict(version=PROTOCOL, id=None, type='result', **failure('not-authorized'))))
         return 2
-    parser = argparse.ArgumentParser(description='Program manager JSON protocol')
+    parser = argparse.ArgumentParser(description=_('Program manager JSON protocol'))
     parser.add_argument('method', choices=('catalog', 'search', 'details', 'related', 'plan', 'execute',
                                            'updates', 'aur', 'popular', 'serve'))
     parser.add_argument('arguments', nargs='*')
@@ -1073,7 +1100,7 @@ def main(argv, legacy):
     engine = Engine(legacy, cache, config, popularity=removal.PopularityCache(cache))
     if args.method == 'serve':
         if args.arguments:
-            parser.error('The JSON service takes requests on standard input.')
+            parser.error(_('The JSON service takes requests on standard input.'))
         # The window's service: refresh the ratings index beside it, never in a request's way.
         reviews.refresh_in_background(engine.cache / 'odrs')
         serve(engine, sys.stdin, sys.stdout)
@@ -1083,7 +1110,7 @@ def main(argv, legacy):
                 'updates': 0, 'aur': 0, 'popular': 0}
     counts = expected[args.method]
     if len(args.arguments) not in (counts if isinstance(counts, tuple) else (counts,)):
-        parser.error('Invalid program manager arguments.')
+        parser.error(_('Invalid program manager arguments.'))
     if args.method in ('catalog', 'search'):
         params = dict(query=args.arguments[0] if args.arguments else '', source=args.source,
                       category=args.category, installed=args.installed, refresh=args.refresh,

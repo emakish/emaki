@@ -1,0 +1,12 @@
+{
+ "created": "2026-10-21T16:35:18+00:00",
+ "expires": "2026-10-28T16:35:18+00:00",
+ "format": 1,
+ "gate": "build.alongside-acceptance",
+ "id": "20261021T163518Z-build.alongside-acceptance-1c37",
+ "reason": "Discover left the Rich app list. Real Windows hardware is still not tested; installing beside Windows was last checked in virtual machines for 0.9.0.",
+ "scope": {
+  "installer/emaki_installer/constants.py": "c92ab1caf8b2197ab30655158f590be7de9d23d6dce7e852a122579e8f684323"
+ },
+ "who": "668569956D2D747847D87D01F62680BE583363AC"
+}

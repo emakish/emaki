@@ -427,14 +427,18 @@ impl Map {
     }
 
     pub fn human(&self) -> String {
-        let mut text = format!(
-            "Emaki {} — map format {} (expected paths, not an installed-file inventory)\n",
-            self.emaki_version, self.schema_version
+        let mut text = crate::i18n::format_text(
+            "Emaki {emaki_version} — map format {schema_version} (expected paths, not an installed-file inventory)\n",
+            &[
+                ("emaki_version", (self.emaki_version).to_string()),
+                ("schema_version", (self.schema_version).to_string()),
+            ],
         );
         let page = self.entries.iter().find(|e| e.id == "zones_doc");
         if let Some(page) = page.and_then(|e| e.path.as_ref()) {
-            text.push_str(&format!(
-                "Zones (package, managed, yours) are explained in {page:?}\n"
+            text.push_str(&crate::i18n::format_text(
+                "Zones (package, managed, yours) are explained in {page}\n",
+                &[("page", format!("{:?}", page))],
             ));
         }
         for entry in &self.entries {
@@ -443,23 +447,24 @@ impl Map {
                 .path
                 .as_ref()
                 .map(|p| format!("{p:?}"))
-                .unwrap_or("unresolved".into());
+                .unwrap_or_else(|| crate::i18n::tr("unresolved"));
             let lifecycle = match entry.lifecycle {
-                "isolated_profile_only" => "isolated_profile_only, not connected yet",
-                other => other,
+                "isolated_profile_only" => {
+                    crate::i18n::tr("isolated_profile_only, not connected yet")
+                }
+                other => other.into(),
             };
-            text.push_str(&format!(
-                "{}: {}\n  zone: {}; on update: {}; change via: {}; history: {}\n  owner: {}; {}; source: {}\n",
-                entry.id,
-                path,
-                entry.zone,
-                entry.on_update,
-                entry.change_via,
-                entry.history,
-                entry.owner,
-                lifecycle,
-                entry.source
-            ));
+            text.push_str(&crate::i18n::format_text("{id}: {path}\n  zone: {zone}; on update: {on_update}; change via: {change_via}; history: {history}\n  owner: {owner}; {lifecycle}; source: {source}\n", &[
+                ("id", (entry.id).to_string()),
+                ("path", (path).to_string()),
+                ("zone", (entry.zone).to_string()),
+                ("on_update", (entry.on_update).to_string()),
+                ("change_via", (entry.change_via).to_string()),
+                ("history", (entry.history).to_string()),
+                ("owner", (entry.owner).to_string()),
+                ("lifecycle", (lifecycle).to_string()),
+                ("source", (entry.source).to_string()),
+            ]));
         }
         text
     }

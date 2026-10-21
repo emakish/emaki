@@ -65,7 +65,7 @@ Scope {
                     if (root.busy && !process.running) {
                         deadline.stop();
                         root.busy = false;
-                        root.fail("Network settings are unavailable. Try again.");
+                        root.fail(qsTranslate("SettingsNetworkService", "Network settings are unavailable. Try again."));
                     }
                 });
             }
@@ -83,7 +83,7 @@ Scope {
                 if (!response || response.schema_version !== 1 || typeof response.ok !== "boolean")
                     throw new Error("Invalid response");
                 if (code !== 0 || response.ok !== true) {
-                    root.fail(typeof response.error === "string" ? response.error : "Network settings could not be changed. Try again.");
+                    root.fail(typeof response.error === "string" ? response.error : qsTranslate("SettingsNetworkService", "Network settings could not be changed. Try again."));
                     return;
                 }
                 if (root.operation === "status") {
@@ -95,11 +95,11 @@ Scope {
                         root.errorOperation = "";
                     }
                 } else {
-                    root.message = typeof response.message === "string" && response.message ? response.message : "Network settings updated.";
+                    root.message = typeof response.message === "string" && response.message ? response.message : qsTranslate("SettingsNetworkService", "Network settings updated.");
                     Qt.callLater(root.refresh);
                 }
             } catch (_) {
-                root.fail("Network settings are unavailable. Try again.");
+                root.fail(qsTranslate("SettingsNetworkService", "Network settings are unavailable. Try again."));
             }
         }
     }
@@ -108,7 +108,7 @@ Scope {
         interval: 30000
         onTriggered: {
             root.busy = false;
-            root.fail("Network settings did not respond. Try again.");
+            root.fail(qsTranslate("SettingsNetworkService", "Network settings did not respond. Try again."));
             if (process.running)
                 process.signal(9);
         }

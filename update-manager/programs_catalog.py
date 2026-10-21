@@ -9,6 +9,18 @@ contain an Emaki component or a system package, whatever pacman would allow.
 A list of what must stay is never complete, so the person also reads the full
 preview before anything is removed.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import fcntl
 import json
 import math
@@ -77,26 +89,26 @@ OWNED = re.compile(r'(?P<path>/.+) is owned by (?P<name>\S+) (?P<version>\S+)')
 BREAKS = re.compile(r":: removing (?P<name>\S+) breaks dependency '(?P<dep>[^']+)' required by (?P<by>\S+)")
 
 MESSAGES = {
-    'ready': 'These packages will be removed.',
-    'not-installed': 'This program is no longer installed.',
-    'not-program': 'This package is not a program you can remove here.',
-    'required': 'Other installed software needs this program, so it stays.',
-    'emaki': 'Removing this program would remove part of Emaki, so it stays.',
-    'system': 'Removing this program would remove part of the system, so it stays.',
-    'busy': 'Another package operation is running. Try again when it finishes.',
-    'restart': 'Restart into the normal system before removing programs. Nothing was removed.',
-    'changed': 'The list of packages to remove changed. Review it again.',
-    'failed': 'The removal could not be checked. Nothing was removed.',
-    'not-authorized': 'Nothing was removed.',
-    'removed': 'The program was removed.',
-    'not-removed': 'The program could not be removed. Nothing was changed.',
-    'unknown': 'The removal did not finish as expected. Check the installed programs again.',
+    'ready': _('These packages will be removed.'),
+    'not-installed': _('This program is no longer installed.'),
+    'not-program': _('This package is not a program you can remove here.'),
+    'required': _('Other installed software needs this program, so it stays.'),
+    'emaki': _('Removing this program would remove part of Emaki, so it stays.'),
+    'system': _('Removing this program would remove part of the system, so it stays.'),
+    'busy': _('Another package operation is running. Try again when it finishes.'),
+    'restart': _('Restart into the normal system before removing programs. Nothing was removed.'),
+    'changed': _('The list of packages to remove changed. Review it again.'),
+    'failed': _('The removal could not be checked. Nothing was removed.'),
+    'not-authorized': _('Nothing was removed.'),
+    'removed': _('The program was removed.'),
+    'not-removed': _('The program could not be removed. Nothing was changed.'),
+    'unknown': _('The removal did not finish as expected. Check the installed programs again.'),
 }
 
 
 def valid_name(value):
     if not isinstance(value, str) or not NAME.fullmatch(value):
-        raise ValueError('Invalid package name.')
+        raise ValueError(_('Invalid package name.'))
     return value
 
 
@@ -156,7 +168,7 @@ def preview_names(text):
     for name in names:
         valid_name(name)
     if len(set(names)) != len(names):
-        raise ValueError('The removal preview lists a package twice.')
+        raise ValueError(_('The removal preview lists a package twice.'))
     return names
 
 
@@ -264,19 +276,19 @@ def _popularity_entry(key, value, source):
 
 def _popularity_values(values, source):
     if not isinstance(values, dict) or len(values) > _POPULARITY_ROWS:
-        raise ValueError('Invalid popularity data')
+        raise ValueError(_('Invalid popularity data'))
     valid = {key: value for key, value in values.items() if _popularity_entry(key, value, source)}
     if len(valid) * 2 < len(values):
-        raise ValueError('Invalid popularity data')
+        raise ValueError(_('Invalid popularity data'))
     return valid
 
 
 def _parse_popularity(data, source):
     if not isinstance(data, dict):
-        raise ValueError('Invalid popularity response')
+        raise ValueError(_('Invalid popularity response'))
     rows = data.get('packagePopularities' if source == 'arch' else 'hits')
     if not isinstance(rows, list) or len(rows) > _POPULARITY_ROWS:
-        raise ValueError('Invalid popularity response')
+        raise ValueError(_('Invalid popularity response'))
     name, score = ('name', 'popularity') if source == 'arch' else ('app_id', 'installs_last_month')
     values = {}
     for row in rows:
@@ -287,17 +299,17 @@ def _parse_popularity(data, source):
             continue
         values[key] = value
     if len(values) * 2 < len(rows):
-        raise ValueError('Invalid popularity response')
+        raise ValueError(_('Invalid popularity response'))
     return values
 
 
 class _NoPopularityRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ValueError('Unexpected popularity redirect')
+        raise ValueError(_('Unexpected popularity redirect'))
 
 
 def _popularity_timeout(signum, frame):
-    raise TimeoutError('Popularity request timed out')
+    raise TimeoutError(_('Popularity request timed out'))
 
 
 def _fetch_popularity(source):
@@ -310,10 +322,10 @@ def _fetch_popularity(source):
         request = urllib.request.Request(_POPULARITY_URLS[source], headers={'Accept': 'application/json'})
         with opener.open(request, timeout=8) as response:
             if response.status != 200:
-                raise ValueError('Invalid popularity response')
+                raise ValueError(_('Invalid popularity response'))
             body = response.read(_POPULARITY_BYTES + 1)
             if len(body) > _POPULARITY_BYTES:
-                raise ValueError('Popularity response too large')
+                raise ValueError(_('Popularity response too large'))
         return _parse_popularity(json.loads(body), source)
     finally:
         signal.alarm(0)
@@ -378,7 +390,7 @@ class PopularityCache:
     def _write(self, source, attempted, values, *, failed=False):
         body = json.dumps({'attempted': attempted, 'values': values, 'failed': failed}, allow_nan=False).encode()
         if len(body) > _POPULARITY_BYTES:
-            raise ValueError('Popularity cache too large')
+            raise ValueError(_('Popularity cache too large'))
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(dir=self.cache, prefix='.', delete=False) as stream:

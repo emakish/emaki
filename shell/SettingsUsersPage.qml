@@ -27,11 +27,11 @@ Column {
     function describe(user): string {
         if (user.available === false)
             return user.login + " · " + reasons.account_unavailable;
-        let text = user.login + " · " + (user.administrator ? "Administrator" : "Standard user");
+        let text = user.login + " · " + (user.administrator ? qsTranslate("SettingsUsersPage", "Administrator") : qsTranslate("SettingsUsersPage", "Standard user"));
         if (user.signed_in)
-            text += " · Signed in";
+            text += qsTranslate("SettingsUsersPage", " · Signed in");
         if (user.locked)
-            text += " · Cannot sign in";
+            text += qsTranslate("SettingsUsersPage", " · Cannot sign in");
         return text;
     }
     function lastAdministrator(user): bool {
@@ -104,18 +104,18 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.me !== null
-        title: "Your account"
+        title: qsTranslate("SettingsUsersPage", "Your account")
         SettingsRow {
             objectName: "settings-users-account"
             width: parent.width
             title: root.me ? root.label(root.me) : ""
-            explanation: root.me?.administrator ? "Administrator · this computer" : "This computer"
+            explanation: root.me?.administrator ? qsTranslate("SettingsUsersPage", "Administrator · this computer") : qsTranslate("SettingsUsersPage", "This computer")
             busy: root.pending
             controlWidth: 180
             control: Component {
                 SettingsButton {
                     objectName: "settings-users-change-" + (root.me?.login ?? "")
-                    text: "Change"
+                    text: qsTranslate("SettingsUsersPage", "Change")
                     enabled: root.me?.available !== false
                     onClicked: {
                         root.closeEditors();
@@ -127,8 +127,8 @@ Column {
         SettingsRow {
             objectName: "settings-users-picture"
             width: parent.width
-            title: "Picture"
-            explanation: "Shown in Settings, on the lock screen and on the login screen."
+            title: qsTranslate("SettingsUsersPage", "Picture")
+            explanation: qsTranslate("SettingsUsersPage", "Shown in Settings, on the lock screen and on the login screen.")
             busy: root.pending || root.pictureChooser.busy
             unavailable: root.me?.available === false
             controlWidth: root.me?.picture === true ? 270 : 180
@@ -139,7 +139,7 @@ Column {
                         id: chooseButton
                         objectName: "settings-users-picture-choose"
                         width: parent.width - (removeButton.visible ? removeButton.width + 8 : 0)
-                        text: root.pictureChooser.busy ? "Choosing…" : "Choose picture…"
+                        text: root.pictureChooser.busy ? qsTranslate("SettingsUsersPage", "Choosing…") : qsTranslate("SettingsUsersPage", "Choose picture…")
                         onClicked: root.choosePicture()
                     }
                     SettingsButton {
@@ -148,7 +148,7 @@ Column {
                         anchors.right: parent.right
                         width: 82
                         visible: root.me?.picture === true
-                        text: "Remove"
+                        text: qsTranslate("SettingsUsersPage", "Remove")
                         onClicked: {
                             SettingsUsersService.pictureError = "";
                             root.run(["picture", "--clear"]);
@@ -172,13 +172,13 @@ Column {
         SettingsRow {
             objectName: "settings-users-password"
             width: parent.width
-            title: "Password"
-            explanation: "Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately."
+            title: qsTranslate("SettingsUsersPage", "Password")
+            explanation: qsTranslate("SettingsUsersPage", "Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.")
             busy: SettingsUsersService.passwordPending
             controlWidth: 150
             control: Component {
                 SettingsButton {
-                    text: "Change password"
+                    text: qsTranslate("SettingsUsersPage", "Change password")
                     objectName: "settings-users-own-password"
                     onClicked: SettingsUsersService.changeOwnPassword()
                 }
@@ -189,7 +189,7 @@ Column {
         objectName: "settings-users-others"
         width: parent.width
         visible: root.received
-        title: "Other users"
+        title: qsTranslate("SettingsUsersPage", "Other users")
         Repeater {
             model: root.others
             SettingsRow {
@@ -204,7 +204,7 @@ Column {
                 control: Component {
                     SettingsButton {
                         objectName: "settings-users-change-" + otherRow.modelData.login
-                        text: "Change"
+                        text: qsTranslate("SettingsUsersPage", "Change")
                         enabled: otherRow.modelData.available !== false
                         onClicked: {
                             root.closeEditors();
@@ -217,21 +217,21 @@ Column {
         SettingsRow {
             width: parent.width
             visible: root.others.length === 0
-            title: "No other users"
-            explanation: "Add an account for another person who uses this computer."
+            title: qsTranslate("SettingsUsersPage", "No other users")
+            explanation: qsTranslate("SettingsUsersPage", "Add an account for another person who uses this computer.")
             controlWidth: 0
         }
         SettingsRow {
             objectName: "settings-users-add"
             width: parent.width
-            title: "Add user"
-            explanation: "Create an account with its own files and settings."
+            title: qsTranslate("SettingsUsersPage", "Add user")
+            explanation: qsTranslate("SettingsUsersPage", "Create an account with its own files and settings.")
             busy: root.pending
             controlWidth: 180
             control: Component {
                 SettingsButton {
                     objectName: "settings-users-add-open"
-                    text: "Add"
+                    text: qsTranslate("SettingsUsersPage", "Add")
                     onClicked: {
                         root.closeEditors();
                         addName.text = "";
@@ -248,7 +248,7 @@ Column {
         objectName: "settings-users-add-card"
         width: parent.width
         visible: root.adding
-        title: "New user"
+        title: qsTranslate("SettingsUsersPage", "New user")
         Column {
             width: parent.width
             spacing: 10
@@ -257,22 +257,22 @@ Column {
                 id: addName
                 objectName: "settings-users-add-name"
                 width: parent.width
-                placeholderText: "Full name"
-                Accessible.name: "Full name"
+                placeholderText: qsTranslate("SettingsUsersPage", "Full name")
+                Accessible.name: qsTranslate("SettingsUsersPage", "Full name")
                 maximumLength: 128
             }
             AccountField {
                 id: addLogin
                 objectName: "settings-users-add-login"
                 width: parent.width
-                placeholderText: "Login"
-                Accessible.name: "Login"
+                placeholderText: qsTranslate("SettingsUsersPage", "Login")
+                Accessible.name: qsTranslate("SettingsUsersPage", "Login")
                 maximumLength: 32
             }
             CheckBox {
                 id: addAdministrator
                 objectName: "settings-users-add-administrator"
-                text: "Administrator: may install software and change settings for everyone"
+                text: qsTranslate("SettingsUsersPage", "Administrator: may install software and change settings for everyone")
                 font.family: SettingsTheme.fontFamily
             }
             Text {
@@ -287,7 +287,7 @@ Column {
             }
             Text {
                 width: parent.width
-                text: "A terminal window asks for the new person's password."
+                text: qsTranslate("SettingsUsersPage", "A terminal window asks for the new person's password.")
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 color: SettingsTheme.dim
@@ -298,12 +298,12 @@ Column {
                 spacing: 8
                 SettingsButton {
                     objectName: "settings-users-add-confirm-button"
-                    text: "Add user…"
+                    text: qsTranslate("SettingsUsersPage", "Add user…")
                     enabled: !root.pending && root.loginProblem(addLogin.text) === "" && root.nameProblem(addName.text) === ""
                     onClicked: root.run(["add", addLogin.text, addName.text, "--administrator", addAdministrator.checked ? "yes" : "no", "--terminal"])
                 }
                 SettingsButton {
-                    text: "Cancel"
+                    text: qsTranslate("SettingsUsersPage", "Cancel")
                     onClicked: root.closeEditors()
                 }
             }
@@ -325,7 +325,7 @@ Column {
             spacing: 10
             Text {
                 width: parent.width
-                text: "Full name"
+                text: qsTranslate("SettingsUsersPage", "Full name")
                 textFormat: Text.PlainText
                 color: SettingsTheme.ink
                 font.family: SettingsTheme.fontFamily
@@ -339,14 +339,14 @@ Column {
                     id: editName
                     objectName: "settings-users-edit-name"
                     width: parent.width - saveName.width - 8
-                    placeholderText: "Full name"
-                    Accessible.name: "Full name"
+                    placeholderText: qsTranslate("SettingsUsersPage", "Full name")
+                    Accessible.name: qsTranslate("SettingsUsersPage", "Full name")
                     maximumLength: 128
                 }
                 SettingsButton {
                     id: saveName
                     objectName: "settings-users-save-name"
-                    text: "Save name"
+                    text: qsTranslate("SettingsUsersPage", "Save name")
                     enabled: !root.pending && !!root.edited && editName.text !== root.edited.name && root.nameProblem(editName.text) === ""
                     onClicked: root.run(["set-name", root.edited.login, editName.text])
                 }
@@ -367,7 +367,7 @@ Column {
                 visible: !!root.edited && !root.edited.current
                 Text {
                     width: parent.width
-                    text: "Password"
+                    text: qsTranslate("SettingsUsersPage", "Password")
                     textFormat: Text.PlainText
                     color: SettingsTheme.ink
                     font.family: SettingsTheme.fontFamily
@@ -376,7 +376,7 @@ Column {
                 }
                 Text {
                     width: parent.width
-                    text: "A terminal window asks for this person's new password. Their login wallet keeps the previous password until they change it there."
+                    text: qsTranslate("SettingsUsersPage", "A terminal window asks for this person's new password. Their login wallet keeps the previous password until they change it there.")
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                     color: SettingsTheme.dim
@@ -385,7 +385,7 @@ Column {
                 }
                 SettingsButton {
                     objectName: "settings-users-set-password"
-                    text: "Set password…"
+                    text: qsTranslate("SettingsUsersPage", "Set password…")
                     enabled: !root.pending
                     onClicked: root.run(["set-password", root.edited.login, "--terminal"])
                 }
@@ -394,13 +394,13 @@ Column {
                 objectName: "settings-users-administrator"
                 width: parent.width
                 separator: false
-                title: "Administrator"
-                explanation: "Administrators may install software and change settings for everyone."
+                title: qsTranslate("SettingsUsersPage", "Administrator")
+                explanation: qsTranslate("SettingsUsersPage", "Administrators may install software and change settings for everyone.")
                 value: root.edited?.administrator ?? false
                 defaultValue: value
                 busy: root.pending
                 unavailable: root.lastAdministrator(root.edited)
-                errorText: unavailable ? "This computer needs at least one administrator." : ""
+                errorText: unavailable ? qsTranslate("SettingsUsersPage", "This computer needs at least one administrator.") : ""
                 onValueRequested: value => root.run(["set-administrator", root.edited.login, value ? "yes" : "no"])
             }
             Column {
@@ -409,7 +409,7 @@ Column {
                 visible: !!root.edited && !root.edited.current
                 Text {
                     width: parent.width
-                    text: "Remove user"
+                    text: qsTranslate("SettingsUsersPage", "Remove user")
                     textFormat: Text.PlainText
                     color: SettingsTheme.ink
                     font.family: SettingsTheme.fontFamily
@@ -419,7 +419,7 @@ Column {
                 Text {
                     objectName: "settings-users-remove-explanation"
                     width: parent.width
-                    text: !root.edited ? "" : root.edited.signed_in ? "This person is signed in or still has programs running. They need to sign out before the account can be removed." : root.lastAdministrator(root.edited) ? "This computer needs at least one administrator. Make another account an administrator first." : root.removing === root.edited.login ? "Keep the home folder " + root.edited.home + " with this person's files, or delete it with everything in it? Deleted files cannot be restored. A kept folder passes to the next account you add if it receives the same user number." : "Removes the account. You choose what happens to the home folder next."
+                    text: !root.edited ? "" : root.edited.signed_in ? qsTranslate("SettingsUsersPage", "This person is signed in or still has programs running. They need to sign out before the account can be removed.") : root.lastAdministrator(root.edited) ? qsTranslate("SettingsUsersPage", "This computer needs at least one administrator. Make another account an administrator first.") : root.removing === root.edited.login ? qsTranslate("SettingsUsersPage", "Keep the home folder %1 with this person's files, or delete it with everything in it? Deleted files cannot be restored. A kept folder passes to the next account you add if it receives the same user number.").arg(root.edited.home) : qsTranslate("SettingsUsersPage", "Removes the account. You choose what happens to the home folder next.")
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                     color: SettingsTheme.dim
@@ -429,7 +429,7 @@ Column {
                 SettingsButton {
                     objectName: "settings-users-remove"
                     visible: !!root.edited && root.removing !== root.edited.login
-                    text: "Remove…"
+                    text: qsTranslate("SettingsUsersPage", "Remove…")
                     enabled: !root.pending && !!root.edited && !root.edited.signed_in && !root.lastAdministrator(root.edited)
                     onClicked: root.removing = root.edited.login
                 }
@@ -439,31 +439,31 @@ Column {
                     visible: !!root.edited && root.removing === root.edited.login
                     SettingsButton {
                         objectName: "settings-users-remove-keep"
-                        text: "Remove and keep the home folder"
+                        text: qsTranslate("SettingsUsersPage", "Remove and keep the home folder")
                         enabled: !root.pending
                         onClicked: root.run(["remove", root.edited.login, "--home", "keep"])
                     }
                     SettingsButton {
                         objectName: "settings-users-remove-delete"
-                        text: "Remove and delete the home folder"
+                        text: qsTranslate("SettingsUsersPage", "Remove and delete the home folder")
                         enabled: !root.pending
                         onClicked: root.run(["remove", root.edited.login, "--home", "delete"])
                     }
                     SettingsButton {
-                        text: "Cancel"
+                        text: qsTranslate("SettingsUsersPage", "Cancel")
                         onClicked: root.removing = ""
                     }
                 }
             }
             SettingsButton {
                 objectName: "settings-users-done"
-                text: "Done"
+                text: qsTranslate("SettingsUsersPage", "Done")
                 onClicked: root.closeEditors()
             }
         }
     }
     SettingsButton {
-        text: "Refresh"
+        text: qsTranslate("SettingsUsersPage", "Refresh")
         enabled: !root.pending
         onClicked: root.refresh()
     }

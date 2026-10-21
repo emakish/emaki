@@ -13,7 +13,7 @@ Column {
     property string message: ""
     property string action: ""
     property bool received: false
-    readonly property string failure: "System details or the report could not be read. Try again."
+    readonly property string failure: qsTranslate("SettingsAboutPage", "System details or the report could not be read. Try again.")
     signal updatesRequested
     function start(next) {
         if (backend.running)
@@ -46,7 +46,7 @@ Column {
                     page.details = reply.details;
                     if (reply.status === "saved" && typeof reply.path === "string") {
                         page.reportPath = reply.path;
-                        page.message = "Report saved. Review it before sharing; it may contain private information. Nothing has been uploaded.";
+                        page.message = qsTranslate("SettingsAboutPage", "Report saved. Review it before sharing; it may contain private information. Nothing has been uploaded.");
                     }
                 } catch (error) {
                     page.message = page.failure;
@@ -66,14 +66,14 @@ Column {
             if (!running)
                 Qt.callLater(function () {
                     if (!viewer.completed)
-                        page.message = "The report could not be opened. You can find it at the path below.";
+                        page.message = qsTranslate("SettingsAboutPage", "The report could not be opened. You can find it at the path below.");
                 });
         }
         stderr: StdioCollector {}
         onExited: code => {
             completed = true;
             if (code !== 0)
-                page.message = "The report could not be opened. You can find it at the path below.";
+                page.message = qsTranslate("SettingsAboutPage", "The report could not be opened. You can find it at the path below.");
         }
     }
     SettingsCard {
@@ -95,7 +95,7 @@ Column {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 objectName: "settings-about-version"
-                text: "Version " + (page.details.version || "Unavailable") + (page.details.label ? " " + page.details.label : "") + " · " + (page.details.channel || "Unavailable") + " channel"
+                text: qsTranslate("SettingsAboutPage", "Version %1 · %2 channel").arg((page.details.version || qsTranslate("SettingsAboutPage", "Unavailable")) + (page.details.label ? " " + page.details.label : "")).arg(page.details.channel || qsTranslate("SettingsAboutPage", "Unavailable"))
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 color: SettingsTheme.dim
@@ -104,46 +104,46 @@ Column {
             }
             SettingsButton {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Update channel"
+                text: qsTranslate("SettingsAboutPage", "Update channel")
                 onClicked: page.updatesRequested()
             }
         }
     }
     SettingsCard {
         width: parent.width
-        title: "This computer"
+        title: qsTranslate("SettingsAboutPage", "This computer")
         objectName: "settings-about-hardware"
         Repeater {
             model: [
                 {
                     key: "computer",
-                    title: "Computer",
-                    explanation: "The manufacturer and model of this computer."
+                    title: qsTranslate("SettingsAboutPage", "Computer"),
+                    explanation: qsTranslate("SettingsAboutPage", "The manufacturer and model of this computer.")
                 },
                 {
                     key: "processor",
-                    title: "Processor",
-                    explanation: "The processor reported by the system."
+                    title: qsTranslate("SettingsAboutPage", "Processor"),
+                    explanation: qsTranslate("SettingsAboutPage", "The processor reported by the system.")
                 },
                 {
                     key: "graphics",
-                    title: "Graphics",
-                    explanation: "The graphics devices reported by the system."
+                    title: qsTranslate("SettingsAboutPage", "Graphics"),
+                    explanation: qsTranslate("SettingsAboutPage", "The graphics devices reported by the system.")
                 },
                 {
                     key: "memory",
-                    title: "Memory",
-                    explanation: "The memory available to the system."
+                    title: qsTranslate("SettingsAboutPage", "Memory"),
+                    explanation: qsTranslate("SettingsAboutPage", "The memory available to the system.")
                 },
                 {
                     key: "disk",
-                    title: "Disk",
-                    explanation: "Total and free space on the system disk."
+                    title: qsTranslate("SettingsAboutPage", "Disk"),
+                    explanation: qsTranslate("SettingsAboutPage", "Total and free space on the system disk.")
                 },
                 {
                     key: "firmware",
-                    title: "Firmware",
-                    explanation: "The firmware vendor and version."
+                    title: qsTranslate("SettingsAboutPage", "Firmware"),
+                    explanation: qsTranslate("SettingsAboutPage", "The firmware vendor and version.")
                 }
             ]
             delegate: Column {
@@ -167,7 +167,7 @@ Column {
                     }
                     Text {
                         width: (parent.width - 16) * .7
-                        text: page.details[detailRow.modelData.key] || "Unavailable"
+                        text: page.details[detailRow.modelData.key] || qsTranslate("SettingsAboutPage", "Unavailable")
                         textFormat: Text.PlainText
                         horizontalAlignment: Text.AlignRight
                         wrapMode: Text.WordWrap
@@ -189,16 +189,16 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Software"
+        title: qsTranslate("SettingsAboutPage", "Software")
         Repeater {
             model: [
                 {
                     key: "kernel",
-                    title: "Linux kernel"
+                    title: qsTranslate("SettingsAboutPage", "Linux kernel")
                 },
                 {
                     key: "window_manager",
-                    title: "Window manager"
+                    title: qsTranslate("SettingsAboutPage", "Window manager")
                 }
             ]
             delegate: Row {
@@ -219,7 +219,7 @@ Column {
                 }
                 Text {
                     width: (parent.width - 16) * .7
-                    text: page.details[softwareRow.modelData.key] || "Unavailable"
+                    text: page.details[softwareRow.modelData.key] || qsTranslate("SettingsAboutPage", "Unavailable")
                     textFormat: Text.PlainText
                     horizontalAlignment: Text.AlignRight
                     wrapMode: Text.WordWrap
@@ -232,12 +232,12 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Licenses"
+        title: qsTranslate("SettingsAboutPage", "Licenses")
         objectName: "settings-about-licenses"
         Text {
             width: parent.width
             objectName: "settings-about-license-terms"
-            text: "You may redistribute and modify Emaki's own code under GPL-3.0-or-later. It comes with no warranty. Third-party software, fonts, images and map data keep their own licenses. Full license texts are in " + Platform.prefix + "/share/licenses."
+            text: qsTranslate("SettingsAboutPage", "You may redistribute and modify Emaki's own code under GPL-3.0-or-later. It comes with no warranty. Third-party software, fonts, images and map data keep their own licenses. Full license texts are in %1.").arg(Platform.prefix + "/share/licenses")
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: SettingsTheme.ink
@@ -247,20 +247,20 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Help"
+        title: qsTranslate("SettingsAboutPage", "Help")
         SettingsRow {
             width: parent.width
             objectName: "settings-report-problem"
-            title: "Report a problem"
-            explanation: "Describe the problem and review exactly what will be sent. Nothing leaves this computer until you choose Send, which opens the issue form on GitHub."
+            title: qsTranslate("SettingsAboutPage", "Report a problem")
+            explanation: qsTranslate("SettingsAboutPage", "Describe the problem and review exactly what will be sent. Nothing leaves this computer until you choose Send, which opens the issue form on GitHub.")
             controlWidth: 160
             control: Component {
                 SettingsButton {
                     objectName: "report-problem"
-                    text: "Report a problem…"
+                    text: qsTranslate("SettingsAboutPage", "Report a problem…")
                     onClicked: {
                         if (ReportBridge.open("other") === "unavailable")
-                            page.message = "The report window could not be opened.";
+                            page.message = qsTranslate("SettingsAboutPage", "The report window could not be opened.");
                     }
                 }
             }
@@ -268,14 +268,14 @@ Column {
         SettingsRow {
             width: parent.width
             objectName: "settings-diagnostics-file"
-            title: "Diagnostics file"
-            explanation: "Collect logs and a short system summary into a file you can review. Add to a report only what you choose to share."
+            title: qsTranslate("SettingsAboutPage", "Diagnostics file")
+            explanation: qsTranslate("SettingsAboutPage", "Collect logs and a short system summary into a file you can review. Add to a report only what you choose to share.")
             controlWidth: 160
             busy: backend.running && page.action === "report"
             control: Component {
                 SettingsButton {
                     objectName: "save-diagnostics"
-                    text: "Save diagnostics…"
+                    text: qsTranslate("SettingsAboutPage", "Save diagnostics…")
                     enabled: !backend.running
                     onClicked: page.start("report")
                 }
@@ -304,7 +304,7 @@ Column {
         SettingsButton {
             visible: page.reportPath !== ""
             objectName: "review-report"
-            text: "Review report"
+            text: qsTranslate("SettingsAboutPage", "Review report")
             enabled: !viewer.running
             onClicked: {
                 viewer.completed = false;

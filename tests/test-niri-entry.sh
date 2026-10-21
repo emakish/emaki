@@ -51,8 +51,14 @@ else
     bad "hotkey help includes unbound stock actions"
 fi
 
-# The Welcome window floats instead of opening as a full-width column. It shares the app id
-# org.quickshell with every Quickshell window; its title tells it apart.
+# Welcome floats by stable identity in every language. Older clients share org.quickshell;
+# their exact English title remains a fallback.
+if awk '/^window-rule \{/ { inside = 1; block = "" } inside { block = block " " $0 } inside && /^\}/ { print block; inside = 0 }' "$R/niri/default.kdl" |
+    grep -F 'match app-id=r#"^org\.emaki\.welcome$"#' | grep -q 'open-floating true'; then
+    ok "window rule: Welcome opens floating by stable identity"
+else
+    bad "window rule: no open-floating rule for the Welcome identity"
+fi
 if awk '/^window-rule \{/ { inside = 1; block = "" } inside { block = block " " $0 } inside && /^\}/ { print block; inside = 0 }' "$R/niri/default.kdl" |
     grep -F 'match app-id=r#"^org\.quickshell$"# title="^Welcome to Emaki$"' | grep -q 'open-floating true'; then
     ok "window rule: the Welcome window opens floating"
@@ -185,6 +191,9 @@ fi
 python3 "$R/scripts/render-paths" --prefix "$T/prefix" --source "$T/session"
 cp "$R/scripts/niri-emaki-session" "$T/session/scripts/"
 mkdir -p "$T/bin"
+# Config selection is under test, not the installed settings writer.
+printf '#!/bin/sh\nexit 1\n' > "$T/bin/emaki"
+chmod +x "$T/bin/emaki"
 printf '#!/bin/sh\ncat >/dev/null\n' > "$T/bin/systemd-cat"
 chmod +x "$T/bin/systemd-cat"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/args"\n' "$T" > "$T/bin/niri-emaki"

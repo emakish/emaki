@@ -166,7 +166,7 @@ Item {
 
     TipTarget {
         tip: pill.tip
-        label: "Microphone, camera or screen in use"
+        label: qsTranslate("PrivacyPill", "Microphone, camera or screen in use")
         enabled: pill.shown
     }
     HoverHandler {
@@ -179,6 +179,6 @@ Item {
         onClicked: pill.clicked()
     }
     Accessible.role: Accessible.Button
-    Accessible.name: "Microphone, camera or screen in use"
+    Accessible.name: qsTranslate("PrivacyPill", "Microphone, camera or screen in use")
     Accessible.onPressAction: pill.clicked()
 }

@@ -97,15 +97,16 @@ class ConsoleFontTests(unittest.TestCase):
 # Package hashes include the common terminus-font addition from 4daab6f; plan hashes stay fixed.
 # Rich package hashes include the explicitly installed Rich programs (RICH_APPS, 0.6.0).
 # 2026-10-13: package hashes moved when firefox, dolphin and both thumbnailers became explicit installs (DESKTOP_APPS).
+# Rich package hashes exclude Discover following fcc7434; plan hashes stay fixed.
 BASELINE = {
     'btrfs-minimal': ('135423acba4a58851f74b9fd2d52f138f120221d4e16bc7fcdbf8c1658d3d568',
                      '982454ffa46272994b33f1a20a84f1d77ec2e48b0f4f10774dfb9daf9e8a6787'),
     'btrfs-rich': ('12b4cb778eca3cead0b03d3efcaa6d066172a336e660a9c492ae2120f9138d9b',
-                  'fa51515043ca968c712c3449f72bd3be86958f511202b9059d855975f6e50a61'),
+                  'a1e43bc01df18b6a9d8d59b11269a9bb5fec0b6ce468aec690b40b4f38683034'),
     'ext4-minimal': ('ab33a9debe3b1892c98ba04998d50486f2e229528f5bd8aee776ce8e77ad5e00',
                     '884f456f5ce3995d978d260a97f638ad40597cde92c0b8ffcdf643908cadb56a'),
     'ext4-rich': ('b861d7f51bcddb7f998325c9cf149c9dac7350dcc428a0705e294535e17e0033',
-                 'd343c77df56e8de26114e43ba4f98d801b5130d05dfb9b29ae297a89e54ecc2f'),
+                 'fef53f03f44d7011638132727ccdff319ed62f3dd6a0f736448fb7712fe56f32'),
 }
 
 
@@ -246,6 +247,10 @@ class GraphicsTests(unittest.TestCase):
         selected = graphics.planned_packages(inv)
         self.assertTrue(set(graphics.PREBUILT) <= set(selected))
         self.assertFalse(set(('nvidia-open-dkms', 'dkms', *graphics.HEADERS)) & set(selected))
+
+    def test_rich_packages_exclude_discover(self):
+        for btrfs in (False, True):
+            self.assertNotIn('discover', software_packages('rich', btrfs=btrfs))
 
     def test_amd_intel_virtio_match_original_plan_and_packages_byte_for_byte(self):
         for vendor, device in ((0x1002, 0x744c), (0x8086, 0x9a49), (0x1af4, 0x1050)):

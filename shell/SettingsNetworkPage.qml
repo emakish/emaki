@@ -14,7 +14,7 @@ Column {
     property string vpnType: "wireguard"
     readonly property var vpnTypes: networkSettings.snapshot?.vpn_types ?? [
         {
-            label: "WireGuard",
+            label: qsTranslate("SettingsNetworkPage", "WireGuard"),
             value: "wireguard"
         }
     ]
@@ -75,7 +75,7 @@ Column {
     SettingsCard {
         objectName: "settings-network-wired"
         width: parent.width
-        title: "Wired"
+        title: qsTranslate("SettingsNetworkPage", "Wired")
         Repeater {
             model: page.networkSettings.wired
             delegate: SettingsRow {
@@ -89,19 +89,19 @@ Column {
         SettingsRow {
             width: parent.width
             visible: !page.networkSettings.wired.length
-            title: "Wired connection"
-            explanation: "No wired adapter is available."
+            title: qsTranslate("SettingsNetworkPage", "Wired connection")
+            explanation: qsTranslate("SettingsNetworkPage", "No wired adapter is available.")
             controlWidth: 0
         }
     }
     SettingsCard {
         width: parent.width
-        title: "Connection"
+        title: qsTranslate("SettingsNetworkPage", "Connection")
         SettingsChoiceRow {
             objectName: "settings-network-connection"
             width: parent.width
-            title: "Connection"
-            explanation: "DNS changes belong to this saved connection."
+            title: qsTranslate("SettingsNetworkPage", "Connection")
+            explanation: qsTranslate("SettingsNetworkPage", "DNS changes belong to this saved connection.")
             value: page.connectionId
             defaultValue: value
             options: page.networkSettings.connections.map(item => ({
@@ -120,11 +120,11 @@ Column {
         Entry {
             objectName: "settings-network-dns-servers"
             width: parent.width
-            title: "DNS servers"
-            explanation: "Separate server addresses with commas. Empty uses automatic DNS."
-            placeholder: "Automatic"
+            title: qsTranslate("SettingsNetworkPage", "DNS servers")
+            explanation: qsTranslate("SettingsNetworkPage", "Separate server addresses with commas. Empty uses automatic DNS.")
+            placeholder: qsTranslate("SettingsNetworkPage", "Automatic")
             value: page.connection?.dns.join(", ") || ""
-            defaultValue: page.connection?.dnsAutomatic === false ? "Automatic" : ""
+            defaultValue: page.connection?.dnsAutomatic === false ? qsTranslate("SettingsNetworkPage", "Automatic") : ""
             unavailable: !page.connection
             busy: page.networkSettings.busy
             onSubmitted: text => {
@@ -137,11 +137,11 @@ Column {
     SettingsCard {
         objectName: "settings-network-vpn"
         width: parent.width
-        title: "VPN"
+        title: qsTranslate("SettingsNetworkPage", "VPN")
         SettingsChoiceRow {
             width: parent.width
-            title: "VPN type"
-            explanation: "Available formats depend on the installed NetworkManager plugins."
+            title: qsTranslate("SettingsNetworkPage", "VPN type")
+            explanation: qsTranslate("SettingsNetworkPage", "Available formats depend on the installed NetworkManager plugins.")
             value: page.vpnType
             defaultValue: value
             busy: page.networkSettings.busy
@@ -150,13 +150,13 @@ Column {
         }
         SettingsRow {
             width: parent.width
-            title: "Import VPN from a file"
-            explanation: "Add a saved connection using your provider’s configuration file."
+            title: qsTranslate("SettingsNetworkPage", "Import VPN from a file")
+            explanation: qsTranslate("SettingsNetworkPage", "Add a saved connection using your provider’s configuration file.")
             busy: page.networkSettings.busy
             unavailable: page.vpnType === ""
             control: Component {
                 SettingsButton {
-                    text: "Choose file…"
+                    text: qsTranslate("SettingsNetworkPage", "Choose file…")
                     onClicked: vpnFile.open()
                 }
             }
@@ -164,7 +164,7 @@ Column {
     }
     FileDialog {
         id: vpnFile
-        title: "Import VPN from a file"
+        title: qsTranslate("SettingsNetworkPage", "Import VPN from a file")
         fileMode: FileDialog.OpenFile
         onAccepted: page.importVpn(selectedFile)
     }
@@ -180,7 +180,7 @@ Column {
         font.pixelSize: 13
     }
     SettingsButton {
-        text: page.networkSettings.busy ? "Checking…" : "Refresh"
+        text: page.networkSettings.busy ? qsTranslate("SettingsNetworkPage", "Checking…") : qsTranslate("SettingsNetworkPage", "Refresh")
         enabled: !page.networkSettings.busy
         onClicked: page.networkSettings.refresh()
     }

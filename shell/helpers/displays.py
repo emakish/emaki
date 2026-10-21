@@ -2,6 +2,19 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Display IPC, atomic managed overrides, and a client-independent confirmation timer."""
+
+import sys as _i18n_sys
+from pathlib import Path as _I18nPath
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[2] / 'scripts'))
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import emaki_paths as _i18n_paths
+    _i18n_sys.path.insert(0, _i18n_paths.LIBEXECDIR)
+    from emaki_i18n import translation
+gettext = translation('shell').gettext
+
 import copy
 import fcntl
 import json
@@ -32,13 +45,13 @@ def run(args):
         result = subprocess.run(['niri', *args], stdin=subprocess.DEVNULL,
                                 capture_output=True, text=True, timeout=2)
     except (OSError, subprocess.TimeoutExpired):
-        raise Failure('The display service is unavailable.') from None
+        raise Failure(gettext('The display service is unavailable.')) from None
     if result.returncode:
         if args[:2] == ['msg', '--json']:
-            raise Failure('Display information could not be read.')
-        raise Failure('The display service could not apply the change.')
+            raise Failure(gettext('Display information could not be read.'))
+        raise Failure(gettext('The display service could not apply the change.'))
     if len(result.stdout) > 1024 * 1024:
-        raise Failure('The display service returned an invalid response.')
+        raise Failure(gettext('The display service returned an invalid response.'))
     return result.stdout
 
 
@@ -49,7 +62,7 @@ def reload_config():
                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL)
     except OSError:
-        raise Failure('The display service is unavailable.') from None
+        raise Failure(gettext('The display service is unavailable.')) from None
     buffered = b''
     deadline = time.monotonic() + 4
 
@@ -61,25 +74,25 @@ def reload_config():
                 try:
                     event = json.loads(line)
                 except ValueError:
-                    raise Failure('The display service returned an invalid response.') from None
+                    raise Failure(gettext('The display service returned an invalid response.')) from None
                 if isinstance(event, dict) and 'ConfigLoaded' in event:
                     result = event['ConfigLoaded']
                     if not isinstance(result, dict) or type(result.get('failed')) is not bool:
-                        raise Failure('The display service returned an invalid response.')
+                        raise Failure(gettext('The display service returned an invalid response.'))
                     return result['failed']
             remaining = deadline - time.monotonic()
             if remaining <= 0 or not select.select([events.stdout], [], [], remaining)[0]:
-                raise Failure('The display configuration reload was not confirmed.')
+                raise Failure(gettext('The display configuration reload was not confirmed.'))
             data = os.read(events.stdout.fileno(), 8192)
             if not data or len(buffered) + len(data) > 1024 * 1024:
-                raise Failure('The display configuration reload was not confirmed.')
+                raise Failure(gettext('The display configuration reload was not confirmed.'))
             buffered += data
 
     try:
         loaded()  # Initial state belongs to the previous configuration load.
         run(['msg', 'action', 'load-config-file'])
         if loaded():
-            raise Failure('The display configuration could not be loaded.')
+            raise Failure(gettext('The display configuration could not be loaded.'))
     finally:
         events.terminate()
         try:
@@ -127,7 +140,7 @@ def outputs():
                 item['description'] += ' (' + item['name'] + ')'
         return sorted(result, key=lambda item: item['name'])
     except (ValueError, KeyError, TypeError):
-        raise Failure('The display service returned an invalid response.') from None
+        raise Failure(gettext('The display service returned an invalid response.')) from None
 
 
 def mode_text(mode):
@@ -151,7 +164,7 @@ def reflow_positions(before, after, selected):
     old = {item['name']: item['logical'] for item in before if item['enabled']}
     new = {item['name']: item['logical'] for item in after if item['enabled']}
     if old.keys() != new.keys():
-        raise Failure('The connected displays changed. Reopen Displays and try again.')
+        raise Failure(gettext('The connected displays changed. Reopen Displays and try again.'))
     if all(old[selected][axis] == new[selected][axis] for axis in ('width', 'height')):
         return {}
     edges = {name: [] for name in old}
@@ -172,7 +185,7 @@ def reflow_positions(before, after, selected):
                     shift = (delta, 0) if axis == 'x' else (0, delta)
                     edges[name].append((other, shift, cross, span))
                     edges[other].append((name, tuple(-value for value in shift), cross, span))
-    failure = 'The new display size would separate or overlap screens. Adjust their positions first.'
+    failure = gettext('The new display size would separate or overlap screens. Adjust their positions first.')
     shifts = {selected: (0, 0)}
     queue = [selected]
     for name in queue:
@@ -262,25 +275,25 @@ def valid_value(key, value):
 
 def render(document):
     if not isinstance(document, dict) or set(document) != {'version', 'outputs', 'main'} or type(document['version']) is not int or document['version'] != 1 or not isinstance(document['outputs'], dict):
-        raise Failure('Saved display settings cannot be read. Restore the managed display file to continue.')
+        raise Failure(gettext('Saved display settings cannot be read. Restore the managed display file to continue.'))
     main = document['main']
     names = set(document['outputs'])
     if main is not None:
         if not isinstance(main, str):
-            raise Failure('Saved display settings cannot be read. Restore the managed display file to continue.')
+            raise Failure(gettext('Saved display settings cannot be read. Restore the managed display file to continue.'))
         names.add(main)
     text = HEADER + MARKER + json.dumps(document, sort_keys=True, separators=(',', ':')) + '\n'
     for name in sorted(names):
         if not name or len(name) > 256 or any(ord(c) < 32 for c in name):
-            raise Failure('The display name is invalid.')
+            raise Failure(gettext('The display name is invalid.'))
         values = document['outputs'].get(name, {})
         if not isinstance(values, dict) or any(key not in DEFAULTS or not valid_value(key, value) for key, value in values.items()):
-            raise Failure('Saved display settings cannot be read. Restore the managed display file to continue.')
+            raise Failure(gettext('Saved display settings cannot be read. Restore the managed display file to continue.'))
         if not values and name != main:
             continue
         text += 'output ' + json.dumps(name, ensure_ascii=False) + ' {\n'
         if values.get('enabled') is False:
-            raise Failure('Disabled displays are session-only and cannot be saved.')
+            raise Failure(gettext('Disabled displays are session-only and cannot be saved.'))
         if 'mode' in values:
             text += '    mode ' + json.dumps(values['mode']) + '\n'
         if 'scale' in values:
@@ -318,14 +331,14 @@ def safe_read(path):
     except FileNotFoundError:
         return None
     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid() or info.st_size > 65536:
-        raise Failure('The managed display file is not safe to use.')
+        raise Failure(gettext('The managed display file is not safe to use.'))
     return path.read_text()
 
 
 def private_directory(path):
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     if path.is_symlink() or path.stat().st_uid != os.getuid() or not path.is_dir():
-        raise Failure('The managed display directory is not safe to use.')
+        raise Failure(gettext('The managed display directory is not safe to use.'))
 
 
 def atomic(path, contents):
@@ -373,7 +386,7 @@ class Displays:
                 raise ValueError()
             self.document = document
         except (ValueError, StopIteration):
-            raise Failure('Saved display settings cannot be read. Restore the managed display file to continue.') from None
+            raise Failure(gettext('Saved display settings cannot be read. Restore the managed display file to continue.')) from None
 
     def acquire(self):
         if self.lock is not None:
@@ -383,13 +396,13 @@ class Displays:
         info = os.fstat(self.lock)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
             self.release()
-            raise Failure('The display settings lock is not safe to use.')
+            raise Failure(gettext('The display settings lock is not safe to use.'))
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             os.close(self.lock)
             self.lock = None
-            raise Failure('Another display change is waiting for confirmation.') from None
+            raise Failure(gettext('Another display change is waiting for confirmation.')) from None
 
     def release(self):
         if self.lock is not None:
@@ -459,7 +472,7 @@ class Displays:
             if okay:
                 return
             if time.monotonic() >= deadline:
-                raise Failure('The display did not confirm the requested settings.')
+                raise Failure(gettext('The display did not confirm the requested settings.'))
             time.sleep(.05)
 
     def restore(self, snapshot):
@@ -499,7 +512,7 @@ class Displays:
                 except Failure:
                     failures.append(item['name'])
         if failures:
-            raise Failure('The previous display settings could not be fully restored. Reconnect the display and try again.')
+            raise Failure(gettext('The previous display settings could not be fully restored. Reconnect the display and try again.'))
 
     def verify_layout(self, expected):
         deadline = time.monotonic() + 1.5
@@ -509,13 +522,13 @@ class Displays:
                    for name, geometry in expected.items()):
                 return
             if time.monotonic() >= deadline:
-                raise Failure('The display did not confirm the requested settings.')
+                raise Failure(gettext('The display did not confirm the requested settings.'))
             time.sleep(.05)
 
     def restore_probe(self, record, restore_snapshot=True):
         current = safe_read(self.path)
         if current not in (record['candidate'], record['original']):
-            raise Failure('Display settings changed elsewhere. Reopen Displays and try again.')
+            raise Failure(gettext('Display settings changed elsewhere. Reopen Displays and try again.'))
         if record['original'] is None:
             self.path.unlink(missing_ok=True)
         else:
@@ -536,12 +549,12 @@ class Displays:
         atomic(self.journal, json.dumps(record))
         try:
             if safe_read(self.path) != self.original:
-                raise Failure('Display settings changed elsewhere. Reopen Displays and try again.')
+                raise Failure(gettext('Display settings changed elsewhere. Reopen Displays and try again.'))
             atomic(self.path, candidate)
             reload_config()
             current = next((item for item in outputs() if item['name'] == name), None)
             if current is None or not current['enabled']:
-                raise Failure('The inherited configuration does not enable this display. Its settings were restored.')
+                raise Failure(gettext('The inherited configuration does not enable this display. Its settings were restored.'))
             inherited = live_settings(current)
         finally:
             self.restore_probe(record)
@@ -558,28 +571,28 @@ class Displays:
             if record.get('preview'):
                 self.restore_probe(record, identity is not None and record.get('compositor') == identity)
                 self.read()
-                self.message = 'An interrupted display reset was reverted.'
+                self.message = gettext('An interrupted display reset was reverted.')
             elif identity is None or record.get('compositor') != identity:
-                self.message = 'An interrupted display change from an earlier session was discarded.'
+                self.message = gettext('An interrupted display change from an earlier session was discarded.')
             # Session-only changes never publish a file, even after Keep.
             elif record.get('session_only') or record['candidate'] == record.get('original') or safe_read(self.path) != record['candidate']:
                 self.restore(record['snapshot'])
-                self.message = 'An interrupted display change was reverted.'
+                self.message = gettext('An interrupted display change was reverted.')
             self.journal.unlink()
         except (ValueError, KeyError, TypeError):
-            raise Failure('The pending display change cannot be recovered.') from None
+            raise Failure(gettext('The pending display change cannot be recovered.')) from None
         finally:
             self.release()
 
     def publish(self, pending):
         if safe_read(self.path) != self.original:
-            raise Failure('Display settings changed elsewhere. Reopen Displays and try again.')
+            raise Failure(gettext('Display settings changed elsewhere. Reopen Displays and try again.'))
         if pending['key'] == 'enabled':
             if pending['value']:
                 self.disabled.discard(pending['output'])
             else:
                 self.disabled.add(pending['output'])
-            self.message = 'This display change applies until the session ends.'
+            self.message = gettext('This display change applies until the session ends.')
         else:
             atomic(self.path, pending['candidate'])
             self.document = pending['document']
@@ -597,7 +610,7 @@ class Displays:
                 self.action(item['name'], 'enabled', True)
                 self.verify(item['name'], 'enabled', True)
                 self.disabled.discard(item['name'])
-                self.message = 'The remaining display was turned back on.'
+                self.message = gettext('The remaining display was turned back on.')
                 return
 
     def revert(self):
@@ -607,38 +620,38 @@ class Displays:
         try:
             self.restore(pending['snapshot'])
             self.journal.unlink(missing_ok=True)
-            self.message = 'The previous display settings have been restored.'
+            self.message = gettext('The previous display settings have been restored.')
         finally:
             self.pending = None
             self.release()
 
     def change(self, request):
         if self.pending:
-            raise Failure('Keep or revert the current display change first.')
+            raise Failure(gettext('Keep or revert the current display change first.'))
         self.acquire()
         try:
             self.read()
             if safe_read(self.journal) is not None:
-                raise Failure('A previous display change needs recovery. Reopen Displays and try again.')
+                raise Failure(gettext('A previous display change needs recovery. Reopen Displays and try again.'))
             before = outputs()
             name, key = request.get('output'), request.get('key')
             selected = next((item for item in before if item['name'] == name), None)
             if not selected or not isinstance(key, str) or key not in KEYS:
-                raise Failure('The selected display is no longer connected.')
+                raise Failure(gettext('The selected display is no longer connected.'))
             reset = request['op'] == 'reset'
             inherited = (self.inherited_settings(name, before)
                          if reset and key in ('mode', 'scale', 'rotation', 'position') else None)
             value = inherited[key] if inherited is not None else DEFAULTS.get(key) if reset else request.get('value')
             if key == 'main' and not reset and value is not True:
-                raise Failure('Choose a valid display setting.')
+                raise Failure(gettext('Choose a valid display setting.'))
             if key != 'main' and not reset and not valid_value(key, value):
-                raise Failure('Choose a valid display setting.')
+                raise Failure(gettext('Choose a valid display setting.'))
             if key == 'mode' and value != 'auto' and value not in [mode_text(mode) for mode in selected['modes']]:
-                raise Failure('That resolution or refresh rate is not available on this display.')
+                raise Failure(gettext('That resolution or refresh rate is not available on this display.'))
             if key == 'enabled' and not value and not any(item['enabled'] for item in before if item['name'] != name):
-                raise Failure('Keep at least one display turned on.')
+                raise Failure(gettext('Keep at least one display turned on.'))
             if key not in ('enabled',) and not selected['enabled']:
-                raise Failure('Turn this display on before changing its settings.')
+                raise Failure(gettext('Turn this display on before changing its settings.'))
             document = copy.deepcopy(self.document)
             if key != 'enabled' and not reset and name not in document['outputs'] and selected['enabled']:
                 # Output blocks replace the whole inherited block. Preserve the live
@@ -706,14 +719,14 @@ class Displays:
 
     def request(self, request):
         if not isinstance(request, dict):
-            raise Failure('The display request is invalid.')
+            raise Failure(gettext('The display request is invalid.'))
         op = request.get('op')
         if op != 'state':
             self.message = ''
         if self.pending and time.monotonic() >= self.pending['deadline']:
             self.revert()
             if op == 'keep':
-                raise Failure('The confirmation time expired. The previous settings were restored.')
+                raise Failure(gettext('The confirmation time expired. The previous settings were restored.'))
         if op == 'state' and self.pending and self.pending['key'] == 'enabled' and not self.pending['value']:
             try:
                 self.verify(self.pending['output'], 'enabled', False)
@@ -723,7 +736,7 @@ class Displays:
             self.change(request)
         elif op == 'keep':
             if not self.pending:
-                raise Failure('There is no display change to keep.')
+                raise Failure(gettext('There is no display change to keep.'))
             try:
                 self.verify(self.pending['output'], self.pending['key'], self.pending['value'])
                 self.verify_layout(self.pending.get('layout', {}))
@@ -736,7 +749,7 @@ class Displays:
         elif op == 'revert':
             self.revert()
         elif op != 'state':
-            raise Failure('The display request is invalid.')
+            raise Failure(gettext('The display request is invalid.'))
         elif not self.pending:
             self.read()
             self.ensure_visible()
@@ -744,7 +757,7 @@ class Displays:
 
 
 def error_response(error, controller=None):
-    message = str(error) if isinstance(error, Failure) else 'Display settings could not be saved. Check the available space and try again.'
+    message = str(error) if isinstance(error, Failure) else gettext('Display settings could not be saved. Check the available space and try again.')
     if controller:
         controller.message = message
     try:
@@ -790,14 +803,14 @@ def main():
                 break
             buffer += chunk
             if len(buffer) > 65536:
-                raise Failure('The display request is too large.')
+                raise Failure(gettext('The display request is too large.'))
             while b'\n' in buffer:
                 line, buffer = buffer.split(b'\n', 1)
                 try:
                     request = json.loads(line)
                     emit(controller.request(request))
                 except (ValueError, Failure, OSError) as error:
-                    emit(error_response(error if not isinstance(error, ValueError) else Failure('The display request is invalid.'), controller))
+                    emit(error_response(error if not isinstance(error, ValueError) else Failure(gettext('The display request is invalid.')), controller))
     except BrokenPipeError:
         pass
     except (Failure, OSError) as error:

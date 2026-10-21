@@ -38,15 +38,15 @@ Column {
     SettingsCard {
         visible: page.catalog.row("mouse.speed")?.editable !== false
         width: parent.width
-        title: "Mouse"
+        title: qsTranslate("MouseSettingsPage", "Mouse")
         SettingsSliderRow {
             objectName: "setting-mouse.speed"
             width: parent.width
-            title: "Pointer speed"
+            title: qsTranslate("MouseSettingsPage", "Pointer speed")
             value: page.value("mouse.speed", 0)
             defaultValue: page.defaultValue("mouse.speed", 0)
             formatValue: value => Math.round((Number(value) + 1) * 50) + "%"
-            explanation: "Pointer speed: " + Math.round((Number(value) + 1) * 50) + "% of the adjustment range."
+            explanation: qsTranslate("MouseSettingsPage", "Pointer speed: %1% of the adjustment range.").arg(Math.round((Number(value) + 1) * 50).toFixed(0))
             from: -1
             to: 1
             stepSize: 0.05
@@ -58,10 +58,10 @@ Column {
         SettingsToggleRow {
             objectName: "setting-mouse.natural_scroll"
             width: parent.width
-            title: "Natural scrolling"
+            title: qsTranslate("MouseSettingsPage", "Natural scrolling")
             value: page.value("mouse.natural_scroll", false)
             defaultValue: page.defaultValue("mouse.natural_scroll", false)
-            explanation: value ? "Content moves in the direction you scroll." : "Content moves against the direction you scroll."
+            explanation: value ? qsTranslate("MouseSettingsPage", "Content moves in the direction you scroll.") : qsTranslate("MouseSettingsPage", "Content moves against the direction you scroll.")
             unavailable: !page.catalog.row("mouse.natural_scroll")
             busy: page.catalog.writing
             onValueRequested: value => page.catalog.set("mouse.natural_scroll", String(value))
@@ -81,15 +81,15 @@ Column {
     SettingsCard {
         visible: page.catalog.row("touchpad.speed")?.editable !== false
         width: parent.width
-        title: "Trackpad"
+        title: qsTranslate("MouseSettingsPage", "Trackpad")
         SettingsSliderRow {
             objectName: "setting-touchpad.speed"
             width: parent.width
-            title: "Pointer speed"
+            title: qsTranslate("MouseSettingsPage", "Pointer speed")
             value: page.value("touchpad.speed", 0)
             defaultValue: page.defaultValue("touchpad.speed", 0)
             formatValue: value => Math.round((Number(value) + 1) * 50) + "%"
-            explanation: "Pointer speed: " + Math.round((Number(value) + 1) * 50) + "% of the adjustment range."
+            explanation: qsTranslate("MouseSettingsPage", "Pointer speed: %1% of the adjustment range.").arg(Math.round((Number(value) + 1) * 50).toFixed(0))
             from: -1
             to: 1
             stepSize: 0.05
@@ -101,10 +101,10 @@ Column {
         SettingsToggleRow {
             objectName: "setting-touchpad.natural_scroll"
             width: parent.width
-            title: "Natural scrolling"
+            title: qsTranslate("MouseSettingsPage", "Natural scrolling")
             value: page.value("touchpad.natural_scroll", true)
             defaultValue: page.defaultValue("touchpad.natural_scroll", true)
-            explanation: value ? "Content follows your fingers." : "Content moves against your fingers."
+            explanation: value ? qsTranslate("MouseSettingsPage", "Content follows your fingers.") : qsTranslate("MouseSettingsPage", "Content moves against your fingers.")
             unavailable: !page.catalog.row("touchpad.natural_scroll")
             busy: page.catalog.writing
             onValueRequested: value => page.catalog.set("touchpad.natural_scroll", String(value))
@@ -113,10 +113,10 @@ Column {
         SettingsToggleRow {
             objectName: "setting-touchpad.tap"
             width: parent.width
-            title: "Tap to click"
+            title: qsTranslate("MouseSettingsPage", "Tap to click")
             value: page.value("touchpad.tap", true)
             defaultValue: page.defaultValue("touchpad.tap", true)
-            explanation: value ? "Tap the trackpad to click." : "Press the trackpad to click."
+            explanation: value ? qsTranslate("MouseSettingsPage", "Tap the trackpad to click.") : qsTranslate("MouseSettingsPage", "Press the trackpad to click.")
             unavailable: !page.catalog.row("touchpad.tap")
             busy: page.catalog.writing
             onValueRequested: value => page.catalog.set("touchpad.tap", String(value))
@@ -125,24 +125,24 @@ Column {
         SettingsChoiceRow {
             objectName: "setting-touchpad.two_finger_right_click"
             width: parent.width
-            title: "Two-finger right click"
+            title: qsTranslate("MouseSettingsPage", "Two-finger right click")
             value: page.value("touchpad.two_finger_right_click", null)
             defaultValue: page.defaultValue("touchpad.two_finger_right_click", null)
             options: [
                 {
-                    label: "Device default",
+                    label: qsTranslate("MouseSettingsPage", "Device default"),
                     value: null
                 },
                 {
-                    label: "Two fingers",
+                    label: qsTranslate("MouseSettingsPage", "Two fingers"),
                     value: true
                 },
                 {
-                    label: "Button areas",
+                    label: qsTranslate("MouseSettingsPage", "Button areas"),
                     value: false
                 }
             ]
-            explanation: value === null ? "Clicking and tapping use the trackpad’s device defaults." : value ? (page.value("touchpad.tap", true) ? "Click or tap with two fingers to right-click." : "Click with two fingers to right-click.") : (page.value("touchpad.tap", true) ? "Press the lower-right corner or tap with three fingers to right-click." : "Press the lower-right corner to right-click.")
+            explanation: value === null ? qsTranslate("MouseSettingsPage", "Clicking and tapping use the trackpad’s device defaults.") : value ? (page.value("touchpad.tap", true) ? qsTranslate("MouseSettingsPage", "Click or tap with two fingers to right-click.") : qsTranslate("MouseSettingsPage", "Click with two fingers to right-click.")) : (page.value("touchpad.tap", true) ? qsTranslate("MouseSettingsPage", "Press the lower-right corner or tap with three fingers to right-click.") : qsTranslate("MouseSettingsPage", "Press the lower-right corner to right-click."))
             unavailable: !page.catalog.row("touchpad.two_finger_right_click")
             busy: page.catalog.writing
             onValueRequested: value => value === null ? page.catalog.reset("touchpad.two_finger_right_click") : page.catalog.set("touchpad.two_finger_right_click", String(value))
@@ -151,10 +151,10 @@ Column {
         SettingsToggleRow {
             objectName: "setting-touchpad.disable_while_typing"
             width: parent.width
-            title: "Disable while typing"
+            title: qsTranslate("MouseSettingsPage", "Disable while typing")
             value: page.value("touchpad.disable_while_typing", true)
             defaultValue: page.defaultValue("touchpad.disable_while_typing", true)
-            explanation: value ? "The trackpad pauses while you type." : "The trackpad stays active while you type."
+            explanation: value ? qsTranslate("MouseSettingsPage", "The trackpad pauses while you type.") : qsTranslate("MouseSettingsPage", "The trackpad stays active while you type.")
             unavailable: !page.catalog.row("touchpad.disable_while_typing")
             busy: page.catalog.writing
             onValueRequested: value => page.catalog.set("touchpad.disable_while_typing", String(value))
@@ -163,14 +163,14 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Gestures"
+        title: qsTranslate("MouseSettingsPage", "Gestures")
         SettingsToggleRow {
             objectName: "setting-gestures.dnd_edge_view_scroll"
             width: parent.width
-            title: "Scroll while dragging"
+            title: qsTranslate("MouseSettingsPage", "Scroll while dragging")
             value: page.value("gestures.dnd_edge_view_scroll", true)
             defaultValue: page.defaultValue("gestures.dnd_edge_view_scroll", true)
-            explanation: value ? "Drag to the left or right edge to scroll through windows." : "Dragging to the left or right edge does not scroll."
+            explanation: value ? qsTranslate("MouseSettingsPage", "Drag to the left or right edge to scroll through windows.") : qsTranslate("MouseSettingsPage", "Dragging to the left or right edge does not scroll.")
             unavailable: !page.catalog.row("gestures.dnd_edge_view_scroll")
             busy: page.catalog.writing
             onValueRequested: value => page.catalog.set("gestures.dnd_edge_view_scroll", String(value))
@@ -179,10 +179,10 @@ Column {
         SettingsToggleRow {
             objectName: "setting-gestures.dnd_edge_workspace_switch"
             width: parent.width
-            title: "Switch workspaces while dragging in the overview"
+            title: qsTranslate("MouseSettingsPage", "Switch workspaces while dragging in the overview")
             value: page.value("gestures.dnd_edge_workspace_switch", true)
             defaultValue: page.defaultValue("gestures.dnd_edge_workspace_switch", true)
-            explanation: value ? "In the overview, drag to the top or bottom edge to switch workspaces." : "In the overview, dragging to the top or bottom edge keeps this workspace."
+            explanation: value ? qsTranslate("MouseSettingsPage", "In the overview, drag to the top or bottom edge to switch workspaces.") : qsTranslate("MouseSettingsPage", "In the overview, dragging to the top or bottom edge keeps this workspace.")
             unavailable: !page.catalog.row("gestures.dnd_edge_workspace_switch")
             busy: page.catalog.writing
             onValueRequested: value => page.catalog.set("gestures.dnd_edge_workspace_switch", String(value))

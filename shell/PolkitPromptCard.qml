@@ -335,7 +335,7 @@ FocusScope {
                     width: parent.width - 58
                     spacing: 5
                     Text {
-                        text: card.agentRequest ? "AI agent" : "Administrator rights"
+                        text: card.agentRequest ? qsTranslate("PolkitPromptCard", "AI agent") : qsTranslate("PolkitPromptCard", "Administrator rights")
                         textFormat: Text.PlainText
                         font.family: ShellPalette.uiFont
                         font.pixelSize: 11
@@ -408,7 +408,7 @@ FocusScope {
                     Text {
                         anchors.fill: parent
                         visible: !password.text.length
-                        text: "Password for " + (card.controller.backend.accountName || Copy.unavailable)
+                        text: qsTranslate("PolkitPromptCard", "Password for %1").arg(card.controller.backend.accountName || Copy.unavailable())
                         textFormat: Text.PlainText
                         font: password.font
                         color: LiquidPalette.polkitDim
@@ -422,7 +422,7 @@ FocusScope {
                     anchors.rightMargin: 5
                     anchors.verticalCenter: parent.verticalCenter
                     ink: LiquidPalette.polkitDim
-                    Accessible.name: revealed ? "Hide" : "Show"
+                    Accessible.name: revealed ? qsTranslate("PolkitPromptCard", "Hide") : qsTranslate("PolkitPromptCard", "Show")
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
                             card.focusPassword();
@@ -440,9 +440,11 @@ FocusScope {
                 }
             }
             Text {
+                objectName: "polkit-error"
                 width: parent.width
-                visible: card.controller.wrong || !card.controller.backend.passwordRequest
-                text: card.controller.wrong ? "That password is not right. Try again." : Copy.unsupported
+                // A closing card has no request behind it any more; that is not an unsupported request.
+                visible: card.controller.wrong || (card.controller.opened && !card.controller.backend.passwordRequest)
+                text: card.controller.wrong ? qsTranslate("PolkitPromptCard", "That password is not right. Try again.") : Copy.unsupported()
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 font.family: ShellPalette.uiFont
@@ -496,7 +498,7 @@ FocusScope {
                 PolkitExpander {
                     id: detailsButton
                     objectName: "polkit-details"
-                    text: "Details"
+                    text: qsTranslate("PolkitPromptCard", "Details")
                     checked: card.detailsOpen
                     onClicked: card.detailsOpen = !card.detailsOpen
                 }
@@ -504,7 +506,7 @@ FocusScope {
                     id: keyButton
                     objectName: "polkit-sudo-key"
                     visible: card.keyAvailable
-                    text: "Sudo key"
+                    text: qsTranslate("PolkitPromptCard", "Sudo key")
                     checked: card.keyOpen
                     onClicked: card.keyOpen = !card.keyOpen
                 }
@@ -514,12 +516,12 @@ FocusScope {
                 }
                 SettingsButton {
                     id: cancelButton
-                    text: "Cancel"
+                    text: qsTranslate("PolkitPromptCard", "Cancel")
                     onClicked: card.controller.cancel("cancel")
                 }
                 SettingsButton {
                     id: allowButton
-                    text: card.keyOpen ? "Allow with sudo key" : "Allow"
+                    text: card.keyOpen ? qsTranslate("PolkitPromptCard", "Allow with sudo key") : qsTranslate("PolkitPromptCard", "Allow")
                     font.weight: Font.DemiBold
                     enabled: card.controller.accepting && (!card.keyOpen || (card.keyGrantAllowed && keyChoices.amountValid))
                     background: Rectangle {

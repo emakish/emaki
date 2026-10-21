@@ -2,6 +2,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Estimate package transactions against a private database and root-space budget."""
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from decimal import Decimal, ROUND_CEILING
 import os
 from pathlib import Path
@@ -19,10 +31,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from emaki_package_lock import lock_message
 
 MARGIN = 1024 ** 3
-SPACE_ADVICE = 'Delete unneeded files or clear the package cache in Settings > Storage, then try again.'
-FAILURE = 'The free-space check could not finish. The update was not started.'
+SPACE_ADVICE = _('Delete unneeded files or clear the package cache in Settings > Storage, then try again.')
+FAILURE = _('The free-space check could not finish. The update was not started.')
 FINAL_PROMPT = ':: Proceed with installation? [Y/n]'
-WARNING = 'Warning: the update space check is unavailable; the package transaction will continue.'
+WARNING = _('Warning: the update space check is unavailable; the package transaction will continue.')
 
 
 class InsufficientSpace(RuntimeError):
@@ -56,7 +68,7 @@ def command(arguments, probe=False):
         output = b''
         try:
             if not probe:
-                output, _ = process.communicate(timeout=180)
+                output, _unused = process.communicate(timeout=180)
             else:
                 pending = ''
                 declined = False
@@ -207,9 +219,8 @@ def requirements(download, net, root, cache, pools=(None, None), installed=0):
 def check_space(download, net, root, cache, pools=(None, None), installed=0):
     for need, free in requirements(download, net, root, cache, pools, installed):
         if free < need:
-            raise InsufficientSpace('Not enough free space for this update: it needs about '
-                               f'{human_size(need)}, {human_size(free)} is free. '
-                               + SPACE_ADVICE)
+            raise InsufficientSpace(_('Not enough free space for this update: it needs about {needed}, {free} is free. {advice}').format(
+                                   needed=human_size(need), free=human_size(free), advice=SPACE_ADVICE))
 
 
 def _preflight(targets=(), transaction=None, expected=()):
@@ -248,10 +259,10 @@ def _preflight(targets=(), transaction=None, expected=()):
     if transaction is None and (database / 'db.lck').exists():
         raise RuntimeError(lock_message(database / 'db.lck'))
     if (database / 'local').stat().st_mtime_ns != initial:
-        raise RuntimeError('Installed packages changed during the check. Try again when the package operation finishes.')
+        raise RuntimeError(_('Installed packages changed during the check. Try again when the package operation finishes.'))
     if download or net or installed:
         root_pool, root_kind = mount_details('/')
-        cache_pool, _ = mount_details(cache)
+        cache_pool, _unused = mount_details(cache)
         retained = installed if root_snapshots(root_kind) else 0
         check_space(download, net, os.statvfs('/'), os.statvfs(cache),
                     (root_pool, cache_pool), retained)
@@ -323,7 +334,7 @@ def parent_selection(launcher_pid=None):
         launcher = int(launcher_pid)
         # Command substitution may retain an extra shell. The supplied PID must
         # be our actual launcher ancestor, whose immediate parent is pacman.
-        for _ in range(3):
+        for _unused in range(3):
             if parent_pid == launcher:
                 break
             parent_pid = process_parent(parent_pid)

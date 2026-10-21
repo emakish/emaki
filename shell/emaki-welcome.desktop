@@ -1,9 +1,15 @@
 [Desktop Entry]
 Type=Application
 Name=Welcome to Emaki
+Name[es]=Te damos la bienvenida a Emaki
+Name[pt_BR]=Boas-vindas ao Emaki
 Comment=A short tour of Emaki: moving around, programs, settings and shortcuts
+Comment[es]=Un recorrido breve por Emaki: moverse, programas, configuración y atajos
+Comment[pt_BR]=Um tour rápido pelo Emaki: como se movimentar, programas, configurações e atalhos
 Exec=emaki-shell call welcome present
 Icon=emaki-welcome
 Terminal=false
 Categories=Utility;
 Keywords=welcome;tour;help;shortcuts;getting started;
+Keywords[es]=bienvenida;recorrido;ayuda;atajos;primeros pasos;
+Keywords[pt_BR]=boas-vindas;tour;ajuda;atalhos;primeiros passos;

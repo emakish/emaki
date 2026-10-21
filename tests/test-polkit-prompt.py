@@ -75,13 +75,15 @@ def main():
                                    platform.read_text()))
         env = dict(os.environ, HOME=str(profile), QT_QPA_PLATFORM='offscreen',
                    QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
+                   EMAKI_LANGUAGE='en', EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
+                   QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
                    EMAKI_POLKIT_SELFTEST='1', XDG_RUNTIME_DIR=runtime,
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
                    XDG_DATA_DIRS=str(profile / 'data'), TMPDIR=str(profile / 'tmp'),
                    DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session.sock'),
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'no-system.sock'))
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QML_IMPORT_PATH', 'QML2_IMPORT_PATH', 'QT_LOGGING_RULES'):
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QML2_IMPORT_PATH', 'QT_LOGGING_RULES'):
             env.pop(name, None)
         env['QT_LOGGING_RULES'] = '*.debug=false'
         sockets = True

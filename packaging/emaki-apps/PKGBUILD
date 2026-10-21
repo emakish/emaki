@@ -2,16 +2,15 @@
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-apps
 pkgver=0.9.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Emaki Rich application set and multimedia codecs'
 arch=('any')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later')
 install=emaki-apps.install
-source=('45-emaki-apps.preset' 'emaki-printers.desktop' 'emaki-discover-notifier.desktop')
+source=('45-emaki-apps.preset' 'emaki-printers.desktop')
 sha256sums=('770e6c1ed6e2c0d22d19062218e794769043423d419b618938fcd746be5958ec'
-            '2d792d2c51503e66817ed23b5bac6348ee658f88ef968d155798b2eb7d81861e'
-            '980e9b3a010612537e485ebcfb9baf12d2ef953e7a2fda3a2e8f11f959ec564b')
+            '25121a219abd52a49a6901a118d2a8fe2290094222c44764e66dd67cd727e4ab')
 depends=(
     'emaki-desktop'
     # Archive formats for Ark and the file manager.
@@ -39,14 +38,12 @@ optdepends=(
     'haruna' 'elisa'
     'kate' 'libreoffice-fresh'
     'spectacle' 'obs-studio'
-    'plasma-systemmonitor' 'partitionmanager' 'filelight' 'discover'
+    'plasma-systemmonitor' 'partitionmanager' 'filelight'
     'isoimagewriter' 'skanlite'
     'kcharselect' 'keepassxc'
 )
 
 package() {
-    install -Dm644 "$srcdir/emaki-discover-notifier.desktop" \
-        "$pkgdir/etc/xdg/autostart/emaki-discover-notifier.desktop"
     install -Dm644 "$srcdir/emaki-printers.desktop" \
         "$pkgdir/usr/share/applications/emaki-printers.desktop"
     install -Dm644 "$srcdir/45-emaki-apps.preset" \

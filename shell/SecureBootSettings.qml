@@ -20,7 +20,7 @@ SettingsCard {
     property string signMessage: ""
     readonly property bool busy: statusProcess.running || enrollProcess.running || signProcess.running
     objectName: "settings-privacy-secure-boot"
-    title: Logic.title
+    title: Logic.title()
     visible: Logic.shown(status)
     function refresh(): void {
         if (statusProcess.running)
@@ -78,7 +78,7 @@ SettingsCard {
             if (!running)
                 Qt.callLater(function () {
                     if (!enrollProcess.completed)
-                        root.message = Logic.failed;
+                        root.message = Logic.failed();
                 });
         }
         onExited: code => {
@@ -91,7 +91,7 @@ SettingsCard {
             if (code === 0 && Logic.validPassword(answer))
                 root.password = answer.password;
             else
-                root.message = code === 126 ? Logic.cancelled : Logic.failed;
+                root.message = code === 126 ? Logic.cancelled() : Logic.failed();
             root.refresh();
         }
     }
@@ -103,13 +103,13 @@ SettingsCard {
             if (!running)
                 Qt.callLater(function () {
                     if (!signProcess.completed)
-                        root.signMessage = Logic.signFailed;
+                        root.signMessage = Logic.signFailed();
                 });
         }
         onExited: code => {
             completed = true;
             if (code !== 0)
-                root.signMessage = code === 126 ? Logic.cancelled : Logic.signFailed;
+                root.signMessage = code === 126 ? Logic.cancelled() : Logic.signFailed();
             root.refresh();
         }
     }
@@ -117,22 +117,22 @@ SettingsCard {
         objectName: "settings-secure-boot-state"
         width: parent.width
         controlWidth: 0
-        title: Logic.statusTitle
+        title: Logic.statusTitle()
         explanation: Logic.stateText(root.status)
     }
     SettingsRow {
         objectName: "settings-secure-boot-sign"
         width: parent.width
         visible: Logic.unsigned(root.status).length > 0
-        title: Logic.signTitle
-        explanation: Logic.signExplanation
+        title: Logic.signTitle()
+        explanation: Logic.signExplanation()
         errorText: root.signMessage
         busy: root.busy
         controlWidth: 150
         control: Component {
             SettingsButton {
                 objectName: "settings-secure-boot-sign-button"
-                text: Logic.signButton
+                text: Logic.signButton()
                 onClicked: root.sign()
             }
         }
@@ -141,15 +141,15 @@ SettingsCard {
         objectName: "settings-secure-boot-confirm"
         width: parent.width
         visible: Logic.offer(root.status) && root.password === ""
-        title: Logic.confirmTitle
-        explanation: Logic.confirmExplanation
+        title: Logic.confirmTitle()
+        explanation: Logic.confirmExplanation()
         errorText: root.message
         busy: root.busy
         controlWidth: 150
         control: Component {
             SettingsButton {
                 objectName: "settings-secure-boot-enroll"
-                text: Logic.confirmButton
+                text: Logic.confirmButton()
                 onClicked: root.enroll()
             }
         }
@@ -164,7 +164,7 @@ SettingsCard {
         Text {
             width: parent.width
             textFormat: Text.PlainText
-            text: Logic.passwordTitle
+            text: Logic.passwordTitle()
             color: SettingsTheme.ink
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 14
@@ -185,7 +185,7 @@ SettingsCard {
         Text {
             width: parent.width
             textFormat: Text.PlainText
-            text: Logic.steps + " " + Logic.afterSteps
+            text: Logic.steps() + " " + Logic.afterSteps()
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13

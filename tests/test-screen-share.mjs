@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 const source = fs.readFileSync(new URL('../shell/ScreenShare.js', import.meta.url), 'utf8');
 const share = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), share);
 vm.runInContext(source.replace(/^\.pragma library\s*$/m, ''), share);
 
 const names = {firefox: 'Firefox', obs: 'OBS Studio'};

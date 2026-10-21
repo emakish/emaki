@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "WhatsNewContent.js" as ReleaseContent
 
 Scope {
     id: controller
@@ -14,6 +15,10 @@ Scope {
     property bool pending: false
     property bool presentedThisRun: false
     property string shortcutError: ""
+    property alias releasePath: whatsNewStore.releasePath
+    property bool showingWhatsNew: false
+    readonly property bool hasWhatsNew: whatsNewStore.available
+    readonly property alias whatsNewStore: whatsNewStore
     // Opens the shell's searchable shortcut list, the one Super + / opens (shell.qml sets it to
     // the active scene's openKeyboard("shortcuts")); returns whether it opened.
     property var openShortcutList: null
@@ -21,9 +26,15 @@ Scope {
     readonly property alias store: store
     readonly property bool opened: windowLoader.active
     signal opening
+    signal languageRequested
     function maybePresent(): void {
-        if (enabled && ready && store.restored && (pending || (!store.seen && !presentedThisRun)))
+        if (!enabled || !ready || liveSession || !store.restored || !whatsNewStore.restored)
+            return;
+        whatsNewStore.initialize(store.seen);
+        if (pending || (!store.seen && !presentedThisRun))
             present();
+        else if (!opened && whatsNewStore.pending)
+            presentWhatsNew();
     }
     function present(): string {
         if (!enabled || liveSession)
@@ -33,6 +44,22 @@ Scope {
             return "queued";
         }
         pending = false;
+        if (showingWhatsNew)
+            windowLoader.active = false;
+        showingWhatsNew = false;
+        shortcutError = "";
+        opening();
+        windowLoader.active = true;
+        window?.present();
+        return window ? "presented" : "unavailable";
+    }
+    function presentWhatsNew(): string {
+        if (!enabled || liveSession || !ready || !hasWhatsNew)
+            return "unavailable";
+        whatsNewStore.initialize(store.seen);
+        if (!showingWhatsNew)
+            windowLoader.active = false;
+        showingWhatsNew = true;
         shortcutError = "";
         opening();
         windowLoader.active = true;
@@ -51,7 +78,7 @@ Scope {
             shown = false;
         }
         if (!shown)
-            shortcutError = "Could not open the shortcut list. Try Super + /.";
+            shortcutError = qsTranslate("WelcomeController", "Could not open the shortcut list. Try Super + /.");
     }
     onReadyChanged: Qt.callLater(maybePresent)
     onEnabledChanged: Qt.callLater(maybePresent)
@@ -60,27 +87,48 @@ Scope {
         id: store
         onRestoredChanged: Qt.callLater(controller.maybePresent)
     }
+    WhatsNewStore {
+        id: whatsNewStore
+        onRestoredChanged: Qt.callLater(controller.maybePresent)
+    }
     Loader {
         id: windowLoader
         active: false
         sourceComponent: WelcomeWindow {
+            whatsNew: controller.showingWhatsNew
+            whatsNewAvailable: controller.hasWhatsNew
             loadWallpaper: controller.loadWallpaper
-            error: controller.shortcutError || (store.saveFailed ? "Could not save welcome progress. This screen may appear again next login." : "")
+            error: controller.shortcutError || (controller.showingWhatsNew
+                ? (whatsNewStore.saveFailed ? ReleaseContent.saveError() : "")
+                : (store.saveFailed ? qsTranslate("WelcomeController", "Could not save welcome progress. This screen may appear again next login.") : ""))
             onBackingWindowVisibleChanged: {
                 if (backingWindowVisible) {
-                    controller.presentedThisRun = true;
-                    store.markSeen();
+                    if (controller.showingWhatsNew) {
+                        whatsNewStore.markSeen();
+                    } else {
+                        whatsNewStore.initialize(store.seen);
+                        controller.presentedThisRun = true;
+                        store.markSeen();
+                    }
                 }
             }
             onDismissRequested: controller.dismiss()
             onClosed: controller.dismiss()
             onShortcutsRequested: controller.allShortcuts()
+            onWhatsNewRequested: controller.presentWhatsNew()
+            onLanguageRequested: {
+                controller.dismiss();
+                controller.languageRequested();
+            }
         }
     }
     IpcHandler {
         target: "welcome"
         function present(): string {
             return controller.present();
+        }
+        function whatsNew(): string {
+            return controller.presentWhatsNew();
         }
     }
 }

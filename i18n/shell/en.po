@@ -1,0 +1,731 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "\nThe change could not be confirmed. Settings shows the current accounts."
+msgstr "\nThe change could not be confirmed. Settings shows the current accounts."
+
+msgid "### Steps to reproduce"
+msgstr "### Steps to reproduce"
+
+msgid "### System"
+msgstr "### System"
+
+msgid "### What I expected"
+msgstr "### What I expected"
+
+msgid "### What happened"
+msgstr "### What happened"
+
+msgid "1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it"
+msgstr "1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it"
+
+msgid "<!-- Nothing else was collected from your computer. Logs help, but add them only if you choose to: Settings > About can save a diagnostics file for you to review first. -->"
+msgstr "<!-- Nothing else was collected from your computer. Logs help, but add them only if you choose to: Settings > About can save a diagnostics file for you to review first. -->"
+
+msgid "A previous display change needs recovery. Reopen Displays and try again."
+msgstr "A previous display change needs recovery. Reopen Displays and try again."
+
+msgid "A startup entry could not be read. Check its contents and try again."
+msgstr "A startup entry could not be read. Check its contents and try again."
+
+msgid "Alarm was not found"
+msgstr "Alarm was not found"
+
+msgid "An interrupted display change from an earlier session was discarded."
+msgstr "An interrupted display change from an earlier session was discarded."
+
+msgid "An interrupted display change was reverted."
+msgstr "An interrupted display change was reverted."
+
+msgid "An interrupted display reset was reverted."
+msgstr "An interrupted display reset was reverted."
+
+msgid "Another display change is waiting for confirmation."
+msgstr "Another display change is waiting for confirmation."
+
+msgid "Apps could not be read or changed. Refresh the page and try again."
+msgstr "Apps could not be read or changed. Refresh the page and try again."
+
+msgid "Automatic locking and blanking are unavailable because required session components are missing."
+msgstr "Automatic locking and blanking are unavailable because required session components are missing."
+
+msgid "Battery, profiles and session"
+msgstr "Battery, profiles and session"
+
+msgid "Block devices"
+msgstr "Block devices"
+
+msgid "Bluetooth"
+msgstr "Bluetooth"
+
+msgid "Brightness and night light"
+msgstr "Brightness and night light"
+
+msgid "Browser"
+msgstr "Browser"
+
+msgid "Choose None, Automatic or Manual proxy settings."
+msgstr "Choose None, Automatic or Manual proxy settings."
+
+msgid "Choose a charge limit from 50 to 100 percent."
+msgstr "Choose a charge limit from 50 to 100 percent."
+
+msgid "Choose a local VPN configuration file."
+msgstr "Choose a local VPN configuration file."
+
+msgid "Choose a readable VPN configuration file."
+msgstr "Choose a readable VPN configuration file."
+
+msgid "Choose a saved connection."
+msgstr "Choose a saved connection."
+
+msgid "Choose a supported network settings action."
+msgstr "Choose a supported network settings action."
+
+msgid "Choose a valid VPN type."
+msgstr "Choose a valid VPN type."
+
+msgid "Choose a valid display setting."
+msgstr "Choose a valid display setting."
+
+msgid "Choose a wallpaper"
+msgstr "Choose a wallpaper"
+
+msgid "Choose one of the available delays."
+msgstr "Choose one of the available delays."
+
+msgid "Choose whether the app starts automatically."
+msgstr "Choose whether the app starts automatically."
+
+msgid "Choose your picture"
+msgstr "Choose your picture"
+
+msgid "Clipboard history"
+msgstr "Clipboard history"
+
+msgid "Clock command is too large"
+msgstr "Clock command is too large"
+
+msgid "Clock state directory must not be writable by others"
+msgstr "Clock state directory must not be writable by others"
+
+msgid "Clock state is too large"
+msgstr "Clock state is too large"
+
+msgid "Clock tools are already running in another session."
+msgstr "Clock tools are already running in another session."
+
+msgid "Clock tools could not read or save their settings. Check access and available space."
+msgstr "Clock tools could not read or save their settings. Check access and available space."
+
+msgid "Clock tools could not read that data. Please try again."
+msgstr "Clock tools could not read that data. Please try again."
+
+msgid "Close window"
+msgstr "Close window"
+
+msgid "Confirm password: "
+msgstr "Confirm password: "
+
+msgid "Connection changed."
+msgstr "Connection changed."
+
+msgid "Could not check the screen timers."
+msgstr "Could not check the screen timers."
+
+msgid "Cycle column widths"
+msgstr "Cycle column widths"
+
+msgid "Disabled"
+msgstr "Disabled"
+
+msgid "Disabled displays are session-only and cannot be saved."
+msgstr "Disabled displays are session-only and cannot be saved."
+
+msgid "Display information could not be read."
+msgstr "Display information could not be read."
+
+msgid "Display settings changed elsewhere. Reopen Displays and try again."
+msgstr "Display settings changed elsewhere. Reopen Displays and try again."
+
+msgid "Display settings could not be saved. Check the available space and try again."
+msgstr "Display settings could not be saved. Check the available space and try again."
+
+msgid "Emaki landscape"
+msgstr "Emaki landscape"
+
+msgid "Emaki problem report"
+msgstr "Emaki problem report"
+
+msgid "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+msgstr "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+
+msgid "Enter a proxy address as host:port."
+msgstr "Enter a proxy address as host:port."
+
+msgid "Enter an HTTP or HTTPS proxy configuration URL."
+msgstr "Enter an HTTP or HTTPS proxy configuration URL."
+
+msgid "Enter between one and sixteen DNS server addresses."
+msgstr "Enter between one and sixteen DNS server addresses."
+
+msgid "Enter valid DNS server addresses."
+msgstr "Enter valid DNS server addresses."
+
+msgid "Expected a clock command"
+msgstr "Expected a clock command"
+
+msgid "Expected a whole number"
+msgstr "Expected a whole number"
+
+msgid "Expected true or false"
+msgstr "Expected true or false"
+
+msgid "Failed system units"
+msgstr "Failed system units"
+
+msgid "Failed user units"
+msgstr "Failed user units"
+
+msgid "Files"
+msgstr "Files"
+
+msgid "Float or tile window"
+msgstr "Float or tile window"
+
+msgid "Focus dock"
+msgstr "Focus dock"
+
+msgid "Focus left column"
+msgstr "Focus left column"
+
+msgid "Focus newest notification"
+msgstr "Focus newest notification"
+
+msgid "Focus right column"
+msgstr "Focus right column"
+
+msgid "Focus top bar"
+msgstr "Focus top bar"
+
+msgid "Focus window or workspace above"
+msgstr "Focus window or workspace above"
+
+msgid "Focus window or workspace below"
+msgstr "Focus window or workspace below"
+
+#, python-brace-format
+msgid "Go to workspace {number}"
+msgstr "Go to workspace {number}"
+
+msgid "Image viewer"
+msgstr "Image viewer"
+
+msgid "Installation"
+msgstr "Installation"
+
+#, python-brace-format
+msgid "Installed with Emaki {value1}; current release matches"
+msgstr "Installed with Emaki {value1}; current release matches"
+
+#, python-brace-format
+msgid "Installed with Emaki {value1}; now on {value2}"
+msgstr "Installed with Emaki {value1}; now on {value2}"
+
+msgid "Invalid alarm identifier"
+msgstr "Invalid alarm identifier"
+
+msgid "Invalid alarm label"
+msgstr "Invalid alarm label"
+
+msgid "Invalid application identifier."
+msgstr "Invalid application identifier."
+
+msgid "Invalid clock state"
+msgstr "Invalid clock state"
+
+msgid "Invalid duration"
+msgstr "Invalid duration"
+
+msgid "Invalid laps"
+msgstr "Invalid laps"
+
+msgid "Invalid notice"
+msgstr "Invalid notice"
+
+msgid "Invalid repeat days"
+msgstr "Invalid repeat days"
+
+msgid "Invalid time zone search"
+msgstr "Invalid time zone search"
+
+msgid "Invalid timer state"
+msgstr "Invalid timer state"
+
+msgid "Keep at least one display turned on."
+msgstr "Keep at least one display turned on."
+
+msgid "Keep or revert the current display change first."
+msgstr "Keep or revert the current display change first."
+
+msgid "Keyboard layouts"
+msgstr "Keyboard layouts"
+
+msgid "Lid behavior is managed by the system."
+msgstr "Lid behavior is managed by the system."
+
+msgid "Linux kernel"
+msgstr "Linux kernel"
+
+msgid "Lock screen"
+msgstr "Lock screen"
+
+msgid "Lower volume"
+msgstr "Lower volume"
+
+msgid "Make column narrower"
+msgstr "Make column narrower"
+
+msgid "Make column wider"
+msgstr "Make column wider"
+
+msgid "Make keyboard brighter"
+msgstr "Make keyboard brighter"
+
+msgid "Make keyboard dimmer"
+msgstr "Make keyboard dimmer"
+
+msgid "Make screen brighter"
+msgstr "Make screen brighter"
+
+msgid "Make screen dimmer"
+msgstr "Make screen dimmer"
+
+msgid "Maximize column"
+msgstr "Maximize column"
+
+msgid "Move column left"
+msgstr "Move column left"
+
+msgid "Move column right"
+msgstr "Move column right"
+
+msgid "Move column to left monitor"
+msgstr "Move column to left monitor"
+
+msgid "Move column to monitor above"
+msgstr "Move column to monitor above"
+
+msgid "Move column to monitor below"
+msgstr "Move column to monitor below"
+
+msgid "Move column to right monitor"
+msgstr "Move column to right monitor"
+
+#, python-brace-format
+msgid "Move column to workspace {number}"
+msgstr "Move column to workspace {number}"
+
+msgid "Move window down or to workspace below"
+msgstr "Move window down or to workspace below"
+
+msgid "Move window into or out of left column"
+msgstr "Move window into or out of left column"
+
+msgid "Move window into or out of right column"
+msgstr "Move window into or out of right column"
+
+msgid "Move window up or to workspace above"
+msgstr "Move window up or to workspace above"
+
+msgid "Mute or unmute microphone"
+msgstr "Mute or unmute microphone"
+
+msgid "Mute or unmute sound"
+msgstr "Mute or unmute sound"
+
+msgid "Network settings could not be reached. Try again."
+msgstr "Network settings could not be reached. Try again."
+
+msgid "Network settings could not be read. Try again."
+msgstr "Network settings could not be read. Try again."
+
+msgid "Network settings took too long. Try again."
+msgstr "Network settings took too long. Try again."
+
+msgid "NetworkManager could not complete this change. Check your connection and permissions."
+msgstr "NetworkManager could not complete this change. Check your connection and permissions."
+
+msgid "NetworkManager is not available."
+msgstr "NetworkManager is not available."
+
+#, python-brace-format
+msgid "New password for {value1}: "
+msgstr "New password for {value1}: "
+
+msgid "Next track"
+msgstr "Next track"
+
+msgid "Not recorded (please say whether this is a fresh installation or an updated one)"
+msgstr "Not recorded (please say whether this is a fresh installation or an updated one)"
+
+msgid "Notifications, calendar and music"
+msgstr "Notifications, calendar and music"
+
+msgid "Open files"
+msgstr "Open files"
+
+msgid "Open launcher"
+msgstr "Open launcher"
+
+msgid "Open terminal"
+msgstr "Open terminal"
+
+msgid "Open terminal (works without Super)"
+msgstr "Open terminal (works without Super)"
+
+msgid "Password changed."
+msgstr "Password changed."
+
+msgid "Password not changed."
+msgstr "Password not changed."
+
+msgid "Pictures"
+msgstr "Pictures"
+
+msgid "Play or pause media"
+msgstr "Play or pause media"
+
+msgid "Power menu"
+msgstr "Power menu"
+
+msgid "Press Enter to close this window. "
+msgstr "Press Enter to close this window. "
+
+msgid "Previous track"
+msgstr "Previous track"
+
+msgid "Privacy and capture activity"
+msgstr "Privacy and capture activity"
+
+msgid "Raise volume"
+msgstr "Raise volume"
+
+msgid "Recent journal errors"
+msgstr "Recent journal errors"
+
+msgid "Record screen"
+msgstr "Record screen"
+
+msgid "Review this file before sharing. It may contain private information."
+msgstr "Review this file before sharing. It may contain private information."
+
+msgid "Saved display settings cannot be read. Restore the managed display file to continue."
+msgstr "Saved display settings cannot be read. Restore the managed display file to continue."
+
+msgid "Search keyboard shortcuts"
+msgstr "Search keyboard shortcuts"
+
+msgid "Settings were saved. Reconnect this connection to apply them."
+msgstr "Settings were saved. Reconnect this connection to apply them."
+
+msgid "Show shortcut overview"
+msgstr "Show shortcut overview"
+
+msgid "Show that the password window is real"
+msgstr "Show that the password window is real"
+
+msgid "Sound and app volume"
+msgstr "Sound and app volume"
+
+msgid "Stop media"
+msgstr "Stop media"
+
+msgid "Switch keyboard layout"
+msgstr "Switch keyboard layout"
+
+msgid "Switch windows"
+msgstr "Switch windows"
+
+msgid "Switch windows backwards"
+msgstr "Switch windows backwards"
+
+msgid "Switch windows of the same app"
+msgstr "Switch windows of the same app"
+
+msgid "Switch windows of the same app backwards"
+msgstr "Switch windows of the same app backwards"
+
+msgid "System details"
+msgstr "System details"
+
+msgid "Take an interactive screenshot"
+msgstr "Take an interactive screenshot"
+
+msgid "Terminal"
+msgstr "Terminal"
+
+msgid "Text editor"
+msgstr "Text editor"
+
+msgid "That resolution or refresh rate is not available on this display."
+msgstr "That resolution or refresh rate is not available on this display."
+
+msgid "The account is ready."
+msgstr "The account is ready."
+
+msgid "The account was not created."
+msgstr "The account was not created."
+
+msgid "The alarm limit is 64"
+msgstr "The alarm limit is 64"
+
+msgid "The application entry is too large."
+msgstr "The application entry is too large."
+
+msgid "The confirmation time expired. The previous settings were restored."
+msgstr "The confirmation time expired. The previous settings were restored."
+
+msgid "The connected displays changed. Reopen Displays and try again."
+msgstr "The connected displays changed. Reopen Displays and try again."
+
+msgid "The display configuration could not be loaded."
+msgstr "The display configuration could not be loaded."
+
+msgid "The display configuration reload was not confirmed."
+msgstr "The display configuration reload was not confirmed."
+
+msgid "The display did not confirm the requested settings."
+msgstr "The display did not confirm the requested settings."
+
+msgid "The display name is invalid."
+msgstr "The display name is invalid."
+
+msgid "The display request is invalid."
+msgstr "The display request is invalid."
+
+msgid "The display request is too large."
+msgstr "The display request is too large."
+
+msgid "The display service could not apply the change."
+msgstr "The display service could not apply the change."
+
+msgid "The display service is unavailable."
+msgstr "The display service is unavailable."
+
+msgid "The display service returned an invalid response."
+msgstr "The display service returned an invalid response."
+
+msgid "The display settings lock is not safe to use."
+msgstr "The display settings lock is not safe to use."
+
+msgid "The idle policy stopped unexpectedly."
+msgstr "The idle policy stopped unexpectedly."
+
+msgid "The inherited configuration does not enable this display. Its settings were restored."
+msgstr "The inherited configuration does not enable this display. Its settings were restored."
+
+msgid "The installed application is unavailable."
+msgstr "The installed application is unavailable."
+
+msgid "The managed display directory is not safe to use."
+msgstr "The managed display directory is not safe to use."
+
+msgid "The managed display file is not safe to use."
+msgstr "The managed display file is not safe to use."
+
+msgid "The new display size would separate or overlap screens. Adjust their positions first."
+msgstr "The new display size would separate or overlap screens. Adjust their positions first."
+
+msgid "The passwords do not match."
+msgstr "The passwords do not match."
+
+msgid "The pending display change cannot be recovered."
+msgstr "The pending display change cannot be recovered."
+
+msgid "The personal configuration directory is not owned by you."
+msgstr "The personal configuration directory is not owned by you."
+
+msgid "The personal configuration directory must be absolute."
+msgstr "The personal configuration directory must be absolute."
+
+msgid "The previous display settings could not be fully restored. Reconnect the display and try again."
+msgstr "The previous display settings could not be fully restored. Reconnect the display and try again."
+
+msgid "The previous display settings have been restored."
+msgstr "The previous display settings have been restored."
+
+msgid "The remaining display was turned back on."
+msgstr "The remaining display was turned back on."
+
+msgid "The saved lid setting is not valid."
+msgstr "The saved lid setting is not valid."
+
+msgid "The saved power settings are not valid."
+msgstr "The saved power settings are not valid."
+
+msgid "The screen timers are not running. Apply a setting to try again."
+msgstr "The screen timers are not running. Apply a setting to try again."
+
+msgid "The selected display is no longer connected."
+msgstr "The selected display is no longer connected."
+
+msgid "The startup directory is not owned by you."
+msgstr "The startup directory is not owned by you."
+
+msgid "The startup entry is not a personal regular file."
+msgstr "The startup entry is not a personal regular file."
+
+msgid "The startup entry is not an application."
+msgstr "The startup entry is not an application."
+
+msgid "The startup entry is too large."
+msgstr "The startup entry is too large."
+
+msgid "The stopwatch has 100 laps; reset to record more"
+msgstr "The stopwatch has 100 laps; reset to record more"
+
+msgid "The system could not apply the power setting."
+msgstr "The system could not apply the power setting."
+
+msgid "The world clock limit is 24"
+msgstr "The world clock limit is 24"
+
+msgid "Their login wallet may still use the previous password."
+msgstr "Their login wallet may still use the previous password."
+
+msgid "There is no display change to keep."
+msgstr "There is no display change to keep."
+
+msgid "This VPN type needs its NetworkManager plugin."
+msgstr "This VPN type needs its NetworkManager plugin."
+
+msgid "This app already has a personal startup entry. Check it before adding the app again."
+msgstr "This app already has a personal startup entry. Check it before adding the app again."
+
+msgid "This battery does not expose a charge limit."
+msgstr "This battery does not expose a charge limit."
+
+msgid "This connection is no longer available."
+msgstr "This connection is no longer available."
+
+msgid "This display change applies until the session ends."
+msgstr "This display change applies until the session ends."
+
+msgid "This file has not been uploaded."
+msgstr "This file has not been uploaded."
+
+msgid "Toggle fullscreen"
+msgstr "Toggle fullscreen"
+
+msgid "Toggle overview"
+msgstr "Toggle overview"
+
+msgid "Too many clock entries"
+msgstr "Too many clock entries"
+
+msgid "Tray applications"
+msgstr "Tray applications"
+
+msgid "Turn this display on before changing its settings."
+msgstr "Turn this display on before changing its settings."
+
+msgid "Unavailable"
+msgstr "Unavailable"
+
+msgid "Unexpected startup argument."
+msgstr "Unexpected startup argument."
+
+msgid "Unknown clock command"
+msgstr "Unknown clock command"
+
+msgid "Unknown power setting."
+msgstr "Unknown power setting."
+
+msgid "Unknown startup action."
+msgstr "Unknown startup action."
+
+msgid "Unknown time zone"
+msgstr "Unknown time zone"
+
+msgid "Unknown user"
+msgstr "Unknown user"
+
+msgid "Unsafe clock state file"
+msgstr "Unsafe clock state file"
+
+msgid "Unsafe clock state lock"
+msgstr "Unsafe clock state lock"
+
+msgid "Unsupported clock state version"
+msgstr "Unsupported clock state version"
+
+msgid "Update channel"
+msgstr "Update channel"
+
+msgid "Use only letters, digits and symbols of the English (US) keyboard."
+msgstr "Use only letters, digits and symbols of the English (US) keyboard."
+
+msgid "Use status, add, set or reset with --json."
+msgstr "Use status, add, set or reset with --json."
+
+msgid "VPN imported."
+msgstr "VPN imported."
+
+msgid "Video player"
+msgstr "Video player"
+
+msgid "Welcome to Emaki"
+msgstr "Welcome to Emaki"
+
+msgid "Wi-Fi and VPN"
+msgstr "Wi-Fi and VPN"
+
+msgid "Your saved clocks could not be read. Start over to keep a backup and reset them."
+msgstr "Your saved clocks could not be read. Start over to keep a backup and reset them."
+
+msgid "Your startup entries could not be accessed. Check their permissions and try again."
+msgstr "Your startup entries could not be accessed. Check their permissions and try again."
+
+msgid "a time zone name of the tz database (Europe/Berlin, UTC)"
+msgstr "a time zone name of the tz database (Europe/Berlin, UTC)"
+
+msgid "an installed UTF-8 locale (en_US.UTF-8)"
+msgstr "an installed UTF-8 locale (en_US.UTF-8)"
+
+msgid "an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language"
+msgstr "an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language"
+
+msgid "emaki-settings-wallpaper: wallpaper apply or verification failed"
+msgstr "emaki-settings-wallpaper: wallpaper apply or verification failed"
+
+msgid "invalid block tree"
+msgstr "invalid block tree"
+
+msgid "missing or unsafe runtime directory"
+msgstr "missing or unsafe runtime directory"
+
+#, python-brace-format
+msgid "read the machine: emaki-machine-settings get {value1} --json"
+msgstr "read the machine: emaki-machine-settings get {value1} --json"
+
+msgid "set the before value again to go back once that read shows the change; do not repeat the change blindly"
+msgstr "set the before value again to go back once that read shows the change; do not repeat the change blindly"
+
+msgid "unsafe lock directory"
+msgstr "unsafe lock directory"
+
+msgid "unsafe lock file"
+msgstr "unsafe lock file"
+
+#, python-brace-format
+msgid "{total:.1f} GiB · {free:.1f} GiB free"
+msgstr "{total:.1f} GiB · {free:.1f} GiB free"

@@ -23,6 +23,7 @@ class Shortcuts(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='shortcuts-') as directory:
             base = Path(directory)
             shutil.copytree(ROOT / 'shell', base / 'shell')
+            shutil.copyfile(ROOT / 'scripts/emaki_i18n.py', base / 'shell/helpers/emaki_i18n.py')
             directory_file = base / 'shell/qmldir'
             if 'ShortcutSheet 1.0 ShortcutSheet.qml' not in directory_file.read_text():
                 with directory_file.open('a') as stream:

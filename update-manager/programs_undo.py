@@ -9,6 +9,18 @@ be root-owned, and the undo preview is computed again here; any difference
 refuses before pacman changes anything. Never a cascade (-c), a recursive
 removal (-s) or a dependency override (-d).
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import fcntl
 import json
 import os
@@ -26,16 +38,16 @@ import restore
 ENV = {'PATH': os.defpath, 'LC_ALL': 'C'}
 LOCK = '/run/emaki-update-manager.lock'
 MESSAGES = {
-    'restored': 'Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged.',
-    'restore-failed': 'The system restore did not finish. Review the details before trying again.',
-    'undone': 'The install was taken back.',
-    'refused': 'This install can no longer be taken back as it was. Nothing was removed.',
-    'changed': 'What the undo removes changed. Review it again.',
-    'busy': 'Another package operation is running. Try again when it finishes.',
-    'restart': 'Restart into the normal system before changing programs. Nothing was removed.',
-    'failed': 'The undo could not be checked. Nothing was removed.',
-    'not-removed': 'The undo did not finish. Nothing was removed.',
-    'unknown': 'The undo did not finish as expected. Check the installed programs again.',
+    'restored': _('Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged.'),
+    'restore-failed': _('The system restore did not finish. Review the details before trying again.'),
+    'undone': _('The install was taken back.'),
+    'refused': _('This install can no longer be taken back as it was. Nothing was removed.'),
+    'changed': _('What the undo removes changed. Review it again.'),
+    'busy': _('Another package operation is running. Try again when it finishes.'),
+    'restart': _('Restart into the normal system before changing programs. Nothing was removed.'),
+    'failed': _('The undo could not be checked. Nothing was removed.'),
+    'not-removed': _('The undo did not finish. Nothing was removed.'),
+    'unknown': _('The undo did not finish as expected. Check the installed programs again.'),
 }
 
 
@@ -99,10 +111,10 @@ def undo(identity, package, expected):
 def main(argv):
     try:
         if len(argv) != 3 or not receipts.IDENTITY.fullmatch(argv[0]) or not receipts.TOKEN.fullmatch(argv[2]):
-            raise ValueError('Expected a receipt, its package and a preview token.')
+            raise ValueError(_('Expected a receipt, its package and a preview token.'))
         catalog.valid_name(argv[1])
         if os.geteuid() != 0:
-            raise ValueError('Permission is required to undo an install.')
+            raise ValueError(_('Permission is required to undo an install.'))
     except ValueError:
         return emit('failed')
     os.umask(0o077)

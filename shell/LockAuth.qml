@@ -16,7 +16,7 @@ AuthController {
         if (!enabled || _terminal || (checking && !_awaitingInput))
             return false;
         if (length(text) > maximumLength || text.indexOf("\u0000") !== -1) {
-            message = text.indexOf("\u0000") !== -1 ? "This character cannot be used in a password" : "Password is too long (maximum 1024 characters)";
+            message = text.indexOf("\u0000") !== -1 ? qsTranslate("LockAuth", "This character cannot be used in a password") : qsTranslate("LockAuth", "Password is too long (maximum 1024 characters)");
             messageKind = "input";
             return false;
         }
@@ -53,7 +53,7 @@ AuthController {
         _answeredPassword = false;
         _pamMessage = "";
         _pamMessageError = false;
-        prompt = "Password";
+        prompt = qsTranslate("LockAuth", "Password");
         message = "";
         messageKind = "";
         ++attemptId;
@@ -88,7 +88,7 @@ AuthController {
         }
         _answeredPassword = true;
         wipe(true);
-        prompt = text.trim() || "Authentication response";
+        prompt = text.trim() || qsTranslate("LockAuth", "Authentication response");
         _awaitingInput = true;
         watchdog.restart();
     }
@@ -111,7 +111,7 @@ AuthController {
         // melts. The logical secret and every input copy are still cleared.
         wipe(outcome !== "success");
         release();
-        prompt = "Password";
+        prompt = qsTranslate("LockAuth", "Password");
         if (outcome === "success") {
             _terminal = true;
             message = "";
@@ -124,12 +124,12 @@ AuthController {
                 message = _pamMessage;
                 messageKind = _pamMessageError ? "pam-error" : "pam";
             } else {
-                message = "Wrong password";
+                message = qsTranslate("LockAuth", "Wrong password");
                 messageKind = "wrong";
             }
             rejected();
         } else {
-            message = outcome === "locked" ? (_pamMessage || "Account locked. Try again later.") : "Authentication error. Please try again.";
+            message = outcome === "locked" ? (_pamMessage || qsTranslate("LockAuth", "Account locked. Try again later.")) : qsTranslate("LockAuth", "Authentication error. Please try again.");
             messageKind = outcome === "locked" ? "pam-error" : "technical";
         }
         _pamMessage = "";
@@ -158,7 +158,7 @@ AuthController {
         watchdog.stop();
         wipe(true);
         release();
-        prompt = "Password";
+        prompt = qsTranslate("LockAuth", "Password");
         message = "";
         messageKind = "";
         _pamMessage = "";

@@ -10,12 +10,12 @@ Column {
     readonly property alias sound: sound
     spacing: 20
     function label(node): string {
-        return node ? String(node.description || node.nickname || node.name || node.id) : "No device connected";
+        return node ? String(node.description || node.nickname || node.name || node.id) : qsTranslate("SoundSettingsPage", "No device connected");
     }
     function options(nodes): var {
         return [
             {
-                label: "Automatic",
+                label: qsTranslate("SoundSettingsPage", "Automatic"),
                 value: -1
             }
         ].concat(nodes.map(node => ({
@@ -40,12 +40,12 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Output"
+        title: qsTranslate("SoundSettingsPage", "Output")
         SettingsChoiceRow {
             objectName: "settings-sound-output"
             width: parent.width
-            title: "Output device"
-            explanation: sound.sink ? "Sound plays through " + page.label(sound.sink) + "." : page.label(null)
+            title: qsTranslate("SoundSettingsPage", "Output device")
+            explanation: sound.sink ? qsTranslate("SoundSettingsPage", "Sound plays through %1.").arg(page.label(sound.sink)) : page.label(null)
             options: page.options(sound.outputs)
             value: sound.preferredOutputId
             defaultValue: -1
@@ -56,8 +56,8 @@ Column {
         SettingsSliderRow {
             objectName: "settings-sound-volume"
             width: parent.width
-            title: "Volume"
-            explanation: sound.sink?.audio ? value + "% of the output level. Reset restores 100%." : page.label(null)
+            title: qsTranslate("SoundSettingsPage", "Volume")
+            explanation: sound.sink?.audio ? qsTranslate("SoundSettingsPage", "%1% of the output level. Reset restores 100%.").arg(Number(value).toFixed(0)) : page.label(null)
             value: Math.round((sound.sink?.audio?.volume ?? 0) * 100)
             defaultValue: 100
             unavailable: !sound.sink?.audio
@@ -67,8 +67,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-sound-mute"
             width: parent.width
-            title: "Mute output"
-            explanation: "Silence your speakers or headphones."
+            title: qsTranslate("SoundSettingsPage", "Mute output")
+            explanation: qsTranslate("SoundSettingsPage", "Silence your speakers or headphones.")
             value: sound.sink?.audio?.muted ?? false
             defaultValue: false
             unavailable: !sound.sink?.audio
@@ -78,12 +78,12 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Input"
+        title: qsTranslate("SoundSettingsPage", "Input")
         SettingsChoiceRow {
             objectName: "settings-sound-input"
             width: parent.width
-            title: "Input device"
-            explanation: sound.source ? "Record through " + page.label(sound.source) + "." : page.label(null)
+            title: qsTranslate("SoundSettingsPage", "Input device")
+            explanation: sound.source ? qsTranslate("SoundSettingsPage", "Record through %1.").arg(page.label(sound.source)) : page.label(null)
             options: page.options(sound.inputs)
             value: sound.preferredInputId
             defaultValue: -1
@@ -94,8 +94,8 @@ Column {
         SettingsSliderRow {
             objectName: "settings-sound-input-volume"
             width: parent.width
-            title: "Input volume"
-            explanation: sound.source?.audio ? value + "% of the input level. Reset restores 100%." : page.label(null)
+            title: qsTranslate("SoundSettingsPage", "Input volume")
+            explanation: sound.source?.audio ? qsTranslate("SoundSettingsPage", "%1% of the input level. Reset restores 100%.").arg(Number(value).toFixed(0)) : page.label(null)
             value: Math.round((sound.source?.audio?.volume ?? 0) * 100)
             defaultValue: 100
             unavailable: !sound.source?.audio
@@ -105,8 +105,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-sound-input-mute"
             width: parent.width
-            title: "Mute microphone"
-            explanation: "Stop sound from the selected microphone."
+            title: qsTranslate("SoundSettingsPage", "Mute microphone")
+            explanation: qsTranslate("SoundSettingsPage", "Stop sound from the selected microphone.")
             value: sound.source?.audio?.muted ?? false
             defaultValue: false
             unavailable: !sound.source?.audio
@@ -116,8 +116,8 @@ Column {
         SettingsRow {
             objectName: "settings-sound-input-level"
             width: parent.width
-            title: "Input level"
-            explanation: "Speak to test your microphone while this page is open."
+            title: qsTranslate("SoundSettingsPage", "Input level")
+            explanation: qsTranslate("SoundSettingsPage", "Speak to test your microphone while this page is open.")
             value: 0
             defaultValue: 0
             unavailable: !sound.source?.audio
@@ -134,7 +134,7 @@ Column {
                         color: SettingsTheme.accent
                     }
                     Accessible.role: Accessible.ProgressBar
-                    Accessible.name: "Microphone input level"
+                    Accessible.name: qsTranslate("SoundSettingsPage", "Microphone input level")
                     Accessible.description: Math.round(sound.inputLevel * 100) + "%"
                 }
             }
@@ -143,11 +143,11 @@ Column {
     SettingsCard {
         objectName: "settings-sound-streams"
         width: parent.width
-        title: "Volume per app"
+        title: qsTranslate("SoundSettingsPage", "Volume per app")
         Text {
             width: parent.width
             visible: sound.streams.length === 0
-            text: "Apps appear here while they play sound."
+            text: qsTranslate("SoundSettingsPage", "Apps appear here while they play sound.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13
@@ -159,8 +159,8 @@ Column {
                 required property var modelData
                 objectName: "settings-sound-stream-" + modelData.id
                 width: parent.width
-                title: modelData.name || "Application audio"
-                explanation: (modelData.detail ? modelData.detail + " · " : "") + value + "% of the app level."
+                title: modelData.name || qsTranslate("SoundSettingsPage", "Application audio")
+                explanation: (modelData.detail ? modelData.detail + " · " : "") + qsTranslate("SoundSettingsPage", "%1% of the app level.").arg(Number(value).toFixed(0))
                 value: Math.round((modelData.audio?.volume ?? 0) * 100)
                 defaultValue: 100
                 unavailable: !modelData.audio

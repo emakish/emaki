@@ -49,51 +49,51 @@ Column {
         available = false;
         snapshot = ({});
         pending = false;
-        message = "Privacy status could not be confirmed. Retry to read it again.";
+        message = qsTranslate("SettingsPrivacyPage", "Privacy status could not be confirmed. Retry to read it again.");
     }
     function snapshotText() {
         const snapshot = recovery.snapshot;
         if (!snapshot || snapshot.state === "unavailable")
-            return "Unavailable";
+            return qsTranslate("SettingsPrivacyPage", "Unavailable");
         if (snapshot.state === "none")
-            return "No pre-update snapshot found.";
-        return "Snapshot " + snapshot.number + (snapshot.date ? " · " + snapshot.date : "");
+            return qsTranslate("SettingsPrivacyPage", "No pre-update snapshot found.");
+        return qsTranslate("SettingsPrivacyPage", "Snapshot %1").arg(snapshot.number) + (snapshot.date ? " · " + snapshot.date : "");
     }
     function rollbackText() {
         const rollback = recovery.rollback;
         if (!rollback)
-            return "Unavailable";
+            return qsTranslate("SettingsPrivacyPage", "Unavailable");
         const labels = {
-            normal: "Running the normal system.",
-            snapshot: "Running a snapshot.",
-            pending: "Rollback is pending.",
-            unsupported: "Rollback is not supported on this installation."
+            normal: qsTranslate("SettingsPrivacyPage", "Running the normal system."),
+            snapshot: qsTranslate("SettingsPrivacyPage", "Running a snapshot."),
+            pending: qsTranslate("SettingsPrivacyPage", "Rollback is pending."),
+            unsupported: qsTranslate("SettingsPrivacyPage", "Rollback is not supported on this installation.")
         };
-        return labels[rollback.mode] || "Unavailable";
+        return labels[rollback.mode] || qsTranslate("SettingsPrivacyPage", "Unavailable");
     }
     function menuText() {
         const menu = recovery.menu;
         if (!menu)
-            return "Unavailable";
+            return qsTranslate("SettingsPrivacyPage", "Unavailable");
         if (menu.state === "checked")
-            return "Menu structure checked; bootability has not been tested. " + (menu.latest_snapshot_present === true ? "Latest snapshot entry found." : menu.latest_snapshot_present === false ? "Latest snapshot entry missing." : "Latest snapshot entry could not be confirmed.");
+            return qsTranslate("SettingsPrivacyPage", "Menu structure checked; bootability has not been tested. ") + (menu.latest_snapshot_present === true ? qsTranslate("SettingsPrivacyPage", "Latest snapshot entry found.") : menu.latest_snapshot_present === false ? qsTranslate("SettingsPrivacyPage", "Latest snapshot entry missing.") : qsTranslate("SettingsPrivacyPage", "Latest snapshot entry could not be confirmed."));
         if (menu.state === "missing")
-            return "Snapshot boot menu is missing.";
+            return qsTranslate("SettingsPrivacyPage", "Snapshot boot menu is missing.");
         if (menu.state === "invalid")
-            return "Snapshot boot menu needs repair.";
-        return "Unavailable";
+            return qsTranslate("SettingsPrivacyPage", "Snapshot boot menu needs repair.");
+        return qsTranslate("SettingsPrivacyPage", "Unavailable");
     }
     function encryptionText(value) {
         return ({
-                encrypted: "Encrypted",
-                unencrypted: "Not encrypted",
-                mixed: "Partly encrypted"
-            })[value] || "Unavailable";
+                encrypted: qsTranslate("SettingsPrivacyPage", "Encrypted"),
+                unencrypted: qsTranslate("SettingsPrivacyPage", "Not encrypted"),
+                mixed: qsTranslate("SettingsPrivacyPage", "Partly encrypted")
+            })[value] || qsTranslate("SettingsPrivacyPage", "Unavailable");
     }
     function lockText() {
         if (!available || snapshot.lock.state !== "ready" || !Number.isInteger(snapshot.lock.delay) || snapshot.lock.delay < 0)
-            return "Unavailable";
-        return snapshot.lock.delay === 0 ? "Automatic lock delay is disabled." : "Automatic lock delay: " + snapshot.lock.delay + " seconds.";
+            return qsTranslate("SettingsPrivacyPage", "Unavailable");
+        return snapshot.lock.delay === 0 ? qsTranslate("SettingsPrivacyPage", "Automatic lock delay is disabled.") : Translation.englishPlural(qsTranslate("SettingsPrivacyPage", "Automatic lock delay: %n second(s).", "", snapshot.lock.delay), snapshot.lock.delay);
     }
     Component.onCompleted: refresh()
     Process {
@@ -117,7 +117,7 @@ Column {
                 root.available = true;
                 root.pending = false;
                 if (root.revoking) {
-                    root.message = result.operation === "revoked" ? "Remembered permission revoked. Active sessions are not stopped." : "Permission revocation could not be confirmed.";
+                    root.message = result.operation === "revoked" ? qsTranslate("SettingsPrivacyPage", "Remembered permission revoked. Active sessions are not stopped.") : qsTranslate("SettingsPrivacyPage", "Permission revocation could not be confirmed.");
                 }
             } catch (_) {
                 root.failed();
@@ -132,7 +132,7 @@ Column {
             if (!connected || root.pendingKey !== "")
                 return;
             root.pendingKey = String(id);
-            root.sudoMessage = "Waiting for sudo key revocation.";
+            root.sudoMessage = qsTranslate("SettingsPrivacyPage", "Waiting for sudo key revocation.");
             keyTimer.restart();
             root.sudoBackend.revoke(id);
         }
@@ -140,7 +140,7 @@ Column {
             if (root.pendingKey !== "" && !keys.some(key => String(key.id) === root.pendingKey)) {
                 keyTimer.stop();
                 root.pendingKey = "";
-                root.sudoMessage = connected ? "Sudo key revoked." : "Sudo key revocation could not be confirmed.";
+                root.sudoMessage = connected ? qsTranslate("SettingsPrivacyPage", "Sudo key revoked.") : qsTranslate("SettingsPrivacyPage", "Sudo key revocation could not be confirmed.");
             }
         }
     }
@@ -149,21 +149,21 @@ Column {
         interval: 5000
         onTriggered: {
             root.pendingKey = "";
-            root.sudoMessage = "Sudo key revocation could not be confirmed.";
+            root.sudoMessage = qsTranslate("SettingsPrivacyPage", "Sudo key revocation could not be confirmed.");
         }
     }
     SettingsCard {
         width: parent.width
-        title: "Privacy status"
+        title: qsTranslate("SettingsPrivacyPage", "Privacy status")
         SettingsRow {
             width: parent.width
-            title: root.pending ? "Reading privacy status…" : root.available ? "Privacy status loaded" : "Unavailable"
+            title: root.pending ? qsTranslate("SettingsPrivacyPage", "Reading privacy status…") : root.available ? qsTranslate("SettingsPrivacyPage", "Privacy status loaded") : qsTranslate("SettingsPrivacyPage", "Unavailable")
             explanation: root.message
             busy: root.pending
             control: Component {
                 SettingsButton {
                     objectName: "privacy-refresh"
-                    text: root.available ? "Refresh" : "Retry"
+                    text: root.available ? qsTranslate("SettingsPrivacyPage", "Refresh") : qsTranslate("SettingsPrivacyPage", "Retry")
                     onClicked: root.refresh()
                 }
             }
@@ -172,34 +172,34 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-recovery"
-        title: "Snapshots and rollback"
+        title: qsTranslate("SettingsPrivacyPage", "Snapshots and rollback")
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "Last pre-update snapshot"
+            title: qsTranslate("SettingsPrivacyPage", "Last pre-update snapshot")
             explanation: root.snapshotText()
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "Rollback status"
+            title: qsTranslate("SettingsPrivacyPage", "Rollback status")
             explanation: root.rollbackText()
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "Snapshot boot menu"
+            title: qsTranslate("SettingsPrivacyPage", "Snapshot boot menu")
             explanation: root.menuText()
         }
     }
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-encryption"
-        title: "Disk encryption"
+        title: qsTranslate("SettingsPrivacyPage", "Disk encryption")
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "System and home storage"
+            title: qsTranslate("SettingsPrivacyPage", "System and home storage")
             explanation: root.encryptionText(root.available ? root.snapshot.encryption.state : "unavailable")
         }
         Repeater {
@@ -220,12 +220,12 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-sudo"
-        title: "Sudo key"
+        title: qsTranslate("SettingsPrivacyPage", "Sudo key")
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: root.sudoSupport && root.sudoSupport.installed ? "Package installed" : "Package not installed"
-            explanation: !root.sudoSupport || !root.sudoSupport.installed ? "" : !keyActions.connected ? "Sudo service unavailable." : keyActions.keys.length === 0 ? "No active sudo keys." : "Select a key to revoke it."
+            title: root.sudoSupport && root.sudoSupport.installed ? qsTranslate("SettingsPrivacyPage", "Package installed") : qsTranslate("SettingsPrivacyPage", "Package not installed")
+            explanation: !root.sudoSupport || !root.sudoSupport.installed ? "" : !keyActions.connected ? qsTranslate("SettingsPrivacyPage", "Sudo service unavailable.") : keyActions.keys.length === 0 ? qsTranslate("SettingsPrivacyPage", "No active sudo keys.") : qsTranslate("SettingsPrivacyPage", "Select a key to revoke it.")
             errorText: root.sudoMessage
         }
         SudoKeyIndicator {
@@ -238,18 +238,18 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-portals"
-        title: "Portal permissions"
+        title: qsTranslate("SettingsPrivacyPage", "Portal permissions")
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "Remembered application permissions"
-            explanation: "These are remembered portal grants, not a complete list of application access or active screen captures. Revoking a grant does not stop active sessions."
+            title: qsTranslate("SettingsPrivacyPage", "Remembered application permissions")
+            explanation: qsTranslate("SettingsPrivacyPage", "These are remembered portal grants, not a complete list of application access or active screen captures. Revoking a grant does not stop active sessions.")
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: root.portals.state === "ready" ? root.portals.rows.length === 0 ? "No remembered portal decisions." : "Remembered portal decisions" : root.portals.state === "partial" ? "Some portal permissions are unavailable." : "Unavailable"
-            explanation: root.portals.state === "partial" || root.portals.state === "unavailable" ? "Unavailable permissions must not be treated as denied." : ""
+            title: root.portals.state === "ready" ? root.portals.rows.length === 0 ? qsTranslate("SettingsPrivacyPage", "No remembered portal decisions.") : qsTranslate("SettingsPrivacyPage", "Remembered portal decisions") : root.portals.state === "partial" ? qsTranslate("SettingsPrivacyPage", "Some portal permissions are unavailable.") : qsTranslate("SettingsPrivacyPage", "Unavailable")
+            explanation: root.portals.state === "partial" || root.portals.state === "unavailable" ? qsTranslate("SettingsPrivacyPage", "Unavailable permissions must not be treated as denied.") : ""
         }
         Repeater {
             model: root.portals.rows || []
@@ -257,13 +257,13 @@ Column {
                 id: portalRow
                 required property var modelData
                 width: parent.width
-                title: modelData.app || "Unidentified application"
+                title: modelData.app || qsTranslate("SettingsPrivacyPage", "Unidentified application")
                 explanation: "" + modelData.table + " · " + modelData.permissions.join(", ")
                 busy: root.pending
                 control: Component {
                     SettingsButton {
                         objectName: "privacy-portal-revoke"
-                        text: "Revoke"
+                        text: qsTranslate("SettingsPrivacyPage", "Revoke")
                         visible: portalRow.modelData.can_revoke === true
                         onClicked: root.revokePortal(portalRow.modelData)
                     }
@@ -274,15 +274,15 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-lock"
-        title: "Lock & Login"
+        title: qsTranslate("SettingsPrivacyPage", "Lock & Login")
         SettingsRow {
             width: parent.width
-            title: "Lock screen delay"
+            title: qsTranslate("SettingsPrivacyPage", "Lock screen delay")
             explanation: root.lockText()
             control: Component {
                 SettingsButton {
                     objectName: "privacy-lock"
-                    text: "Lock & Login"
+                    text: qsTranslate("SettingsPrivacyPage", "Lock & Login")
                     onClicked: root.lockRequested()
                 }
             }
@@ -291,24 +291,24 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-reports"
-        title: "Crash and report data"
+        title: qsTranslate("SettingsPrivacyPage", "Crash and report data")
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "Saved reports"
-            explanation: root.available ? root.snapshot.reports.saved : "Unavailable"
+            title: qsTranslate("SettingsPrivacyPage", "Saved reports")
+            explanation: root.available ? root.snapshot.reports.saved : qsTranslate("SettingsPrivacyPage", "Unavailable")
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "Temporary shell diagnostics"
-            explanation: root.available && root.snapshot.reports.runtime ? root.snapshot.reports.runtime : "Unavailable"
+            title: qsTranslate("SettingsPrivacyPage", "Temporary shell diagnostics")
+            explanation: root.available && root.snapshot.reports.runtime ? root.snapshot.reports.runtime : qsTranslate("SettingsPrivacyPage", "Unavailable")
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "System journal"
-            explanation: "Shell and service errors are in the system journal (emaki-shell.service and niri-emaki.service). This page does not collect or upload reports."
+            title: qsTranslate("SettingsPrivacyPage", "System journal")
+            explanation: qsTranslate("SettingsPrivacyPage", "Shell and service errors are in the system journal (emaki-shell.service and niri-emaki.service). This page does not collect or upload reports.")
         }
     }
 }

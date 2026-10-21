@@ -274,7 +274,7 @@ def acceptance(remote, evidence, reboot, vm, user, password, ssh):
         return json.loads(desktop('niri msg -j windows'))
 
     visible = windows()
-    prompt = next(w for w in visible if w['title'] == 'Recovery snapshot')
+    prompt = next(w for w in visible if w.get('app_id') == 'org.emaki.recovery')
     desktop('niri msg action focus-window --id ' + str(prompt['id']))
     capture('snapshot-desktop')
     monitor.command(vm, 'sendkey tab')

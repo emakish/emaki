@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """A resident restart guardian, isolated from reads of the removable live root."""
+from .i18n import _
 import ctypes
 import os
 from pathlib import Path
@@ -15,12 +16,10 @@ from .runtime import safe_log
 
 PREPARE_TIMEOUT = 125
 FALLBACK_DELAY = 15
-PREPARE_ERROR = 'Could not prepare to restart. Keep the USB stick connected and try again.'
-UNCONFIRMED_ERROR = ('Your installation is safe. If the computer has not restarted by itself, '
-                     'hold the power button to turn it off, then start it again.')
-GUARD_ERROR = 'Automatic restart is unavailable. ' + UNCONFIRMED_ERROR
-RESTART_ERROR = ('Could not restart. Try again, or hold the power button to turn the computer off, '
-                 'then start it again. Your installation is safe.')
+PREPARE_ERROR = _('Could not prepare to restart. Keep the USB stick connected and try again.')
+UNCONFIRMED_ERROR = (_('Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again.'))
+GUARD_ERROR = _('Automatic restart is unavailable. ') + UNCONFIRMED_ERROR
+RESTART_ERROR = (_('Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.'))
 PACKET = struct.Struct('!cQd')
 SCOPE = 'emaki-installer-restart.scope'
 SCOPE_PROCS = Path('/sys/fs/cgroup/system.slice') / SCOPE / 'cgroup.procs'
@@ -50,7 +49,7 @@ def isolate_guardian():
         groups = Path('/proc/self/cgroup').read_text().splitlines()
         if f'0::/system.slice/{SCOPE}' in groups:
             return
-        require(time.monotonic() < deadline, Code.COMMAND_FAILED, GUARD_ERROR)
+        require(time.monotonic() < deadline, Code.COMMAND_FAILED, GUARD_ERROR, recovery_included=True)
         time.sleep(0.01)
 
 
@@ -83,9 +82,9 @@ class ResidentReboot:
             self.runner.run(['systemctl', 'start', 'mkinitcpio-generate-shutdown-ramfs.service'],
                             timeout=120, termination_timeout=2)
             require(self.shutdown.is_file() and os.access(self.shutdown, os.X_OK),
-                    Code.COMMAND_FAILED, 'The shutdown ramfs is unavailable.')
+                    Code.COMMAND_FAILED, _('The shutdown ramfs is unavailable.'))
         except (InstallError, OSError) as exc:
-            safe_log(self.runner.log, f'Shutdown ramfs preparation failed or was skipped: {exc}')
+            safe_log(self.runner.log, _('Shutdown ramfs preparation failed or was skipped: {value1}').format(value1=exc))
         self.sync()
         self.check_medium()
 
@@ -113,7 +112,7 @@ class ResidentReboot:
         finally:
             if previous is not None:
                 signal.signal(signal.SIGTERM, previous)
-        raise InstallError(Code.COMMAND_FAILED, RESTART_ERROR)
+        raise InstallError(Code.COMMAND_FAILED, RESTART_ERROR, recovery_included=True)
 
 
 def receive(fd, timeout=None):
@@ -185,7 +184,7 @@ def guard_loop(restart, command_fd, reply_fd, *, prepare_timeout=PREPARE_TIMEOUT
     forced = False
     while True:
         packet = receive_packet(command_fd, None if deadline is None else max(0, deadline - time.monotonic()))
-        command, request_id, _ = packet if packet is not None else (None, 0, 0)
+        command, request_id, ignored = packet if packet is not None else (None, 0, 0)
         if command == b'P':
             if not restart.ready:
                 try:
@@ -243,8 +242,7 @@ class RestartGuard:
                 except (OSError, subprocess.SubprocessError, InstallError) as exc:
                     adopted = False
                     safe_log(restart.runner.log,
-                             f'Restart scope adoption failed: {exc}. Continuing without verified '
-                             'isolation; the guardian may remain in the installer service cgroup.')
+                             _('Restart scope adoption failed: {value1}. Continuing without verified isolation; the guardian may remain in the installer service cgroup.').format(value1=exc))
                 guard_loop(restart, command_read, reply_write,
                            prepare_timeout=prepare_timeout, fallback_delay=fallback_delay,
                            adopted=adopted)
@@ -257,7 +255,7 @@ class RestartGuard:
         startup = receive_packet(self.reply, STARTUP_TIMEOUT)
         if startup not in ((b'A', 0, 0), (b'D', 0, 0)):
             self.close()
-            raise InstallError(Code.COMMAND_FAILED, 'The restart service could not start.')
+            raise InstallError(Code.COMMAND_FAILED, _('The restart service could not start.'))
         self.adopted = startup[0] == b'A'
 
     def check_installation(self):
@@ -282,20 +280,20 @@ class RestartGuard:
         deadline = time.monotonic() + timeout
         while True:
             packet = receive_packet(self.reply, max(0, deadline - time.monotonic()))
-            require(packet is not None, Code.COMMAND_FAILED, UNCONFIRMED_ERROR)
+            require(packet is not None, Code.COMMAND_FAILED, UNCONFIRMED_ERROR, recovery_included=True)
             if packet[0] == b'':
                 self.forced_deadline = None
-            require(packet[0] != b'', Code.COMMAND_FAILED, GUARD_ERROR)
+            require(packet[0] != b'', Code.COMMAND_FAILED, GUARD_ERROR, recovery_included=True)
             if packet[1] == request_id:
                 return packet
             # A timed-out request or an unsolicited fallback result belongs to
             # its own request, never the next one. Keep the original deadline.
-            require(time.monotonic() < deadline, Code.COMMAND_FAILED, UNCONFIRMED_ERROR)
+            require(time.monotonic() < deadline, Code.COMMAND_FAILED, UNCONFIRMED_ERROR, recovery_included=True)
 
     def prepare(self):
         if not self.ready:
-            result, _, deadline = self.request(b'P', self.timeout)
-            require(result in (b'P', b'F'), Code.COMMAND_FAILED, GUARD_ERROR)
+            result, ignored, deadline = self.request(b'P', self.timeout)
+            require(result in (b'P', b'F'), Code.COMMAND_FAILED, GUARD_ERROR, recovery_included=True)
             self.ready, self.forced = True, result == b'F'
             self.forced_deadline = deadline or None
         return self.forced
@@ -306,7 +304,7 @@ class RestartGuard:
         # caller must remain waiting beyond that interval, including stale replies.
         self.request(b'R', 12)
         self.forced_deadline = None
-        raise InstallError(Code.COMMAND_FAILED, RESTART_ERROR)
+        raise InstallError(Code.COMMAND_FAILED, RESTART_ERROR, recovery_included=True)
 
     def close(self):
         os.close(self.command)

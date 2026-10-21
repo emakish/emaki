@@ -10,6 +10,7 @@ import Quickshell.Io
 // Separate from shell.qml: a shell crash cannot destroy the lock's protocol object.
 Scope {
     id: root
+    readonly property bool translationsReady: Translation.initialize()
     // Read and watch this user's managed appearance without opening Settings.
     SettingsCatalog {
         active: false

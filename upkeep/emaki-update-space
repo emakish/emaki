@@ -9,8 +9,9 @@ cat >/dev/null
 if [ "$status" -eq 0 ] && [ -z "$message" ]; then
     exit 0
 fi
-case "$status:$message" in
-    3:Not\ enough\ free\ space\ for\ this\ update:\ *)
+# The estimator reserves status 3 for a measured shortage; its text is localized.
+case "$status" in
+    3)
         printf '%s\n' "$message" >&2
         exit 1
         ;;

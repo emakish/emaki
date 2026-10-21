@@ -56,7 +56,9 @@ class UpkeepTests(unittest.TestCase):
             launcher = root / 'launcher'
             launcher.write_text(template.replace('@PYTHON@', shlex.quote(sys.executable)).replace('@LIBEXECDIR@', directory))
             probe = root / 'emaki_update_space.py'
-            for code, output, status in ((0, '', 0), (1, 'traceback', 0), (3, 'odd output', 0),
+            # Status 3 is reserved for measured shortages, independent of translated text.
+            for code, output, status in ((0, '', 0), (1, 'traceback', 0), (2, 'odd output', 0),
+                                         (3, 'Translated shortage: free some space.', 1),
                                          (3, 'Not enough free space for this update: it needs about 2 GB, 1 GB is free. Clean up.', 1)):
                 with self.subTest(code=code, output=output):
                     probe.write_text(f'import sys\nsys.stdout.write({output!r})\nraise SystemExit({code})\n')

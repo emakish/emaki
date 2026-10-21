@@ -77,6 +77,17 @@ class Transactions(unittest.TestCase):
         self.names = {p.parent.name for p in (ROOT / 'packaging').glob('*/PKGBUILD')}
         self.old = self.recipes('v0.2.0')
         self.new = self.recipes()
+        # The integration tree already requires the 0.11 translation module, while
+        # release versions are still 0.10. Describe the pending config release and
+        # its marker pin until the release recipes receive their version bump.
+        config = next(info for info in self.new if info['name'] == 'emaki-config')
+        if config['version'].split('-', 1)[0] == '0.10.0':
+            before = config['version']
+            config['version'] = '0.11.0-1'
+            for info in self.new:
+                info['depends'] = [f'emaki-config={config["version"]}'
+                                   if dep == f'emaki-config={before}' else dep
+                                   for dep in info['depends']]
         self.old += [{'name': n, 'version': '1-1'} for n in sorted(SNAPSHOTS | {'qt6-base', 'niri', 'unrelated', 'kdeconnect'})]
         self.new += [{'name': n, 'version': '1-1'} for n in sorted(SNAPSHOTS | {'qt6-base', 'niri', 'unrelated', 'kdeconnect'})]
         self.old.append({'name': 'grub', 'version': '2.16-1'})
@@ -153,6 +164,7 @@ class Transactions(unittest.TestCase):
                     payload['usr/bin/emaki-session-update'] = (renderer['substitute'](
                         (ROOT / 'scripts/emaki-session-update').read_text(), INSTALL_PATHS).encode(), 0o755)
                     payload['usr/libexec/emaki/emaki_paths.py'] = (renderer['modules'](INSTALL_PATHS)[0].encode(), 0o644)
+                    payload['usr/libexec/emaki/emaki_i18n.py'] = ((ROOT / 'scripts/emaki_i18n.py').read_bytes(), 0o644)
                     payload['usr/libexec/emaki/emaki_session_state.py'] = ((ROOT / 'scripts/emaki_session_state.py').read_bytes(), 0o644)
                     payload['usr/libexec/emaki/emaki_session_arch.py'] = ((ROOT / 'scripts/emaki_session_arch.py').read_bytes(), 0o644)
                     payload['usr/libexec/emaki/update_catalog.py'] = ((ROOT / 'update-manager/catalog.py').read_bytes(), 0o644)
@@ -196,8 +208,8 @@ class Transactions(unittest.TestCase):
 
     def assertSuccess(self, result):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertNotIn('command failed', result.stderr)
-        self.assertNotIn('could not run hook', result.stderr)
+        self.assertNotIn('command failed', result.stderr, result.stdout + result.stderr)
+        self.assertNotIn('could not run hook', result.stderr, result.stdout + result.stderr)
 
     def test_020_upgrade_runs_hook_once_and_preserves_existing_snapshot_packages(self):
         result = self.pacman(self.newrepo, '-Syyu')

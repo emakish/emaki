@@ -4,6 +4,7 @@
 //!
 //! Discovery, explicit niri actions, and isolated-profile managed settings.
 
+pub mod i18n;
 pub mod map;
 pub mod niri;
 pub mod settings;

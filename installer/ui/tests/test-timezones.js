@@ -11,6 +11,7 @@ const qmlOnly = /^\.(pragma|import)\b.*$/gm;
 const zones = vm.createContext({});
 vm.runInContext(fs.readFileSync(asset, 'utf8').replace(qmlOnly, ''), zones);
 const helper = vm.createContext({Zones: zones});
+require("./translations.js").install(helper);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../Timezones.js'), 'utf8').replace(qmlOnly, ''), helper);
 const data = zones.data;
 

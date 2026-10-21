@@ -15,6 +15,12 @@ import time
 import uuid
 from urllib.parse import unquote, urlsplit
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_i18n import translation
+
+_ = translation('shell').gettext
+
 DEADLINE = 0
 PROFILE_FIELDS = ('ipv4.dns,ipv6.dns,ipv4.ignore-auto-dns,ipv6.ignore-auto-dns,'
                   'proxy.method,proxy.pac-url,proxy.pac-script')
@@ -33,20 +39,20 @@ class MissingObject(Failure):
 def nm(*args):
     remaining = DEADLINE - time.monotonic() if DEADLINE else 20
     if remaining <= 0:
-        raise Failure('Network settings took too long. Try again.')
+        raise Failure(_('Network settings took too long. Try again.'))
     try:
         result = subprocess.run(['nmcli', '--wait', '8', *args], text=True,
                                 capture_output=True, timeout=min(10, remaining),
                                 env=dict(os.environ, LC_ALL='C'), stdin=subprocess.DEVNULL)
     except FileNotFoundError:
-        raise Failure('NetworkManager is not available.') from None
+        raise Failure(_('NetworkManager is not available.')) from None
     except (OSError, subprocess.TimeoutExpired):
-        raise Failure('Network settings could not be reached. Try again.') from None
+        raise Failure(_('Network settings could not be reached. Try again.')) from None
     if result.returncode:
         if 'show' in args or 'status' in args:
             error = MissingObject if result.returncode == 10 else Failure
-            raise error('Network settings could not be read. Try again.')
-        raise Failure('NetworkManager could not complete this change. Check your connection and permissions.')
+            raise error(_('Network settings could not be read. Try again.'))
+        raise Failure(_('NetworkManager could not complete this change. Check your connection and permissions.'))
     return result.stdout.rstrip('\n')
 
 
@@ -140,11 +146,11 @@ def selected(ident):
         if str(uuid.UUID(ident)) != ident.lower():
             raise ValueError()
     except ValueError:
-        raise Failure('Choose a saved connection.') from None
+        raise Failure(_('Choose a saved connection.')) from None
     for item in profiles():
         if item['uuid'].lower() == ident.lower():
             return item
-    raise Failure('This connection is no longer available.')
+    raise Failure(_('This connection is no longer available.'))
 
 
 def apply(item, values):
@@ -153,10 +159,10 @@ def apply(item, values):
         try:
             active = nm('-g', 'GENERAL.CON-UUID', 'device', 'show', item['device'])
             if active != item['uuid']:
-                raise Failure('Connection changed.')
+                raise Failure(_('Connection changed.'))
             nm('device', 'reapply', item['device'])
         except Failure:
-            return dict(ok=False, saved=True, error='Settings were saved. Reconnect this connection to apply them.')
+            return dict(ok=False, saved=True, error=_('Settings were saved. Reconnect this connection to apply them.'))
     return dict(ok=True, message='')
 
 
@@ -167,9 +173,9 @@ def dns(ident, values):
         try:
             addresses = [ipaddress.ip_address(x) for x in re.split(r'[,\s]+', ' '.join(values).strip()) if x]
         except ValueError:
-            raise Failure('Enter valid DNS server addresses.') from None
+            raise Failure(_('Enter valid DNS server addresses.')) from None
         if not addresses or len(addresses) > 16:
-            raise Failure('Enter between one and sixteen DNS server addresses.')
+            raise Failure(_('Enter between one and sixteen DNS server addresses.'))
     item = selected(ident)
     changes = []
     for version in (4, 6):
@@ -190,21 +196,21 @@ def proxy(ident, mode, value=''):
             except ValueError:
                 valid = False
             if not valid or any(c.isspace() for c in value) or len(value) > 4096:
-                raise Failure('Enter an HTTP or HTTPS proxy configuration URL.')
+                raise Failure(_('Enter an HTTP or HTTPS proxy configuration URL.'))
         url = value
     elif mode == 'manual':
         # PAC strings cannot contain quotes, separators, credentials or executable text.
         match = re.fullmatch(r'(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?):([0-9]{1,5})', value)
         if not match or not 1 <= int(match[2]) <= 65535:
-            raise Failure('Enter a proxy address as host:port.')
+            raise Failure(_('Enter a proxy address as host:port.'))
         if match[1].startswith('['):
             try:
                 ipaddress.IPv6Address(match[1][1:-1])
             except ValueError:
-                raise Failure('Enter a proxy address as host:port.') from None
+                raise Failure(_('Enter a proxy address as host:port.')) from None
         script = MANUAL_PREFIX + value + MANUAL_SUFFIX
     elif mode != 'none' or value:
-        raise Failure('Choose None, Automatic or Manual proxy settings.')
+        raise Failure(_('Choose None, Automatic or Manual proxy settings.'))
     return apply(selected(ident), ['proxy.method', 'none' if mode == 'none' else 'auto',
                                   'proxy.pac-url', url, 'proxy.pac-script', script])
 
@@ -234,19 +240,19 @@ def vpn_types():
 
 def import_vpn(kind, filename):
     if not re.fullmatch('[a-z][a-z0-9-]{0,63}', kind):
-        raise Failure('Choose a valid VPN type.')
+        raise Failure(_('Choose a valid VPN type.'))
     if kind not in [item['value'] for item in vpn_types()]:
-        raise Failure('This VPN type needs its NetworkManager plugin.')
+        raise Failure(_('This VPN type needs its NetworkManager plugin.'))
     if filename.startswith('file:'):
         parsed = urlsplit(filename)
         if parsed.netloc not in ('', 'localhost') or parsed.query or parsed.fragment:
-            raise Failure('Choose a local VPN configuration file.')
+            raise Failure(_('Choose a local VPN configuration file.'))
         filename = unquote(parsed.path)
     path = Path(filename).expanduser().absolute()
     if not path.is_file() or not os.access(path, os.R_OK):
-        raise Failure('Choose a readable VPN configuration file.')
+        raise Failure(_('Choose a readable VPN configuration file.'))
     nm('connection', 'import', 'type', kind, 'file', str(path))
-    return dict(ok=True, message='VPN imported.')
+    return dict(ok=True, message=_('VPN imported.'))
 
 
 def main(args):
@@ -262,11 +268,11 @@ def main(args):
         elif len(args) == 3 and args[0] == 'import-vpn':
             result = import_vpn(*args[1:])
         else:
-            raise Failure('Choose a supported network settings action.')
+            raise Failure(_('Choose a supported network settings action.'))
     except Failure as error:
         result = dict(ok=False, error=str(error))
     except (OSError, ValueError):
-        result = dict(ok=False, error='Network settings could not be read. Try again.')
+        result = dict(ok=False, error=_('Network settings could not be read. Try again.'))
     result['schema_version'] = 1
     print(json.dumps(result))
     return 0 if result['ok'] else 1

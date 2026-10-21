@@ -29,7 +29,7 @@ Column {
             }))
     readonly property var rates: modes.filter(mode => mode.width + "x" + mode.height === resolution).map(mode => ({
                 value: wireMode(mode),
-                label: (mode.refresh_rate / 1000).toFixed(2) + " Hz"
+                label: qsTranslate("DisplaysSettingsPage", "%1 Hz").arg((mode.refresh_rate / 1000).toFixed(2))
             }))
     spacing: 16
     signal confirmationNeeded
@@ -42,9 +42,9 @@ Column {
     }
     function displayName(output): string {
         if (!output)
-            return "Display";
+            return qsTranslate("DisplaysSettingsPage", "Display");
         if (/^(eDP|LVDS|DSI)-/i.test(output.name))
-            return "Built-in display";
+            return qsTranslate("DisplaysSettingsPage", "Built-in display");
         return output.description || output.name;
     }
     function wireMode(mode): string {
@@ -121,10 +121,10 @@ Column {
         objectName: "settings-display-confirmation"
         width: parent.width
         visible: root.displays.pending
-        title: "Keep these display settings?"
+        title: qsTranslate("DisplaysSettingsPage", "Keep these display settings?")
         Text {
             width: parent.width
-            text: "Reverting in " + root.displays.seconds + " seconds."
+            text: Translation.englishPlural(qsTranslate("DisplaysSettingsPage", "Reverting in %n second(s).", "", root.displays.seconds), root.displays.seconds)
             color: SettingsTheme.ink
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13
@@ -134,12 +134,12 @@ Column {
         Row {
             spacing: 12
             SettingsButton {
-                text: "Keep changes"
+                text: qsTranslate("DisplaysSettingsPage", "Keep changes")
                 enabled: !root.displays.busy
                 onClicked: root.displays.keep()
             }
             SettingsButton {
-                text: "Revert"
+                text: qsTranslate("DisplaysSettingsPage", "Revert")
                 enabled: !root.displays.busy
                 onClicked: root.displays.revert()
             }
@@ -148,7 +148,7 @@ Column {
     SettingsCard {
         objectName: "settings-display-arrangement"
         width: parent.width
-        title: "Arrangement"
+        title: qsTranslate("DisplaysSettingsPage", "Arrangement")
         Item {
             id: canvas
             width: parent.width
@@ -177,7 +177,7 @@ Column {
                     border.color: root.selected?.name === modelData.name ? SettingsTheme.accent : SettingsTheme.rim
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: root.displayName(modelData) + ". Use arrow keys to move this screen."
+                    Accessible.name: qsTranslate("DisplaysSettingsPage", "%1. Use arrow keys to move this screen.").arg(root.displayName(modelData))
                     Keys.onPressed: event => {
                         root.selectedName = modelData.name;
                         const step = event.modifiers & Qt.ShiftModifier ? 100 : 10;
@@ -242,15 +242,15 @@ Column {
             Text {
                 anchors.centerIn: parent
                 visible: !canvas.activeOutputs.length
-                text: root.displays.ready ? "No active displays are available." : "Reading displays…"
+                text: root.displays.ready ? qsTranslate("DisplaysSettingsPage", "No active displays are available.") : qsTranslate("DisplaysSettingsPage", "Reading displays…")
                 color: SettingsTheme.dim
                 font.family: SettingsTheme.fontFamily
             }
         }
         SettingsRow {
             width: parent.width
-            title: "Screen positions"
-            explanation: "Drag the screens to match your desk. The top bar marks the main screen. Use arrow keys to move a focused screen."
+            title: qsTranslate("DisplaysSettingsPage", "Screen positions")
+            explanation: qsTranslate("DisplaysSettingsPage", "Drag the screens to match your desk. The top bar marks the main screen. Use arrow keys to move a focused screen.")
             value: root.overrideValue("position", "auto")
             defaultValue: "auto"
             busy: root.blocked
@@ -265,8 +265,8 @@ Column {
         title: root.displayName(root.selected)
         SettingsChoiceRow {
             width: parent.width
-            title: "Display"
-            explanation: "Choose the screen whose settings you want to change."
+            title: qsTranslate("DisplaysSettingsPage", "Display")
+            explanation: qsTranslate("DisplaysSettingsPage", "Choose the screen whose settings you want to change.")
             controlWidth: Math.min(310, root.width * .45)
             options: root.displays.outputs.map(output => ({
                         value: output.name,
@@ -280,8 +280,8 @@ Column {
         SettingsChoiceRow {
             objectName: "settings-display-resolution"
             width: parent.width
-            title: "Resolution"
-            explanation: "Choose how many pixels the screen shows."
+            title: qsTranslate("DisplaysSettingsPage", "Resolution")
+            explanation: qsTranslate("DisplaysSettingsPage", "Choose how many pixels the screen shows.")
             options: root.resolutions
             value: root.resolution
             defaultValue: root.selected?.overrides?.mode ? "auto" : value
@@ -293,8 +293,8 @@ Column {
         SettingsChoiceRow {
             objectName: "settings-display-scale"
             width: parent.width
-            title: "Scale"
-            explanation: "Make text and controls larger or smaller."
+            title: qsTranslate("DisplaysSettingsPage", "Scale")
+            explanation: qsTranslate("DisplaysSettingsPage", "Make text and controls larger or smaller.")
             options: [...new Set([1, 1.25, 1.5, 1.75, 2, root.selected?.logical?.scale || 1])].sort((a, b) => a - b).map(value => ({
                         value,
                         label: Math.round(value * 100) + "%"
@@ -309,8 +309,8 @@ Column {
         SettingsChoiceRow {
             objectName: "settings-display-refresh-rate"
             width: parent.width
-            title: "Refresh rate"
-            explanation: "Choose how often the screen updates each second."
+            title: qsTranslate("DisplaysSettingsPage", "Refresh rate")
+            explanation: qsTranslate("DisplaysSettingsPage", "Choose how often the screen updates each second.")
             options: root.rates
             value: root.mode ? root.wireMode(root.mode) : ""
             defaultValue: root.selected?.overrides?.mode ? "auto" : value
@@ -322,12 +322,12 @@ Column {
         SettingsChoiceRow {
             objectName: "settings-display-rotation"
             width: parent.width
-            title: "Rotation"
-            explanation: "Match the orientation of your screen."
+            title: qsTranslate("DisplaysSettingsPage", "Rotation")
+            explanation: qsTranslate("DisplaysSettingsPage", "Match the orientation of your screen.")
             options: [
                 {
                     value: "normal",
-                    label: "Normal"
+                    label: qsTranslate("DisplaysSettingsPage", "Normal")
                 },
                 {
                     value: "90",
@@ -352,8 +352,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-display-main"
             width: parent.width
-            title: "Main screen"
-            explanation: "Choose the display focused now and at sign-in."
+            title: qsTranslate("DisplaysSettingsPage", "Main screen")
+            explanation: qsTranslate("DisplaysSettingsPage", "Choose the display focused now and at sign-in.")
             value: root.effectiveMain === root.selected?.name
             defaultValue: root.displays.main === root.selected?.name ? false : value
             unavailable: !root.selected?.enabled
@@ -369,8 +369,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-display-enabled"
             width: parent.width
-            title: "Use this display"
-            explanation: "Turn this screen on or off for this session. At least one screen must stay on."
+            title: qsTranslate("DisplaysSettingsPage", "Use this display")
+            explanation: qsTranslate("DisplaysSettingsPage", "Turn this screen on or off for this session. At least one screen must stay on.")
             value: root.selected?.enabled ?? false
             defaultValue: value
             unavailable: !root.selected
@@ -382,12 +382,12 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Brightness and colour"
+        title: qsTranslate("DisplaysSettingsPage", "Brightness and colour")
         Text {
             objectName: "settings-display-action-result"
             width: parent.width
             visible: !["idle", "confirmed"].includes(root.actionResult)
-            text: ["pending", "busy"].includes(root.actionResult) ? "Working…" : root.actionResult === "requested" ? "Change requested." : "Could not confirm the change. The current value is shown below."
+            text: ["pending", "busy"].includes(root.actionResult) ? qsTranslate("DisplaysSettingsPage", "Working…") : root.actionResult === "requested" ? qsTranslate("DisplaysSettingsPage", "Change requested.") : qsTranslate("DisplaysSettingsPage", "Could not confirm the change. The current value is shown below.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 12
@@ -396,8 +396,8 @@ Column {
         SettingsSliderRow {
             objectName: "settings-display-brightness"
             width: parent.width
-            title: "Brightness"
-            explanation: root.service.brightness.state === "ready" ? root.service.brightness.percent + "% of the built-in backlight." : "No adjustable backlight is available."
+            title: qsTranslate("DisplaysSettingsPage", "Brightness")
+            explanation: root.service.brightness.state === "ready" ? qsTranslate("DisplaysSettingsPage", "%1% of the built-in backlight.").arg(root.service.brightness.percent.toFixed(0)) : qsTranslate("DisplaysSettingsPage", "No adjustable backlight is available.")
             from: 5
             value: root.service.brightness.percent ?? 5
             defaultValue: value
@@ -408,8 +408,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-night-light"
             width: parent.width
-            title: "Night Light"
-            explanation: "Use warmer display colours for evening light."
+            title: qsTranslate("DisplaysSettingsPage", "Night Light")
+            explanation: qsTranslate("DisplaysSettingsPage", "Use warmer display colours for evening light.")
             value: root.service.night.on
             defaultValue: false
             onValueRequested: value => root.service.night.setOn(value)
@@ -418,16 +418,16 @@ Column {
         SettingsChoiceRow {
             objectName: "settings-night-schedule"
             width: parent.width
-            title: "Schedule"
-            explanation: "Keep Night Light on or use your own hours."
+            title: qsTranslate("DisplaysSettingsPage", "Schedule")
+            explanation: qsTranslate("DisplaysSettingsPage", "Keep Night Light on or use your own hours.")
             options: [
                 {
                     value: "always",
-                    label: "Always"
+                    label: qsTranslate("DisplaysSettingsPage", "Always")
                 },
                 {
                     value: "manual",
-                    label: "Custom hours"
+                    label: qsTranslate("DisplaysSettingsPage", "Custom hours")
                 }
             ]
             value: root.service.night.schedule
@@ -439,12 +439,12 @@ Column {
             model: [
                 {
                     key: "startTime",
-                    title: "Start time",
+                    title: qsTranslate("DisplaysSettingsPage", "Start time"),
                     fallback: "20:00"
                 },
                 {
                     key: "endTime",
-                    title: "End time",
+                    title: qsTranslate("DisplaysSettingsPage", "End time"),
                     fallback: "07:00"
                 }
             ]
@@ -454,7 +454,7 @@ Column {
                 width: parent.width
                 visible: root.service.night.schedule === "manual"
                 title: modelData.title
-                explanation: "Use local time in 24-hour format (HH:MM)."
+                explanation: qsTranslate("DisplaysSettingsPage", "Use local time in 24-hour format (HH:MM).")
                 value: root.service.night[modelData.key]
                 defaultValue: modelData.fallback
                 onResetRequested: root.service.night[modelData.key === "startTime" ? "setStartTime" : "setEndTime"](modelData.fallback)
@@ -485,8 +485,8 @@ Column {
         SettingsSliderRow {
             objectName: "settings-night-warmth"
             width: parent.width
-            title: "Warmth"
-            explanation: value + " K. Choose how warm Night Light makes the display."
+            title: qsTranslate("DisplaysSettingsPage", "Warmth")
+            explanation: qsTranslate("DisplaysSettingsPage", "%1 K. Choose how warm Night Light makes the display.").arg(Number(value).toFixed(0))
             from: 2500
             to: 6000
             stepSize: 100

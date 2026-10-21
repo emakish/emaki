@@ -3,10 +3,16 @@
 [Desktop Entry]
 Type=Application
 Name=Programs & Updates
+Name[es]=Programas y actualizaciones
+Name[pt_BR]=Programas e atualizações
 Comment=Install programs and keep your system up to date
+Comment[es]=Instala programas y mantén tu sistema al día
+Comment[pt_BR]=Instale programas e mantenha seu sistema atualizado
 Exec=emaki-update-manager
 Icon=emaki-programs-updates
 Terminal=false
 Categories=System;Settings;
 Keywords=programs;applications;install;update;upgrade;packages;
+Keywords[es]=programas;aplicaciones;instalar;actualizar;paquetes;
+Keywords[pt_BR]=programas;aplicativos;instalar;atualizar;pacotes;
 StartupWMClass=emaki-update-manager

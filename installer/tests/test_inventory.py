@@ -146,6 +146,28 @@ class ParseInventoryTests(unittest.TestCase):
 
 
 class ProbeSafetyTests(unittest.TestCase):
+    def test_pseudo_translation_does_not_change_pci_parser_tokens(self):
+        display = "00:02.0 Display controller: Fixture Graphics"
+        for pci in (display, "00:00.0 Host bridge: Fixture"):
+            with self.subTest(pci=pci), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                runner = Mock()
+                runner.run.side_effect = lambda command, **kwargs: pci if command == ["lspci"] else '{"blockdevices": []}'
+                inventory = Inventory(runner, root=root)
+                with patch.object(inventory, '_boot_sources', return_value=(set(), True)), \
+                        patch.object(inventory, '_stable_ids', return_value={}), \
+                        patch.object(inventory, '_holders', return_value={}), \
+                        patch('emaki_installer.graphics.inventory', return_value={}), \
+                        patch('emaki_installer.inventory._online', return_value=False), \
+                        patch('emaki_installer.inventory._read', return_value=''), \
+                        patch('emaki_installer.inventory.firmware', return_value=(True, 64)), \
+                        patch('emaki_installer.inventory.memory_size', return_value=0), \
+                        patch('emaki_installer.inventory.discover_repo', return_value=root), \
+                        patch('emaki_installer.inventory._', side_effect=lambda message: '[Ẽ' + message + '···]') as translate:
+                    result = inventory.probe()
+                self.assertEqual(result['gpu'], display if pci == display else '[ẼUnknown GPU···]')
+                self.assertNotIn(unittest.mock.call('Display controller'), translate.call_args_list)
+
     def test_unknown_boot_source_fails_closed(self):
         runner = Mock()
         runner.run.return_value = "{}"

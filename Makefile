@@ -73,7 +73,7 @@ SYSTEMD = $(DESTDIR)$(PREFIX)/lib/systemd
 # so it does not depend on PREFIX.
 PAMDIR  = $(DESTDIR)/usr/lib/pam.d
 BOOTLIB = $(DESTDIR)$(PREFIX)/lib/emaki/boot/emaki_boot
-BOOT_SHARED = boot errors grub_screen secureboot
+BOOT_SHARED = boot errors grub_screen secureboot i18n
 BOOT_ARTWORK = $(wildcard installer/emaki_installer/grub_artwork/*/*.png)
 GRUB_THEME_SCALES = 100 150 200 300
 GRUB_THEME_FILES = $(wildcard grub/theme/theme-*.txt grub/theme/*.pf2)
@@ -119,7 +119,7 @@ render: paths
 	python3 scripts/render-kde-theme
 	python3 scripts/render-system-map
 
-check: paths check-assumptions check-core
+check: paths check-assumptions check-core check-i18n
 	python3 tests/test-rust-notices.py
 	python3 tests/test-shim-notices.py
 	python3 tests/test-licence-headers.py
@@ -191,6 +191,9 @@ check: paths check-assumptions check-core
 	python3 tests/test-notes-island.py
 	python3 tests/test-calendar-events.py
 	python3 tests/test-clock-scroll.py
+	python3 tests/test-clock-tools.py
+	python3 tests/test-clock-tools-service.py
+	python3 tests/test-clock-tools-ui.py
 	python3 update-manager/tests/test_restore.py
 	python3 update-manager/tests/test_protocol.py
 	python3 update-manager/tests/test_programs.py
@@ -231,6 +234,7 @@ check: paths check-assumptions check-core
 	python3 tests/test-shell-generations.py
 	python3 tests/test-desktop-state.py
 	python3 tests/test-session-update-notice.py
+	python3 tests/test-updates-notice.py
 	python3 tests/test-session-update-hook.py
 	python3 tests/test-update-errors.py
 	python3 tests/test-auth-lockout.py
@@ -338,7 +342,7 @@ check-deps:
 # The installer window: lint, helpers, protocol, controller over a real unix socket,
 # pointer/key interactions and offscreen renders.
 .PHONY: check-installer check-iso check-updates check-all
-check-installer: paths
+check-installer: paths build-i18n
 	python3 installer/assets/grub/generate-screens.py --check
 	python3 grub/theme/generate-theme.py --check
 	python3 tests/test-grub-artwork.py
@@ -364,7 +368,7 @@ check-iso:
 
 # The package mirror: publisher, R2 client, pointer Worker, key-backup check, upgrade-check
 # helpers (no network, no Cloudflare; see docs/mirror.md).
-check-updates:
+check-updates: paths build-i18n
 	python3 tests/test-transaction-inhibit.py
 	python3 tests/test-update-space.py
 	python3 tests/test-update-space-alpm.py
@@ -377,7 +381,6 @@ check-updates:
 	python3 tests/test-initramfs-refresh.py
 	python3 tests/test-initramfs-native.py
 	python3 tests/test-mirror-refresh.py
-	python3 tests/test-discover-autostart.py
 	python3 tests/test-rollback-holds.py
 	python3 tests/test-update-channel.py
 	python3 tests/test-channel-transactions.py
@@ -591,6 +594,7 @@ install: install-upkeep
 	install -Dm644 grub/theme/LICENSE-Noto.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-Noto.txt
 	install -Dm644 -t $(BOOTLIB) grub/emaki_boot/__init__.py grub/emaki_boot/esp_records.py grub/emaki_boot/refresh.py grub/emaki_boot/shared.py grub/emaki_boot/update.py grub/emaki_boot/update_menu.py grub/emaki_boot/usable.py
 	for module in $(BOOT_SHARED); do install -Dm644 "installer/emaki_installer/$$module.py" "$(BOOTLIB)/$$module.py"; done
+	python3 scripts/render-paths $(PATH_ARGS) --text installer/emaki_installer/i18n.py > "$(BOOTLIB)/i18n.py"
 	for picture in $(BOOT_ARTWORK); do install -Dm644 "$$picture" "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
 	install -Dm644 grub/00-emaki-alongside.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-alongside.hook
 	install -Dm644 systemd/emaki-boot-order.service $(SYSTEMD)/system/emaki-boot-order.service
@@ -956,8 +960,62 @@ NOT_ROOT   = if [ "$$(id -u)" = 0 ]; then \
 	echo "make: $@ is missing or older than its sources. Build as your regular user:" >&2; \
 	echo "    make build     — then rerun sudo make install" >&2; exit 1; fi
 
-build: paths $(CORE_BIN) $(SHADERS) build-sudo build-capture
-install: $(CORE_BIN) $(SHADERS) check-sudo-build $(CAPTURE_BIN)
+build: paths $(CORE_BIN) $(SHADERS) build-sudo build-capture build-i18n
+install: $(CORE_BIN) $(SHADERS) check-sudo-build $(CAPTURE_BIN) install-i18n
+
+# Qt and gettext share the locale selection and catalogue directory. The plugin
+# adds QTranslator support to plain QQmlEngine without modifying Quickshell.
+I18N_BUILD = $(CURDIR)/.cache/i18n-native
+.PHONY: build-i18n check-i18n check-i18n-build install-i18n translations-update
+build-i18n:
+	@$(NOT_ROOT)
+	cmake -S i18n/native -B "$(I18N_BUILD)" -DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX="$(PREFIX)" -DEMAKI_LOCALE_DIR="$(DATADIR)/locale"
+	cmake --build "$(I18N_BUILD)" --parallel 2
+	python3 i18n/catalogues.py compile
+
+I18N_ARTIFACTS = $(I18N_BUILD)/qml/Emaki/I18n/libemakii18nplugin.so $(I18N_BUILD)/qml/Emaki/I18n/qmldir
+$(I18N_ARTIFACTS) &: $(wildcard i18n/native/*)
+	$(NOT_ROOT)
+	$(MAKE) build-i18n
+
+check-i18n-build: $(I18N_ARTIFACTS)
+	@if [ "$$(cat $(I18N_BUILD)/install-paths 2>/dev/null)" != '$(PREFIX)|$(DATADIR)/locale' ]; then \
+		$(NOT_ROOT); $(MAKE) build-i18n; fi
+	@if [ "$$(id -u)" != 0 ]; then python3 i18n/catalogues.py compile; \
+	else python3 i18n/install.py --check-built; fi
+
+translations-update:
+	python3 i18n/catalogues.py update
+
+check-i18n: paths build-i18n
+	python3 i18n/catalogues.py check
+	python3 tests/check-i18n.py
+	python3 tests/test-i18n.py
+	python3 tests/test-i18n-es.py
+	python3 tests/test-i18n-runtime.py
+	python3 tests/test-i18n-backends.py
+	python3 tests/test-i18n-pt-br.py
+	python3 tests/test-i18n-long-dates.py
+	python3 tests/test-i18n-packaging.py
+	python3 tests/test-i18n-shell.py
+	python3 update-manager/ui/tests/i18n.py
+	python3 installer/ui/tests/i18n.py
+	python3 installer/ui/tests/english.py
+
+install-i18n: check-i18n-build
+	install -Dm644 $(I18N_BUILD)/qml/Emaki/I18n/libemakii18nplugin.so $(DESTDIR)$(EMAKI_QMLDIR)/Emaki/I18n/libemakii18nplugin.so
+	install -Dm644 i18n/native/qmldir $(DESTDIR)$(EMAKI_QMLDIR)/Emaki/I18n/qmldir
+	install -Dm644 scripts/emaki_i18n.py $(DESTDIR)$(LIBEXECDIR)/emaki_i18n.py
+	install -Dm644 scripts/emaki_i18n.py $(SHARE)/shell/helpers/emaki_i18n.py
+	python3 i18n/install.py --destination "$(SHARE)/locale"
+
+uninstall: uninstall-i18n
+.PHONY: uninstall-i18n
+uninstall-i18n:
+	rm -rf $(SHARE)/locale
+	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki_i18n.py
+	rm -f $(DESTDIR)$(EMAKI_QMLDIR)/Emaki/I18n/libemakii18nplugin.so $(DESTDIR)$(EMAKI_QMLDIR)/Emaki/I18n/qmldir
 
 $(CORE_BIN): $(CORE_SRC)
 	@$(NOT_ROOT)
@@ -972,7 +1030,7 @@ $(SHADERS) &: $(SHADER_SRC)
 # No live Wayland; fixtures use .cache/, with short temporary Unix-socket paths. The qs in PATH
 # must carry the packaged quickshell-emaki patches (tests/test-quickshell-fork.py).
 .PHONY: check-shell shell-shots shell-shaders
-check-shell: paths shell-shaders check-sudo-build
+check-shell: paths shell-shaders check-sudo-build build-i18n
 	python3 tests/test-quickshell-fork.py
 	python3 tests/test-quickshell-fork-guard.py
 	python3 tests/test-window-switcher-lifecycle.py
@@ -1065,6 +1123,7 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 tests/test-shell-generations.py
 	python3 tests/test-desktop-state.py
 	python3 tests/test-session-update-notice.py
+	python3 tests/test-updates-notice.py
 	python3 tests/test-session-update-hook.py
 	python3 tests/test-update-errors.py
 	python3 tests/test-auth-lockout.py
@@ -1118,6 +1177,7 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 tests/test-rollback-shell.py
 	python tests/test-password-toggle.py
 	python tests/test-welcome.py
+	python3 tests/test-whatsnew.py
 	python tests/test-lock-glass.py
 	python tests/test-lock-capture.py
 	python tests/test-lock-session.py

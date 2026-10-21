@@ -2,6 +2,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Private greeter selection memory. No passwords, user home reads or shell commands."""
+import sys as _i18n_sys
+from pathlib import Path as _I18nPath
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[2] / 'scripts'))
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import emaki_paths as _i18n_paths
+    _i18n_sys.path.insert(0, _i18n_paths.LIBEXECDIR)
+    from emaki_i18n import translation
+gettext = translation('shell').gettext
+
 import configparser
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -516,7 +528,7 @@ def operate(request, paths=Paths(), now=None):
         if not valid_name(user) or user not in users:
             if op == 'launch':
                 raise ValueError('launch user unavailable')
-            return selection(state, '', users, catalog, paths, 'Unknown user')
+            return selection(state, '', users, catalog, paths, gettext('Unknown user'))
         result = selection(state, user, users, catalog, paths)
         if op == 'launch':
             if request.get('session') != result['sessionId']:

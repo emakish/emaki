@@ -6,7 +6,7 @@ import QtQuick.Controls
 
 SettingsRow {
     id: root
-    formatValue: value => value ? "On" : "Off"
+    formatValue: value => value ? qsTranslate("SettingsToggleRow", "On") : qsTranslate("SettingsToggleRow", "Off")
     controlWidth: 44
     control: Component {
         AbstractButton {

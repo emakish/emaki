@@ -10,6 +10,7 @@
 TOKEN is the preview the person saw; the privileged helper computes the
 preview again and removes nothing unless it is the same.
 """
+
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,18 @@ import sys
 
 sys.path.insert(0, '/usr/libexec/emaki')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import programs_catalog as catalog
 
 ENV = dict(os.environ, LC_ALL='C')
@@ -46,7 +59,7 @@ def listing():
     paths = sorted({app['filename'] for app in apps})
     # -Qo exits 1 when one path has no owner (a personal entry); owned lines still print.
     owned = catalog.owners(pacman('-Qo', *paths).stdout) if paths else {}
-    names = sorted({name for name, _ in owned.values()})
+    names = sorted({name for name, _unused in owned.values()})
     details = catalog.info(pacman('-Qi', *names).stdout) if names else {}
     return {'ok': True, 'programs': catalog.programs(apps, owned, details, foreign=foreign_names())}
 
@@ -85,7 +98,7 @@ def authorized_removal(name, expected):
 def remove(name, expected):
     catalog.valid_name(name)
     if not catalog.TOKEN.fullmatch(expected):
-        raise ValueError('Invalid preview token.')
+        raise ValueError(_('Invalid preview token.'))
     # pkexec authorizes its parent. The settings window closes when the password window
     # takes focus, and closing it kills this process: polkit would then cancel the
     # request. A child in its own session waits for pkexec instead, so a confirmed
@@ -136,7 +149,7 @@ def main(argv):
         elif len(argv) == 4 and argv[0] == 'remove' and argv[3] == '--json':
             answer = remove(argv[1], argv[2])
         else:
-            print('Usage: emaki-programs list|preview PACKAGE|remove PACKAGE TOKEN --json', file=sys.stderr)
+            print(_('Usage: emaki-programs list|preview PACKAGE|remove PACKAGE TOKEN --json'), file=sys.stderr)
             return 2
     except (OSError, ValueError, ImportError, subprocess.SubprocessError):
         answer = catalog.result('failed')

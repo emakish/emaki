@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Target file generation and verification, independent of archinstall."""
+from .i18n import _
 import hashlib
 import io
 import json
@@ -99,7 +100,7 @@ def validate_xkb_layouts(layouts, rules):
         elif section == 'layout' and line:
             available.add(line.split()[0])
     require(all(layout in available for layout in layouts), Code.BAD_CONFIG,
-            'A selected XKB layout is not available on this ISO.')
+            _('A selected XKB layout is not available on this ISO.'))
 
 
 def keyboard_summary(layouts, rules=''):
@@ -109,7 +110,7 @@ def keyboard_summary(layouts, rules=''):
         if line.startswith('!'):
             section = line[1:].strip()
         elif section == 'layout' and line.strip():
-            code, _, label = line.strip().partition(' ')
+            code, ignored, label = line.strip().partition(' ')
             labels[code] = label.strip()
         elif section == 'variant' and line.strip():
             match = re.fullmatch(r'\s*(\S+)\s+us:\s*(.+)', line)
@@ -117,8 +118,8 @@ def keyboard_summary(layouts, rules=''):
                 labels[match[1]] = match[2].strip()
     names = [labels.get(x) or x for x in layouts]
     if len(names) == 1:
-        return f'Keyboard: {names[0]}.'
-    return f"Keyboard: {names[0]} (default), {', '.join(names[1:])}. Super+Space switches."
+        return _('Keyboard: {value1}.').format(value1=names[0])
+    return _('Keyboard: {value1} (default), {value2}. Super+Space switches.').format(value1=names[0], value2=', '.join(names[1:]))
 
 
 def niri_config(scale=None, outputs=(), output_scales=None):
@@ -173,7 +174,7 @@ def mkinitcpio_config(btrfs, encrypted=False, hibernation=False, *, vmd=False):
 
 
 def mkinitcpio_preset(kernel):
-    require(kernel in ('linux', 'linux-lts'), Code.BOOT_VERIFY, 'Unsupported kernel preset.')
+    require(kernel in ('linux', 'linux-lts'), Code.BOOT_VERIFY, _('Unsupported kernel preset.'))
     # An explicit ALL_config prevents inherited drop-ins from replacing HOOKS.
     # Images must stay under /boot, even when reusing a former UKI installation.
     return ('ALL_config="/etc/mkinitcpio.conf"\n'
@@ -193,7 +194,7 @@ def mkinitcpio_machine_config(btrfs, encrypted=False, hibernation=False, *, vmd=
 
 
 def mkinitcpio_package_preset(kernel):
-    require(kernel in ('linux', 'linux-lts'), Code.BOOT_VERIFY, 'Unsupported kernel preset.')
+    require(kernel in ('linux', 'linux-lts'), Code.BOOT_VERIFY, _('Unsupported kernel preset.'))
     return f'. /usr/share/emaki/boot/{kernel}.preset\n'
 
 
@@ -224,27 +225,27 @@ def normalize_fstab(text, plan):
             rows.append(line)
             continue
         fields = line.split()
-        require(len(fields) == 6, Code.FSTAB_VERIFY, 'Malformed genfstab output.')
+        require(len(fields) == 6, Code.FSTAB_VERIFY, _('Malformed genfstab output.'))
         # /efi is always an ESP of Emaki's or one a manual layout chose: next to Windows Emaki has
         # its own, and Windows' ESP is no planned mount, so the check below refuses a line for it.
         options = [x for x in fields[3].split(',') if not x.startswith('subvolid=')]
         fields[3] = ','.join(options)
-        require(fields[1] not in entries, Code.FSTAB_VERIFY, 'Duplicate fstab mountpoint.')
+        require(fields[1] not in entries, Code.FSTAB_VERIFY, _('Duplicate fstab mountpoint.'))
         entries[fields[1]] = fields
         rows.append('\t'.join(fields))
     expected = {mp: (p, sv) for p, mp, sv in plan.mounts}
     require(set(entries) == set(expected), Code.FSTAB_VERIFY,
-            'fstab must contain exactly the planned filesystem mounts and no swap.')
+            _('fstab must contain exactly the planned filesystem mounts and no swap.'))
     for mp, (part, sv) in expected.items():
         row = entries[mp]
         require(row[0].startswith('UUID=') and row[2] == part.fs,
-                Code.FSTAB_VERIFY, f'fstab filesystem or UUID missing at {mp}.')
+                Code.FSTAB_VERIFY, _('fstab filesystem or UUID missing at {value1}.').format(value1=mp))
         if part.uuid:
-            require(row[0] == 'UUID=' + part.uuid, Code.FSTAB_VERIFY, f'Wrong filesystem UUID at {mp}.')
+            require(row[0] == 'UUID=' + part.uuid, Code.FSTAB_VERIFY, _('Wrong filesystem UUID at {value1}.').format(value1=mp))
         opts = row[3].split(',')
         if part.fs == 'btrfs':
-            require(set(BTRFS_OPTIONS) <= set(opts), Code.FSTAB_VERIFY, f'Btrfs mount options missing at {mp}.')
+            require(set(BTRFS_OPTIONS) <= set(opts), Code.FSTAB_VERIFY, _('Btrfs mount options missing at {value1}.').format(value1=mp))
             if sv:
                 require(f'subvol=/{sv}' in opts or f'subvol={sv}' in opts,
-                        Code.FSTAB_VERIFY, f'Wrong btrfs subvolume at {mp}.')
+                        Code.FSTAB_VERIFY, _('Wrong btrfs subvolume at {value1}.').format(value1=mp))
     return '\n'.join(rows) + '\n'

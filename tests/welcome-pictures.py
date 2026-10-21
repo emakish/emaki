@@ -25,9 +25,9 @@ SPEC.loader.exec_module(PICTURES)
 
 
 def pages():
-    script = (ROOT / 'shell/WelcomeContent.js').read_text().replace('.pragma library', '')
+    script = (ROOT / 'tests/qml-translation.js').read_text() + '\n' + (ROOT / 'shell/WelcomeContent.js').read_text().replace('.pragma library', '')
     return json.loads(subprocess.check_output(
-        ['node', '-e', script + '\nconsole.log(JSON.stringify(pages.map(page => page.id)));'], text=True))
+        ['node', '-e', script + '\nconsole.log(JSON.stringify(pages().map(page => page.id)));'], text=True))
 
 
 def accents():

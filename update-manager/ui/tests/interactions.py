@@ -140,6 +140,7 @@ QtObject {
     property var essentials: ({minimal: true, programs: ["gimp", "inkscape", "krita", "code"]})
     property bool catalogReceived: true
     property bool quietRefresh: busy && phase === "catalog"
+    property bool backgroundBusy: quietRefresh
     property bool heldByRefresh: false
     property bool foregroundBusy: busy && !mutating && (phase !== "catalog" || heldByRefresh)
     property var aurPopular: []
@@ -152,7 +153,7 @@ QtObject {
     function setAur(accept, showWarning) { aurChanges++; lastAur = {accept: accept, showWarning: showWarning}; aurEnabled = accept; aurShowWarning = !accept || showWarning; if (!accept) aurRows = [] }
     function searchAur(text) { aurQuery = text; aurRows = text.length < 2 ? [] : allRows.filter(row => row.kind === "aur" && row.name.includes(text)); aurSearched = text.length >= 2 }
     function prepareUndo() { planAction = "undo"; plan = {ok:true,token:"test",key:selectedEdition.key,transaction:{receipt:selectedEdition.undo.id,target:"inkscape",remove:["inkscape","libinkscape"],packages:["inkscape","libinkscape"],keep:{"shared-fonts":"explicit"},upgraded:["linux"],snapshot:"17"}}; planRows = [{name:"inkscape",detail:""},{name:"libinkscape",detail:""}]; previewOpen = true }
-    function prepareInstall() { if (selectedEdition && selectedEdition.kind === "aur") { planAction = "install"; plan = {ok:true,token:"test",transaction:{kind:"aur",target:"code-minimap",fullUpgrade:true,builds:[{packageBase:"rust-helper",packages:[{package:"rust-helper",version:"1.0-1"}],commit:"0123456789abcdef0123456789abcdef01234567",version:"1.0-1",purpose:"build",maintainer:"someone",orphan:false,outOfDate:"",recipe:"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=rust-helper&id=0123456789abcdef0123456789abcdef01234567"},{packageBase:"code-minimap",packages:[{package:"code-minimap",version:"0.6.8-1"}],commit:"89abcdef0123456789abcdef0123456789abcdef",version:"0.6.8-1",purpose:"run",maintainer:"",orphan:true,outOfDate:"2026-09-30T10:00:00+00:00",recipe:"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=code-minimap&id=89abcdef0123456789abcdef0123456789abcdef"}],packages:[{repository:"core",package:"base-devel",version:"1-2",purpose:"build"},{repository:"extra",package:"git",version:"2.51-1",purpose:"build"},{repository:"extra",package:"libgit2",version:"1.9-1",purpose:"run"}]}}; planRows = Logic.planRows(plan); previewOpen = true; return }
+    function prepareInstall() { if (backgroundBusy) { heldByRefresh = true; return } if (selectedEdition && selectedEdition.kind === "aur") { planAction = "install"; plan = {ok:true,token:"test",transaction:{kind:"aur",target:"code-minimap",fullUpgrade:true,builds:[{packageBase:"rust-helper",packages:[{package:"rust-helper",version:"1.0-1"}],commit:"0123456789abcdef0123456789abcdef01234567",version:"1.0-1",purpose:"build",maintainer:"someone",orphan:false,outOfDate:"",recipe:"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=rust-helper&id=0123456789abcdef0123456789abcdef01234567"},{packageBase:"code-minimap",packages:[{package:"code-minimap",version:"0.6.8-1"}],commit:"89abcdef0123456789abcdef0123456789abcdef",version:"0.6.8-1",purpose:"run",maintainer:"",orphan:true,outOfDate:"2026-09-30T10:00:00+00:00",recipe:"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=code-minimap&id=89abcdef0123456789abcdef0123456789abcdef"}],packages:[{repository:"core",package:"base-devel",version:"1-2",purpose:"build"},{repository:"extra",package:"git",version:"2.51-1",purpose:"build"},{repository:"extra",package:"libgit2",version:"1.9-1",purpose:"run"}]}}; planRows = Logic.planRows(plan); previewOpen = true; return }
         planAction = "install"; plan ={ok:true,token:"test",transaction:{packages:[{package:"krita",downloadSize:1048576},{package:"linux",downloadSize:2097152}]}}; planRows = [{name:"linux",detail:"6.12"},{name:"krita",detail:"5.2"}]; previewOpen = true }
     function prepareRemove(row) { if(row) openProgram(row); planAction = "remove"; plan = {ok:true,token:"test"}; planRows = [{name:"inkscape",detail:"the program"},{name:"unused-library",detail:"nothing else needs it"}]; previewOpen = true }
     function cancelPlan() { previewOpen = false; plan = null }
@@ -174,6 +175,7 @@ REOPEN = '''
             const calls = controller.checks;
             windowLoader.item.visible = false;
             root.check(root.present() && controller.checks === calls, "busy reopen never refreshes");
+            root.check(programs.externalBusy, "an update being applied holds Programs");
             windowLoader.active = false;
             root.check(root.present(), "closed window recreated");
             root.check(controller.busy && controller.output === "Updating linux" && controller.checks === calls, "controller survives recreated window");
@@ -198,6 +200,7 @@ REOPEN = '''
             root.check(!!aurField && aurField.text === "code" && programs.aurQuery === "code", "recreated window shows the AUR search its results follow");
             programs.mutating = false;
             controller.busy = true; controller.phase = "checking";
+            root.check(!programs.externalBusy, "a read-only update check leaves Programs installable");
             const beforePending = controller.checks;
             programs.transactionFinished(true); lifecycleInput.wait(30);
             root.check(root.checkPending && controller.checks === beforePending, "transaction recheck waits for active check");
@@ -276,7 +279,7 @@ MUTANTS = {
     'update-details': ('ManagerUpdates.qml', 'visible: root.showLog && root.controller.output.trim().length > 0', 'visible: root.controller.output.trim().length > 0'),
     'browse-top': ('ManagerView.qml', 'visible: view.page === "browse" || view.page === "search"', 'visible: true'),
     'pinned-stretch': ('ManagerView.qml', 'objectName: "pinned"\n            Layout.fillHeight: false', 'objectName: "pinned"'),
-    'unknown-facts': ('ManagerProgram.qml', '["Votes", page.known("votes") ? String(page.program.votes) : page.unknown, false]', '["Votes", String(page.program.votes || 0), false]'),
+    'unknown-facts': ('ManagerProgram.qml', '[qsTranslate("ManagerProgram", "Votes"), page.known("votes") ? String(page.program.votes) : page.unknown, false]', '[qsTranslate("ManagerProgram", "Votes"), String(page.program.votes || 0), false]'),
     'no-snapshots': ('ManagerProgram.qml', 'readonly property bool aurRefused: program.kind === "aur" && controller.aurKnown && !controller.aurSnapshots && allowed("install")', 'readonly property bool aurRefused: false'),
     'refused-plan': ('RealProgramsController.qml', 'if (previous === "planning") plan = null;', 'if (previous === "planning") { plan = null; previewOpen = false; }'),
     'long-heading': ('ManagerView.qml', 'Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: implicitWidth', 'Layout.fillWidth: false'),
@@ -310,6 +313,8 @@ def run(width=1180, height=780, mutant=None, reopen=False, entry='InteractionTes
             entry = entry.rstrip()[:-1] + REOPEN + '\n}\n'
         (root / 'ui/test.qml').write_text(entry)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QUICK_CONTROLS_STYLE='Basic', QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1', TEST_WIDTH=str(width), TEST_HEIGHT=str(height))
+        (root / 'home').mkdir(mode=0o700)
+        env['HOME'] = str(root / 'home')
         for name in ('runtime', 'cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)
             env['XDG_' + name.upper() + ('_DIR' if name == 'runtime' else '_HOME')] = str(root / name)

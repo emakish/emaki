@@ -6,16 +6,22 @@ import QtTest
 import Quickshell
 import Quickshell.Io
 import "ManagerLogic.js" as Logic
+import "file:@EMAKI_DATADIR@/shell" as Shell
 
 ShellRoot {
     id: test
+    readonly property bool translationsReady: Shell.Translation.initialize()
     property bool failed: false
     property int restoreResults: 0
     property var lastRestore: null
     property bool sawInitialLoading: false
+    property int quietReadLines: 0
     ProgramsController {
         id: controller
-        onForegroundBusyChanged: if (foregroundBusy && phase === "catalog" && !catalogLoaded) test.sawInitialLoading = true
+        onForegroundBusyChanged: {
+            if (foregroundBusy && phase === "catalog" && !catalogLoaded) test.sawInitialLoading = true;
+            if (foregroundBusy && phase === "related") test.quietReadLines++;
+        }
         onRestoreFinished: result => { test.restoreResults++; test.lastRestore = result; }
     }
     Item {
@@ -49,6 +55,23 @@ ShellRoot {
         settle(); input.wait(50);
         check(controller.catalogReceived && controller.catalogLoaded, "background refresh replaces the catalog");
         check(!controller.heldByRefresh && !!controller.selectedEdition, "the refresh releases the wait and keeps the open program");
+        settle();
+        check(controller.previewOpen && controller.planAction === "install" && controller.plan?.ok === true && controller.queuedAction === "",
+              "the install asked for during the refresh opens its preview after it");
+        controller.cancelPlan();
+        // An update that starts before the quiet refresh ends must not drop the queued install.
+        windowHook.present();
+        controller.openProgram(controller.allRows[0]);
+        controller.prepareInstall();
+        check(controller.queuedAction === "install" && !controller.previewOpen, "an install queues behind a second quiet refresh");
+        controller.externalBusy = true;
+        settle(); input.wait(50); settle();
+        check(controller.queuedAction === "install" && !controller.previewOpen,
+              "the queued install survives the refresh ending while an update runs");
+        controller.externalBusy = false; input.wait(100); settle();
+        check(controller.previewOpen && controller.planAction === "install" && controller.queuedAction === "",
+              "the queued install opens its preview once the update ends");
+        controller.cancelPlan();
         controller.selectScope("packages"); controller.search("compression"); packagesReady();
         const original = controller.packageRows[0];
         controller.preparePackage(original, "install"); settle();
@@ -93,10 +116,16 @@ ShellRoot {
         check(controller.storefront.featured.programs[0] === "org.example.editor", "Browse's picks arrive with the catalog");
         controller.readPopular(); settle();
         check(controller.aurPopularLoaded && controller.aurPopular.map(row => row.key).join() === "aur:yay,aur:editor-tools", "the popular list keeps the engine's order");
+        controller.readPopular();
+        check(controller.phase === "aurPopular" && controller.busy && !controller.foregroundBusy && controller.backgroundBusy,
+              "reading the shown popular list again draws no loading line and keeps Install available");
+        settle();
         controller.searchAur("editor"); input.wait(400); settle();
         check(controller.aurRows.length === 1 && controller.aurRows[0].kind === "aur" && controller.aurSearched, "AUR search lists AUR rows");
         const app = controller.allPrograms.find(row => row.id === "org.example.Editor.desktop");
+        const linesBefore = test.quietReadLines;
         controller.openProgram(app); input.wait(50); settle();
+        check(test.quietReadLines === linesBefore, "an AUR edition joins an open page without a loading line");
         check(controller.selectedProgram.editions.some(row => row.key === "aur:editor-bin"), "the same program from the AUR joins its page");
         controller.selectEdition("arch");
         check(controller.selectedEdition.key === "arch:editor" && controller.selectedEdition.actions.includes("undo"), "a recorded install offers undo");

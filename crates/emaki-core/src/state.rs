@@ -71,17 +71,23 @@ impl State {
     }
 
     pub fn human(&self) -> String {
-        let mut text = format!(
-            "Emaki {} — state format {}, {} ms per component\n",
-            self.emaki_version, self.schema_version, self.timeout_ms
+        let mut text = crate::i18n::format_text(
+            "Emaki {emaki_version} — state format {schema_version}, {timeout_ms} ms per component\n",
+            &[
+                ("emaki_version", (self.emaki_version).to_string()),
+                ("schema_version", (self.schema_version).to_string()),
+                ("timeout_ms", (self.timeout_ms).to_string()),
+            ],
         );
         for c in &self.components {
-            text.push_str(&format!(
-                "{}: {} ({})\n  source: {}\n",
-                c.id,
-                c.status.as_str(),
-                c.reason,
-                c.source
+            text.push_str(&crate::i18n::format_text(
+                "{c_id}: {c_status_as_str} ({c_reason})\n  source: {c_source}\n",
+                &[
+                    ("c_id", (c.id).to_string()),
+                    ("c_status_as_str", (c.status.as_str()).to_string()),
+                    ("c_reason", (c.reason).to_string()),
+                    ("c_source", (c.source).to_string()),
+                ],
             ));
             for (key, value) in &c.data {
                 text.push_str(&format!("  {key}: {value}\n"));

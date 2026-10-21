@@ -276,6 +276,10 @@ class EditorPlanTests(unittest.TestCase):
         message = self.rejects(editor(inv, delete=[{'partition_id': '/dev/vda2'}], create=create, mounts=mounts),
                                inv, text='holds Windows')
         self.assertIn('typing DELETE', message)
+        with patch('emaki_installer.planner._', side_effect=lambda text: text.replace('DELETE', 'translated')):
+            translated = self.rejects(editor(inv, delete=[{'partition_id': '/dev/vda2'}],
+                                              create=create, mounts=mounts), inv, text='holds Windows')
+        self.assertIn('typing DELETE', translated)
         identity = deletion_identity(windows)
         self.assertEqual(identity, {'path': '/dev/vda2', 'start_bytes': 513 * MIB, 'size_bytes': 40 * GIB,
                                     'system': 'Windows'})

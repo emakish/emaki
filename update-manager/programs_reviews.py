@@ -22,6 +22,18 @@ the program's own ID.
 Reading sends no identity: the service answers a fetch without user_hash and records
 nothing for it. Only a submitted review carries this account's random user_hash.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import fcntl
 import gzip
 import hashlib
@@ -58,14 +70,14 @@ NAME_MAX = 40
 APP_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,254}\Z')
 HASH = re.compile(r'[0-9a-f]{40}\Z')
 MESSAGES = {
-    'offline': 'Ratings could not be loaded. Check your connection.',
-    'no-id': 'This program has no ratings yet.',
-    'invalid': 'This review cannot be sent. Choose the stars and write a title and a few words.',
-    'markup': 'Reviews cannot contain the “<” sign. Remove it and send again.',
-    'send-failed': 'The review could not be sent. Check your connection and try again.',
-    'already': 'You have already reviewed this program.',
-    'refused': 'The ratings service did not accept the review.',
-    'identity': 'The review could not be sent. Its key could not be saved in your home folder.',
+    'offline': _('Ratings could not be loaded. Check your connection.'),
+    'no-id': _('This program has no ratings yet.'),
+    'invalid': _('This review cannot be sent. Choose the stars and write a title and a few words.'),
+    'markup': _('Reviews cannot contain the “<” sign. Remove it and send again.'),
+    'send-failed': _('The review could not be sent. Check your connection and try again.'),
+    'already': _('You have already reviewed this program.'),
+    'refused': _('The ratings service did not accept the review.'),
+    'identity': _('The review could not be sent. Its key could not be saved in your home folder.'),
 }
 
 
@@ -122,7 +134,7 @@ def user_hash(state=None, create=True):
             write_private(path, secrets.token_hex(20).encode())
             value = read_hash(path)
     if not value:
-        raise OSError('The review identity could not be saved.')
+        raise OSError(_('The review identity could not be saved.'))
     return value
 
 
@@ -157,16 +169,16 @@ def request(path, body=None, limit=MAX_REVIEWS, opener=urlopen):
         headers['Content-Type'] = 'application/json; charset=utf-8'
     with opener(Request(SERVICE + path, data=data, headers=headers), timeout=TIMEOUT) as response:
         if not str(getattr(response, 'url', SERVICE)).startswith('https://'):
-            raise ValueError('The ratings service redirected to an insecure address.')
+            raise ValueError(_('The ratings service redirected to an insecure address.'))
         raw = response.read(limit + 1)
         encoding = (response.headers.get('Content-Encoding') or '').lower() if response.headers else ''
     if len(raw) > limit:
-        raise ValueError('The ratings service returned too much data.')
+        raise ValueError(_('The ratings service returned too much data.'))
     if encoding == 'gzip':
         with gzip.GzipFile(fileobj=io.BytesIO(raw)) as unpacked:
             raw = unpacked.read(limit + 1)
         if len(raw) > limit:
-            raise ValueError('The ratings service returned too much data.')
+            raise ValueError(_('The ratings service returned too much data.'))
     return json.loads(raw)
 
 
@@ -233,13 +245,13 @@ def ratings_index(cache=None, now=None, opener=urlopen):
     try:
         index = request('/ratings', limit=MAX_INDEX, opener=opener)
         if not isinstance(index, dict):
-            raise ValueError('The ratings index is not an object.')
+            raise ValueError(_('The ratings index is not an object.'))
         write_private(path, json.dumps(index, separators=(',', ':')).encode())
         return index, False
     except (OSError, ValueError, EOFError, zlib.error) as error:
         if cached is not None:
             return cached, True
-        raise OSError('The ratings index could not be read.') from error
+        raise OSError(_('The ratings index could not be read.')) from error
 
 
 def ratings(ids, cache=None, opener=urlopen):
@@ -307,7 +319,7 @@ def reviews(ids, cache=None, state=None, now=None, opener=urlopen):
     except (OSError, ValueError):
         pass
     try:
-        index, _ = ratings_index(cache, now=now, opener=opener)
+        index, _unused = ratings_index(cache, now=now, opener=opener)
     except OSError:
         index = {}
     main, rating = best(index, ids[0], ids[1:])
@@ -317,7 +329,7 @@ def reviews(ids, cache=None, state=None, now=None, opener=urlopen):
     try:
         answer = request('/fetch', body, opener=opener)
         if not isinstance(answer, list):
-            raise ValueError('The reviews answer is not a list.')
+            raise ValueError(_('The reviews answer is not a list.'))
     except (OSError, ValueError, EOFError, zlib.error):
         return failure('offline', appId=main, rating=rating, reviews=[])
     me = user_hash(state, create=False)
@@ -413,7 +425,7 @@ def main(argv, opener=urlopen):
             form = None
         answer = submit(form, opener=opener)
     else:
-        print('Usage: emaki-programs ratings ID... | reviews ID... | review JSON', file=sys.stderr)
+        print(_('Usage: emaki-programs ratings ID... | reviews ID... | review JSON'), file=sys.stderr)
         return 2
     print(json.dumps(answer, ensure_ascii=True))
     return 0 if answer.get('ok') else 1

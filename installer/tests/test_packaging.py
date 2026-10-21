@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -103,6 +104,9 @@ class PackagingTests(unittest.TestCase):
             source.mkdir(parents=True)
             (source / 'installer').symlink_to(root / 'installer', target_is_directory=True)
             (source / 'LICENSE').symlink_to(root / 'LICENSE')
+            (source / 'i18n').mkdir()
+            shutil.copy2(root / 'i18n/catalogues.py', source / 'i18n/catalogues.py')
+            shutil.copytree(root / 'i18n/installer', source / 'i18n/installer')
             destination = base / 'pkg'
             recipe = base / 'recipe'
             recipe.mkdir()
@@ -110,7 +114,7 @@ class PackagingTests(unittest.TestCase):
             (recipe / 'SOURCE-COMMIT').write_text('0' * 40)
             env = dict(os.environ, EMAKI_SOURCE_COMMIT='', startdir=str(recipe),
                        srcdir=str(base / 'src'), pkgdir=str(destination))
-            result = subprocess.run(['bash', '-euc', 'source "$startdir/PKGBUILD"; package'],
+            result = subprocess.run(['bash', '-euc', 'source "$startdir/PKGBUILD"; build; package'],
                                     env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             site = destination / Path(sysconfig.get_path('purelib')).relative_to('/')
@@ -161,7 +165,7 @@ for mode in (False, read_test_mode(Path('cmdline'))):
         self.assertIn('hicolor-icon-theme', re.search(r'depends=\(([^)]+)\)', recipe, re.S)[1].split())
         self.assertIn('/usr/share/icons/hicolor/scalable/apps/emaki-install.svg', recipe)
         self.assertIn('pkgver=0.9.0', recipe)
-        self.assertIn('pkgrel=1', recipe)
+        self.assertIn('pkgrel=3', recipe)
         for path in ('bin/emaki-installerd', 'bin/emaki-install-cli',
                      'systemd/emaki-installerd.service', 'sysusers.d/emaki-installer.conf',
                      'tmpfiles.d/emaki-installer.conf', 'README.md'):

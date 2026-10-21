@@ -41,7 +41,7 @@ Scope {
     property string suppressedSchedule: ""
     readonly property var schedule: policyJson("notifications.schedule", {})
     readonly property bool scheduleSuppressed: scheduleSuppressedUntil > now && suppressedSchedule === JSON.stringify(schedule)
-    readonly property string scheduleResumeNote: scheduleSuppressed && !effectiveDnd ? "Do not disturb returns " + Qt.formatDateTime(new Date(scheduleSuppressedUntil), "ddd HH:mm") + "." : ""
+    readonly property string scheduleResumeNote: scheduleSuppressed && !effectiveDnd ? qsTranslate("NotificationStore", "Do not disturb returns %1.").arg(new Date(scheduleSuppressedUntil).toLocaleString(Qt.locale(), "ddd HH:mm")) : ""
     readonly property bool effectiveDnd: manualDnd() || Number(policyValue("notifications.until", "0")) > now || (!scheduleSuppressed && scheduleActive(schedule, now))
     onScheduleSuppressedUntilChanged: if (restored)
         saveTimer.restart()
@@ -110,6 +110,9 @@ Scope {
     }
     function applicationId(n: var): string {
         const desktop = String(n.desktopEntry || "").slice(0, 240);
+        // Keep existing rules shared with local recovery notices when the sender adds its hint.
+        if (desktop === "emaki-update-manager")
+            return "name:Programs & Updates";
         return desktop ? "desktop:" + desktop : "name:" + String(n.appName || "Application").slice(0, 128);
     }
     function rememberApplication(id: string, name: string): void {
@@ -224,7 +227,7 @@ Scope {
                 scheduleSuppressedUntil: store.scheduleSuppressedUntil,
                 suppressedSchedule: store.suppressedSchedule,
                 applications: store.applications,
-                entries: store.entries.filter(e => e.held !== true && !store.sessionUpdateEntry(e)).map(e => ({
+                entries: store.entries.filter(e => e.held !== true && e.transient !== true && !store.sessionUpdateEntry(e)).map(e => ({
                             app: e.app,
                             summary: e.summary,
                             body: e.body,
@@ -237,13 +240,28 @@ Scope {
     readonly property int count: entries.length
     property string actionState: "idle"
     signal arrived(int id)
+    function displayApp(app: string): string {
+        switch (app) {
+        case "Application": return qsTranslate("NotificationStore", "Application");
+        case "Battery critical": return qsTranslate("NotificationStore", "Battery critical");
+        case "Battery low": return qsTranslate("NotificationStore", "Battery low");
+        case "Desktop update": return qsTranslate("NotificationStore", "Desktop update");
+        case "Screen lock": return qsTranslate("NotificationStore", "Screen lock");
+        case "Panel recovery": return qsTranslate("NotificationStore", "Panel recovery");
+        case "Programs & Updates": return qsTranslate("NotificationStore", "Programs & Updates");
+        case "Launcher": return qsTranslate("NotificationStore", "Launcher");
+        case "Secure Boot": return qsTranslate("NotificationStore", "Secure Boot");
+        case "Clocks": return qsTranslate("NotificationStore", "Clocks");
+        default: return app;
+        }
+    }
     function bucket(time: double): string {
         const age = (now - time) / 60000;
-        return age < 5 ? "Now" : age < 720 ? "Today" : "Earlier";
+        return age < 5 ? qsTranslate("NotificationStore", "Now") : age < 720 ? qsTranslate("NotificationStore", "Today") : qsTranslate("NotificationStore", "Earlier");
     }
     function groups(): var {
         const result = [];
-        for (const bucketName of ["Now", "Today", "Earlier"]) {
+        for (const bucketName of [qsTranslate("NotificationStore", "Now"), qsTranslate("NotificationStore", "Today"), qsTranslate("NotificationStore", "Earlier")]) {
             const rows = entries.filter(n => bucket(n.time) === bucketName);
             const apps = [...new Set(rows.map(n => n.app))];
             for (const app of apps) {
@@ -295,7 +313,7 @@ Scope {
         return {
             id: n.id,
             app: (n.appName || "Application").slice(0, 128),
-            appId: n.desktopEntry ? "desktop:" + String(n.desktopEntry).slice(0, 240) : "name:" + (n.appName || "Application").slice(0, 128),
+            appId: applicationId(n),
             // Pairing confirmation, authorization and displayed PINs use persistent
             // blueman notices. Match protocol fields, not translated summaries.
             critical: (n.appName === "blueman" && n.appIcon === "blueman" && n.expireTimeout === 0) || (n.appName === "Desktop update" && n.summary === "Sign out and sign in again to finish updating the desktop."),
@@ -409,24 +427,27 @@ Scope {
     function localNotice(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool): int {
         return addLocal(app, summary, body, batteryWarning, sessionUpdate, []);
     }
-    function addLocal(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool, actions: var): int {
+    function addLocal(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool, actions: var, options: var): int {
+        const settings = options || {};
         const appId = "name:" + app.slice(0, 128);
         if (!batteryWarning && !sessionUpdate)
             rememberApplication(appId, app);
         const id = systemId--;
         const rule = ruleFor(appId);
-        if (rule === "off" && !batteryWarning && !sessionUpdate)
+        if (rule === "off" && !batteryWarning && !sessionUpdate && !settings.clockAlert)
             return id;
         entries = [
             {
                 id: id,
                 app: app.slice(0, 128),
-                critical: batteryWarning || sessionUpdate,
+                critical: batteryWarning || sessionUpdate || settings.clockAlert === true,
+                clockAlert: settings.clockAlert === true,
                 batteryWarning: batteryWarning,
                 sessionUpdate: sessionUpdate,
                 summary: summary.slice(0, 512),
                 body: body.slice(0, 4096),
-                time: Date.now(),
+                time: settings.time === undefined ? Date.now() : settings.time,
+                transient: settings.transient === true,
                 object: null,
                 actions: actions,
                 deadline: 0
@@ -434,17 +455,24 @@ Scope {
         ].concat(entries);
         if (entries.length > 200)
             dismiss(entries.filter(e => e.held !== true).slice(200).map(e => e.id));
-        if (rule === "allow" || batteryWarning || sessionUpdate)
+        if (!settings.silent && (rule === "allow" || batteryWarning || sessionUpdate || settings.clockAlert))
             arrived(id);
         return id;
     }
+    // The owning service restores these actions from its own persistent state.
+    // Saving an inert history copy too would duplicate the notice after a restart.
+    function transientLocal(app: string, summary: string, body: string, actions: var, options: var): int {
+        return addLocal(app, summary, body, false, false, actions, Object.assign({}, options || {}, {
+            transient: true
+        }));
+    }
     function systemBattery(percent: int): void {
-        localNotice(percent <= 5 ? "Battery critical" : "Battery low", percent + "% left — plug in soon.", "", true, false);
+        localNotice(percent <= 5 ? "Battery critical" : "Battery low", qsTranslate("NotificationStore", "%1% left — plug in soon.").arg(percent.toFixed(0)), "", true, false);
     }
     // The sleep guard's policy names (scripts/emaki-sleep-guard). Only what the policy is
     // known to have done: the guard does not report whether its second attempt locked.
     function systemSleepLock(policy: string): void {
-        local("Screen lock", policy === "end-session" ? "Emaki could not lock the screen before sleep, so it ended the session." : policy === "end-session-failed" ? "Emaki could not lock the screen before sleep and could not end the session." : policy === "sleep-relock" ? "Emaki could not lock the screen before sleep. It tried again after waking." : policy === "stay-awake" ? "Emaki could not lock the screen when sleep was requested." : "Emaki could not lock the screen before sleep.", "");
+        local("Screen lock", policy === "end-session" ? qsTranslate("NotificationStore", "Emaki could not lock the screen before sleep, so it ended the session.") : policy === "end-session-failed" ? qsTranslate("NotificationStore", "Emaki could not lock the screen before sleep and could not end the session.") : policy === "sleep-relock" ? qsTranslate("NotificationStore", "Emaki could not lock the screen before sleep. It tried again after waking.") : policy === "stay-awake" ? qsTranslate("NotificationStore", "Emaki could not lock the screen when sleep was requested.") : qsTranslate("NotificationStore", "Emaki could not lock the screen before sleep."), "");
     }
     function dismiss(ids: var): void {
         const removed = entries.filter(e => ids.includes(e.id));

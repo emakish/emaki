@@ -17,25 +17,25 @@ Scope {
     readonly property var flow: client.connected && client.request && client.request.id ? client.request : null
     readonly property bool responseRequired: !!flow && !awaitingResponse
     readonly property bool passwordRequest: true
-    readonly property string accountName: flow ? flow.accountName || Copy.unavailable : ""
+    readonly property string accountName: flow ? flow.accountName || Copy.unavailable() : ""
     readonly property string iconName: ""
-    readonly property string requestLine: !flow ? "" : agent && flow.requester ? Details.clean(flow.requester) + " wants to run a command as administrator" : Copy.requestUnavailable
+    readonly property string requestLine: !flow ? "" : agent && flow.requester ? qsTranslate("SudoPromptAdapter", "%1 wants to run a command as administrator").arg(Details.clean(flow.requester)) : Copy.requestUnavailable()
     readonly property var detailRows: !flow ? [] : [
         {
-            label: Copy.sudoProcessChain,
-            value: Details.clean(flow.processChain || Copy.unavailable)
+            label: Copy.sudoProcessChain(),
+            value: Details.clean(flow.processChain || Copy.unavailable())
         },
         {
-            label: Copy.sudoCommand,
-            value: Details.clean(flow.command || Copy.unavailable)
+            label: Copy.sudoCommand(),
+            value: Details.clean(flow.command || Copy.unavailable())
         },
         {
-            label: Copy.sudoWorkingFolder,
-            value: Details.clean(flow.workingDirectory || Copy.unavailable)
+            label: Copy.sudoWorkingFolder(),
+            value: Details.clean(flow.workingDirectory || Copy.unavailable())
         },
         {
-            label: Copy.sudoUser,
-            value: Details.clean(flow.user || Copy.unavailable) + " → " + Details.clean(flow.targetUser || Copy.unavailable)
+            label: Copy.sudoUser(),
+            value: Details.clean(flow.user || Copy.unavailable()) + " → " + Details.clean(flow.targetUser || Copy.unavailable())
         }
     ]
     readonly property bool agent: !!flow && flow.agent === true

@@ -31,7 +31,8 @@ FocusScope {
     readonly property alias search: search
     readonly property alias sidebar: sidebar
     readonly property alias scroller: scroll
-    readonly property var section: Index.section(page)
+    readonly property var sections: Index.sections()
+    readonly property var section: root.sections.find(entry => entry.id === page) || null
     readonly property var coreKeys: pageRegistry.coreKeys
     readonly property var quickRows: pageRegistry.searchAnchors
     readonly property var results: Index.search(search.text, availablePages, coreKeys.concat(Object.keys(quickRows))).map(result => ({
@@ -44,7 +45,7 @@ FocusScope {
                 enabled: result.enabled,
                 target: result.key || quickRows[result.id] || ""
             }))
-    readonly property var resultGroups: Index.sections.map(section => ({
+    readonly property var resultGroups: root.sections.map(section => ({
                 title: section.title,
                 rows: results.filter(result => result.page === section.id)
             })).filter(group => group.rows.length)
@@ -200,21 +201,21 @@ FocusScope {
     }
     function historyValue(value): string {
         if (value === undefined || value === null)
-            return "Default";
+            return qsTranslate("SettingsView", "Default");
         if (typeof value === "boolean")
-            return value ? "On" : "Off";
+            return value ? qsTranslate("SettingsView", "On") : qsTranslate("SettingsView", "Off");
         return typeof value === "string" ? value : JSON.stringify(value);
     }
     function wasUndone(id): bool {
         return root.catalog.history.some(entry => entry.undo_of === id);
     }
     function settingTitle(key): string {
-        for (const section of Index.sections) {
+        for (const section of root.sections) {
             const item = section.items.find(item => item.key === key);
             if (item)
                 return item.title;
         }
-        return "Setting";
+        return qsTranslate("SettingsView", "Setting");
     }
     Keys.priority: Keys.BeforeItem
     Keys.onEscapePressed: root.handleEscape()
@@ -375,7 +376,7 @@ FocusScope {
                 }
                 Text {
                     width: parent.width
-                    text: root.service.accountAdministrator ? "Administrator · this computer" : "This computer"
+                    text: root.service.accountAdministrator ? qsTranslate("SettingsView", "Administrator · this computer") : qsTranslate("SettingsView", "This computer")
                     elide: Text.ElideRight
                     font.family: SettingsTheme.fontFamily
                     font.pixelSize: 12
@@ -390,7 +391,7 @@ FocusScope {
             y: 94
             width: parent.width - 32
             height: 36
-            placeholderText: "Search settings"
+            placeholderText: qsTranslate("SettingsView", "Search settings")
             color: SettingsTheme.ink
             placeholderTextColor: SettingsTheme.faint
             font.family: SettingsTheme.fontFamily
@@ -443,7 +444,7 @@ FocusScope {
                 anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
                 text: "×"
-                Accessible.name: "Clear search"
+                Accessible.name: qsTranslate("SettingsView", "Clear search")
                 onClicked: {
                     search.text = "";
                     search.forceActiveFocus();
@@ -471,7 +472,7 @@ FocusScope {
                 width: nav.width - 6
                 Repeater {
                     id: sidebar
-                    model: Index.sections
+                    model: root.sections
                     delegate: Column {
                         id: entry
                         required property var modelData
@@ -481,7 +482,7 @@ FocusScope {
                         visible: !root.searching || matches > 0
                         width: navColumn.width
                         Text {
-                            visible: !root.searching && (entry.index === 0 || Index.sections[entry.index - 1].group !== entry.modelData.group)
+                            visible: !root.searching && (entry.index === 0 || root.sections[entry.index - 1].group !== entry.modelData.group)
                             text: entry.modelData.group.toUpperCase()
                             color: SettingsTheme.faint
                             font.family: SettingsTheme.fontFamily
@@ -496,7 +497,7 @@ FocusScope {
                             id: sectionButton
                             objectName: "section-" + entry.modelData.id
                             width: parent.width
-                            height: 36
+                            height: Math.max(36, sectionLabel.implicitHeight + 12)
                             enabled: root.availablePages.includes(entry.modelData.id)
                             focusPolicy: enabled ? Qt.StrongFocus : Qt.NoFocus
                             hoverEnabled: enabled
@@ -546,6 +547,7 @@ FocusScope {
                                     }
                                 }
                                 Text {
+                                    id: sectionLabel
                                     x: 43
                                     width: parent.width - x - (root.searching ? 35 : 6)
                                     anchors.verticalCenter: parent.verticalCenter
@@ -555,7 +557,7 @@ FocusScope {
                                     font.family: SettingsTheme.fontFamily
                                     font.pixelSize: 14
                                     font.weight: root.page === entry.modelData.id ? Font.DemiBold : Font.Normal
-                                    elide: Text.ElideRight
+                                    wrapMode: Text.WordWrap
                                 }
                                 Text {
                                     anchors.right: parent.right
@@ -634,8 +636,8 @@ FocusScope {
                         id: heading
                         x: root.searching || root.historyShown ? 0 : 68
                         width: parent.width - x - (resetPage.visible ? resetPage.width + 18 : 26)
-                        title: root.searching ? root.results.length + (root.results.length === 1 ? " result for “" : " results for “") + search.text.trim() + "”" : root.historyShown ? "History" : root.section?.title ?? "Settings"
-                        explanation: root.searching ? "Find a setting by its name or what it does." : root.historyShown ? "Changes to your settings can be undone here." : pageRegistry.definition(root.page)?.description || root.section?.description || ""
+                        title: root.searching ? Translation.englishPlural(qsTranslate("SettingsView", "%n result(s) for “%1”", "", root.results.length), root.results.length).arg(search.text.trim()) : root.historyShown ? qsTranslate("SettingsView", "History") : root.section?.title ?? qsTranslate("SettingsView", "Settings")
+                        explanation: root.searching ? qsTranslate("SettingsView", "Find a setting by its name or what it does.") : root.historyShown ? qsTranslate("SettingsView", "Changes to your settings can be undone here.") : pageRegistry.definition(root.page)?.description || root.section?.description || ""
                     }
                     SettingsButton {
                         id: resetPage
@@ -644,7 +646,7 @@ FocusScope {
                         y: 4
                         visible: !root.searching && !root.historyShown && root.pageModified
                         enabled: !root.catalog.writing
-                        text: "Reset this page"
+                        text: qsTranslate("SettingsView", "Reset this page")
                         onClicked: {
                             if (root.page === "appearance") {
                                 root.catalog.reset("appearance");
@@ -758,7 +760,7 @@ FocusScope {
                     Text {
                         visible: root.results.length === 0
                         width: parent.width
-                        text: "No settings found. Try another word."
+                        text: qsTranslate("SettingsView", "No settings found. Try another word.")
                         color: SettingsTheme.dim
                         font.family: SettingsTheme.fontFamily
                         font.pixelSize: 14
@@ -781,7 +783,7 @@ FocusScope {
                     spacing: 12
                     Text {
                         visible: root.catalog.history.length === 0
-                        text: "No changes yet."
+                        text: qsTranslate("SettingsView", "No changes yet.")
                         color: SettingsTheme.dim
                         font.family: SettingsTheme.fontFamily
                         font.pixelSize: 14
@@ -792,10 +794,10 @@ FocusScope {
                             id: historyEntry
                             required property var modelData
                             width: parent.width
-                            title: modelData.kind === "undo" ? "Undone change" : "Settings change"
+                            title: modelData.kind === "undo" ? qsTranslate("SettingsView", "Undone change") : qsTranslate("SettingsView", "Settings change")
                             Text {
                                 width: parent.width
-                                text: historyEntry.modelData?.changes?.map(change => root.settingTitle(change.key) + ": " + root.historyValue(change.before) + " → " + root.historyValue(change.after)).join("\n") || "Settings recorded"
+                                text: historyEntry.modelData?.changes?.map(change => root.settingTitle(change.key) + ": " + root.historyValue(change.before) + " → " + root.historyValue(change.after)).join("\n") || qsTranslate("SettingsView", "Settings recorded")
                                 color: SettingsTheme.ink
                                 font.family: SettingsTheme.fontFamily
                                 font.pixelSize: 13
@@ -810,7 +812,7 @@ FocusScope {
                             }
                             SettingsButton {
                                 property var entry: historyEntry.modelData
-                                text: root.wasUndone(entry.id) ? "Undone" : "Undo"
+                                text: root.wasUndone(entry.id) ? qsTranslate("SettingsView", "Undone") : qsTranslate("SettingsView", "Undo")
                                 enabled: !root.wasUndone(entry.id) && !root.catalog.writing && entry?.changes?.length > 0 && ["set", "undo", "manual"].includes(entry?.kind)
                                 onClicked: root.catalog.undo(entry.id)
                             }
@@ -845,7 +847,7 @@ FocusScope {
                 x: 24
                 width: parent.width - 148
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.catalog.writing ? "Saving…" : root.catalog.lastStatus === "rejected" ? (root.catalog.lastAction === "undo_conflict" ? "This setting changed again. Undo was not applied." : "Could not change the setting. Your previous value is kept.") : root.catalog.lastStatus === "unconfirmed" ? "Could not confirm the change. Reopen Settings to check." : root.catalog.lastStatus === "committed_history_pending" ? "Saved. History recovery is pending." : root.catalog.lastStatus === "committed" ? (root.catalog.sessionApplied ? "Applied · Undo in History" : "Saved to the isolated profile") : "Changes apply as you make them."
+                text: root.catalog.writing ? qsTranslate("SettingsView", "Saving…") : root.catalog.lastStatus === "rejected" ? (root.catalog.lastAction === "undo_conflict" ? qsTranslate("SettingsView", "This setting changed again. Undo was not applied.") : qsTranslate("SettingsView", "Could not change the setting. Your previous value is kept.")) : root.catalog.lastStatus === "unconfirmed" ? qsTranslate("SettingsView", "Could not confirm the change. Reopen Settings to check.") : root.catalog.lastStatus === "committed_history_pending" ? qsTranslate("SettingsView", "Saved. History recovery is pending.") : root.catalog.lastStatus === "committed" ? (root.catalog.sessionApplied ? qsTranslate("SettingsView", "Applied · Undo in History") : qsTranslate("SettingsView", "Saved to the isolated profile")) : qsTranslate("SettingsView", "Changes apply as you make them.")
                 color: root.catalog.lastStatus === "rejected" ? SettingsTheme.error : SettingsTheme.dim
                 font.family: SettingsTheme.fontFamily
                 font.pixelSize: 12
@@ -856,7 +858,7 @@ FocusScope {
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.historyShown ? "Back" : "History"
+                text: root.historyShown ? qsTranslate("SettingsView", "Back") : qsTranslate("SettingsView", "History")
                 onClicked: {
                     root.historyShown = !root.historyShown;
                     search.text = "";

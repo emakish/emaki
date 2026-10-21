@@ -51,7 +51,7 @@ ShellRoot {
         }
         // Every word the page promises: its content, the window's own labels and buttons.
         function expectedCopy() {
-            const page = Content.pages[view().page];
+            const page = Content.pages()[view().page];
             let copy = ["GETTING STARTED", page.title, page.text, view().last ? "Start using Emaki" : "Next"];
             if (page.note)
                 copy.push(page.note);
@@ -117,7 +117,7 @@ ShellRoot {
                 const point = button.mapToItem(view(), 0, 0);
                 check(button.visible && button.width > 0 && button.height > 0 && point.x >= 0 && point.y >= 0 && point.x + button.width <= view().width && point.y + button.height <= view().height, "Welcome control stays reachable: " + name);
             }
-            for (let index = 0; index < Content.pages.length; ++index) {
+            for (let index = 0; index < Content.pages().length; ++index) {
                 const dot = control("dot-" + index);
                 const point = dot.mapToItem(view(), 0, 0);
                 check(dot.visible && point.x >= 0 && point.x + dot.width <= view().width && point.y + dot.height <= view().height, "Welcome page dot stays reachable: " + index);
@@ -218,11 +218,11 @@ ShellRoot {
             control("next").forceActiveFocus();
 
             // Enter goes on through every page; each fits the default window.
-            for (let page = 0; page < Content.pages.length; ++page) {
+            for (let page = 0; page < Content.pages().length; ++page) {
                 equal(view().page, page);
                 settle();
                 check(control("body").contentHeight <= control("body").height + 1, "Default page must fit: " + control("body").contentHeight + " / " + control("body").height);
-                for (let index = 0; index < Content.pages.length; ++index)
+                for (let index = 0; index < Content.pages().length; ++index)
                     equal(control("dot-" + index).Accessible.selected, index === page);
                 const texts = descendants(view()).filter(c => c.text !== undefined && c.truncated !== undefined && shown(c));
                 check(texts.length > 5);
@@ -230,8 +230,8 @@ ShellRoot {
                     equal(text.truncated, false, text.text);
                 checkPage();
                 shot("page-" + (page + 1));
-                equal(control("title").text, Content.pages[page].title);
-                if (page < Content.pages.length - 1)
+                equal(control("title").text, Content.pages()[page].title);
+                if (page < Content.pages().length - 1)
                     keyClick(Qt.Key_Return);
             }
             equal(control("next").text, "Start using Emaki");
@@ -285,7 +285,7 @@ ShellRoot {
             // Match WelcomeWindow's available size on a 1366 by 768 logical display.
             view().Window.window.width = Math.min(800, 1366 - 48);
             view().Window.window.height = Math.min(660, 768 - 120);
-            for (let page = 0; page < Content.pages.length; ++page) {
+            for (let page = 0; page < Content.pages().length; ++page) {
                 view().page = page;
                 settle();
                 checkPage();
@@ -303,7 +303,7 @@ ShellRoot {
             tryVerify(() => body.contentY > 0);
             body.cancelFlick();
             body.contentY = 0;
-            for (let page = 0; page < Content.pages.length; ++page) {
+            for (let page = 0; page < Content.pages().length; ++page) {
                 view().page = page;
                 settle();
                 checkPage();

@@ -9,10 +9,12 @@ const files = ['ShellScene.qml', 'ShellOutputs.qml', 'Surfaces.qml', 'ClockPanel
 const original = Object.fromEntries(files.map(file => [file,
     fs.readFileSync(new URL('../shell/' + file, import.meta.url), 'utf8')]));
 const screenShare = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), screenShare);
 vm.runInContext(fs.readFileSync(new URL('../shell/ScreenShare.js', import.meta.url), 'utf8')
     .replace(/^\.pragma library\s*$/m, ''), screenShare);
 function run(sources) {
     function production(file, name, parameters, context) {
+        vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), context);
         const source = sources[file];
         const marker = source.indexOf('function ' + name + '(');
         assert.notEqual(marker, -1, name);
@@ -43,6 +45,7 @@ function run(sources) {
     }
     const store = vm.createContext({});
     store.plainBody = production('NotificationStore.qml', 'plainBody', 'value', store);
+    store.applicationId = production('NotificationStore.qml', 'applicationId', 'n', store);
     const snapshot = production('NotificationStore.qml', 'snapshot', 'n,time', store);
     function request(typedPin) {
         return snapshot({id: 1, appName: 'blueman', appIcon: 'blueman',

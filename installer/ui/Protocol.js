@@ -3,10 +3,10 @@
 // Shared by the QML client and the transcript tests. No secret is retained here.
 function initial() {
     return { connected: false, ready: false, serial: 0, pending: {}, version: "", greeted: false,
-        inventory: null, plan: null, deadline: 0, jobId: "", lastLogSeq: 0, reservedLogins: null, consoleChars: null,
+        inventory: null, plan: null, deadline: 0, jobId: "", lastLogSeq: 0, reservedLogins: null, consoleChars: null, availableLocales: ["en_US.UTF-8"],
         phase: "", phasePct: 0, totalPct: 0, indeterminate: false, activity: null, step: null, skippedPhases: [],
         running: false, confirming: false, planning: false, probing: false,
-        outcome: "", error: null, restartState: "", forcedDeadline: 0, preparingSince: 0, rebootMessage: "", notice: "Connecting to the installer…",
+        outcome: "", error: null, restarting: false, restartState: "", forcedDeadline: 0, preparingSince: 0, rebootMessage: "", notice: qsTranslate("Protocol", "Connecting to the installer…"),
         logs: [], cancelPending: false, cancelMessage: "", started: 0, seconds: 0, doneWarnings: [], secureBoot: null };
 }
 function invalidate(s) { s.plan = null; s.deadline = 0; }
@@ -19,21 +19,22 @@ function request(s, type, fields) {
     if (type === "prepare_reboot") {
         s.restartState = "preparing";
         s.preparingSince = Date.now();
-        s.notice = "Preparing to restart. Keep the USB stick connected. This can take up to two and a half minutes. If preparation cannot finish, the computer restarts by itself.";
+        s.notice = qsTranslate("Protocol", "Preparing to restart. Keep the USB stick connected. This can take up to two and a half minutes. If preparation cannot finish, the computer restarts by itself.");
     }
-    if (type === "reboot") s.rebootMessage = "Restarting…";
+    if (type === "reboot") { s.restarting = true; s.rebootMessage = qsTranslate("Protocol", "Restarting…"); }
     const id = "ui-" + (++s.serial);
     s.pending[id] = type;
     return Object.assign({ type: type, id: id }, fields || {});
 }
 function rebootTimedOut(s) {
+    s.restarting = false;
     for (const id of Object.keys(s.pending))
         if (s.pending[id] === "reboot") delete s.pending[id];
     s.rebootMessage = recoveryText();
     s.notice = s.rebootMessage;
 }
 function recoveryText() {
-    return "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again.";
+    return qsTranslate("Protocol", "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again.");
 }
 function forcedTick(s, now) {
     if (!s.forcedDeadline) return;
@@ -43,8 +44,8 @@ function forcedTick(s, now) {
         return;
     }
     const seconds = Math.max(0, Math.ceil((s.forcedDeadline - now) / 1000));
-    s.rebootMessage = "Restart preparation could not finish. Your installation is safe. Remove the USB stick if it is still connected. " +
-        (seconds ? "Restarting in " + seconds + (seconds === 1 ? " second…" : " seconds…") + " Press Enter to restart now." : "Restarting…");
+    s.rebootMessage = qsTranslate("Protocol", "Restart preparation could not finish. Your installation is safe. Remove the USB stick if it is still connected. ") +
+        (seconds ? qsTranslate("Protocol", "Restarting in %n second(s)… Press Enter to restart now.", "", seconds).replace(/\(s\)/g, seconds === 1 ? "" : "s") : qsTranslate("Protocol", "Restarting…"));
 }
 function disconnectedReboot(s) {
     if (s.restartState !== "forced") s.rebootMessage = recoveryText();
@@ -52,30 +53,30 @@ function disconnectedReboot(s) {
 function preparationTimedOut(s) {
     // Preserve the pending request so a late preparation reply can still open the prompt.
     s.preparingSince = 0;
-    s.notice = "Restart preparation has not been confirmed. " + recoveryText();
+    s.notice = qsTranslate("Protocol", "Restart preparation has not been confirmed. ") + recoveryText();
 }
 function disconnected(s) {
-    if (s.rebootMessage === "Restarting…" && s.restartState !== "forced") rebootTimedOut(s);
+    if (s.restarting && s.restartState !== "forced") rebootTimedOut(s);
     s.connected = false; s.ready = false;
     s.planning = false; s.probing = false;
     s.pending = {};
     // Confirm can have reached the worker before the connection was lost.
     // Keep that intent until hello tells us whether there is a running job.
     invalidate(s);
-    if (s.greeted) s.notice = "Connection lost. Reconnecting…";
+    if (s.greeted) s.notice = qsTranslate("Protocol", "Connection lost. Reconnecting…");
 
 }
 // Copied to RAM, the live system has no boot medium: the worker's unit starts only while it is
 // mounted (installer/systemd/emaki-installerd.service), and the offline packages live on it.
 // Without this the window says "Connecting to the installer…" forever.
 function bootMediumMissing(s) {
-    if (!s.greeted) s.notice = "Restart from the USB stick without the 'copy to RAM' option to install.";
+    if (!s.greeted) s.notice = qsTranslate("Protocol", "Restart from the USB stick without the 'copy to RAM' option to install.");
 }
 // Only a plan with a token has a deadline (0 otherwise): a refused plan stays on Review.
 function expire(s, now) {
     if (s.plan && s.deadline > 0 && now >= s.deadline) {
         invalidate(s);
-        s.notice = "The review expired. Enter your password again to prepare a new plan.";
+        s.notice = qsTranslate("Protocol", "The review expired. Enter your password again to prepare a new plan.");
         return true;
     }
     return false;
@@ -86,10 +87,12 @@ function receive(s, m, now) {
     if (m.job_id && s.jobId && m.job_id !== s.jobId && pending !== "confirm") return out;
     switch (m.type) {
     case "hello":
-        if (m.proto !== 1) { s.notice = "The installer and this window are incompatible."; break; }
+        if (m.proto !== 1) { s.notice = qsTranslate("Protocol", "The installer and this window are incompatible."); break; }
         s.connected = true; s.ready = true; s.greeted = true; s.version = m.emaki_version;
         s.label = typeof m.emaki_label === "string" ? m.emaki_label : "";
         s.notice = "";
+        if (Array.isArray(m.available_locales) && m.available_locales.length && m.available_locales.every(x => typeof x === "string"))
+            s.availableLocales = m.available_locales.slice();
         // The planner's list (planner.RESERVED_LOGINS); a worker without it keeps the window's own.
         if (Array.isArray(m.reserved_logins) && m.reserved_logins.every(x => typeof x === "string"))
             s.reservedLogins = m.reserved_logins.slice();
@@ -121,7 +124,7 @@ function receive(s, m, now) {
             }
             out.push(request(s, "resume", {job_id: s.jobId, since_seq: s.lastLogSeq}));
         } else {
-            if (s.confirming) s.notice = "The confirmation could not be recovered. Check the installation log before preparing a new plan.";
+            if (s.confirming) s.notice = qsTranslate("Protocol", "The confirmation could not be recovered. Check the installation log before preparing a new plan.");
             s.confirming = false;
             out.push(request(s, "probe"));
         }
@@ -146,7 +149,8 @@ function receive(s, m, now) {
             }
         }
         if (pending === "reboot") {
-            if (m.ok) s.rebootMessage = "Restarting…";
+            s.restarting = m.ok === true;
+            if (m.ok) s.rebootMessage = qsTranslate("Protocol", "Restarting…");
             else if (m.restart_state === "forced") {
                 s.restartState = "forced";
                 s.forcedDeadline = now + m.remaining_s * 1000;
@@ -155,9 +159,9 @@ function receive(s, m, now) {
                 s.restartState = m.restart_state || "ready";
                 s.forcedDeadline = 0;
                 // A generic worker message still gets the way out; the target is already safe here.
-                const recovery = "Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.";
-                s.rebootMessage = !m.msg ? "Could not restart. " + recovery
-                    : m.msg.indexOf("hold the power button") >= 0 ? m.msg : m.msg + " " + recovery;
+                const recovery = qsTranslate("Protocol", "Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.");
+                s.rebootMessage = !m.msg ? qsTranslate("Protocol", "Could not restart. ") + recovery
+                    : m.recovery_included === true ? m.msg : m.msg + " " + recovery;
             }
         }
         if (pending === "confirm") {
@@ -177,19 +181,19 @@ function receive(s, m, now) {
         if (pending === "plan") s.planning = false;
         if (pending === "cancel" && !s.running) s.cancelPending = false;
         if (!m.ok && pending !== "set_timezone") {
-            s.notice = m.msg || m.code || "The request failed.";
+            s.notice = m.msg || m.code || qsTranslate("Protocol", "The request failed.");
             if (m.code === "token_expired" || m.code === "token_invalid") {
                 invalidate(s);
-                s.notice += " Enter your password again to prepare a new plan.";
+                s.notice += qsTranslate("Protocol", " Enter your password again to prepare a new plan.");
             }
             if (m.code === "job_not_found") {
                 s.running = false; s.confirming = false; s.jobId = "";
                 s.outcome = "error";
-                s.error = {message: "The installer no longer has a record of this installation. Check the installation log before starting again.", retryable: false};
+                s.error = {message: qsTranslate("Protocol", "The installer no longer has a record of this installation. Check the installation log before starting again."), retryable: false};
             }
             if (m.code === "busy" && pending !== "save_log") out.push(request(s, "hello", {proto: 1}));
-        } else if (pending === "save_log") s.notice = "Log saved to the selected removable medium.";
-        else if (pending === "reboot") s.notice = "Restart requested…";
+        } else if (pending === "save_log") s.notice = qsTranslate("Protocol", "Log saved to the selected removable medium.");
+        else if (pending === "reboot") s.notice = qsTranslate("Protocol", "Restart requested…");
         else if (pending === "prepare_reboot") s.notice = "";
         break;
     case "state": case "progress":
@@ -214,7 +218,7 @@ function receive(s, m, now) {
         break;
     case "cancel_ack":
         s.cancelPending = false;
-        s.cancelMessage = m.disk_changed ? "Cancelled at a phase boundary. Disk changes have not been undone." : "Cancelled before any disk changes.";
+        s.cancelMessage = m.disk_changed ? qsTranslate("Protocol", "Cancelled at a phase boundary. Disk changes have not been undone.") : qsTranslate("Protocol", "Cancelled before any disk changes.");
         break;
     case "error":
         s.error = m; s.running = false; s.confirming = false;
@@ -246,12 +250,12 @@ function stepText(step) {
 function activityText(a) {
     if (!a || typeof a !== "object")
         return "";
-    const count = Number.isInteger(a.done) && Number.isInteger(a.total) && a.total > 0 ? " " + a.done + " of " + a.total : "";
+    const counted = Number.isInteger(a.done) && Number.isInteger(a.total) && a.total > 0;
     if (a.name === "signatures")
-        return "Checking package signatures…" + count;
+        return counted ? qsTranslate("Protocol", "Checking package signatures… %1 of %2").arg(number(a.done, 0)).arg(number(a.total, 0)) : qsTranslate("Protocol", "Checking package signatures…");
     // Without a count while pacman downloads the package lists.
     if (a.name === "downloads")
-        return "Downloading updates…" + count;
+        return counted ? qsTranslate("Protocol", "Downloading updates… %1 of %2").arg(number(a.done, 0)).arg(number(a.total, 0)) : qsTranslate("Protocol", "Downloading updates…");
     return "";
 }
 // The error page in plain words: what happened and one thing to do, per worker error code
@@ -260,48 +264,48 @@ function activityText(a) {
 function errorPresentation(error) {
     if (error && ["bad_config", "login_name_reserved", "secure_boot", "clock_skew"].indexOf(error.code) >= 0 && error.message)
         return {sentence: error.message, action: "", details: ""};
-    const save = "Save the log below; it records what the installer did.";
-    const usb = "Check that the USB stick is still connected.";
-    const disk = "Check the choices on the Disk step.";
-    const review = "Prepare a new review.";
-    const another = "Choose another disk.";
-    const larger = "Choose a larger disk.";
+    const save = qsTranslate("Protocol", "Save the log below; it records what the installer did.");
+    const usb = qsTranslate("Protocol", "Check that the USB stick is still connected.");
+    const disk = qsTranslate("Protocol", "Check the choices on the Disk step.");
+    const review = qsTranslate("Protocol", "Prepare a new review.");
+    const another = qsTranslate("Protocol", "Choose another disk.");
+    const larger = qsTranslate("Protocol", "Choose a larger disk.");
     const table = {
-        bad_request: ["The installer could not read a request from this window.", save],
-        bad_config: ["The installer could not use one of the chosen settings.", save],
-        login_name_reserved: ["This login name belongs to the system.", "Choose another name; the disk has not been changed."],
-        bad_dest: ["The log could not be written to the chosen removable medium.", "Choose another medium from the list."],
-        busy: ["The installer was busy with another task.", save],
-        restart_pending: ["A previous restart is still pending.", "Wait for it to finish, then try again."],
-        unsupported_mode: ["This type of installation is not available in this version.", disk],
-        unsupported_version: ["The installer's parts on this USB stick do not match each other.", save],
-        uefi_required: ["Installing needs a computer started in 64-bit UEFI mode.", "If the computer's boot menu offers a UEFI entry for the USB stick, choose it there."],
-        disk_not_found: ["The chosen disk is no longer there.", "Check that the disk is connected."],
-        boot_medium: ["The chosen disk is the USB stick Emaki is running from.", another],
-        disk_busy: ["The chosen disk or one of its partitions is in use.", "Close any program or window that uses it."],
-        encrypted_confirmation: ["The installer could not confirm permission to erase the chosen volume.", disk],
-        disk_too_small: ["The chosen disk is smaller than the 24 GiB Emaki needs.", larger],
-        disk_changed: ["The disk changed after the review.", review],
-        unsafe_disk: ["A safety check of the disk did not pass.", save],
-        manual_layout: ["The partitions cannot be used as they were assigned.", disk],
-        esp_space: ["The disk's startup partition cannot be used.", disk],
-        root_too_small: ["There is not enough room for Emaki on the chosen partition.", disk],
-        shrink_bounds: ["Windows cannot be made smaller as planned.", disk],
-        token_invalid: ["The confirmation did not match the review.", review],
-        token_expired: ["The review expired before the installation started.", review],
-        job_not_found: ["The installer no longer has a record of this installation.", save],
-        offline_repo: ["The installer could not use the package source on the USB stick.", usb],
-        offline_repo_incomplete: ["Some packages on the USB stick are missing or could not be verified.", usb],
-        command_failed: ["A program the installer runs stopped with an error.", save],
-        boot_verify: ["The startup files of the new system did not pass their check.", save],
-        fstab_verify: ["The list of disks the new system mounts at startup did not pass its check.", save],
-        cleanup_failed: ["The installer could not detach the new system's disks.", save],
-        cancelled: ["The installation was cancelled.", save],
-        internal: ["The installer stopped because of an internal error.", save]
+        bad_request: [qsTranslate("Protocol", "The installer could not read a request from this window."), save],
+        bad_config: [qsTranslate("Protocol", "The installer could not use one of the chosen settings."), save],
+        login_name_reserved: [qsTranslate("Protocol", "This login name belongs to the system."), qsTranslate("Protocol", "Choose another name; the disk has not been changed.")],
+        bad_dest: [qsTranslate("Protocol", "The log could not be written to the chosen removable medium."), qsTranslate("Protocol", "Choose another medium from the list.")],
+        busy: [qsTranslate("Protocol", "The installer was busy with another task."), save],
+        restart_pending: [qsTranslate("Protocol", "A previous restart is still pending."), qsTranslate("Protocol", "Wait for it to finish, then try again.")],
+        unsupported_mode: [qsTranslate("Protocol", "This type of installation is not available in this version."), disk],
+        unsupported_version: [qsTranslate("Protocol", "The installer's parts on this USB stick do not match each other."), save],
+        uefi_required: [qsTranslate("Protocol", "Installing needs a computer started in 64-bit UEFI mode."), qsTranslate("Protocol", "If the computer's boot menu offers a UEFI entry for the USB stick, choose it there.")],
+        disk_not_found: [qsTranslate("Protocol", "The chosen disk is no longer there."), qsTranslate("Protocol", "Check that the disk is connected.")],
+        boot_medium: [qsTranslate("Protocol", "The chosen disk is the USB stick Emaki is running from."), another],
+        disk_busy: [qsTranslate("Protocol", "The chosen disk or one of its partitions is in use."), qsTranslate("Protocol", "Close any program or window that uses it.")],
+        encrypted_confirmation: [qsTranslate("Protocol", "The installer could not confirm permission to erase the chosen volume."), disk],
+        disk_too_small: [qsTranslate("Protocol", "The chosen disk is smaller than the 24 GiB Emaki needs."), larger],
+        disk_changed: [qsTranslate("Protocol", "The disk changed after the review."), review],
+        unsafe_disk: [qsTranslate("Protocol", "A safety check of the disk did not pass."), save],
+        manual_layout: [qsTranslate("Protocol", "The partitions cannot be used as they were assigned."), disk],
+        esp_space: [qsTranslate("Protocol", "The disk's startup partition cannot be used."), disk],
+        root_too_small: [qsTranslate("Protocol", "There is not enough room for Emaki on the chosen partition."), disk],
+        shrink_bounds: [qsTranslate("Protocol", "Windows cannot be made smaller as planned."), disk],
+        token_invalid: [qsTranslate("Protocol", "The confirmation did not match the review."), review],
+        token_expired: [qsTranslate("Protocol", "The review expired before the installation started."), review],
+        job_not_found: [qsTranslate("Protocol", "The installer no longer has a record of this installation."), save],
+        offline_repo: [qsTranslate("Protocol", "The installer could not use the package source on the USB stick."), usb],
+        offline_repo_incomplete: [qsTranslate("Protocol", "Some packages on the USB stick are missing or could not be verified."), usb],
+        command_failed: [qsTranslate("Protocol", "A program the installer runs stopped with an error."), save],
+        boot_verify: [qsTranslate("Protocol", "The startup files of the new system did not pass their check."), save],
+        fstab_verify: [qsTranslate("Protocol", "The list of disks the new system mounts at startup did not pass its check."), save],
+        cleanup_failed: [qsTranslate("Protocol", "The installer could not detach the new system's disks."), save],
+        cancelled: [qsTranslate("Protocol", "The installation was cancelled."), save],
+        internal: [qsTranslate("Protocol", "The installer stopped because of an internal error."), save]
     };
     const words = error && Object.prototype.hasOwnProperty.call(table, error.code) ? table[error.code] : null;
     if (!words)
-        return {sentence: (error && error.message) || "The installer could not continue.", action: "", details: ""};
+        return {sentence: (error && error.message) || qsTranslate("Protocol", "The installer could not continue."), action: "", details: ""};
     // Without "Try again" the person cannot return to the Disk step or prepare a new review.
     const action = error.retryable || [disk, review, another, larger].indexOf(words[1]) < 0 ? words[1] : save;
     // The ERASE field belongs to Disk. Keep the facts here, without instructions to type into it.
@@ -323,9 +327,9 @@ function sameLayouts(a, b) {
 }
 function diskPasswordError(password) {
     if (!password || /[^\x20-\x7e]/.test(password) || password.length > 1024)
-        return "Use characters available on an English (US) keyboard for the startup password (at most 1024 characters).";
+        return qsTranslate("Protocol", "Use characters available on an English (US) keyboard for the startup password (at most 1024 characters).");
     if (password.length < 8)
-        return "Use at least 8 characters for the startup password.";
+        return qsTranslate("Protocol", "Use at least 8 characters for the startup password.");
     return "";
 }
 
@@ -333,16 +337,16 @@ function diskPasswordError(password) {
 // (session.reservedLogins).
 function accountErrors(name, login, password, confirm, hostname, reserved) {
     return {
-        name: Array.from(name).length > 128 || /[\x00-\x1f:\x7f]/.test(name) ? "Your name must be at most 128 characters and contain no colon or control characters." : "",
+        name: Array.from(name).length > 128 || /[\x00-\x1f:\x7f]/.test(name) ? qsTranslate("Protocol", "Your name must be at most 128 characters and contain no colon or control characters.") : "",
         login: !/^[a-z_][a-z0-9_-]{0,31}$/.test(login) || (reserved || ["root", "greeter", "live", "nobody"]).indexOf(login) !== -1
-            ? "Use 1–32 lowercase letters, digits, _ or - for your login, starting with a letter or _. This login must not be reserved." : "",
+            ? qsTranslate("Protocol", "Use 1–32 lowercase letters, digits, _ or - for your login, starting with a letter or _. This login must not be reserved.") : "",
         // New login passwords use the same printable keyboard characters as startup passwords.
         password: !password || unescape(encodeURIComponent(password)).length > 1024
-            ? "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+            ? qsTranslate("Protocol", "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes).")
             : /[^\x20-\x7e]/.test(password)
-                ? "Use only letters, digits and symbols of the English (US) keyboard." : "",
-        confirm: password !== confirm ? "The passwords do not match." : "",
-        hostname: !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(hostname) ? "Computer name: 1–63 letters, digits or hyphens, beginning and ending with a letter or digit." : ""
+                ? qsTranslate("Protocol", "Use only letters, digits and symbols of the English (US) keyboard.") : "",
+        confirm: password !== confirm ? qsTranslate("Protocol", "The passwords do not match.") : "",
+        hostname: !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(hostname) ? qsTranslate("Protocol", "Computer name: 1–63 letters, digits or hyphens, beginning and ending with a letter or digit.") : ""
     };
 }
 // The password's characters the text console types differently, each once in code point order;
@@ -381,15 +385,15 @@ function consoleUnsafeChars(table, layouts, password) {
 // private-use code point an offered layout types. installer/ui/tests/test_console_chars.py
 // holds the names to Unicode's and the list to what the layouts type.
 var UNSEEN_NAMES = {
-    0x0009: "tab", 0x00a0: "no-break space", 0x00ad: "soft hyphen", 0x061c: "arabic letter mark",
+    0x0009: qsTranslate("Protocol", "tab"), 0x00a0: qsTranslate("Protocol", "no-break space"), 0x00ad: qsTranslate("Protocol", "soft hyphen"), 0x061c: qsTranslate("Protocol", "arabic letter mark"),
     0x09b3: "", 0x09bb: "", 0x0f48: "", 0x17fb: "", 0x17fc: "", 0x17fd: "", 0x17fe: "", 0x17ff: "",
-    0x200b: "zero width space", 0x200c: "zero width non-joiner", 0x200d: "zero width joiner",
-    0x200e: "left-to-right mark", 0x200f: "right-to-left mark", 0x202a: "left-to-right embedding",
-    0x202b: "right-to-left embedding", 0x202c: "pop directional formatting",
-    0x202d: "left-to-right override", 0x202e: "right-to-left override",
-    0x202f: "narrow no-break space", 0x2066: "left-to-right isolate",
-    0x2067: "right-to-left isolate", 0x2068: "first strong isolate",
-    0x2069: "pop directional isolate", 0xe60b: "", 0xe656: "", 0xe659: ""
+    0x200b: qsTranslate("Protocol", "zero width space"), 0x200c: qsTranslate("Protocol", "zero width non-joiner"), 0x200d: qsTranslate("Protocol", "zero width joiner"),
+    0x200e: qsTranslate("Protocol", "left-to-right mark"), 0x200f: qsTranslate("Protocol", "right-to-left mark"), 0x202a: qsTranslate("Protocol", "left-to-right embedding"),
+    0x202b: qsTranslate("Protocol", "right-to-left embedding"), 0x202c: qsTranslate("Protocol", "pop directional formatting"),
+    0x202d: qsTranslate("Protocol", "left-to-right override"), 0x202e: qsTranslate("Protocol", "right-to-left override"),
+    0x202f: qsTranslate("Protocol", "narrow no-break space"), 0x2066: qsTranslate("Protocol", "left-to-right isolate"),
+    0x2067: qsTranslate("Protocol", "right-to-left isolate"), 0x2068: qsTranslate("Protocol", "first strong isolate"),
+    0x2069: qsTranslate("Protocol", "pop directional isolate"), 0xe60b: "", 0xe656: "", 0xe659: ""
 };
 // One character of the console sentence: itself, or "U+00A0 no-break space" for one a list
 // cannot show (and any other control character, by its code point).
@@ -403,7 +407,7 @@ function shownCharacter(c) {
 // The sentence under the account password on the You page; it does not block Continue.
 function consoleWarning(table, layouts, password) {
     const chars = consoleUnsafeChars(table, layouts, password);
-    return chars ? "The text console types these characters differently: " + Array.from(chars).map(shownCharacter).join(" ") + ". Choose a password without them if you may need the console." : "";
+    return chars ? qsTranslate("Protocol", "The text console types these characters differently: %1. Choose a password without them if you may need the console.").arg(Array.from(chars).map(shownCharacter).join(" ")) : "";
 }
 // How many characters one edit of a field brought in: the text between what before and after
 // share at the start and at the end. One typed key brings one; a paste or an input method's
@@ -426,27 +430,27 @@ function accountError(name, login, password, confirm, hostname, reserved) {
 function diskReason(d) {
     if (d.reason) return typeof d.reason === "string" ? d.reason : d.reason.msg;
     if (d.refusal_reason) return d.refusal_reason;
-    if (d.is_boot_medium) return "The live boot medium cannot be a target.";
-    if ((d.partitions || []).some(p => !!p.mountpoint)) return "A partition on this disk is mounted.";
-    if (d.size_bytes < 24 * 1073741824) return "The disk must be at least 24 GiB.";
+    if (d.is_boot_medium) return qsTranslate("Protocol", "The live boot medium cannot be a target.");
+    if ((d.partitions || []).some(p => !!p.mountpoint)) return qsTranslate("Protocol", "A partition on this disk is mounted.");
+    if (d.size_bytes < 24 * 1073741824) return qsTranslate("Protocol", "The disk must be at least 24 GiB.");
     return "";
 }
 // The systems the inventory found on a disk (os_hint), for its card: a fact, not an offer.
 function diskContents(d) {
     const hints = (d.partitions || []).map(p => p.os_hint);
-    return [["windows", "Windows"], ["macos", "macOS"]].filter(row => hints.indexOf(row[0]) >= 0).map(row => " · contains " + row[1]).join("");
+    return [["windows", qsTranslate("Protocol", "Windows")], ["macos", "macOS"]].filter(row => hints.indexOf(row[0]) >= 0).map(row => qsTranslate("Protocol", " · contains %1").arg(row[1])).join("");
 }
 // Keep the worker's specific refusal on the disk card before any selection.
 function alongsideRefusal(d) {
     if (!d || alongside(d) || !(d.partitions || []).some(p => p.os_hint === "windows")) return "";
     const partition = (d.partitions || []).find(p => p.shrink && p.shrink.reason);
     const reason = d.shrink?.reason || partition?.shrink.reason || "";
-    return reason ? "\nInstall alongside Windows is not possible here. " + reason : "";
+    return reason ? qsTranslate("Protocol", "\nInstall alongside Windows is not possible here. %1").arg(reason) : "";
 }
 // planner.manual_partitions refuses every table but GPT; an empty disk gets a new GPT table in the
 // partition editor (planner.partition_edits new_table).
 function manualReason(d) {
-    return d && d.partition_table && d.partition_table !== "gpt" && (d.partitions || []).length ? "Manual installation needs a GPT disk." : "";
+    return d && d.partition_table && d.partition_table !== "gpt" && (d.partitions || []).length ? qsTranslate("Protocol", "Manual installation needs a GPT disk.") : "";
 }
 
 // The partition editor (manual mode): the rules of planner.partition_edits, for the window. Nothing
@@ -516,12 +520,12 @@ function sizeFromGiB(text) {
 }
 // Why a new partition cannot be made in a free extent: "" when it can. root: the root minimum.
 function newPartitionError(free, use, size, root) {
-    if (!free) return "Choose free space first.";
-    if (!EDITOR_KINDS[use]) return "Choose what the new partition is for.";
-    if (!(size > 0)) return "Type the size in GiB, for example 40 or 0.5.";
-    if (size > free.size) return "Only " + (free.size / GIB).toFixed(2) + " GiB of free space is here.";
+    if (!free) return qsTranslate("Protocol", "Choose free space first.");
+    if (!EDITOR_KINDS[use]) return qsTranslate("Protocol", "Choose what the new partition is for.");
+    if (!(size > 0)) return qsTranslate("Protocol", "Type the size in GiB, for example 40 or 0.5.");
+    if (size > free.size) return qsTranslate("Protocol", "Only %1 GiB of free space is here.").arg(number(free.size / GIB, 2));
     const least = use === "/" ? root : EDITOR_MINIMUM[use];
-    if (size < least) return (use === "/" ? "Root" : use === "/efi" ? "An EFI system partition" : use === "swap" ? "Swap" : "A new partition") + " needs at least " + (least / GIB).toFixed(2) + " GiB.";
+    if (size < least) return (use === "/" ? qsTranslate("Protocol", "Root needs at least %1 GiB.") : use === "/efi" ? qsTranslate("Protocol", "An EFI system partition needs at least %1 GiB.") : use === "swap" ? qsTranslate("Protocol", "Swap needs at least %1 GiB.") : qsTranslate("Protocol", "A new partition needs at least %1 GiB.")).arg(number(least / GIB, 2));
     return "";
 }
 // What a deletion of another system's partition must confirm (planner.deletion_identity).
@@ -530,7 +534,7 @@ function deletionIdentity(p) {
 }
 // One line per partition row: what it is now.
 function partitionText(p) {
-    return [p.path, (p.size_bytes / GIB).toFixed(1) + " GiB", p.fs || "unformatted", p.esp ? "EFI" : "", p.other_system || ""].filter(x => x).join(" · ");
+    return [p.path, qsTranslate("Protocol", "%1 GiB").arg(number(p.size_bytes / GIB, 1)), p.fs || qsTranslate("Protocol", "unformatted"), p.esp ? "EFI" : "", p.other_system || ""].filter(x => x).join(" · ");
 }
 // planner.storage_layout: 20 GiB, plus the RAM-sized hibernation file, plus the encryption header.
 function rootMinimum(memory, hibernation, encrypted) {
@@ -551,8 +555,7 @@ function alongsideDefault(p) {
         Math.floor(p.shrink.max_free_bytes / 2 / 1048576) * 1048576)) : 0;
 }
 function alongsideReview(p, freed) {
-    return p ? "Windows keeps " + ((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9).toFixed(2) +
-        " GB, Emaki gets " + (freed / 1e9).toFixed(2) + " GB; back up your files first." : "Windows shrink is unavailable. Refresh the disk list.";
+    return p ? qsTranslate("Protocol", "Windows keeps %1 GB, Emaki gets %2 GB; back up your files first.").arg(number((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9, 2)).arg(number(freed / 1e9, 2)) : qsTranslate("Protocol", "Windows shrink is unavailable. Refresh the disk list.");
 }
 
 function phaseSkipped(s, phase) {
@@ -570,5 +573,10 @@ function diskLayoutKey(d) {
 }
 
 function skippedPhaseText(phase) {
-    return phase === "snapshot" ? "Skipped: snapshots need btrfs" : "Skipped";
+    return phase === "snapshot" ? qsTranslate("Protocol", "Skipped: snapshots need btrfs") : qsTranslate("Protocol", "Skipped");
+}
+
+// Preserve the ungrouped decimal sizes used by the installer.
+function number(value, digits) {
+    return value.toFixed(digits);
 }

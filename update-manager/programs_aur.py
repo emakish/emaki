@@ -6,6 +6,18 @@ Nothing here builds or installs. A plan names every AUR recipe by its exact
 Git commit and every repository package the build pulls in, so the privileged
 helper can build exactly what the person reviewed or refuse.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from datetime import datetime, timezone
 import gzip
 import hashlib
@@ -79,7 +91,7 @@ def set_consent(path, accept, show_warning=True):
         path.unlink(missing_ok=True)
         return consent(path)
     if not isinstance(show_warning, bool):
-        raise ValueError('Invalid warning choice')
+        raise ValueError(_('Invalid warning choice'))
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     previous = consent(path)
     value = dict(version=1, warning=WARNING_VERSION, showWarning=show_warning,
@@ -95,7 +107,7 @@ def set_consent(path, accept, show_warning=True):
 
 def valid_name(value):
     if not isinstance(value, str) or not NAME.fullmatch(value):
-        raise ValueError('Invalid AUR name')
+        raise ValueError(_('Invalid AUR name'))
     return value
 
 
@@ -103,7 +115,7 @@ def _stamp(value):
     if value is None:
         return ''
     if type(value) is not int or not 0 < value < 2 ** 40:
-        raise ValueError('Invalid AUR time')
+        raise ValueError(_('Invalid AUR time'))
     return datetime.fromtimestamp(value, timezone.utc).isoformat(timespec='seconds')
 
 
@@ -111,7 +123,7 @@ def _text(value, limit=4096):
     if value is None:
         return ''
     if not isinstance(value, str) or len(value) > limit:
-        raise ValueError('Invalid AUR text')
+        raise ValueError(_('Invalid AUR text'))
     return value
 
 
@@ -119,12 +131,12 @@ def _names(value, dependency=False):
     if value is None:
         return []
     if not isinstance(value, list) or len(value) > 512:
-        raise ValueError('Invalid AUR list')
+        raise ValueError(_('Invalid AUR list'))
     for item in value:
         if not isinstance(item, str) or len(item) > 512:
-            raise ValueError('Invalid AUR list entry')
+            raise ValueError(_('Invalid AUR list entry'))
         if dependency and not DEPENDENCY.fullmatch(item):
-            raise ValueError('Invalid AUR dependency')
+            raise ValueError(_('Invalid AUR dependency'))
     return list(value)
 
 
@@ -144,16 +156,16 @@ def actions(installed_version, version):
 def record(value, installed):
     """One validated RPC entry with the facts the program page shows instead of screenshots."""
     if not isinstance(value, dict):
-        raise ValueError('Invalid AUR entry')
+        raise ValueError(_('Invalid AUR entry'))
     name = valid_name(value.get('Name'))
     base = valid_name(value.get('PackageBase') or name)
     version = _text(value.get('Version'), 512)
     if not version:
-        raise ValueError('Invalid AUR version')
+        raise ValueError(_('Invalid AUR version'))
     votes, popularity = value.get('NumVotes'), value.get('Popularity')
     if ((votes is not None and (type(votes) is not int or votes < 0))
             or (popularity is not None and (type(popularity) not in (int, float) or popularity < 0))):
-        raise ValueError('Invalid AUR counters')
+        raise ValueError(_('Invalid AUR counters'))
     url = _text(value.get('URL'), 2048)
     licence = _names(value.get('License'))
     maintainer = _text(value.get('Maintainer'), 256)
@@ -181,21 +193,21 @@ def records(payload, installed):
     if (not isinstance(payload, dict) or payload.get('version') != 5
             or payload.get('type') not in ('search', 'multiinfo')
             or not isinstance(payload.get('results'), list)):
-        raise ValueError('Invalid AUR response')
+        raise ValueError(_('Invalid AUR response'))
     return removal.clean_display([record(value, installed) for value in payload['results']])
 
 
 def fetch_json(url, opener=urlopen):
     """A fresh, bounded RPC read: a plan must never rest on a cached version."""
     if not url.startswith(RPC):
-        raise ValueError('Not an AUR RPC address')
+        raise ValueError(_('Not an AUR RPC address'))
     request = Request(url, headers={'User-Agent': 'Emaki-programs', 'Accept': 'application/json'})
     with opener(request, timeout=20) as response:
         if not response.url.startswith(ORIGIN):
-            raise ValueError('The AUR redirected an RPC request')
+            raise ValueError(_('The AUR redirected an RPC request'))
         raw = response.read(4 * 1024 * 1024 + 1)
     if len(raw) > 4 * 1024 * 1024:
-        raise ValueError('Oversized AUR response')
+        raise ValueError(_('Oversized AUR response'))
     return json.loads(raw)
 
 
@@ -223,7 +235,7 @@ def popular(stream, count=POPULAR):
         chunk = text.read(1024 * 1024)
         total += len(chunk)
         if total > META_TEXT_LIMIT:
-            raise ValueError('Oversized AUR metadata archive')
+            raise ValueError(_('Oversized AUR metadata archive'))
         buffer = buffer[position:] + chunk
         position = 0
         while True:
@@ -233,7 +245,7 @@ def popular(stream, count=POPULAR):
                 break
             if not started:
                 if buffer[position] != '[':
-                    raise ValueError('Invalid AUR metadata archive')
+                    raise ValueError(_('Invalid AUR metadata archive'))
                 started, position = True, position + 1
                 continue
             if buffer[position] == ']':
@@ -257,7 +269,7 @@ def popular(stream, count=POPULAR):
             if base not in best or (-entry[0], -entry[1], entry[2]) < (-best[base][0], -best[base][1], best[base][2]):
                 best[base] = entry
         if not chunk:
-            raise ValueError('Truncated AUR metadata archive')
+            raise ValueError(_('Truncated AUR metadata archive'))
 
 
 def fetch_meta(opener=urlopen):
@@ -265,10 +277,10 @@ def fetch_meta(opener=urlopen):
     request = Request(META, headers={'User-Agent': 'Emaki-programs'})
     with opener(request, timeout=60) as response:
         if not response.url.startswith(ORIGIN):
-            raise ValueError('The AUR redirected the metadata archive')
+            raise ValueError(_('The AUR redirected the metadata archive'))
         raw = response.read(META_LIMIT + 1)
     if len(raw) > META_LIMIT:
-        raise ValueError('Oversized AUR metadata archive')
+        raise ValueError(_('Oversized AUR metadata archive'))
     return io.BytesIO(raw)
 
 
@@ -280,7 +292,7 @@ def popular_names(path, fetch=fetch_meta, now=None):
         names = [valid_name(name) for name in cached['names']]
         stamp = cached['time']
         if not isinstance(stamp, (int, float)) or not names or len(names) > POPULAR:
-            raise ValueError('Invalid popular list')
+            raise ValueError(_('Invalid popular list'))
     except (OSError, ValueError, TypeError, KeyError):
         names, stamp = [], 0
     if names and 0 <= now - stamp < POPULAR_AGE:
@@ -288,7 +300,7 @@ def popular_names(path, fetch=fetch_meta, now=None):
     try:
         fresh = [row['name'] for row in popular(fetch())]
         if not fresh:
-            raise ValueError('Empty AUR metadata archive')
+            raise ValueError(_('Empty AUR metadata archive'))
     except (OSError, ValueError, EOFError, zlib.error):
         if names:
             return names, True
@@ -348,18 +360,18 @@ def parse_refs(raw):
             position += 4
             continue
         if length < 4 or position + length > len(raw):
-            raise ValueError('Invalid Git reference advertisement')
+            raise ValueError(_('Invalid Git reference advertisement'))
         line = raw[position + 4:position + length].rstrip(b'\n')
         position += length
         if line.startswith(b'#'):
             continue
         line = line.split(b'\0', 1)[0].decode('ascii')
-        commit, _, name = line.partition(' ')
+        commit, _unused, name = line.partition(' ')
         if COMMIT.fullmatch(commit) and name:
             refs[name] = commit
     commit = refs.get('HEAD') or refs.get('refs/heads/master')
     if not commit:
-        raise ValueError('The AUR recipe has no published commit')
+        raise ValueError(_('The AUR recipe has no published commit'))
     return commit
 
 
@@ -369,10 +381,10 @@ def head_commit(base, opener=urlopen):
     request = Request(url, headers={'User-Agent': 'Emaki-programs'})
     with opener(request, timeout=20) as response:
         if not response.url.startswith(ORIGIN):
-            raise ValueError('The AUR redirected the recipe address')
+            raise ValueError(_('The AUR redirected the recipe address'))
         raw = response.read(1024 * 1024 + 1)
     if len(raw) > 1024 * 1024:
-        raise ValueError('Oversized Git reference advertisement')
+        raise ValueError(_('Oversized Git reference advertisement'))
     return parse_refs(raw)
 
 
@@ -385,7 +397,7 @@ def recipe_link(base, commit):
 def dependency_name(text):
     match = DEPENDENCY.fullmatch(text)
     if not match:
-        raise ValueError('Invalid AUR dependency')
+        raise ValueError(_('Invalid AUR dependency'))
     return match['name']
 
 
@@ -514,7 +526,7 @@ class System:
     def installed(self):
         result = self.pacman('-Q')
         if result.returncode:
-            raise RuntimeError('Installed packages could not be read')
+            raise RuntimeError(_('Installed packages could not be read'))
         return dict(line.split(maxsplit=1) for line in result.stdout.splitlines())
 
     def info(self, names):
@@ -532,7 +544,7 @@ class System:
             dependency_name(dep)
         result = self.pacman('-T', '--', *deps)
         if result.returncode not in (0, 127):
-            raise RuntimeError('Installed dependencies could not be checked')
+            raise RuntimeError(_('Installed dependencies could not be checked'))
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     def repository(self, dep):
@@ -540,7 +552,7 @@ class System:
         if result.returncode:
             if 'target not found' in result.stderr:
                 return None
-            raise RuntimeError('Repository dependencies could not be resolved')
+            raise RuntimeError(_('Repository dependencies could not be resolved'))
         rows = []
         for line in result.stdout.splitlines():
             if '|' not in line:
@@ -548,7 +560,7 @@ class System:
             repository, name, version, size = line.split('|')
             valid_name(name)
             if not NAME.fullmatch(repository.lower()) or not version:
-                raise ValueError('Invalid repository dependency')
+                raise ValueError(_('Invalid repository dependency'))
             rows.append(dict(repository=repository, package=name, version=version,
                              downloadSize=int(size) if size.isascii() and size.isdigit() else None))
         return rows

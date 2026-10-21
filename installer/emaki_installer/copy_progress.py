@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Count package work and name the operation that owns each silent interval."""
+from .i18n import _
 from pathlib import Path
 import re
 
@@ -55,7 +56,7 @@ class CopyProgress:
     def resume_hook(self):
         if self.hook:
             index, total, detail = self.hook
-            self.start('hook', f'Running package setup step {index} of {total} (pacman: {detail}).', detail)
+            self.start('hook', _('Running package setup step {value1} of {value2} (pacman: {value3}).').format(value1=index, value2=total, value3=detail), detail)
         else:
             self.clear()
 
@@ -79,28 +80,28 @@ class CopyProgress:
         elif name == 'pacstrap':
             self.transaction += 1
             self.hook, self.hook_fraction = None, 0
-            self.start('prepare', 'Preparing packages (pacman).')
+            self.start('prepare', _('Preparing packages (pacman).'))
         elif name == 'locale-gen':
-            self.start('locale', 'Preparing language support (locale-gen).')
+            self.start('locale', _('Preparing language support (locale-gen).'))
         elif name == 'pacman-key' and '--init' in command:
-            self.start('keyring-init', 'Creating the package trust store (pacman-key --init).')
+            self.start('keyring-init', _('Creating the package trust store (pacman-key --init).'))
         elif name == 'pacman-key' and '--populate' in command:
-            self.start('keyring-populate', 'Adding trusted package keys (pacman-key --populate).')
+            self.start('keyring-populate', _('Adding trusted package keys (pacman-key --populate).'))
 
     def line(self, line):
         preparations = {
-            ':: Synchronizing package databases...': ('databases', 'Reading package lists (pacman).'),
-            'resolving dependencies...': ('dependencies', 'Finding required packages (pacman).'),
-            'looking for conflicting packages...': ('conflicts', 'Checking package compatibility (pacman).'),
-            ':: Retrieving packages...': ('retrieve', 'Reading packages from the installation media (pacman).'),
-            'checking keyring...': ('trust', 'Checking trusted package keys (pacman).'),
-            'checking package integrity...': ('integrity', 'Checking package files (pacman).'),
-            'loading package files...': ('load', 'Opening package files (pacman).'),
-            'checking for file conflicts...': ('file-conflicts', 'Checking for conflicting files (pacman).'),
-            'checking available disk space...': ('space', 'Checking available disk space (pacman).'),
-            ':: Processing package changes...': ('prepare', 'Preparing packages (pacman).'),
-            '==> Initializing pacman keyring...': ('keyring-init', 'Creating the package trust store (pacman-key --init).'),
-            '==> Appending keys from archlinux.gpg...': ('keyring-populate', 'Adding trusted package keys (pacman-key --populate).'),
+            ':: Synchronizing package databases...': ('databases', _('Reading package lists (pacman).')),
+            'resolving dependencies...': ('dependencies', _('Finding required packages (pacman).')),
+            'looking for conflicting packages...': ('conflicts', _('Checking package compatibility (pacman).')),
+            ':: Retrieving packages...': ('retrieve', _('Reading packages from the installation media (pacman).')),
+            'checking keyring...': ('trust', _('Checking trusted package keys (pacman).')),
+            'checking package integrity...': ('integrity', _('Checking package files (pacman).')),
+            'loading package files...': ('load', _('Opening package files (pacman).')),
+            'checking for file conflicts...': ('file-conflicts', _('Checking for conflicting files (pacman).')),
+            'checking available disk space...': ('space', _('Checking available disk space (pacman).')),
+            ':: Processing package changes...': ('prepare', _('Preparing packages (pacman).')),
+            '==> Initializing pacman keyring...': ('keyring-init', _('Creating the package trust store (pacman-key --init).')),
+            '==> Appending keys from archlinux.gpg...': ('keyring-populate', _('Adding trusted package keys (pacman-key --populate).')),
         }
         if line in preparations:
             name, text = preparations[line]
@@ -113,7 +114,7 @@ class CopyProgress:
         package = re.fullmatch(r'installing ([A-Za-z0-9@._+:-]+)\.\.\.', line)
         if package:
             self.worker.installed += 1
-            self.start('package', f'Installing a package (pacman: {package[1]}).', package[1])
+            self.start('package', _('Installing a package (pacman: {value1}).').format(value1=package[1]), package[1])
             return
         hook = re.fullmatch(r'\(\s*(\d+)\s*/\s*(\d+)\) (.+)', line)
         if hook and 0 < int(hook[1]) <= int(hook[2]):
@@ -131,13 +132,13 @@ class CopyProgress:
             if self.image in (('linux', 'default'), ('linux-lts', 'default')):
                 self.images_started.add((self.transaction, *self.image))
             detail = f'{preset[1]}: {preset[2]}'
-            self.start('initramfs', f'Building the startup image (mkinitcpio: {detail}).', detail)
+            self.start('initramfs', _('Building the startup image (mkinitcpio: {value1}).').format(value1=detail), detail)
         elif line == '==> Initcpio image generation successful':
             if self.image in (('linux', 'default'), ('linux-lts', 'default')):
                 self.images.add((self.transaction, *self.image))
             self.image = None
             self.resume_hook()
         elif line == 'Generating locales...':
-            self.start('locale', 'Preparing language support (locale-gen).')
+            self.start('locale', _('Preparing language support (locale-gen).'))
         elif line == 'Generation complete.':
             self.resume_hook()

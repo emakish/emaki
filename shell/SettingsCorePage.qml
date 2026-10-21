@@ -12,30 +12,38 @@ Column {
     SettingsCard {
         width: parent.width
         visible: page.section === "panel"
-        title: "Panel"
+        title: qsTranslate("SettingsCorePage", "Panel")
         SettingsChoiceRow {
+            id: panelHidingChoice
             catalog: page.catalog
             settingKey: "bar.autohide_mode"
+            controlWidth: Math.max(180, Math.ceil(fullscreenLabel.width) + 55)
+            TextMetrics {
+                id: fullscreenLabel
+                text: panelHidingChoice.options.find(option => option.value === "fullscreen")?.label || ""
+                font.family: SettingsTheme.fontFamily
+                font.pixelSize: 13
+            }
             width: parent.width
-            title: "Hide the panel automatically"
+            title: qsTranslate("SettingsCorePage", "Hide the panel automatically")
             fallbackValue: "fullscreen"
-            explanation: "Choose when the panel hides. Move to the top edge to show it."
+            explanation: qsTranslate("SettingsCorePage", "Choose when the panel hides. Move to the top edge to show it.")
             options: [
                 {
                     value: "always",
-                    label: "Always"
+                    label: qsTranslate("SettingsCorePage", "Always")
                 },
                 {
                     value: "desktop",
-                    label: "On Desktop Only"
+                    label: qsTranslate("SettingsCorePage", "On Desktop Only")
                 },
                 {
                     value: "fullscreen",
-                    label: "In Full Screen Only"
+                    label: qsTranslate("SettingsCorePage", "In Full Screen Only")
                 },
                 {
                     value: "never",
-                    label: "Never"
+                    label: qsTranslate("SettingsCorePage", "Never")
                 }
             ]
         }
@@ -43,44 +51,44 @@ Column {
             catalog: page.catalog
             settingKey: "bar.overview_workspaces"
             width: parent.width
-            title: "Show workspaces in the overview"
+            title: qsTranslate("SettingsCorePage", "Show workspaces in the overview")
             fallbackValue: true
-            explanation: value ? "Workspace numbers stay visible in the overview." : "Workspace numbers hide in the overview."
+            explanation: value ? qsTranslate("SettingsCorePage", "Workspace numbers stay visible in the overview.") : qsTranslate("SettingsCorePage", "Workspace numbers hide in the overview.")
         }
     }
     SettingsCard {
         width: parent.width
         visible: page.section === "panel"
-        title: "Dock"
+        title: qsTranslate("SettingsCorePage", "Dock")
         SettingsToggleRow {
             catalog: page.catalog
             settingKey: "dock.on"
             width: parent.width
-            title: "Show the dock"
+            title: qsTranslate("SettingsCorePage", "Show the dock")
             fallbackValue: true
-            explanation: value ? "Your pinned and running apps appear in the dock." : "The dock is hidden."
+            explanation: value ? qsTranslate("SettingsCorePage", "Your pinned and running apps appear in the dock.") : qsTranslate("SettingsCorePage", "The dock is hidden.")
         }
         SettingsToggleRow {
             catalog: page.catalog
             settingKey: "dock.auto_hide"
             width: parent.width
-            title: "Hide the dock automatically"
+            title: qsTranslate("SettingsCorePage", "Hide the dock automatically")
             fallbackValue: true
-            explanation: value ? "Move to the bottom edge to show your apps." : "The dock stays visible beside your windows."
+            explanation: value ? qsTranslate("SettingsCorePage", "Move to the bottom edge to show your apps.") : qsTranslate("SettingsCorePage", "The dock stays visible beside your windows.")
         }
     }
     SettingsCard {
         width: parent.width
         visible: page.section === "windows"
-        title: "Window spacing"
+        title: qsTranslate("SettingsCorePage", "Window spacing")
         SettingsSliderRow {
             unit: "px"
             catalog: page.catalog
             settingKey: "appearance.gaps"
             width: parent.width
-            title: "Gaps"
+            title: qsTranslate("SettingsCorePage", "Gaps")
             fallbackValue: 2
-            explanation: value + " px of wallpaper between windows."
+            explanation: qsTranslate("SettingsCorePage", "%1 px of wallpaper between windows.").arg(Number(value).toFixed(0))
             from: 0
             to: 64
             stepSize: 1
@@ -89,13 +97,22 @@ Column {
     SettingsCard {
         width: parent.width
         visible: page.section === "windows"
-        title: "New windows"
+        title: qsTranslate("SettingsCorePage", "New windows")
         SettingsSegmentedRow {
+            id: newWindowWidthChoice
             catalog: page.catalog
             settingKey: "windows.default_column_width"
+            controlWidth: Math.max(230, 4 * (fullWidthLabel.width + 12) + 14)
+            TextMetrics {
+                id: fullWidthLabel
+                text: newWindowWidthChoice.options.find(option => option.value === "full")?.label || ""
+                font.family: SettingsTheme.fontFamily
+                font.pixelSize: 13
+                font.weight: Font.Medium
+            }
             width: parent.width
-            title: "Width of a new window"
-            explanation: "Choose how much of the screen a new column uses."
+            title: qsTranslate("SettingsCorePage", "Width of a new window")
+            explanation: qsTranslate("SettingsCorePage", "Choose how much of the screen a new column uses.")
             fallbackValue: "full"
             options: [
                 {
@@ -112,7 +129,7 @@ Column {
                 },
                 {
                     value: "full",
-                    label: "Full"
+                    label: qsTranslate("SettingsCorePage", "Full")
                 }
             ]
         }
@@ -120,22 +137,22 @@ Column {
     SettingsCard {
         width: parent.width
         visible: page.section === "windows"
-        title: "Focus"
+        title: qsTranslate("SettingsCorePage", "Focus")
         SettingsSegmentedRow {
             catalog: page.catalog
             settingKey: "windows.focus_follows_mouse"
             width: parent.width
-            title: "Focus follows the mouse"
-            explanation: "Use your existing focus behavior, or focus windows under the pointer."
+            title: qsTranslate("SettingsCorePage", "Focus follows the mouse")
+            explanation: qsTranslate("SettingsCorePage", "Use your existing focus behavior, or focus windows under the pointer.")
             fallbackValue: false
             options: [
                 {
                     value: false,
-                    label: "Inherited"
+                    label: qsTranslate("SettingsCorePage", "Inherited")
                 },
                 {
                     value: true,
-                    label: "Follow mouse"
+                    label: qsTranslate("SettingsCorePage", "Follow mouse")
                 }
             ]
         }

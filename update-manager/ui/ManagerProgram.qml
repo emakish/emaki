@@ -13,18 +13,18 @@ ColumnLayout {
     readonly property var program: controller.selectedEdition || ({})
     spacing: 24
     property bool showLog: false
-    function size(value: var): string { return value === null || value === undefined ? "Size unknown" : value < 1048576 ? "Under 1 MB" : Math.round(value / 1048576) + " MB"; }
+    function size(value: var): string { return value === null || value === undefined ? qsTranslate("ManagerProgram", "Size unknown") : value < 1048576 ? qsTranslate("ManagerProgram", "Under 1 MB") : qsTranslate("ManagerProgram", "%1 MB").arg(Math.round(value / 1048576)); }
     function allowed(action: string): bool { return (program.actions || []).includes(action); }
-    readonly property string unknown: "Unknown"
+    readonly property string unknown: qsTranslate("ManagerProgram", "Unknown")
     function known(field: string): bool { return program[field] !== undefined && program[field] !== null; }
     // Decision of 2026-10-13: without system snapshots (ext4) AUR installs are refused; the engine refuses them too.
     readonly property bool aurRefused: program.kind === "aur" && controller.aurKnown && !controller.aurSnapshots && allowed("install")
     function day(value: var): string { return value ? Logic.day(value) : ""; }
-    function working(): string { return controller.phase === "removing" ? "Removing…" : controller.phase === "undoing" ? "Undoing the install…" : program.kind === "aur" ? "Building and installing…" : "Installing…"; }
+    function working(): string { return controller.phase === "removing" ? qsTranslate("ManagerProgram", "Removing…") : controller.phase === "undoing" ? qsTranslate("ManagerProgram", "Undoing the install…") : program.kind === "aur" ? qsTranslate("ManagerProgram", "Building and installing…") : qsTranslate("ManagerProgram", "Installing…"); }
     function undoText(receipt: var): string {
         if (!receipt) return "";
         const count = (receipt.added || []).length;
-        return "Installed " + day(receipt.time) + (count > 1 ? " with " + (count - 1) + (count === 2 ? " package" : " packages") + " it needed" : "");
+        return count > 1 ? Shell.Translation.englishPlural(qsTranslate("ManagerProgram", "Installed %1 with %n package(s) it needed", "", count - 1), count - 1).arg(day(receipt.time)) : qsTranslate("ManagerProgram", "Installed %1").arg(day(receipt.time));
     }
     // A narrow page (a niri third or half) puts the install column under the name and
     // Details under About.
@@ -69,19 +69,19 @@ ColumnLayout {
             spacing: 8
             ManagerButton {
                 objectName: "program-install"
-                text: page.program.kind === "aur" ? "Build and install" : "Install"
+                text: page.program.kind === "aur" ? qsTranslate("ManagerProgram", "Build and install") : qsTranslate("ManagerProgram", "Install")
                 primary: true
                 implicitHeight: 44
                 Layout.fillWidth: true
                 visible: !page.program.installed && !page.controller.mutating
-                enabled: page.allowed("install") && !page.aurRefused && !page.controller.busy && !page.controller.externalBusy
+                enabled: page.allowed("install") && !page.aurRefused && (!page.controller.busy || page.controller.backgroundBusy) && !page.controller.externalBusy
                 onClicked: page.controller.prepareInstall()
             }
             ManagerLabel {
                 // By Install on every AUR page; it cannot be hidden.
                 objectName: "aur-unchecked"
                 visible: page.program.kind === "aur"
-                text: "From the AUR, nobody checked it."
+                text: qsTranslate("ManagerProgram", "From the AUR, nobody checked it.")
                 color: Shell.ShellPalette.accentDeepForeground
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
@@ -90,7 +90,7 @@ ColumnLayout {
             ManagerLabel {
                 objectName: "aur-no-snapshots-program"
                 visible: page.aurRefused && !page.controller.mutating
-                text: "Installing from the AUR is not available here: this computer keeps no system snapshots."
+                text: qsTranslate("ManagerProgram", "Installing from the AUR is not available here: this computer keeps no system snapshots.")
                 color: Shell.ShellPalette.managerError
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
@@ -98,13 +98,13 @@ ColumnLayout {
             RowLayout {
                 visible: !!page.program.installed && !page.controller.mutating
                 ManagerButton {
-                    text: "Open"
+                    text: qsTranslate("ManagerProgram", "Open")
                     primary: true
                     Layout.fillWidth: true
                     visible: !page.program.packageOnly && page.program.kind !== "aur" || !!page.controller.selectedLauncher
                     onClicked: page.controller.openInstalled()
                 }
-                ManagerButton { text: "Remove"; danger: true; visible: page.allowed("remove"); enabled: !page.controller.busy && !page.controller.externalBusy; onClicked: page.controller.prepareRemove() }
+                ManagerButton { text: qsTranslate("ManagerProgram", "Remove"); danger: true; visible: page.allowed("remove"); enabled: !page.controller.busy && !page.controller.externalBusy; onClicked: page.controller.prepareRemove() }
             }
             ManagerLabel {
                 text: Logic.removalStatus(page.program)
@@ -115,16 +115,16 @@ ColumnLayout {
             }
             ManagerButton {
                 objectName: "program-aur-update"
-                text: "Build the update · " + (page.program.version || "")
+                text: qsTranslate("ManagerProgram", "Build the update · %1").arg(page.program.version || "")
                 Layout.fillWidth: true
                 squeezed: parent.width < implicitWidth
                 visible: !!page.program.installed && page.program.kind === "aur" && page.allowed("install") && !page.controller.mutating
-                enabled: !page.aurRefused && !page.controller.busy && !page.controller.externalBusy
+                enabled: !page.aurRefused && (!page.controller.busy || page.controller.backgroundBusy) && !page.controller.externalBusy
                 onClicked: page.controller.prepareInstall()
             }
             ManagerButton {
                 objectName: "program-undo"
-                text: "Undo this install"
+                text: qsTranslate("ManagerProgram", "Undo this install")
                 Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
                 squeezed: parent.width < implicitWidth
                 quiet: true
@@ -142,29 +142,29 @@ ColumnLayout {
             }
             ManagerLabel {
                 visible: !page.controller.mutating
-                text: page.program.installed ? "Installed · version " + (page.program.installedVersion || page.program.version || "—")
-                    : page.program.kind === "aur" ? "Version " + (page.program.version || "—") + " · size known after the build"
-                    : "This program: " + page.size(page.program.installedSize) + " on disk · " + page.size(page.program.downloadSize) + " to download"
+                text: page.program.installed ? qsTranslate("ManagerProgram", "Installed · version %1").arg(page.program.installedVersion || page.program.version || "—")
+                    : page.program.kind === "aur" ? qsTranslate("ManagerProgram", "Version %1 · size known after the build").arg(page.program.version || "—")
+                    : qsTranslate("ManagerProgram", "This program: %1 on disk · %2 to download").arg(page.size(page.program.installedSize)).arg(page.size(page.program.downloadSize))
                 color: Shell.ShellPalette.managerDim
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
             ManagerLabel {
                 visible: !page.program.installed && (page.program.kind === "arch" || page.program.kind === "aur") && !page.controller.mutating
-                text: page.program.kind === "aur" ? "Building also brings the system up to date." : "Installing also brings the system up to date."
+                text: page.program.kind === "aur" ? qsTranslate("ManagerProgram", "Building also brings the system up to date.") : qsTranslate("ManagerProgram", "Installing also brings the system up to date.")
                 color: Shell.ShellPalette.managerDim
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
             ManagerButton {
-                text: page.program.kind === "aur" ? "show what will be built" : "show what changes"
+                text: page.program.kind === "aur" ? qsTranslate("ManagerProgram", "show what will be built") : qsTranslate("ManagerProgram", "show what changes")
                 // A page narrower than the label shortens it.
                 Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
                 squeezed: parent.width < implicitWidth
                 quiet: true
                 Layout.alignment: Qt.AlignHCenter
                 visible: !page.program.installed && (page.program.kind === "arch" || page.program.kind === "aur") && !page.controller.mutating
-                enabled: page.allowed("install") && !page.aurRefused && !page.controller.busy && !page.controller.externalBusy
+                enabled: page.allowed("install") && !page.aurRefused && (!page.controller.busy || page.controller.backgroundBusy) && !page.controller.externalBusy
                 onClicked: page.controller.prepareInstall()
             }
             ManagerLabel { visible: page.controller.mutating; text: page.working(); font.weight: Font.DemiBold }
@@ -187,10 +187,10 @@ ColumnLayout {
                     NumberAnimation { target: pulse; property: "position"; from: -progressTrack.width * .35; to: progressTrack.width; duration: 1300; loops: Animation.Infinite; running: page.controller.mutating && page.controller.percent < 0 }
                 }
             }
-            ManagerLabel { visible: page.controller.mutating && page.controller.percent >= 0; text: Math.round(page.controller.percent) + "%"; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
+            ManagerLabel { visible: page.controller.mutating && page.controller.percent >= 0; text: qsTranslate("ManagerProgram", "%1%").arg(Math.round(page.controller.percent)); color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
             ManagerLabel {
                 visible: page.controller.mutating
-                text: page.controller.phase === "installing" ? "You can close this window. Installing goes on." : page.working()
+                text: page.controller.phase === "installing" ? qsTranslate("ManagerProgram", "You can close this window. Installing goes on.") : page.working()
                 font.pixelSize: 12
                 color: Shell.ShellPalette.managerDim
             }
@@ -209,11 +209,11 @@ ColumnLayout {
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             anchors.margins: 16
             spacing: 10
-            ManagerLabel { text: "WHAT IS KNOWN ABOUT IT"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
+            ManagerLabel { text: qsTranslate("ManagerProgram", "WHAT IS KNOWN ABOUT IT"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
             ManagerLabel {
                 objectName: "aur-facts-unknown"
                 visible: !page.known("votes")
-                text: "These AUR details are unavailable. Facts that could not be checked are shown as unknown."
+                text: qsTranslate("ManagerProgram", "These AUR details are unavailable. Facts that could not be checked are shown as unknown.")
                 color: Shell.ShellPalette.managerDim; font.pixelSize: 12
             }
             GridLayout {
@@ -224,12 +224,12 @@ ColumnLayout {
                 Repeater {
                     // A fact the AUR did not give (an installed program read without it) is unknown, never 0 or No.
                     model: [
-                        ["Votes", page.known("votes") ? String(page.program.votes) : page.unknown, false],
-                        ["Popularity", page.known("popularity") ? String(page.program.popularity) : page.unknown, false],
-                        ["Last update", page.day(page.program.lastModified) || page.unknown, false],
-                        ["Out of date", !page.known("outOfDate") ? page.unknown : page.program.outOfDate ? "Yes, marked " + page.day(page.program.outOfDate) : "No", !!page.program.outOfDate],
-                        ["Maintainer", page.program.orphan === true ? "Orphan — nobody maintains it" : page.program.maintainer || page.unknown, page.program.orphan === true],
-                        ["First published", page.day(page.program.firstSubmitted) || page.unknown, false]
+                        [qsTranslate("ManagerProgram", "Votes"), page.known("votes") ? String(page.program.votes) : page.unknown, false],
+                        [qsTranslate("ManagerProgram", "Popularity"), page.known("popularity") ? String(page.program.popularity) : page.unknown, false],
+                        [qsTranslate("ManagerProgram", "Last update"), page.day(page.program.lastModified) || page.unknown, false],
+                        [qsTranslate("ManagerProgram", "Out of date"), !page.known("outOfDate") ? page.unknown : page.program.outOfDate ? qsTranslate("ManagerProgram", "Yes, marked %1").arg(page.day(page.program.outOfDate)) : qsTranslate("ManagerProgram", "No"), !!page.program.outOfDate],
+                        [qsTranslate("ManagerProgram", "Maintainer"), page.program.orphan === true ? qsTranslate("ManagerProgram", "Orphan — nobody maintains it") : page.program.maintainer || page.unknown, page.program.orphan === true],
+                        [qsTranslate("ManagerProgram", "First published"), page.day(page.program.firstSubmitted) || page.unknown, false]
                     ]
                     ColumnLayout {
                         required property var modelData
@@ -246,7 +246,7 @@ ColumnLayout {
                 spacing: 4
                 ManagerButton {
                     visible: /^https:\/\/aur\.archlinux\.org\//.test(page.program.recipe || "")
-                    text: "See how the program is built"
+                    text: qsTranslate("ManagerProgram", "See how the program is built")
                     width: Math.min(implicitWidth, parent.width)
                     squeezed: parent.width > 0 && implicitWidth > parent.width
                     quiet: true; leftPadding: 0; font.pixelSize: 12
@@ -254,7 +254,7 @@ ColumnLayout {
                 }
                 ManagerButton {
                     visible: /^https:\/\/aur\.archlinux\.org\//.test(page.program.page || "")
-                    text: "Its AUR page"
+                    text: qsTranslate("ManagerProgram", "Its AUR page")
                     width: Math.min(implicitWidth, parent.width)
                     squeezed: parent.width > 0 && implicitWidth > parent.width
                     quiet: true; font.pixelSize: 12
@@ -277,7 +277,7 @@ ColumnLayout {
         // The raw log stays behind Details.
         objectName: "program-details"
         visible: page.controller.mutating && page.controller.output !== ""
-        text: page.showLog ? "Hide details" : "Details"
+        text: page.showLog ? qsTranslate("ManagerProgram", "Hide details") : qsTranslate("ManagerProgram", "Details")
         onClicked: page.showLog = !page.showLog
     }
     ManagerLabel {
@@ -287,7 +287,7 @@ ColumnLayout {
         font.family: "Iosevka Nerd Font Mono"
         font.pixelSize: 12
     }
-    ManagerLabel { visible: (page.program.screenshots || []).length > 0; text: "SCREENSHOTS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
+    ManagerLabel { visible: (page.program.screenshots || []).length > 0; text: qsTranslate("ManagerProgram", "SCREENSHOTS"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
     C.ScrollView {
         id: shotStrip
         // A narrower page shows each screenshot smaller, whole; the strip scrolls sideways, the page does not.
@@ -330,7 +330,7 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             spacing: 16
-            ManagerLabel { text: "ABOUT"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
+            ManagerLabel { text: qsTranslate("ManagerProgram", "ABOUT"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
             ManagerLabel { text: page.program.description || page.program.summary || ""; lineHeight: 1.5 }
         }
         ColumnLayout {
@@ -339,7 +339,7 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             spacing: 12
-            ManagerLabel { text: "DETAILS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
+            ManagerLabel { text: qsTranslate("ManagerProgram", "DETAILS"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: details.implicitHeight + 8
@@ -352,11 +352,11 @@ ColumnLayout {
                     spacing: 0
                     Repeater {
                         model: [
-                            ["Source", (page.program.sourceLabel || (page.program.kind === "flatpak" ? "Flathub" : page.program.kind === "aur" ? "AUR" : "Arch")) + (page.program.repository ? " · " + page.program.repository : "")],
-                            [page.program.kind === "flatpak" ? "App ID" : "Package", page.program.package || page.program.id || "—"],
-                            ["Version", page.program.version || "—"], ["Download", page.size(page.program.downloadSize)],
-                            ["On disk", page.size(page.program.installedSize)], ["Licence", page.program.licence || "—"],
-                            ["Category", (page.program.categories || []).join(", ") || "—"]
+                            [qsTranslate("ManagerProgram", "Source"), (page.program.sourceLabel || (page.program.kind === "flatpak" ? "Flathub" : page.program.kind === "aur" ? "AUR" : "Arch")) + (page.program.repository ? " · " + page.program.repository : "")],
+                            [page.program.kind === "flatpak" ? qsTranslate("ManagerProgram", "App ID") : qsTranslate("ManagerProgram", "Package"), page.program.package || page.program.id || "—"],
+                            [qsTranslate("ManagerProgram", "Version"), page.program.version || "—"], [qsTranslate("ManagerProgram", "Download"), page.size(page.program.downloadSize)],
+                            [qsTranslate("ManagerProgram", "On disk"), page.size(page.program.installedSize)], [qsTranslate("ManagerProgram", "Licence"), page.program.licence || "—"],
+                            [qsTranslate("ManagerProgram", "Category"), (page.program.categories || []).map(Logic.categoryLabel).join(", ") || "—"]
                         ]
                         RowLayout {
                             required property var modelData

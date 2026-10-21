@@ -44,7 +44,7 @@ function programName(c, readers, lookup) {
         if (known)
             return known;
     }
-    return words.find(word => !!word) || "An app";
+    return words.find(word => !!word) || qsTranslate("Shell", "An app");
 }
 
 // PipeWire node ids that casts stream to: a video stream reading one of them is that

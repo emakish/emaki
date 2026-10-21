@@ -9,7 +9,7 @@ Column {
     required property var catalog
     readonly property var row: catalog.row("appearance.wallpaper")
     readonly property string currentPath: (row?.value || catalog.inheritedWallpaper || "")
-    readonly property string currentName: (catalog.wallpapers || []).find(picture => picture.path === currentPath)?.name || currentPath || "Inherited wallpaper"
+    readonly property string currentName: (catalog.wallpapers || []).find(picture => picture.path === currentPath)?.name || currentPath || qsTranslate("SettingsWallpaperPage", "Inherited wallpaper")
     readonly property var chooser: catalog.wallpaperChooser
     readonly property string chooserError: catalog.wallpaperChooserError
     readonly property bool busy: catalog.writing || chooser.busy
@@ -30,12 +30,12 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Wallpaper"
+        title: qsTranslate("SettingsWallpaperPage", "Wallpaper")
         SettingsRow {
             objectName: "setting-appearance.wallpaper"
             width: parent.width
-            title: "Your own picture"
-            explanation: "Choose a picture for every display. Reset restores your inherited wallpaper."
+            title: qsTranslate("SettingsWallpaperPage", "Your own picture")
+            explanation: qsTranslate("SettingsWallpaperPage", "Choose a picture for every display. Reset restores your inherited wallpaper.")
             value: page.row?.value ?? null
             defaultValue: page.row?.default ?? null
             unavailable: !page.row
@@ -47,7 +47,7 @@ Column {
             control: Component {
                 SettingsButton {
                     objectName: "wallpaper-choose"
-                    text: page.chooser.busy ? "Choosing…" : "Choose picture…"
+                    text: page.chooser.busy ? qsTranslate("SettingsWallpaperPage", "Choosing…") : qsTranslate("SettingsWallpaperPage", "Choose picture…")
                     onClicked: page.choosePicture()
                 }
             }
@@ -92,10 +92,10 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Emaki wallpapers"
+        title: qsTranslate("SettingsWallpaperPage", "Emaki wallpapers")
         Text {
             width: parent.width
-            text: "Choose a wallpaper from the installed collection."
+            text: qsTranslate("SettingsWallpaperPage", "Choose a wallpaper from the installed collection.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13
@@ -148,7 +148,7 @@ Column {
         Text {
             width: parent.width
             visible: !page.catalog.wallpapers?.length
-            text: "No wallpapers were found in the installed collection."
+            text: qsTranslate("SettingsWallpaperPage", "No wallpapers were found in the installed collection.")
             color: SettingsTheme.dim
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 13

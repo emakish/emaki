@@ -21,14 +21,24 @@ FocusScope {
     property string wallpaperTexture: ""
     property real dpr: 1
     property string error: ""
-    readonly property int count: Content.pages.length
-    readonly property var current: Content.pages[page]
+    property var pages: Content.pages()
+    property string heading: qsTranslate("Welcome", "Getting started")
+    property string closeLabel: qsTranslate("Welcome", "Close welcome")
+    property string doneLabel: qsTranslate("Welcome", "Start using Emaki")
+    property bool showShortcuts: true
+    property string actionLabel: ""
+    property real artworkHeight: 0
+    readonly property int count: welcome.pages.length
+    readonly property var current: welcome.pages[page]
     readonly property bool last: page === count - 1
     readonly property bool glassReady: glass.ready
     readonly property bool narrow: width < 640
     readonly property real inset: narrow ? 24 : 40
     signal closeRequested
     signal shortcutsRequested
+    signal actionRequested
+    signal whatsNewRequested
+    property string whatsNewLabel: ""
     implicitWidth: 800
     implicitHeight: 660
     focus: true
@@ -41,8 +51,10 @@ FocusScope {
             return;
         const backFocused = back.activeFocus;
         const shortcutsFocused = shortcuts.activeFocus;
+        const actionFocused = action.activeFocus;
+        const whatsNewFocused = whatsNew.activeFocus;
         page = target;
-        if ((backFocused && !back.visible) || (shortcutsFocused && !shortcuts.visible))
+        if ((backFocused && !back.visible) || (shortcutsFocused && !shortcuts.visible) || (actionFocused && !action.visible) || (whatsNewFocused && !whatsNew.visible))
             next.forceActiveFocus();
     }
     function turn(delta: int): void {
@@ -349,7 +361,7 @@ FocusScope {
                             visible: keyboard.modelData.kind === "mac"
                             anchors.horizontalCenter: parent.horizontalCenter
                             y: 62
-                            text: "command"
+                            text: qsTranslate("Welcome", "command")
                             font.pixelSize: 12
                             wrapMode: Text.NoWrap
                         }
@@ -693,7 +705,7 @@ FocusScope {
         Copy {
             x: welcome.inset
             anchors.verticalCenter: parent.verticalCenter
-            text: "Getting started".toUpperCase()
+            text: welcome.heading.toUpperCase()
             color: SettingsTheme.dim
             font.pixelSize: 12
             font.weight: Font.DemiBold
@@ -710,7 +722,7 @@ FocusScope {
             implicitHeight: 32
             labelSize: 18
             text: "×"
-            Accessible.name: "Close welcome"
+            Accessible.name: welcome.closeLabel
             onClicked: welcome.closeRequested()
         }
     }
@@ -747,7 +759,7 @@ FocusScope {
                 objectName: "welcome-stage"
                 width: parent.width
                 // Half the room under the band, within limits; a taller picture grows it.
-                height: Math.max(welcome.narrow ? 176 : 214, Math.min(300, Math.round(body.height * .5)), (picture.item as Item)?.implicitHeight ?? 0)
+                height: welcome.artworkHeight > 0 ? welcome.artworkHeight : Math.max(welcome.narrow ? 176 : 214, Math.min(300, Math.round(body.height * .5)), (picture.item as Item)?.implicitHeight ?? 0)
                 radius: SettingsTheme.radius
                 antialiasing: true
                 color: SettingsTheme.card
@@ -777,8 +789,29 @@ FocusScope {
                             "super": keyboardsPicture,
                             "move": stripPicture,
                             "system": placesPicture,
-                            "keys": shortcutsPicture
+                            "keys": shortcutsPicture,
+                            "release": releasePicture
                         })[welcome.current.id]
+                }
+                Component {
+                    id: releasePicture
+                    Item {
+                        Tile {
+                            anchors.centerIn: parent
+                            width: 96
+                            height: 96
+                            radius: 26
+                            glyphSize: 56
+                            from: ShellPalette.accentSoft
+                            to: ShellPalette.accent
+                            glyph: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#fffaf5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + ({
+                                "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
+                                "language": '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/>',
+                                "updates": '<path d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6M4 15a8 8 0 0 0 14 3l3-3m0 6v-6h-6"/>',
+                                "fixes": '<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>'
+                            })[welcome.current.icon] + '</svg>')
+                        }
+                    }
                 }
                 Component {
                     id: wordmarkPicture
@@ -889,14 +922,28 @@ FocusScope {
             }
             Item {
                 width: 1
-                height: welcome.last ? 16 : 0
+                height: shortcuts.visible || action.visible || whatsNew.visible ? 16 : 0
             }
             WelcomeButton {
                 id: shortcuts
                 objectName: "welcome-shortcuts"
-                visible: welcome.last
-                text: "All shortcuts"
+                visible: welcome.showShortcuts && welcome.last
+                text: qsTranslate("Welcome", "All shortcuts")
                 onClicked: welcome.shortcutsRequested()
+            }
+            WelcomeButton {
+                id: whatsNew
+                objectName: "welcome-whatsnew"
+                visible: welcome.page === 0 && welcome.whatsNewLabel !== ""
+                text: welcome.whatsNewLabel
+                onClicked: welcome.whatsNewRequested()
+            }
+            WelcomeButton {
+                id: action
+                objectName: "welcome-action"
+                visible: welcome.actionLabel !== ""
+                text: welcome.actionLabel
+                onClicked: welcome.actionRequested()
             }
             Item {
                 width: 1
@@ -944,7 +991,7 @@ FocusScope {
                     width: (welcome.page === index ? 26 : 8) + 12
                     height: 24
                     Accessible.role: Accessible.PageTab
-                    Accessible.name: "Page " + (index + 1) + " of " + welcome.count + ": " + Content.pages[index].title
+                    Accessible.name: qsTranslate("Welcome", "Page %1 of %2: %3").arg(index + 1).arg(welcome.count).arg(welcome.pages[index].title)
                     Accessible.selected: welcome.page === index
                     Rectangle {
                         anchors.centerIn: parent
@@ -979,14 +1026,14 @@ FocusScope {
                 id: back
                 objectName: "welcome-back"
                 visible: welcome.page > 0
-                text: "Back"
+                text: qsTranslate("Welcome", "Back")
                 onClicked: welcome.turn(-1)
             }
             WelcomeButton {
                 id: next
                 objectName: "welcome-next"
                 primary: true
-                text: welcome.last ? "Start using Emaki" : "Next"
+                text: welcome.last ? welcome.doneLabel : qsTranslate("Welcome", "Next")
                 onClicked: welcome.last ? welcome.closeRequested() : welcome.turn(1)
             }
         }

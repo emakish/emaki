@@ -42,9 +42,22 @@ Item {
     readonly property bool mutating: phase === "installing" || phase === "removing" || phase === "undoing"
     // A reopen refreshes a loaded catalog behind the pages; reading them stays possible.
     readonly property bool quietRefresh: phase === "catalog" && catalogLoaded
+    // Reads behind a page already on screen: an AUR edition joining an open program page, and the
+    // AUR popular list read again over the one shown. They need no loading line.
+    readonly property bool quietRead: phase === "related" || (phase === "aurPopular" && aurPopularLoaded && aurPopular.length > 0)
+    // Neither greys out what is on screen; an install asked for meanwhile waits for it (queuedAction).
+    readonly property bool backgroundBusy: quietRefresh || quietRead
     // Something the person asked for (results, an install) waits for that refresh.
     property bool heldByRefresh: false
-    readonly property bool foregroundBusy: busy && !mutating && !(quietRefresh && !heldByRefresh)
+    // The engine answers one request at a time: an action asked for during background work starts after it.
+    property string queuedAction: ""
+    // Written from phase directly, not from busy/quietRead/quietRefresh: when phase changes those
+    // bindings update one after another, and a mix of old and new values showed the loading line
+    // for an instant (tests/ProgramsControllerTest "an AUR edition joins an open page…").
+    readonly property bool foregroundBusy: phase !== "idle"
+        && phase !== "installing" && phase !== "removing" && phase !== "undoing"
+        && phase !== "related" && !(phase === "aurPopular" && aurPopularLoaded && aurPopular.length > 0)
+        && !(phase === "catalog" && catalogLoaded && !heldByRefresh)
     // Catalog pages follow one another; only the end of the whole refresh releases the hold.
     onPhaseChanged: if (phase !== "catalog") Qt.callLater(() => { if (root.phase !== "catalog") root.heldByRefresh = false; })
     // The AUR section stays closed until this person accepts its warning (engine-side consent).
@@ -96,7 +109,9 @@ Item {
     property bool refreshPending: false
     onPreviewOpenChanged: if (!previewOpen && refreshPending) Qt.callLater(drainRefresh)
     onBusyChanged: if (!busy) Qt.callLater(refreshPending ? drainRefresh : drainDeferred)
-    onExternalBusyChanged: if (!externalBusy && refreshPending) Qt.callLater(drainRefresh)
+    // A refresh asked for meanwhile goes first; an install queued during background work waits for
+    // an update to finish instead of being dropped.
+    onExternalBusyChanged: if (!externalBusy) Qt.callLater(refreshPending ? drainRefresh : drainDeferred)
     onInventoryLoadingChanged: if (!inventoryLoading && refreshPending) Qt.callLater(drainRefresh)
     signal transactionFinished(bool ok)
     signal restoreFinished(var result)
@@ -107,7 +122,15 @@ Item {
         deferred = deferred.filter(item => item.method !== method).concat([{method: method, params: params, phase: nextPhase}]);
     }
     function drainDeferred(): void {
-        if (busy || refreshPending || !deferred.length) return;
+        if (busy || refreshPending) return;
+        // prepare() refuses during an update; keep the queued action for when it ends.
+        if (queuedAction && !externalBusy) {
+            const action = queuedAction;
+            queuedAction = "";
+            prepare(action);
+            if (busy) return;
+        }
+        if (!deferred.length) return;
         const next = deferred[0];
         deferred = deferred.slice(1);
         request(next.method, next.params, next.phase);
@@ -187,7 +210,7 @@ Item {
         if (program) openProgram(program);
     }
     function preparePackage(row: var, action: string): void {
-        if (busy || externalBusy || refreshPending) return;
+        if ((busy && !backgroundBusy) || externalBusy || refreshPending) return;
         // A package name can also be an AppStream ID. Keep the repository
         // target selected by the row, independent of program edition merging.
         selectedEdition = row;
@@ -198,7 +221,7 @@ Item {
     function openProgram(row: var): void {
         // The page opens from the retained catalog; the refresh reconciles it (and asks a
         // package's details again) when it arrives, and installs wait for it.
-        if (busy && !quietRefresh) return;
+        if (busy && !backgroundBusy) return;
         if (quietRefresh) heldByRefresh = true;
         const merged = Logic.merge(installedPrograms.concat(allRows, searchRows, aurRows, aurPopular)).find(item => Logic.identity(item) === Logic.identity(row));
         selectedProgram = merged || Object.assign({}, row, {editions: row.editions || [row]});
@@ -219,7 +242,7 @@ Item {
         selectedEdition = Logic.edition(selectedProgram, kind);
         clearPlan();
     }
-    function clearPlan(): void { plan = null; planAction = ""; planKey = ""; previewOpen = false; message = ""; messageIsError = true; }
+    function clearPlan(): void { plan = null; planAction = ""; planKey = ""; previewOpen = false; message = ""; messageIsError = true; queuedAction = ""; }
     function prepareInstall(): void { prepare("install"); }
     function prepareRemove(row: var): void {
         if (row) openProgram(row);
@@ -227,6 +250,12 @@ Item {
     }
     function prepareUndo(): void { prepare("undo"); }
     function prepare(action: string): void {
+        if (backgroundBusy && !externalBusy && selectedEdition && (selectedEdition.actions || []).includes(action)) {
+            // Its preview opens when that work ends (drainDeferred); a quiet refresh says "Refreshing…" meanwhile.
+            if (quietRefresh) heldByRefresh = true;
+            queuedAction = action;
+            return;
+        }
         if (busy || externalBusy || refreshPending || !selectedEdition || !(selectedEdition.actions || []).includes(action)) return;
         plan = null; planAction = action; previewOpen = true;
         // An Installed row keeps its removal identity; undo goes to the recorded catalog edition.
@@ -254,7 +283,7 @@ Item {
     function openInstalled(): void {
         if (!selectedEdition || !selectedEdition.installed || launcher.running) return;
         const entry = selectedLauncher;
-        if (!entry) { messageIsError = true; message = "This program cannot be opened from here."; return; }
+        if (!entry) { messageIsError = true; message = qsTranslate("ProgramsController", "This program cannot be opened from here."); return; }
         launcher.command = [Shell.Platform.python, "-B", Shell.Platform.dataDir + "/shell/helpers/app_scope.py",
                             "--exec", entry.id, Quickshell.env("EMAKI_GTK_LAUNCH") || "gtk-launch", "--", entry.id + ".desktop"];
         launcher.completed = false;
@@ -282,7 +311,7 @@ Item {
     }
     function accept(line: string): void {
         let event;
-        try { event = JSON.parse(line); } catch (_) { fail("Something went wrong in Programs & Updates. Try again."); return; }
+        try { event = JSON.parse(line); } catch (_) { fail(qsTranslate("ProgramsController", "Something went wrong in Programs & Updates. Try again.")); return; }
         if (!pending || event.version !== 1 || event.id !== pending.id) return;
         if (event.type === "progress") { percent = typeof event.percent === "number" ? event.percent : -1; output = (output + (event.message || "") + "\n").slice(-32768); return; }
         if (event.type !== "result") return;
@@ -302,7 +331,7 @@ Item {
             if (previous === "aur") aurKnown = true;
             if (previous === "aurPopular") { aurPopular = []; aurPopularLoaded = true; }
             messageIsError = true;
-            message = (event.message || "The install or removal could not finish. See the details below.") + Logic.undoRefusal(event);
+            message = (event.message || qsTranslate("ProgramsController", "The install or removal could not finish. See the details below.")) + Logic.undoRefusal(event);
             if (previous === "packageDetails" && selectedEdition?.key === params.key)
                 selectedEdition = Object.assign({}, selectedEdition, {actions: []});
             if (previous === "planning") plan = null;
@@ -440,17 +469,17 @@ Item {
     Timer {
         id: startWatch
         interval: 3000
-        onTriggered: if (!root.ready) root.fail("Programs & Updates could not start. Close the window and open it again.")
+        onTriggered: if (!root.ready) root.fail(qsTranslate("ProgramsController", "Programs & Updates could not start. Close the window and open it again."))
     }
     Timer {
         id: legacyStartWatch
         interval: 3000
-        onTriggered: root.fail("Programs & Updates could not start. Close the window and open it again.")
+        onTriggered: root.fail(qsTranslate("ProgramsController", "Programs & Updates could not start. Close the window and open it again."))
     }
     Timer {
         id: launchStartWatch
         interval: 3000
-        onTriggered: { root.messageIsError = true; root.message = "The program could not open."; }
+        onTriggered: { root.messageIsError = true; root.message = qsTranslate("ProgramsController", "The program could not open."); }
     }
     Process {
         id: service
@@ -464,13 +493,13 @@ Item {
         stderr: SplitParser { onRead: line => root.output = (root.output + line + "\n").slice(-32768) }
         onExited: code => {
             root.ready = false;
-            if (root.pending) root.fail("The work stopped before it finished. Look at Installed before trying again.");
+            if (root.pending) root.fail(qsTranslate("ProgramsController", "The work stopped before it finished. Look at Installed before trying again."));
         }
     }
     function inventoryFailed(text: string): void {
         inventoryStartWatch.stop();
         inventoryLoading = false;
-        inventoryError = text || "Your installed programs could not be loaded. Try again.";
+        inventoryError = text || qsTranslate("ProgramsController", "Your installed programs could not be loaded. Try again.");
         reconcileSelection();
         if (inventoryRetriesRemaining > 0 && !inventoryRetry.running) inventoryRetry.restart();
     }
@@ -487,7 +516,7 @@ Item {
     Timer {
         id: inventoryStartWatch
         interval: 3000
-        onTriggered: root.inventoryFailed("Your installed programs could not be loaded. Try again.")
+        onTriggered: root.inventoryFailed(qsTranslate("ProgramsController", "Your installed programs could not be loaded. Try again."))
     }
     Process {
         id: installedList
@@ -497,7 +526,7 @@ Item {
         onStarted: inventoryStartWatch.stop()
         onRunningChanged: if (!running) Qt.callLater(() => {
             if (!installedList.running && !installedList.completed && root.inventoryLoading)
-                root.inventoryFailed("Your installed programs could not be loaded. Try again.");
+                root.inventoryFailed(qsTranslate("ProgramsController", "Your installed programs could not be loaded. Try again."));
         })
         stdout: StdioCollector { onStreamFinished: installedList.reply = text }
         onExited: code => {
@@ -506,7 +535,7 @@ Item {
             try {
                 const result = JSON.parse(reply);
                 if (code !== 0 || result.ok !== true || !Array.isArray(result.programs)) {
-                    root.inventoryFailed(result.message || "Your installed programs could not be loaded. Try again.");
+                    root.inventoryFailed(result.message || qsTranslate("ProgramsController", "Your installed programs could not be loaded. Try again."));
                     return;
                 }
                 root.legacyPrograms = result.programs;
@@ -516,7 +545,7 @@ Item {
                 root.inventoryRetriesRemaining = 0;
                 root.installedReceived = true;
                 root.reconcileSelection();
-            } catch (_) { root.inventoryFailed("Your installed programs could not be loaded. Try again."); }
+            } catch (_) { root.inventoryFailed(qsTranslate("ProgramsController", "Your installed programs could not be loaded. Try again.")); }
         }
     }
     Process {
@@ -528,7 +557,7 @@ Item {
         onRunningChanged: if (!running) Qt.callLater(() => {
             if (!legacyOperation.running && !legacyOperation.completed && root.pending?.id === legacyOperation.requestId) {
                 legacyStartWatch.stop();
-                root.fail("Programs & Updates could not start. Close the window and open it again.");
+                root.fail(qsTranslate("ProgramsController", "Programs & Updates could not start. Close the window and open it again."));
             }
         })
         stdout: StdioCollector { onStreamFinished: legacyOperation.reply = text }
@@ -544,7 +573,7 @@ Item {
                     event = Object.assign(event, {key: request.params.key, action: "remove", transaction: result});
                 }
                 root.accept(JSON.stringify(event));
-            } catch (_) { root.fail("Something went wrong in Programs & Updates. Try again."); }
+            } catch (_) { root.fail(qsTranslate("ProgramsController", "Something went wrong in Programs & Updates. Try again.")); }
         }
     }
     Process {
@@ -555,9 +584,9 @@ Item {
         }
         onStarted: launchStartWatch.stop()
         onRunningChanged: if (!running) Qt.callLater(() => {
-            if (!launcher.running && !launcher.completed) { launchStartWatch.stop(); root.messageIsError = true; root.message = "The program could not open."; }
+            if (!launcher.running && !launcher.completed) { launchStartWatch.stop(); root.messageIsError = true; root.message = qsTranslate("ProgramsController", "The program could not open."); }
         })
-        onExited: code => { completed = true; launchStartWatch.stop(); if (code !== 0) { root.messageIsError = true; root.message = "The program could not open."; } }
+        onExited: code => { completed = true; launchStartWatch.stop(); if (code !== 0) { root.messageIsError = true; root.message = qsTranslate("ProgramsController", "The program could not open."); } }
     }
     Component.onCompleted: refresh()
 }

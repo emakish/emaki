@@ -236,7 +236,7 @@ Item {
                     y: (Metrics.islandHeight - height) / 2
                     height: 20
                     verticalAlignment: Text.AlignVCenter
-                    text: panel.rows.length ? "IN USE RIGHT NOW" : "NO ACTIVE CAPTURE"
+                    text: panel.rows.length ? qsTranslate("PrivacyPanel", "IN USE RIGHT NOW") : qsTranslate("PrivacyPanel", "NO ACTIVE CAPTURE")
                     textFormat: Text.PlainText
                     font.family: ShellPalette.uiFont
                     font.pixelSize: 11
@@ -365,7 +365,7 @@ Item {
         x: panel.islandX - panel.shownX
         width: panel.islandWidth
         height: Metrics.islandHeight
-        label: "Close privacy activity"
+        label: qsTranslate("PrivacyPanel", "Close privacy activity")
         onActivated: panel.toggle()
         Icon {
             anchors.centerIn: parent

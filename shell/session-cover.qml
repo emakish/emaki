@@ -9,6 +9,7 @@ import Quickshell.Wayland
 // This is loaded only by the main shell after its one-shot fresh-login claim.
 Scope {
     id: root
+    readonly property bool translationsReady: Translation.initialize()
     readonly property string token: Quickshell.env("EMAKI_SESSION_START")
     readonly property bool valid: /^[0-9a-f]{32}$/.test(token)
     property var context: ({})

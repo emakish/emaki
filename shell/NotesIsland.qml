@@ -69,7 +69,7 @@ Item {
         Button {
             id: glyph
             x: 0; y: 0; width: 40; height: 36
-            Accessible.name: root.expanded ? "Collapse pinned notes" : "Open pinned notes"
+            Accessible.name: root.expanded ? qsTranslate("NotesIsland", "Collapse pinned notes") : qsTranslate("NotesIsland", "Open pinned notes")
             onClicked: { root.toggleRequested(); root.forceActiveFocus(); }
             contentItem: Text { text: "▤"; color: LiquidPalette.ink; font.pixelSize: 22; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             // The bar's keyboard focus gets the hover drop (FocusRing's look), drawn here above the bar.
@@ -80,7 +80,7 @@ Item {
                 border.color: glyph.activeFocus ? LiquidPalette.accent : LiquidPalette.flatDropRim
             }
         }
-        Text { x: 48; y: 10; text: "Pinned notes"; opacity: root.contentAlpha; color: LiquidPalette.ink; font.family: "Noto Sans"; font.pixelSize: 13; font.weight: Font.DemiBold }
+        Text { x: 48; y: 10; text: qsTranslate("NotesIsland", "Pinned notes"); opacity: root.contentAlpha; color: LiquidPalette.ink; font.family: "Noto Sans"; font.pixelSize: 13; font.weight: Font.DemiBold }
         // Built only while open: the collapsed glyph carries no note controls on any output.
         Loader {
             x: 16; y: 48; width: 328; height: Math.max(0, root.height - 64)
@@ -169,7 +169,7 @@ Item {
                                 Layout.fillWidth: true
                                 text: root.taskDrafts[note.noteId] || ""
                                 onTextEdited: { const next = Object.assign({}, root.taskDrafts); next[note.noteId] = text; root.taskDrafts = next; }
-                                placeholderText: "Add a task…"
+                                placeholderText: qsTranslate("NotesIsland", "Add a task…")
                                 placeholderTextColor: LiquidPalette.plateDim
                                 color: LiquidPalette.ink
                                 font.pixelSize: 12
@@ -182,16 +182,16 @@ Item {
                                 id: add
                                 implicitHeight: 40
                                 text: "+"
-                                Accessible.name: "Add task"
+                                Accessible.name: qsTranslate("NotesIsland", "Add task")
                                 enabled: !!task.text.trim()
                                 onClicked: root.addTask(note.ref, task.text)
                             }
                         }
                         RowLayout {
                             width: parent.width
-                            NotesButton { text: "Open in Emaki Notes"; onClicked: root.openRequested(note.noteId) }
+                            NotesButton { text: qsTranslate("NotesIsland", "Open in Emaki Notes"); onClicked: root.openRequested(note.noteId) }
                             Item { Layout.fillWidth: true }
-                            NotesButton { text: "Unpin"; onClicked: root.unpin(note.ref) }
+                            NotesButton { text: qsTranslate("NotesIsland", "Unpin"); onClicked: root.unpin(note.ref) }
                         }
                         Rectangle { width: parent.width; height: 1; color: Qt.alpha(LiquidPalette.ink, .10) }
                     }

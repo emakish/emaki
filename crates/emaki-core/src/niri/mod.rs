@@ -89,31 +89,42 @@ impl Observation {
     }
     pub fn human(&self) -> String {
         // Debug/JSON escaping prevents output connector names from injecting terminal controls.
-        let mut text = format!(
-            "niri {:?}: {}; generation={}, sequence={}\n",
-            self.connection.status, self.connection.reason, self.generation, self.sequence
+        let mut text = crate::i18n::format_text(
+            "niri {connection_status}: {connection_reason}; generation={generation}, sequence={sequence}\n",
+            &[
+                ("connection_status", format!("{:?}", self.connection.status)),
+                ("connection_reason", (self.connection.reason).to_string()),
+                ("generation", (self.generation).to_string()),
+                ("sequence", (self.sequence).to_string()),
+            ],
         );
         if let Some(m) = &self.model {
-            text.push_str(&format!(
-                "  outputs={} workspaces={} windows={} focused_output={:?} links_pending={} overview_open={}\n",
-                m.outputs.len(),
-                m.workspaces.len(),
-                m.windows.len(),
-                m.focused_output,
-                m.links_pending,
-                m.overview_open
-            ));
+            text.push_str(&crate::i18n::format_text("  outputs={outputs_len} workspaces={workspaces_len} windows={windows_len} focused_output={focused_output} links_pending={links_pending} overview_open={overview_open}\n", &[
+                ("outputs_len", (m.outputs.len()).to_string()),
+                ("workspaces_len", (m.workspaces.len()).to_string()),
+                ("windows_len", (m.windows.len()).to_string()),
+                ("focused_output", format!("{:?}", m.focused_output)),
+                ("links_pending", (m.links_pending).to_string()),
+                ("overview_open", (m.overview_open).to_string()),
+            ]));
             for w in m.workspaces.values() {
-                text.push_str(&format!(
-                    "  workspace id={} idx={} output={:?} active={} focused={} window={:?}\n",
-                    w.id, w.idx, w.output, w.is_active, w.is_focused, w.active_window_id
-                ));
+                text.push_str(&crate::i18n::format_text("  workspace id={id} idx={idx} output={output} active={is_active} focused={is_focused} window={active_window_id}\n", &[
+                ("id", (w.id).to_string()),
+                ("idx", (w.idx).to_string()),
+                ("output", format!("{:?}", w.output)),
+                ("is_active", (w.is_active).to_string()),
+                ("is_focused", (w.is_focused).to_string()),
+                ("active_window_id", format!("{:?}", w.active_window_id)),
+            ]));
             }
             for w in m.windows.values() {
-                text.push_str(&format!(
-                    "  window id={} workspace={:?} focused={} floating={} urgent={}\n",
-                    w.id, w.workspace_id, w.is_focused, w.is_floating, w.is_urgent
-                ));
+                text.push_str(&crate::i18n::format_text("  window id={id} workspace={workspace_id} focused={is_focused} floating={is_floating} urgent={is_urgent}\n", &[
+                ("id", (w.id).to_string()),
+                ("workspace_id", format!("{:?}", w.workspace_id)),
+                ("is_focused", (w.is_focused).to_string()),
+                ("is_floating", (w.is_floating).to_string()),
+                ("is_urgent", (w.is_urgent).to_string()),
+            ]));
             }
         }
         text

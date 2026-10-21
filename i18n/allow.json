@@ -1,0 +1,159 @@
+{
+  "copyright": "Copyright (C) 2026 Artur Yakymenko",
+  "license": "SPDX-License-Identifier: GPL-3.0-or-later",
+  "literals": [
+    {
+      "paths": [
+        "installer/emaki_installer/inventory.py"
+      ],
+      "texts": [
+        "^Partition name: '(.*)'$"
+      ],
+      "reason": "Partition-tool output parser expression, not displayed copy."
+    },
+    {
+      "paths": [
+        "installer/emaki_installer/secureboot.py"
+      ],
+      "texts": [
+        "f'Emaki Secure Boot machine key {label}'"
+      ],
+      "reason": "Stable certificate subject used to identify generated keys."
+    },
+    {
+      "paths": [
+        "installer/ui/InstallerView.qml",
+        "shell/SettingsAboutPage.qml",
+        "shell/Welcome.qml",
+        "update-manager/ui/ManagerUpdates.qml"
+      ],
+      "texts": [
+        "Emaki"
+      ],
+      "reason": "Product wordmark and repository identity retain their registered spelling."
+    },
+    {
+      "paths": [
+        "installer/ui/InstallerView.qml"
+      ],
+      "texts": [
+        "swap",
+        "ext4"
+      ],
+      "reason": "Filesystem names and partition type identifiers."
+    },
+    {
+      "paths": [
+        "shell/SettingsNetworkPage.qml"
+      ],
+      "texts": [
+        "DNS"
+      ],
+      "reason": "Standard network protocol abbreviation."
+    },
+    {
+      "paths": [
+        "shell/SystemBody.qml"
+      ],
+      "texts": [
+        "USB"
+      ],
+      "reason": "Standard hardware and network abbreviations."
+    },
+    {
+      "paths": [
+        "update-manager/ui/ManagerProgram.qml"
+      ],
+      "texts": [
+        "Flathub",
+        "AUR",
+        "Arch"
+      ],
+      "reason": "Upstream repository names retain their spelling."
+    },
+    {
+      "paths": [
+        "update-manager/ui/ManagerUpdates.qml"
+      ],
+      "texts": [
+        "Arch",
+        "Flatpak",
+        "AUR"
+      ],
+      "reason": "Upstream repository and technology names retain their spelling."
+    },
+    {
+      "paths": [
+        "update-manager/ui/ManagerView.qml"
+      ],
+      "texts": [
+        "AUR"
+      ],
+      "reason": "Upstream repository name retains its spelling."
+    },
+    {
+      "paths": [
+        "scripts/emaki-settings-network"
+      ],
+      "texts": [
+        "WireGuard"
+      ],
+      "reason": "Upstream network technology name retains its spelling."
+    },
+    {
+      "paths": [
+        "installer/ui/InstallerView.qml"
+      ],
+      "texts": [
+        "transparent",
+        "none",
+        "/efi",
+        "/home",
+        "btrfs"
+      ],
+      "reason": "Legend colour, stable mount-choice IDs (translated separately by Select display labels), mount paths and filesystem identifiers."
+    },
+    {
+      "paths": [
+        "shell/ClockToolsService.qml"
+      ],
+      "texts": [
+        "Clocks"
+      ],
+      "reason": "Stable notification application key; displayApp translates its displayed label."
+    }
+  ],
+  "internal_raises": [
+    {
+      "paths": [
+        "shell/helpers/clipboard_store.py",
+        "shell/helpers/private-state.py",
+        "shell/helpers/greeter-auth.py",
+        "shell/helpers/greeter-state.py",
+        "shell/helpers/greeter-handoff.py",
+        "shell/helpers/lock-environment.py",
+        "shell/helpers/polkit-lock-state.py",
+        "shell/helpers/session-start.py",
+        "scripts/emaki-machine-settings"
+      ],
+      "reason": "Internal validation exceptions are caught and converted to stable protocol state/reason codes. The UI translates their presentation; raw exceptions are never displayed."
+    },
+    {
+      "paths": [
+        "shell/helpers/shortcuts.py",
+        "shell/helpers/wallpaper_chooser.py"
+      ],
+      "reason": "Parser/portal exceptions are caught and reduced to unavailable or portal_failed; they do not become user messages."
+    },
+    {
+      "paths": [
+        "update-manager/emaki_update_space.py",
+        "update-manager/privacy_recovery.py",
+        "update-manager/programs_aur_build.py",
+        "update-manager/programs_install.py",
+        "update-manager/restore.py"
+      ],
+      "reason": "Internal snapshot/process validation exceptions are caught and replaced with separately translated refusal messages."
+    }
+  ]
+}

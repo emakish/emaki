@@ -74,6 +74,8 @@ raise AssertionError(args)
                XDG_STATE_HOME=str(base / 'state'), XDG_RUNTIME_DIR=str(runtime_path(base)),
                QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                QT_QUICK_CONTROLS_STYLE='Basic', QML_DISABLE_DISK_CACHE='1',
+               EMAKI_LANGUAGE='en', EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
+               QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
                PATH=str(base / 'bin') + os.pathsep + os.environ['PATH'],
                FIXTURE_ROOT=str(base),
                DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-bus'),

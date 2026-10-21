@@ -35,7 +35,7 @@ AuthController {
     property string _pamMessage: ""
     property bool _pamMessageError: false
     usernameMode: !user.length
-    prompt: usernameMode ? "Username" : "Password"
+    prompt: usernameMode ? qsTranslate("GreeterAuth", "Username") : qsTranslate("GreeterAuth", "Password")
     signal selectUser(string user)
     signal fatalError
 
@@ -43,7 +43,7 @@ AuthController {
         if (!enabled || !selectionReady || checking || _terminal || _fatal)
             return false;
         if (length(text) > maximumLength || text.indexOf("\u0000") !== -1) {
-            message = text.indexOf("\u0000") !== -1 ? (usernameMode ? "This character cannot be used in a username" : "This character cannot be used in a password") : (usernameMode ? "Username is too long (maximum 1024 characters)" : "Password is too long (maximum 1024 characters)");
+            message = text.indexOf("\u0000") !== -1 ? (usernameMode ? qsTranslate("GreeterAuth", "This character cannot be used in a username") : qsTranslate("GreeterAuth", "This character cannot be used in a password")) : (usernameMode ? qsTranslate("GreeterAuth", "Username is too long (maximum 1024 characters)") : qsTranslate("GreeterAuth", "Password is too long (maximum 1024 characters)"));
             messageKind = "input";
             return false;
         }
@@ -120,12 +120,12 @@ AuthController {
                 message = _pamMessage;
                 messageKind = _pamMessageError ? "pam-error" : "pam";
             } else {
-                message = "Wrong password";
+                message = qsTranslate("GreeterAuth", "Wrong password");
                 messageKind = "wrong";
             }
             rejected();
         } else {
-            message = "Authentication error. Please try again.";
+            message = qsTranslate("GreeterAuth", "Authentication error. Please try again.");
             messageKind = "technical";
         }
         _pamMessage = "";
@@ -163,7 +163,7 @@ AuthController {
         _fatal = true;
         retireWorker();
         wipe(true);
-        message = "Authentication error. Opening another login screen.";
+        message = qsTranslate("GreeterAuth", "Authentication error. Opening another login screen.");
         messageKind = "technical";
         Qt.callLater(function () {
             root.fatalError();
@@ -244,7 +244,7 @@ AuthController {
             _recovering = false;
             _retryBlocked = true;
             queued = false;
-            message = "Authentication error. Please try again.";
+            message = qsTranslate("GreeterAuth", "Authentication error. Please try again.");
             messageKind = "technical";
             return;
         }

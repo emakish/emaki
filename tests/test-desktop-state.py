@@ -353,7 +353,7 @@ class Mutants(unittest.TestCase):
                     tempfile.TemporaryDirectory(prefix='desktop-state-mutant-') as directory:
                 tree = Path(directory)
                 for name in ('scripts/emaki-session-files', 'scripts/emaki-session-update', 'scripts/emaki_paths.py',
-                             'scripts/emaki_session_state.py', 'scripts/emaki_session_arch.py',
+                             'scripts/emaki_session_state.py', 'scripts/emaki_session_arch.py', 'scripts/emaki_i18n.py',
                              'update-manager/catalog.py', 'shell/SessionUpdateNotice.qml',
                              'tests/test-desktop-state.py'):
                     (tree / name).parent.mkdir(parents=True, exist_ok=True)

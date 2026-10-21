@@ -417,8 +417,8 @@ def fourth(call, state, wait, center):
 
 
 def report_window(call, state, wait, center):
-    # Real offscreen dock, synthetic niri labels: only the exact shell Report window
-    # shares the report desktop entry, including when that entry becomes pinned.
+    # Stable identity works with a translated title; the exact legacy English title
+    # remains a fallback, including when the report desktop entry becomes pinned.
     s = ready(wait)
     original_pins = s['dock']['pinned'][:]
     with server.lock:
@@ -427,12 +427,13 @@ def report_window(call, state, wait, center):
         window(90, 101, False, 'org.quickshell', 'Report a problem', **TILE),
         window(91, 101, False, 'org.quickshell', 'Report a problem elsewhere', **TILE),
         window(92, 101, False, 'fixture-other-report', 'Report a problem', **TILE),
+        window(93, 101, False, 'emaki-report', 'Translated report title', **TILE),
     ])
 
     def report_entries(s):
         return dict(zip((key for key in s['dock_keys'] if key != 'sep'), s['dock_windows']))
 
-    s = wait(lambda s: report_entries(s).get('emaki-report') == [90]
+    s = wait(lambda s: report_entries(s).get('emaki-report') == [90, 93]
              and report_entries(s).get('app:org.quickshell') == [91]
              and report_entries(s).get('app:fixture-other-report') == [92])
     assert s['dock_keys'].count('emaki-report') == 1, s['dock_keys']
@@ -441,8 +442,8 @@ def report_window(call, state, wait, center):
     s = wait(lambda s: s['dock']['pinned'] == original_pins + ['emaki-report'])
     assert s['dock_keys'].count('emaki-report') == 1, s['dock_keys']
     index = [key for key in s['dock_keys'] if key != 'sep'].index('emaki-report')
-    assert s['dock']['entries'][index] == dict(id='emaki-report', pinned=True, source='exact', windows=1)
-    assert report_entries(s)['emaki-report'] == [90]
+    assert s['dock']['entries'][index] == dict(id='emaki-report', pinned=True, source='exact', windows=2)
+    assert report_entries(s)['emaki-report'] == [90, 93]
     assert report_entries(s)['app:org.quickshell'] == [91]
     assert report_entries(s)['app:fixture-other-report'] == [92]
     assert call('dock', 'unpin', 'emaki-report') == 'true'

@@ -53,18 +53,18 @@ function noticeKind(status) {
 
 function stateText(status) {
     if (unsigned(status).length > 0)
-        return "Some startup files are not signed, so Emaki will not start with Secure Boot on. Free some disk space, then choose Sign again.";
+        return qsTranslate("Shell", "Some startup files are not signed, so Emaki will not start with Secure Boot on. Free some disk space, then choose Sign again.");
     if (!shown(status) || status.enrollment === null)
-        return "The Secure Boot state could not be read.";
+        return qsTranslate("Shell", "The Secure Boot state could not be read.");
     if (status.enrollment === "pending")
-        return "A confirmation is waiting for the next restart.";
+        return qsTranslate("Shell", "A confirmation is waiting for the next restart.");
     if (status.enrollment === "missing")
-        return "This computer's key is not confirmed yet. Until it is, Emaki cannot start with Secure Boot on.";
+        return qsTranslate("Shell", "This computer's key is not confirmed yet. Until it is, Emaki cannot start with Secure Boot on.");
     if (status.secure_boot === true)
-        return "Secure Boot is on. Emaki signs its startup files with this computer's key.";
+        return qsTranslate("Shell", "Secure Boot is on. Emaki signs its startup files with this computer's key.");
     if (status.secure_boot === false)
-        return "Secure Boot is off. This computer's key is confirmed, so you can turn Secure Boot on in your firmware settings.";
-    return "This computer's key is confirmed.";
+        return qsTranslate("Shell", "Secure Boot is off. This computer's key is confirmed, so you can turn Secure Boot on in your firmware settings.");
+    return qsTranslate("Shell", "This computer's key is confirmed.");
 }
 
 function validPassword(answer) {
@@ -72,24 +72,24 @@ function validPassword(answer) {
         && typeof answer.password === "string" && /^[0-9]{8}$/.test(answer.password);
 }
 
-var title = "Secure Boot";
-var statusTitle = "Status";
-var confirmTitle = "Confirm the key";
-var confirmExplanation = "Get a one-time password, then confirm the key on the blue screen at the next restart.";
-var confirmButton = "Get password";
-var passwordTitle = "One-time password";
-var steps = "Restart the computer. When the blue screen appears, press any key within 10 seconds, choose Enroll MOK, then Continue and Yes, type this password and choose Reboot.";
-var afterSteps = "After that, turn Secure Boot on in your firmware settings.";
-var cancelled = "Authentication was cancelled.";
-var failed = "A new confirmation could not be set up. Try again.";
+function title() { return qsTranslate("Shell", "Secure Boot"); }
+function statusTitle() { return qsTranslate("Shell", "Status"); }
+function confirmTitle() { return qsTranslate("Shell", "Confirm the key"); }
+function confirmExplanation() { return qsTranslate("Shell", "Get a one-time password, then confirm the key on the blue screen at the next restart."); }
+function confirmButton() { return qsTranslate("Shell", "Get password"); }
+function passwordTitle() { return qsTranslate("Shell", "One-time password"); }
+function steps() { return qsTranslate("Shell", "Restart the computer. When the blue screen appears, press any key within 10 seconds, choose Enroll MOK, then Continue and Yes, type this password and choose Reboot."); }
+function afterSteps() { return qsTranslate("Shell", "After that, turn Secure Boot on in your firmware settings."); }
+function cancelled() { return qsTranslate("Shell", "Authentication was cancelled."); }
+function failed() { return qsTranslate("Shell", "A new confirmation could not be set up. Try again."); }
 // The session notices' headlines fit one line of the preview beside "Secure Boot · 59 min";
 // the bodies wrap in full.
-var noticeSummary = "Finish setting up Secure Boot.";
-var noticeBody = "This computer's key is not confirmed, so Emaki cannot start with Secure Boot on. Open Settings to get a one-time password, then confirm the key at the next restart.";
-var noticeAction = "Open Settings";
-var signTitle = "Sign the startup files";
-var signExplanation = "Sign the startup files again with this computer's key.";
-var signButton = "Sign again";
-var signFailed = "The startup files could not be signed. Free some disk space and try again.";
-var unsignedSummary = "Startup files are not signed.";
-var unsignedBody = "An update could not sign them, so Emaki will not start with Secure Boot on. Free some disk space, then open Settings and choose Sign again.";
+function noticeSummary() { return qsTranslate("Shell", "Finish setting up Secure Boot."); }
+function noticeBody() { return qsTranslate("Shell", "This computer's key is not confirmed, so Emaki cannot start with Secure Boot on. Open Settings to get a one-time password, then confirm the key at the next restart."); }
+function noticeAction() { return qsTranslate("Shell", "Open Settings"); }
+function signTitle() { return qsTranslate("Shell", "Sign the startup files"); }
+function signExplanation() { return qsTranslate("Shell", "Sign the startup files again with this computer's key."); }
+function signButton() { return qsTranslate("Shell", "Sign again"); }
+function signFailed() { return qsTranslate("Shell", "The startup files could not be signed. Free some disk space and try again."); }
+function unsignedSummary() { return qsTranslate("Shell", "Startup files are not signed."); }
+function unsignedBody() { return qsTranslate("Shell", "An update could not sign them, so Emaki will not start with Secure Boot on. Free some disk space, then open Settings and choose Sign again."); }

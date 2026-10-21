@@ -352,9 +352,10 @@ class Report(unittest.TestCase):
     def test_settings_search_describes_local_composer(self):
         index = (ROOT / 'shell/settings/SettingsIndex.js').read_text()
         row = next(line for line in index.splitlines() if '"id":"about-report-a-problem"' in line)
-        entry = json.loads(row.strip().rstrip(','))
+        script = (ROOT / 'tests/qml-translation.js').read_text() + '\nconsole.log(JSON.stringify(' + row.strip().rstrip(',') + '));'
+        entry = json.loads(subprocess.check_output(['node', '-e', script], text=True))
         page = (ROOT / 'shell/SettingsAboutPage.qml').read_text()
-        self.assertIn('explanation: ' + json.dumps(entry['explanation']), page)
+        self.assertIn('explanation: qsTranslate("SettingsAboutPage", ' + json.dumps(entry['explanation']) + ')', page)
         self.assertIn('until you choose Send', entry['explanation'])
 
     def test_selection_exact_and_description_verbatim(self):
@@ -543,7 +544,7 @@ class CommandLine(unittest.TestCase):
     def test_isolated_executables_no_network_or_writes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ('emaki-report', 'emaki-settings-about', 'emaki_report_redact.py'):
+            for name in ('emaki-report', 'emaki-settings-about', 'emaki_report_redact.py', 'emaki_i18n.py'):
                 shutil.copy(ROOT / 'scripts' / name, root / name)
             library = root / 'lib/emaki'
             library.mkdir(parents=True)
@@ -551,7 +552,7 @@ class CommandLine(unittest.TestCase):
                 'VARIANT_ID=emaki\nBUG_REPORT_URL="https://github.com/emakish/emaki/issues"\n')
             (library.parent / 'emaki-release').write_text('VERSION=0.8.0\nCHANNEL=testing\n')
             (root / 'emaki_paths.py').write_text(
-                f'LIBDIR = {str(library)!r}\nLOCALSTATEDIR = {str(root / "state")!r}\n')
+                f'LIBDIR = {str(library)!r}\nLOCALSTATEDIR = {str(root / "state")!r}\nDATADIR = {str(root / "data")!r}\n')
             fake = """import os, sys
 name = os.path.basename(sys.argv[0])
 args = sys.argv[1:]

@@ -512,9 +512,9 @@ Item {
             if (!scene.focusedOutput || scene.skipIntro || (scene.systemOpen && scene.systemPage === page))
                 return;
             if (page === "sound")
-                osd.show("sound", Math.round((scene.services.sinkVolume >= 0 ? scene.services.sinkVolume : 0) * 100), scene.services.sinkMuted, scene.services.sinkMuted ? "Muted" : (scene.services.backend?.sink?.description || scene.services.backend?.sink?.name || "Sound"));
+                osd.show("sound", Math.round((scene.services.sinkVolume >= 0 ? scene.services.sinkVolume : 0) * 100), scene.services.sinkMuted, scene.services.sinkMuted ? qsTranslate("ShellScene", "Muted") : (scene.services.backend?.sink?.description || scene.services.backend?.sink?.name || qsTranslate("ShellScene", "Sound")));
             else
-                osd.show("light", scene.services.brightness.percent ?? 0, false, "Brightness");
+                osd.show("light", scene.services.brightness.percent ?? 0, false, qsTranslate("ShellScene", "Brightness"));
         }
     }
     // Privacy: capture streams from the backend plus screencasts from the core model.
@@ -530,15 +530,15 @@ Item {
     readonly property var privacyRows: scene.deviceCaptures.map(c => ({
                 kind: "info",
                 what: c.kind,
-                label: c.name || "An app",
-                note: c.kind === "mic" ? "Using the microphone" : "Using the camera",
+                label: c.name || qsTranslate("ShellScene", "An app"),
+                note: c.kind === "mic" ? qsTranslate("ShellScene", "Using the microphone") : qsTranslate("ShellScene", "Using the camera"),
                 tag: "",
                 id: 0
             })).concat(scene.screenShares.map(s => ({
                 kind: "info",
                 what: "cast",
                 label: s.name,
-                note: s.window ? "Sharing a window" : "Sharing the screen",
+                note: s.window ? qsTranslate("ShellScene", "Sharing a window") : qsTranslate("ShellScene", "Sharing the screen"),
                 tag: "",
                 id: 0
             })))
@@ -715,7 +715,7 @@ Item {
         }
         function onEntriesChanged(): void {
             if (scene.peekOpen) {
-                scene.peekIds = scene.peekIds.filter(id => scene.notes.entries.some(n => n.id === id && (!n.critical || n.batteryWarning || n.sessionUpdate || n.held === true || n.object)));
+                scene.peekIds = scene.peekIds.filter(id => scene.notes.entries.some(n => n.id === id && (!n.critical || n.batteryWarning || n.sessionUpdate || n.clockAlert || n.held === true || n.object)));
                 if (!scene.peekOpen)
                     scene.endPeek();
             }
@@ -795,7 +795,8 @@ Item {
             return;
         }
         const time = Date.now();
-        const critical = notes.entries.some(e => e.id === id && e.critical === true);
+        // Intentional alarm and timer cards carry the same quiet-mode exemption.
+        const critical = notes.entries.some(e => e.id === id && (e.critical === true || e.clockAlert === true));
         const pairing = notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object);
         if (!critical && (niri.overviewOpen || modalOpen || notes.effectiveDnd || presentationState !== "clear" || time < peekCooldown))
             return;
@@ -1422,6 +1423,7 @@ Item {
     // (liquid-glass/clock.html): the drawer (media, month, notifications) or a peek.
     ClockPanel {
         id: clockPanel
+        clockTools: scene.context.clockTools
         z: scene.batteryPeekOpen || scene.pairingPeekOpen ? 40 : 0
         visible: scene.clockPresent && !(scene.authenticationPrompt?.clockCovered ?? false)
         viewportWidth: scene.viewportWidth

@@ -91,14 +91,14 @@ Item {
             })[page] ?? "";
     }
     readonly property var tips: ({
-            updates: "Updates available · " + UpdateService.pending,
-            tray: "Background apps",
-            kb: "Keyboard layout",
-            wifi: "Wi-Fi",
-            bt: "Bluetooth",
-            sound: "Sound · scroll to change",
-            light: "Brightness · scroll to change",
-            power: "Battery and power"
+            updates: qsTranslate("SystemCompactRow", "Updates available · %1").arg(UpdateService.pending),
+            tray: qsTranslate("SystemCompactRow", "Background apps"),
+            kb: qsTranslate("SystemCompactRow", "Keyboard layout"),
+            wifi: qsTranslate("SystemCompactRow", "Wi-Fi"),
+            bt: qsTranslate("SystemCompactRow", "Bluetooth"),
+            sound: qsTranslate("SystemCompactRow", "Sound · scroll to change"),
+            light: qsTranslate("SystemCompactRow", "Brightness · scroll to change"),
+            power: qsTranslate("SystemCompactRow", "Battery and power")
         })
     readonly property var shortcuts: ({
             kb: "Super+Space"

@@ -50,7 +50,7 @@ ShellRoot {
    function test_no_dead_accessibility() {
     const button = findChild(view,"section-accessibility");
     verify(!button || !button.visible,"Unavailable Accessibility must not appear in the sidebar");
-    verify(!Index.sections.some(section => section.id === "accessibility"));
+    verify(!Index.sections().some(section => section.id === "accessibility"));
     view.search.text = "Accessibility";
     compare(view.results.length,0);
    }

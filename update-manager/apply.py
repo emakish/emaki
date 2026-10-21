@@ -2,6 +2,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Authorize exactly one fixed full-upgrade service, never a supplied command."""
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from datetime import datetime, timezone
 import fcntl
 import json
@@ -26,7 +38,7 @@ SERVICE = 'emaki-update.service'
 
 def validate(arguments):
     if arguments != ['apply']:
-        raise ValueError('Only a full repository update is accepted.')
+        raise ValueError(_('Only a full repository update is accepted.'))
 
 
 def emit(kind, **fields):
@@ -40,7 +52,7 @@ def run(arguments):
 def versions():
     result = run(['/usr/bin/pacman', '-Q'])
     if result.returncode:
-        raise RuntimeError('The installed package versions could not be read.')
+        raise RuntimeError(_('The installed package versions could not be read.'))
     return dict(line.split(maxsplit=1) for line in result.stdout.splitlines())
 
 
@@ -53,8 +65,8 @@ def changed(before, after):
 
 def require_update_root():
     emaki_update_root.require_update_root(
-        run, 'Restart into the normal system before updating repository packages.',
-        'The system restore status could not be checked. The update was not started.')
+        run, _('Restart into the normal system before updating repository packages.'),
+        _('The system restore status could not be checked. The update was not started.'))
 
 
 def apply():
@@ -65,7 +77,7 @@ def apply():
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            emit('finished', ok=False, message='An update is already running. Wait for it to finish.', restart=False, signOut=False)
+            emit('finished', ok=False, message=_('An update is already running. Wait for it to finish.'), restart=False, signOut=False)
             return 1
         try:
             require_update_root()
@@ -77,7 +89,7 @@ def apply():
         cursor = ''
         space_refusal = ''
         update_refusal = ''
-        emit('progress', message='Updating all repository packages. You can hide this window; the update will keep running.')
+        emit('progress', message=_('Updating all repository packages. You can hide this window; the update will keep running.'))
         with subprocess.Popen(['/usr/bin/systemctl', 'start', SERVICE], cwd='/', env=ENV,
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL) as starter:
@@ -93,14 +105,17 @@ def apply():
                         if not isinstance(message, str):
                             continue
                         message = ''.join(char for char in message if ord(char) >= 32 or char == '\t')[:4096]
-                        if re.fullmatch(r'Not enough free space for this update: it needs about '
-                                        r'\d+\.\d [GM]B, \d+\.\d [GM]B is free\. ' +
-                                        re.escape(SPACE_ADVICE), message):
-                            space_refusal = message
+                        space_match = re.fullmatch(
+                            r'Not enough free space for this update: it needs about '
+                            r'(?P<needed>\d+\.\d [GM]B), (?P<free>\d+\.\d [GM]B) is free\. .*',
+                            message)
+                        if space_match:
+                            space_refusal = _('Not enough free space for this update: it needs about {needed}, {free} is free. {advice}').format(
+                                needed=space_match['needed'], free=space_match['free'], advice=SPACE_ADVICE)
                         if (message.startswith('The update was refused because these packages '
                                                'are held after a restore: ')
-                                or message == 'The available package versions could not be checked. '
-                                              'The update was refused before changing installed packages.'):
+                                or message == ('The available package versions could not be checked. '
+                                              'The update was refused before changing installed packages.')):
                             update_refusal = message
                         emit('progress', message=message)
                     except (ValueError, KeyError):
@@ -117,13 +132,13 @@ def apply():
         after = versions()
         restart, sign_out = changed(before, after)
         if status == 0:
-            message = 'Repository updates finished. AUR programs must be updated with your AUR tool.'
+            message = _('Repository updates finished. AUR programs must be updated with your AUR tool.')
         else:
-            message = 'The update did not finish. Review the details before trying again.'
+            message = _('The update did not finish. Review the details before trying again.')
             if update_refusal:
                 message = update_refusal
             elif before != after:
-                message = 'The update did not finish. Some packages changed. Review the details before trying again.'
+                message = _('The update did not finish. Some packages changed. Review the details before trying again.')
                 if space_refusal:
                     message += ' ' + space_refusal
             elif space_refusal:
@@ -136,7 +151,7 @@ def main():
     try:
         validate(sys.argv[1:])
         if os.geteuid() != 0:
-            raise ValueError('Permission is required to update repository packages.')
+            raise ValueError(_('Permission is required to update repository packages.'))
     except ValueError as error:
         emit('finished', ok=False, notStarted=True, message=str(error), restart=False, signOut=False)
         return 1
@@ -144,7 +159,7 @@ def main():
         os.umask(0o077)
         return apply()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-        emit('finished', ok=False, message='The update service could not be started or observed. A started update keeps running; check its result before trying again.', restart=False, signOut=False)
+        emit('finished', ok=False, message=_('The update service could not be started or observed. A started update keeps running; check its result before trying again.'), restart=False, signOut=False)
         return 1
 
 

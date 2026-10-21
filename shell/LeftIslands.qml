@@ -300,7 +300,7 @@ Item {
         id: logoHit
         KeyboardTarget {
             property bool keyboardFirst: true
-            label: "Open launcher"
+            label: qsTranslate("LeftIslands", "Open launcher")
             onActivated: left.launch()
         }
         x: left.logoRect.x
@@ -311,7 +311,7 @@ Item {
         visible: !left.launcherPresent && opacity > 0
         TipTarget {
             tip: left.tip
-            label: "Launcher"
+            label: qsTranslate("LeftIslands", "Launcher")
             shortcut: "Super+D"
         }
         // Passive, like the tooltip's: a hovering MouseArea would take the hover from it.
@@ -324,7 +324,7 @@ Item {
             onClicked: left.launch()
         }
         Accessible.role: Accessible.Button
-        Accessible.name: "Open launcher"
+        Accessible.name: qsTranslate("LeftIslands", "Open launcher")
         Accessible.onPressAction: left.launch()
     }
     // Under the digits (z −1): the tooltip's TapHandler keeps a mouse press accepted (Qt 6.11
@@ -341,7 +341,7 @@ Item {
         visible: opacity > 0
         TipTarget {
             tip: left.tip
-            label: "Workspaces · scroll to switch"
+            label: qsTranslate("LeftIslands", "Workspaces · scroll to switch")
         }
         // Wheel only (the digit cells above it have no wheel handler and pass it on).
         MouseArea {

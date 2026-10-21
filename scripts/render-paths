@@ -120,6 +120,9 @@ def render_source(root, values):
     python, shell, qml = modules(values)
     write(root / 'scripts/emaki_paths.py', python)
     write(root / 'shell/helpers/emaki_paths.py', python)
+    helper = root / 'scripts/emaki_i18n.py'
+    if helper.is_file():
+        write(root / 'shell/helpers/emaki_i18n.py', helper.read_text())
     write(root / 'scripts/paths', shell)
     write(root / 'shell/Platform.qml', qml)
 

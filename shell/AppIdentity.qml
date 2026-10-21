@@ -85,10 +85,9 @@ Scope {
             source: guessed ? "guess" : ""
         };
     }
-    // Floating windows share the shell process's app id. Resolve this window to its
-    // own launcher entry without changing the identity of other shell windows.
+    // Window identity is stable across language changes; older clients use the English title.
     function lookupWindow(appId: string, title: string): var {
-        if (appId === Quickshell.appId && title === "Report a problem") {
+        if (appId === "emaki-report" || (appId === "org.quickshell" && title === "Report a problem")) {
             const report = DesktopEntries.byId("emaki-report");
             if (report)
                 return {

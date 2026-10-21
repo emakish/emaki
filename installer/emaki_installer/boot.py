@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Shared installed-system and installer GRUB rendering and verification."""
+from .i18n import _
 import collections
 import io
 import re
@@ -43,14 +44,14 @@ def grub_unlock_memdisk(font, load_cfg, luks_uuid):
     """
     script = grub_unlock_script(load_cfg, luks_uuid).encode('ascii')
     try:
-        _, glyphs = grub_screen._read_font(font)
+        ignored, glyphs = grub_screen._read_font(font)
         if any(code not in glyphs or not any(glyphs[code][-1]) for code in range(33, 127)):
-            raise ValueError('the fallback font must have visible printable ASCII glyphs')
+            raise ValueError(_('the fallback font must have visible printable ASCII glyphs'))
         # Checking is prepared artwork; stock GRUB never displays that state.
         pictures = {name: data for name, data in grub_screen.assets().items()
                     if not name.startswith('checking-')}
     except ValueError as error:
-        require(False, Code.BOOT_VERIFY, 'The GRUB unlock-screen assets are invalid: ' + str(error))
+        require(False, Code.BOOT_VERIFY, _('The GRUB unlock-screen assets are invalid: ') + str(error))
     files = {'visible.pf2': font, 'unlock.cfg': script, **pictures}
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode='w', format=tarfile.USTAR_FORMAT) as archive:
@@ -100,11 +101,11 @@ def grub_loader_payload(grub, generation, fsroot, luks_uuid, load_cfg, font, ext
         f'source {root}{fsroot}/boot/grub/grub-btrfs.cfg\n').encode()
     for path in sorted(grub.rglob('*')):
         if path.is_file() and (path.suffix in ('.mod', '.lst', '.mo', '.pf2') or path.name == 'modinfo.sh'):
-            require(not path.is_symlink(), Code.BOOT_VERIFY, f'{path} is a symbolic link.')
+            require(not path.is_symlink(), Code.BOOT_VERIFY, _('{value1} is a symbolic link.').format(value1=path))
             files['boot/grub/' + path.relative_to(grub).as_posix()] = path.read_bytes()
     for name, data in (extra or {}).items():
         require(re.fullmatch(r'[a-z0-9_-]+(?:/[a-z0-9_.-]+)+', name) and name not in files
-                and '..' not in name.split('/'), Code.BOOT_VERIFY, f'Invalid memdisk name {name}.')
+                and '..' not in name.split('/'), Code.BOOT_VERIFY, _('Invalid memdisk name {value1}.').format(value1=name))
         files[name] = data
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode='w', format=tarfile.USTAR_FORMAT) as archive:
@@ -118,9 +119,9 @@ def grub_loader_payload(grub, generation, fsroot, luks_uuid, load_cfg, font, ext
 def _grub_load_lines(load_cfg, luks_uuid):
     lines = [line.strip() for line in load_cfg.splitlines() if line.strip()]
     require(f'cryptomount -u {luks_uuid}' in lines, Code.BOOT_VERIFY,
-            'grub-install did not write the cryptomount line of the encrypted root.')
+            _('grub-install did not write the cryptomount line of the encrypted root.'))
     require(all(ch == '\n' or 32 <= ord(ch) <= 126 for ch in '\n'.join(lines)), Code.BOOT_VERIFY,
-            'The GRUB early config must be printable ASCII.')
+            _('The GRUB early config must be printable ASCII.'))
     return lines
 
 
@@ -202,7 +203,7 @@ def grub_prefix(plan):
     """
     root = plan.root
     require(isinstance(root.luks_uuid, str) and re.fullmatch(r'[0-9a-fA-F-]{36}', root.luks_uuid),
-            Code.BOOT_VERIFY, 'Encrypted root has no LUKS UUID.')
+            Code.BOOT_VERIFY, _('Encrypted root has no LUKS UUID.'))
     subvolume = next((name for name, mp in root.subvolumes.items() if mp == '/'), None)
     device = 'cryptouuid/' + root.luks_uuid.replace('-', '')
     return f'({device})' + (f'/{subvolume}' if subvolume else '') + '/boot/grub'
@@ -314,8 +315,7 @@ def firmware_boot_order(listing):
 
 
 WINDOWS_LOADER = '/EFI/Microsoft/Boot/bootmgfw.efi'
-WINDOWS_UNSAFE = ('Windows firmware startup could not be identified safely; '
-                  'boot menu setup stopped.')
+WINDOWS_UNSAFE = (_('Windows firmware startup could not be identified safely; boot menu setup stopped.'))
 
 
 def windows_firmware_entry(listing, partuuid):
@@ -411,7 +411,7 @@ def windows_bootnext_menu(text, partuuid, esp_uuid, listing):
             "}")
         return (text[:start] + 'if [ "$shim_lock" = y ]; then\n' + help_entry
                 + '\nelse\n' + source + '\nfi' + text[end:])
-    opening = next(end for kind, _, _, end in grub_words(source) if kind == '{')
+    opening = next(end for kind, ignored, ignored, end in grub_words(source) if kind == '{')
     # Positive nested guards matter: a failed GRUB command must not reach reboot.
     body = (f'\n  # Windows firmware target: {partuuid.lower()} {WINDOWS_LOADER}\n'
             '  if insmod efibootnext; then\n'
@@ -455,7 +455,7 @@ def grub_words(text):
                 if char == "'":
                     end = text.find("'", position + 1)
                     if end < 0:
-                        raise ValueError(f'unclosed quote at {position}')
+                        raise ValueError(_('unclosed quote at {value1}').format(value1=position))
                     value.append(text[position + 1:end])
                     position = end + 1
                 elif char == '"':
@@ -470,7 +470,7 @@ def grub_words(text):
                             value.append(text[position])
                             position += 1
                     if position >= size:
-                        raise ValueError(f'unclosed quote at {start}')
+                        raise ValueError(_('unclosed quote at {value1}').format(value1=start))
                     position += 1
                 elif char == '\\':
                     value.append(text[position + 1:position + 2])
@@ -728,11 +728,11 @@ def menu_layout(text):
             title = 'Emaki (all drivers)' if match[1] == 'linux' else 'Emaki (LTS kernel, all drivers)'
             advanced.append(f"menuentry '{title}'{match[3]}\n{body}")
             result.append(old_only + advanced[-1] + 'fi\n')
-            moved[identifier[1] if identifier else title] = (f'Emaki, with Linux {match[1]}{match[2]}', title)
+            moved[identifier[1] if identifier else title] = ('Emaki, with Linux {value1}{value2}'.format(value1=match[1], value2=match[2]), title)
             starts.append(match.start())
         else:
             result.append(f"menuentry '{title}'{match[3]}\n{body}")
-            renamed[f'Emaki, with Linux {match[1]}'] = identifier[1] if identifier else title
+            renamed['Emaki, with Linux {value1}'.format(value1=match[1])] = identifier[1] if identifier else title
         position = end + 3
     result.append(text[position:])
     text = ''.join(result)
@@ -802,7 +802,7 @@ def secure_boot_fonts(root=Path('/')):
     for directory in (MENU_FONT_DIR, MENU_THEME_DIR):
         for path in sorted((Path(root) / directory.lstrip('/')).glob('*.pf2')):
             require(path.is_file() and not path.is_symlink(), Code.BOOT_VERIFY,
-                    f'The menu face {path.name} is not a regular file.')
+                    _('The menu face {value1} is not a regular file.').format(value1=path.name))
             files[directory.lstrip('/') + '/' + path.name] = path.read_bytes()
     return files
 
@@ -817,7 +817,7 @@ def menu_font_fallback(text):
     font = generated_menu_font(text)
     if not font or text.count('\nterminal_output gfxterm\n') != 1:
         return text
-    size = next((size for size, _, _ in MENU_FONTS if font.endswith(f'/menu-{size}.pf2')), None)
+    size = next((size for size, ignored, ignored in MENU_FONTS if font.endswith(f'/menu-{size}.pf2')), None)
     if size is None:
         return text
     # GRUB_FONT replaces the stock header's Unifont load. Keep its wider Unicode
@@ -882,4 +882,4 @@ def verify_grub(text):
     # Match linux command paths, not menu labels/comments (linux-lts contains linux).
     for kernel in ('linux', 'linux-lts'):
         require(re.search(r'^\s*linux(?:efi)?\s+\S*/vmlinuz-' + kernel + r'(?:\s|$)', text, re.M),
-                Code.BOOT_VERIFY, f'GRUB has no executable entry for {kernel}.')
+                Code.BOOT_VERIFY, _('GRUB has no executable entry for {value1}.').format(value1=kernel))

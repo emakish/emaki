@@ -19,14 +19,14 @@ Row {
     property real maximumWidth: Number.POSITIVE_INFINITY
     // "4.7", "4.6 · 1.2k" on cards, "4.7 · 1,804 ratings" on a program page.
     readonly property string fullText: [showAverage ? value.toFixed(1) : "",
-        showCount ? count.toLocaleString(Qt.locale("en_US"), "f", 0) + (count === 1 ? " rating" : " ratings")
+        showCount ? Shell.Translation.englishPlural(qsTranslate("Stars", "%1 rating(s)", "", count), count).arg(count.toLocaleString(Qt.locale("en_US"), "f", 0))
             : showShortCount && count > 0 ? compact(count) : ""].filter(part => part !== "").join(" · ")
     readonly property string averageText: showAverage ? value.toFixed(1) : ""
     readonly property real room: maximumWidth - glyphs.implicitWidth - spacing
     visible: value > 0
     spacing: 5
     function compact(number: int): string {
-        return number >= 10000 ? Math.round(number / 1000) + "k" : number >= 1000 ? (number / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(number);
+        return number >= 1000 ? qsTranslate("Stars", "%1k").arg((number >= 10000 ? String(Math.round(number / 1000)) : (number / 1000).toFixed(1).replace(/\.0$/, ""))) : String(number);
     }
     TextMetrics { id: fullMetrics; font: label.font; text: stars.fullText }
     TextMetrics { id: averageMetrics; font: label.font; text: stars.averageText }

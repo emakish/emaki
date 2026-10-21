@@ -417,7 +417,7 @@ def open_terminal(guest, size):
     # (0.7.0 acceptance, 2026-10-12). Wait for it briefly and close it before the terminal opens.
     for _ in range(12):
         welcome = [w for w in json.loads(guest.desktop('niri msg -j windows'))
-                   if w.get('title') == 'Welcome to Emaki']
+                   if w.get('app_id') == 'org.emaki.welcome']
         if welcome:
             for w in welcome:
                 guest.desktop(f'niri msg action close-window --id {w["id"]}')

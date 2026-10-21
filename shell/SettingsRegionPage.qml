@@ -23,7 +23,7 @@ Column {
                 }));
         if (key === "locale.formats")
             result.unshift({
-                label: "Follow language",
+                label: qsTranslate("SettingsRegionPage", "Follow language"),
                 value: ""
             });
         return result;
@@ -74,7 +74,7 @@ Column {
             if (!running)
                 Qt.callLater(function () {
                     if (!page.received)
-                        page.message = "Machine settings are unavailable. Try again when the system service is ready.";
+                        page.message = qsTranslate("SettingsRegionPage", "Machine settings are unavailable. Try again when the system service is ready.");
                 });
         }
         stdout: StdioCollector {
@@ -85,11 +85,11 @@ Column {
                         throw new Error();
                     page.received = true;
                     if (reply.status === "rejected" && reply.reason === "machine_settings_busy") {
-                        page.message = "Another machine setting is being changed. Wait a moment, then try again.";
+                        page.message = qsTranslate("SettingsRegionPage", "Another machine setting is being changed. Wait a moment, then try again.");
                         return;
                     }
                     if (!Array.isArray(reply.settings)) {
-                        page.message = "The system could not apply this setting. Check your permission and try again.";
+                        page.message = qsTranslate("SettingsRegionPage", "The system could not apply this setting. Check your permission and try again.");
                         return;
                     }
                     let next = page.rows.slice();
@@ -99,18 +99,18 @@ Column {
                     }
                     page.rows = next;
                     if (reply.status === "uncertain")
-                        page.message = "The change could not be confirmed. Check the current value before trying again.";
+                        page.message = qsTranslate("SettingsRegionPage", "The change could not be confirmed. Check the current value before trying again.");
                     else if (!["read", "applied", "unchanged"].includes(reply.status))
-                        page.message = "The system could not apply this setting. Check the value and your permission to change it.";
+                        page.message = qsTranslate("SettingsRegionPage", "The system could not apply this setting. Check the value and your permission to change it.");
                 } catch (error) {
-                    page.message = "Machine settings could not be read.";
+                    page.message = qsTranslate("SettingsRegionPage", "Machine settings could not be read.");
                 }
             }
         }
         stderr: StdioCollector {}
         onExited: _code => {
             if (!page.received)
-                page.message = "Machine settings are unavailable. Try again when the system service is ready.";
+                page.message = qsTranslate("SettingsRegionPage", "Machine settings are unavailable. Try again when the system service is ready.");
         }
     }
     Text {
@@ -125,23 +125,23 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Language and region"
+        title: qsTranslate("SettingsRegionPage", "Language and region")
         Repeater {
             model: [
                 {
                     key: "locale.language",
-                    title: "Language",
-                    explanation: "Choose an installed language. Sign out to use it in all apps."
+                    title: qsTranslate("SettingsRegionPage", "Language"),
+                    explanation: qsTranslate("SettingsRegionPage", "Choose an installed language. Sign out to use it in all apps.")
                 },
                 {
                     key: "locale.formats",
-                    title: "Formats",
-                    explanation: "Choose an installed locale for dates and numbers."
+                    title: qsTranslate("SettingsRegionPage", "Formats"),
+                    explanation: qsTranslate("SettingsRegionPage", "Choose an installed locale for dates and numbers.")
                 },
                 {
                     key: "time.zone",
-                    title: "Time zone",
-                    explanation: "Choose a time zone installed on this computer."
+                    title: qsTranslate("SettingsRegionPage", "Time zone"),
+                    explanation: qsTranslate("SettingsRegionPage", "Choose a time zone installed on this computer.")
                 }
             ]
             delegate: SettingsRow {
@@ -180,8 +180,8 @@ Column {
         SettingsToggleRow {
             width: parent.width
             objectName: "settings-24-hour-clock"
-            title: "24-hour clock"
-            explanation: "Use 24-hour time in the panel clock."
+            title: qsTranslate("SettingsRegionPage", "24-hour clock")
+            explanation: qsTranslate("SettingsRegionPage", "Use 24-hour time in the panel clock.")
             value: page.catalog?.value("bar.clock_24_hour") ?? true
             defaultValue: true
             busy: page.catalog?.busy ?? false
@@ -192,8 +192,8 @@ Column {
             width: parent.width
             objectName: "settings-automatic-time"
             visible: page.row("time.automatic").source !== "unavailable" && page.row("time.automatic").key !== undefined
-            title: "Automatic time"
-            explanation: "Keep the clock in sync with an internet time service."
+            title: qsTranslate("SettingsRegionPage", "Automatic time")
+            explanation: qsTranslate("SettingsRegionPage", "Keep the clock in sync with an internet time service.")
             value: page.row("time.automatic").value ?? false
             defaultValue: value
             busy: provider.running
@@ -203,7 +203,7 @@ Column {
         }
     }
     SettingsButton {
-        text: "Refresh"
+        text: qsTranslate("SettingsRegionPage", "Refresh")
         enabled: !provider.running
         onClicked: {
             page.start(["get", "locale.language", "locale.formats", "time.zone", "time.automatic"]);

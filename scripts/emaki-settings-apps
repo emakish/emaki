@@ -14,6 +14,12 @@ import stat
 import subprocess
 import sys
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_i18n import translation
+
+_ = translation('shell').gettext
+
 LIMIT = 262144
 MIME_ROLES = {'browser': 'x-scheme-handler/https', 'mail': 'x-scheme-handler/mailto',
               'files': 'inode/directory', 'editor': 'text/plain'}
@@ -21,7 +27,7 @@ MIME_ROLES = {'browser': 'x-scheme-handler/https', 'mail': 'x-scheme-handler/mai
 
 def desktop_id(value):
     if not re.fullmatch(r'[A-Za-z0-9_.-]+\.desktop', value) or value.startswith('.'):
-        raise ValueError('Invalid application identifier.')
+        raise ValueError(_('Invalid application identifier.'))
     return value
 
 
@@ -77,13 +83,13 @@ def resolved_defaults():
 def directory(create=False):
     config = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
     if not config.is_absolute():
-        raise ValueError('The personal configuration directory must be absolute.')
+        raise ValueError(_('The personal configuration directory must be absolute.'))
     if create:
         config.mkdir(mode=0o700, parents=True, exist_ok=True)
     root = os.open(config, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         if os.fstat(root).st_uid != os.geteuid():
-            raise ValueError('The personal configuration directory is not owned by you.')
+            raise ValueError(_('The personal configuration directory is not owned by you.'))
         if create:
             try:
                 os.mkdir('autostart', 0o700, dir_fd=root)
@@ -94,7 +100,7 @@ def directory(create=False):
         os.close(root)
     if os.fstat(fd).st_uid != os.geteuid():
         os.close(fd)
-        raise ValueError('The startup directory is not owned by you.')
+        raise ValueError(_('The startup directory is not owned by you.'))
     return fd
 
 
@@ -104,10 +110,10 @@ def read_entry(fd, name):
     with os.fdopen(source, 'rb') as stream:
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
-            raise ValueError('The startup entry is not a personal regular file.')
+            raise ValueError(_('The startup entry is not a personal regular file.'))
         raw = stream.read(LIMIT + 1)
     if len(raw) > LIMIT:
-        raise ValueError('The startup entry is too large.')
+        raise ValueError(_('The startup entry is too large.'))
     return raw.decode('utf-8')
 
 
@@ -117,7 +123,7 @@ def parse(text):
     parser.read_string(text)
     entry = parser['Desktop Entry']
     if entry.get('Type') != 'Application' or not entry.get('Name') or not entry.get('Exec'):
-        raise ValueError('The startup entry is not an application.')
+        raise ValueError(_('The startup entry is not an application.'))
     return entry
 
 
@@ -182,26 +188,26 @@ def status():
 
 def run(args):
     if not args or args[-1] != '--json':
-        raise ValueError('Use status, add, set or reset with --json.')
+        raise ValueError(_('Use status, add, set or reset with --json.'))
     args = args[:-1]
     if args == ['status']:
         return status()
     if len(args) not in (2, 3) or args[0] not in ('add', 'set', 'reset'):
-        raise ValueError('Unknown startup action.')
+        raise ValueError(_('Unknown startup action.'))
     action, name = args[:2]
     desktop_id(name)
     if action == 'set' and (len(args) != 3 or args[2] not in ('true', 'false')):
-        raise ValueError('Choose whether the app starts automatically.')
+        raise ValueError(_('Choose whether the app starts automatically.'))
     if action != 'set' and len(args) != 2:
-        raise ValueError('Unexpected startup argument.')
+        raise ValueError(_('Unexpected startup argument.'))
     text = None
     if action == 'add':
         app = next((app for app in installed_apps() if app['id'] == name), None)
         if app is None:
-            raise ValueError('The installed application is unavailable.')
+            raise ValueError(_('The installed application is unavailable.'))
         text = Path(app['filename']).read_text(encoding='utf-8')
         if len(text.encode('utf-8')) > LIMIT:
-            raise ValueError('The application entry is too large.')
+            raise ValueError(_('The application entry is too large.'))
         parse(text)
         text = set_hidden(text, 'false')
     fd = directory(create=action == 'add')
@@ -219,14 +225,14 @@ def run(args):
 
 def error_message(error):
     if isinstance(error, FileExistsError):
-        return 'This app already has a personal startup entry. Check it before adding the app again.'
+        return _('This app already has a personal startup entry. Check it before adding the app again.')
     if isinstance(error, PermissionError):
-        return 'Your startup entries could not be accessed. Check their permissions and try again.'
+        return _('Your startup entries could not be accessed. Check their permissions and try again.')
     if isinstance(error, (configparser.Error, KeyError, UnicodeError)):
-        return 'A startup entry could not be read. Check its contents and try again.'
+        return _('A startup entry could not be read. Check its contents and try again.')
     if isinstance(error, ValueError):
         return str(error)
-    return 'Apps could not be read or changed. Refresh the page and try again.'
+    return _('Apps could not be read or changed. Refresh the page and try again.')
 
 
 if __name__ == '__main__':

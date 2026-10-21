@@ -10,6 +10,7 @@ inside it through arch-chroot. That code builds the signed GRUB from the install
 and the key, writes a complete slot and repairs the firmware entries. Everything mounted here
 is unmounted on every way out.
 """
+from .i18n import _
 import argparse
 import json
 import os
@@ -36,33 +37,26 @@ REPAIR = ['emaki-boot-refresh', '--repair-slots']
 ROOT_SUBVOLUME = '@'
 ROOT_FILESYSTEMS = ('btrfs', 'ext4')
 
-NOT_ROOT = 'Run the repair as root: sudo emaki-boot-repair'
-NOT_LIVE = 'Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there.'
-NONE_FOUND = "No installed Emaki was found on this computer's disks. Nothing was changed."
-LOCKED = ('No installed Emaki was found on the unlocked disks. If Emaki is on the encrypted disk {device}, '
-          'unlock it with: sudo cryptsetup open {device} emaki-root and run sudo emaki-boot-repair again.')
-SEVERAL = ('More than one installed Emaki was found: {devices}. Name the one to repair, for example: '
-           'sudo emaki-boot-repair --root {first}')
+NOT_ROOT = _('Run the repair as root: sudo emaki-boot-repair')
+NOT_LIVE = _('Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there.')
+NONE_FOUND = _("No installed Emaki was found on this computer's disks. Nothing was changed.")
+LOCKED = (_('No installed Emaki was found on the unlocked disks. If Emaki is on the encrypted disk {device}, unlock it with: sudo cryptsetup open {device} emaki-root and run sudo emaki-boot-repair again.'))
+SEVERAL = (_('More than one installed Emaki was found: {devices}. Name the one to repair, for example: sudo emaki-boot-repair --root {first}'))
 NAMED_NOT_EMAKI = '{device} does not hold an installed Emaki. Nothing was changed.'
-CLONED = ('More than one disk holds the same file system or encrypted disk ({devices}), as after '
-          'copying a whole disk. Disconnect or change all but one of them, then run sudo emaki-boot-repair '
-          'again. Nothing was changed.')
-NO_ESP = ('The startup partition of the installed Emaki ({source}) was not found. Name it, for example: '
-          'sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)')
+CLONED = (_('More than one disk holds the same file system or encrypted disk ({devices}), as after copying a whole disk. Disconnect or change all but one of them, then run sudo emaki-boot-repair again. Nothing was changed.'))
+NO_ESP = (_('The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)'))
 ESP_NOT_FAT = '{device} is not a FAT startup partition. Nothing was changed.'
 WINDOWS_ESP = ("{device} is Windows' startup partition. Emaki starts from its own startup partition "
                "and never changes Windows'. Nothing was changed.")
-ESP_UNPROVEN = ("Emaki's startup partition could not be verified from its saved partition identity. "
-                "Nothing was changed.")
-TOO_OLD = ('The installed Emaki is too old for this repair. Nothing was changed.')
-KEY_NOT_READ_ONLY = 'The Secure Boot key could not be mounted read-only, so nothing was changed.'
-REPAIRING = 'Repairing the installed Emaki on {root} with the startup partition {esp}.'
-DONE = 'The repair finished. Remove the installation USB and restart the computer.'
-FAILED = 'The repair did not finish; the messages above say why.'
-UNMOUNT_FAILED = 'Warning: {target} could not be unmounted: {error}'
-PROBE_CLEANUP_FAILED = ('The disk inspection stopped because {target} could not be unmounted: {error}. '
-                        'No more disks were inspected.')
-UNSAFE_DIRECTORY = 'The installed directory {path} is not a safe directory. The repair stopped.'
+ESP_UNPROVEN = (_("Emaki's startup partition could not be verified from its saved partition identity. Nothing was changed."))
+TOO_OLD = (_('The installed Emaki is too old for this repair. Nothing was changed.'))
+KEY_NOT_READ_ONLY = _('The Secure Boot key could not be mounted read-only, so nothing was changed.')
+REPAIRING = _('Repairing the installed Emaki on {root} with the startup partition {esp}.')
+DONE = _('The repair finished. Remove the installation USB and restart the computer.')
+FAILED = _('The repair did not finish; the messages above say why.')
+UNMOUNT_FAILED = _('Warning: {target} could not be unmounted: {error}')
+PROBE_CLEANUP_FAILED = (_('The disk inspection stopped because {target} could not be unmounted: {error}. No more disks were inspected.'))
+UNSAFE_DIRECTORY = _('The installed directory {path} is not a safe directory. The repair stopped.')
 
 
 class RepairError(RuntimeError):
@@ -78,7 +72,7 @@ def run(argv):
     result = subprocess.run([str(item) for item in argv], text=True, capture_output=True,
                             env={**os.environ, 'LC_ALL': 'C'})
     if result.returncode:
-        raise RepairError(f'{Path(str(argv[0])).name} failed: {result.stderr.strip()[-1200:]}')
+        raise RepairError(_('{value1} failed: {value2}').format(value1=Path(str(argv[0])).name, value2=result.stderr.strip()[-1200:]))
     return result.stdout
 
 
@@ -286,7 +280,7 @@ def find_esp(system, devices, named=None):
     row = rows[0]
     readonly = 'ro' in row['options']
     source = row['source']
-    key, _, value = source.partition('=')
+    key, ignored, value = source.partition('=')
     field = {'UUID': 'uuid', 'PARTUUID': 'partuuid'}.get(key.upper())
     named_device = None
     if named is not None:
@@ -477,10 +471,9 @@ def repair(run, call, root_device=None, esp_device=None, base=BASE):
 def main(argv=None, run=run, call=call, live=LIVE, base=BASE):
     parser = argparse.ArgumentParser(
         prog='emaki-boot-repair',
-        description='Make an installed Emaki start again with Secure Boot: rebuild its boot loader '
-                    'and firmware startup entries. Run it from the Emaki installation USB.')
-    parser.add_argument('--root', metavar='DEVICE', help='the filesystem of the installed Emaki to repair')
-    parser.add_argument('--esp', metavar='DEVICE', help='its startup partition')
+        description=_('Make an installed Emaki start again with Secure Boot: rebuild its boot loader and firmware startup entries. Run it from the Emaki installation USB.'))
+    parser.add_argument('--root', metavar='DEVICE', help=_('the filesystem of the installed Emaki to repair'))
+    parser.add_argument('--esp', metavar='DEVICE', help=_('its startup partition'))
     args = parser.parse_args(argv)
     if os.geteuid() != 0:
         print(NOT_ROOT, file=sys.stderr)

@@ -15,6 +15,12 @@ import tempfile
 import time
 import select
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_i18n import translation
+
+_ = translation('shell').gettext
+
 # The shipped service is inert until a personal timer choice enables it.
 DEFAULTS = {'blank_battery': 0, 'blank_ac': 0, 'lock_delay': 0, 'lid': 'system'}
 OFF = dict(DEFAULTS)
@@ -32,12 +38,12 @@ def config_path():
 def validate(key, value):
     if key == 'lid':
         if value not in ('system', 'ignore'):
-            raise ValueError('The saved lid setting is not valid.')
+            raise ValueError(_('The saved lid setting is not valid.'))
         return value
     if key not in DEFAULTS:
-        raise ValueError('Unknown power setting.')
+        raise ValueError(_('Unknown power setting.'))
     if isinstance(value, bool) or str(value) not in ('0', '60', '120', '150', '300', '330', '600', '900', '1800', '3600'):
-        raise ValueError('Choose one of the available delays.')
+        raise ValueError(_('Choose one of the available delays.'))
     return int(value)
 
 
@@ -48,7 +54,7 @@ def read_settings():
     except FileNotFoundError:
         return dict(OFF)
     if not isinstance(stored, dict):
-        raise ValueError('The saved power settings are not valid.')
+        raise ValueError(_('The saved power settings are not valid.'))
     for key, value in stored.items():
         values[key] = validate(key, value)
     # Retire the unsupported lid override; the sleep guard owns lid handling.
@@ -132,15 +138,15 @@ def runtime_error():
                                  '--property=ActiveState', '--value'],
                                 capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
-        return 'Could not check the screen timers.'
+        return _('Could not check the screen timers.')
     if result.returncode or result.stdout.strip() != 'active':
-        return 'The screen timers are not running. Apply a setting to try again.'
+        return _('The screen timers are not running. Apply a setting to try again.')
     return ''
 
 
 def status():
     supported = available()
-    message = runtime_error() if supported else 'Automatic locking and blanking are unavailable because required session components are missing.'
+    message = runtime_error() if supported else _('Automatic locking and blanking are unavailable because required session components are missing.')
     values = read_settings() if not message else dict(OFF)
     return {'schema_version': 1, 'state': 'ready', 'values': values,
             'defaults': DEFAULTS, 'idle_available': supported, 'source': source(), 'batteries': batteries(),
@@ -151,7 +157,7 @@ def status():
 def call(command):
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     if result.returncode:
-        raise RuntimeError('The system could not apply the power setting.')
+        raise RuntimeError(_('The system could not apply the power setting.'))
     return result
 
 
@@ -160,9 +166,9 @@ def set_value(key, value):
     previous = dict(values)
     values[key] = validate(key, value)
     if key == 'lid':
-        raise ValueError('Lid behavior is managed by the system.')
+        raise ValueError(_('Lid behavior is managed by the system.'))
     if not available():
-        raise RuntimeError('Automatic locking and blanking are unavailable because required session components are missing.')
+        raise RuntimeError(_('Automatic locking and blanking are unavailable because required session components are missing.'))
     if values == previous and not config_path().exists():
         return status()
     save_settings(values)
@@ -183,9 +189,9 @@ def set_value(key, value):
 
 def charge(name, value):
     if not any(row['name'] == name and row['charge_limit'] is not None for row in batteries()):
-        raise ValueError('This battery does not expose a charge limit.')
+        raise ValueError(_('This battery does not expose a charge limit.'))
     if value not in ('50', '60', '70', '80', '90', '100'):
-        raise ValueError('Choose a charge limit from 50 to 100 percent.')
+        raise ValueError(_('Choose a charge limit from 50 to 100 percent.'))
     sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import emaki_paths
@@ -254,7 +260,7 @@ def run():
                 if code in (2, 127, 255):
                     raise SystemExit(code)
                 if code is not None:
-                    raise RuntimeError('The idle policy stopped unexpectedly.')
+                    raise RuntimeError(_('The idle policy stopped unexpectedly.'))
             if not stopping:
                 select.select([read_fd], [], [], POLICY_INTERVAL)
     finally:
@@ -285,7 +291,7 @@ def main():
             result = charge(args.key, args.value)
         elif args.action == 'reset':
             if args.key not in DEFAULTS:
-                raise ValueError('Unknown power setting.')
+                raise ValueError(_('Unknown power setting.'))
             result = set_value(args.key, DEFAULTS[args.key])
         else:
             result = set_value(args.key, args.value)

@@ -6,7 +6,21 @@
 set -eu
 umask 077
 ulimit -c 0
-: "${XDG_RUNTIME_DIR:?The installer needs a user runtime directory}"
+installer_package="$(dirname -- "$(readlink -f -- "$0")")/.."
+translate() {
+    local translated message="$1" argument index=0
+    shift
+    if translated=$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from emaki_installer.i18n import _; print(_(sys.argv[2]).format(*sys.argv[3:]))' "$installer_package" "$message" "$@" 2>/dev/null); then
+        printf '%s\n' "$translated"
+    else
+        for argument in "$@"; do
+            message=${message//\{$index\}/"$argument"}
+            ((index += 1))
+        done
+        printf '%s\n' "$message"
+    fi
+}
+: "${XDG_RUNTIME_DIR:?$(translate 'The installer needs a user runtime directory')}"
 config=/usr/share/emaki-installer/ui/shell.qml
 exec 9>"$XDG_RUNTIME_DIR/emaki-install.lock"
 if ! flock -n 9; then
@@ -19,7 +33,8 @@ if ! flock -n 9; then
         fi
         sleep 0.1
     done
-    printf 'emaki-install: the running installer did not show its window:\n%s\n' "${reply:-(no reply)}" >&2
+    translate 'emaki-install: the running installer did not show its window:
+{0}' "${reply:-$(translate '(no reply)')}" >&2
     exit 1
 fi
 export EMAKI_SHELL_SHADER_DIR=/usr/share/emaki/shell/shaders

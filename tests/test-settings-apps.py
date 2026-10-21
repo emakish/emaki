@@ -156,6 +156,7 @@ class Mutants(unittest.TestCase):
         source = SOURCE.read_text()
         self.assertIn(before, source)
         mutant = types.ModuleType('apps_mutant')
+        mutant.__file__ = str(SOURCE)
         exec(compile(source.replace(before, after, 1), str(SOURCE), 'exec'), mutant.__dict__)
         fixture = Apps(scenario)
         fixture.setUp()

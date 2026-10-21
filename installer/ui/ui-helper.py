@@ -19,6 +19,11 @@ import subprocess
 import sys
 
 
+# Source-tree runs use the sibling package; installed runs use Python's package path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from emaki_installer.i18n import _
+
+
 # The live boot medium. Without it (copytoram) the worker's unit never starts:
 # installer/systemd/emaki-installerd.service has ConditionPathExists on this path.
 BOOT_MOUNT = Path('/run/archiso/bootmnt')
@@ -109,9 +114,9 @@ def trial_reloads():
 
 def trial(chosen):
     if not trial_available():
-        return dict(ok=False, message='Keyboard trial is available only in the live Emaki session.')
+        return dict(ok=False, message=_('Keyboard trial is available only in the live Emaki session.'))
     if not trial_reloads():
-        return dict(ok=False, reloads=False, message='This session does not read the keyboard trial.')
+        return dict(ok=False, reloads=False, message=_('This session does not read the keyboard trial.'))
     known = {x['layout'] for x in layouts() if not x['variant']}
     if not isinstance(chosen, list) or not 1 <= len(chosen) <= 4 or len(set(chosen)) != len(chosen) or any(x not in known for x in chosen):
         raise ValueError()
@@ -134,7 +139,7 @@ def trial(chosen):
         os.fsync(fd)
     finally:
         os.close(fd)
-    return dict(ok=True, message='Layouts saved for the live session; allow a moment for niri to reload. Super+Space switches layouts.')
+    return dict(ok=True, message=_('Layouts saved for the live session; allow a moment for niri to reload. Super+Space switches layouts.'))
 
 
 def niri_request(kind):
@@ -278,7 +283,7 @@ def terse(line):
 def network():
     devices = run(['nmcli', '-t', '-f', 'TYPE,STATE', 'device', 'status'])
     if devices.returncode:
-        return dict(ok=False, message='NetworkManager is unavailable. You can install offline.', networks=[], wired=False)
+        return dict(ok=False, message=_('NetworkManager is unavailable. You can install offline.'), networks=[], wired=False)
     states = [terse(line) for line in devices.stdout.decode().splitlines()]
     wired = any(len(row) == 2 and row[0] == 'ethernet' and row[1].startswith('connected') for row in states)
     result = run(['nmcli', '-t', '-f', 'IN-USE,SSID,BSSID,SIGNAL,SECURITY,DEVICE', 'device', 'wifi', 'list', '--rescan', 'auto'])
@@ -308,16 +313,16 @@ def join(request):
     # Like the shell's helper: bounded nmcli, fixed locale, no stderr/secret echo.
     # --ask reads the PSK from stdin; it must never be a `password ...` argv.
     result = run(['nmcli', '--ask', '--wait', '25', 'device', 'wifi', 'connect', bssid, 'ifname', device], input=(secret + '\n').encode())
-    reply = dict(ok=result.returncode == 0, message='Connected' if result.returncode == 0 else
-                 {3: 'Connection timed out.', 4: 'Could not connect. Check the password.',
-                  8: 'NetworkManager is not running.', 10: 'Network is no longer available.'}.get(result.returncode, 'Could not connect to this network.'))
+    reply = dict(ok=result.returncode == 0, message=_('Connected') if result.returncode == 0 else
+                 {3: _('Connection timed out.'), 4: _('Could not connect. Check the password.'),
+                  8: _('NetworkManager is not running.'), 10: _('Network is no longer available.')}.get(result.returncode, _('Could not connect to this network.')))
     if reply['ok']:
         state = run(['nmcli', '-g', 'GENERAL.CON-UUID', 'device', 'show', device])
         uuid = state.stdout.decode().strip()
         if state.returncode == 0 and re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', uuid):
             reply['wifi_uuid'] = uuid.lower()
         else:
-            reply.update(ok=False, message='Connected, but the Wi-Fi settings could not be saved for installation. Connect again.')
+            reply.update(ok=False, message=_('Connected, but the Wi-Fi settings could not be saved for installation. Connect again.'))
     return reply
 
 
@@ -355,7 +360,7 @@ def main():
         elif op == 'media': result = media()
         else: raise ValueError()
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
-        result = dict(ok=False, message='This operation is unavailable. Please try again.')
+        result = dict(ok=False, message=_('This operation is unavailable. Please try again.'))
     print(json.dumps(result, ensure_ascii=False))
 
 

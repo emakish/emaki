@@ -20,6 +20,7 @@ for (const file of fs.readdirSync(path.join(__dirname, "transcripts")).filter(f 
 }
 
 const context = vm.createContext({});
+require("./translations.js").install(context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, "../Protocol.js"), "utf8"), context);
 const P = context;
 // Recovery failures explain the installation rather than its internal processes.
@@ -85,8 +86,13 @@ assert.equal(disconnectedPreparation.rebootMessage, "");
 const rebootState = P.initial();
 const rebootRequest = P.request(rebootState, "reboot");
 assert.equal(rebootState.rebootMessage, "Restarting…");
-P.receive(rebootState, {type: "reply", id: rebootRequest.id, ok: false, msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."}, 1);
+P.receive(rebootState, {type: "reply", id: rebootRequest.id, ok: false, recovery_included: true, msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."}, 1);
 assert.equal(rebootState.rebootMessage, "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.");
+const acknowledgedReboot = P.initial();
+const acknowledgedRequest = P.request(acknowledgedReboot, "reboot");
+P.receive(acknowledgedReboot, {type: "reply", id: acknowledgedRequest.id, ok: true}, 1);
+P.disconnected(acknowledgedReboot);
+assert.equal(acknowledgedReboot.rebootMessage, P.recoveryText());
 // A generic worker refusal still names the way out, once.
 const genericReboot = P.request(rebootState, "reboot");
 P.receive(rebootState, {type: "reply", id: genericReboot.id, ok: false, msg: "Reboot is unavailable."}, 2);
@@ -97,10 +103,15 @@ assert.equal(Object.values(rebootState.pending).includes("reboot"), false);
 for (const message of [P.recoveryText(), "Automatic restart is unavailable. " + P.recoveryText()]) {
     const state = P.initial();
     const req = P.request(state, "reboot");
-    P.receive(state, {type: "reply", id: req.id, ok: false, msg: message}, 1);
+    P.receive(state, {type: "reply", id: req.id, ok: false, recovery_included: true, msg: message}, 1);
     assert.equal(state.rebootMessage, message);
     assert.equal(state.rebootMessage.split(P.recoveryText()).length, 2);
 }
+const translatedReboot = P.initial();
+const translatedRequest = P.request(translatedReboot, "reboot");
+P.receive(translatedReboot, {type: "reply", id: translatedRequest.id, ok: false,
+    recovery_included: true, msg: "[Restart recovery instructions]"}, 1);
+assert.equal(translatedReboot.rebootMessage, "[Restart recovery instructions]");
 const exporting = P.initial();
 const exportRequest = P.request(exporting, "save_log", {dest: "usb"});
 assert.equal(P.receive(exporting, {type: "reply", id: exportRequest.id, ok: false,

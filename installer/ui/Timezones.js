@@ -16,7 +16,7 @@ function matches(name, query) {
 
 // "Kathmandu, Nepal": the zone's city and the country it belongs to.
 function place(name) {
-    if (name === "UTC") return "Coordinated Universal Time";
+    if (name === "UTC") return qsTranslate("Timezones", "Coordinated Universal Time");
     const city = name.split("/").pop().replace(/_/g, " ");
     const country = (Zones.data.points[name] || [])[2];
     return country && country !== city ? city + ", " + country : city;
@@ -31,7 +31,7 @@ function offsetLabel(name) {
     const index = Zones.data.names.indexOf(name);
     if (index < 0) return "";
     const standard = Zones.data.offsets[index], summer = Zones.data.summer[index];
-    return offsetText(standard) + (summer !== standard ? ", " + offsetText(summer) + " in summer" : "");
+    return offsetText(standard) + (summer !== standard ? ", " + qsTranslate("Timezones", "%1 in summer").arg(offsetText(summer)) : "");
 }
 
 // Mercator, in the asset's map units (y grows southwards).

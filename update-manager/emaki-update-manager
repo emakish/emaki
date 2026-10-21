@@ -9,6 +9,20 @@ if [[ ! -f $paths_file ]]; then
     paths_file='@EMAKI_LIBEXECDIR@/paths'
 fi
 source "$paths_file"
+
+translate() {
+    local translated message="$1" argument index=0
+    shift
+    if translated=$("$EMAKI_PYTHON" -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from emaki_i18n import translation; print(translation(sys.argv[2]).gettext(sys.argv[3]).format(*sys.argv[4:]))' "$(dirname -- "$paths_file")" programs "$message" "$@" 2>/dev/null); then
+        printf '%s\n' "$translated"
+    else
+        for argument in "$@"; do
+            message=${message//\{$index\}/"$argument"}
+            ((index += 1))
+        done
+        printf '%s\n' "$message"
+    fi
+}
 manager_action=present
 export EMAKI_MANAGER_PAGE=browse
 if (( $# )); then
@@ -19,15 +33,15 @@ if (( $# )); then
         manager_action=presentUpdates
         export EMAKI_MANAGER_PAGE=updates
     else
-        printf 'Usage: emaki-update-manager [--status|--check|--updates]\n' >&2
+        translate 'Usage: emaki-update-manager [--status|--check|--updates]' >&2
         exit 2
     fi
 fi
 if (( EUID == 0 )); then
-    printf 'Open Programs & Updates as a regular user.\n' >&2
+    translate 'Open Programs & Updates as a regular user.' >&2
     exit 1
 fi
-: "${XDG_RUNTIME_DIR:?Programs & Updates needs a user runtime directory}"
+: "${XDG_RUNTIME_DIR:?$(translate 'Programs & Updates needs a user runtime directory')}"
 config="$EMAKI_PREFIX/share/emaki-update-manager/ui/shell.qml"
 exec 9>"$XDG_RUNTIME_DIR/emaki-update-manager.lock"
 if ! flock -n 9; then
@@ -42,7 +56,7 @@ if ! flock -n 9; then
         fi
         sleep 0.1
     done
-    printf 'The Programs & Updates window could not be shown: %s\n' "${reply:-(no reply)}" >&2
+    translate 'The Programs & Updates window could not be shown: {0}' "${reply:-$(translate '(no reply)')}" >&2
     exit 1
 fi
 # Without this, a Quickshell build with its crash handler opens a report window and re-executes

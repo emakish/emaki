@@ -21,6 +21,13 @@ import time
 import unicodedata
 import uuid
 
+_directory = Path(__file__).resolve().parent
+sys.path.insert(0, str(_directory if (_directory / 'emaki_i18n.py').is_file()
+                       else _directory.parent / 'scripts'))
+from emaki_i18n import translation
+_ = translation('notes').gettext
+
+
 MAX_FILE = 1 << 20
 REMINDER_GRACE = 15 * 60
 JOURNAL_AGE = 60 * 86400
@@ -63,10 +70,10 @@ def read_file(path):
     with os.fdopen(fd, 'rb') as stream:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
-            raise ValueError('Not a regular file.')
+            raise ValueError(_('Not a regular file.'))
         raw = stream.read(MAX_FILE + 1) if info.st_size <= MAX_FILE else b''
     if info.st_size > MAX_FILE or len(raw) > MAX_FILE:
-        raise ValueError('Larger than 1 MiB; open it in a text editor.')
+        raise ValueError(_('Larger than 1 MiB; open it in a text editor.'))
     return raw, info.st_mtime
 
 
@@ -93,11 +100,11 @@ def fold(line):
 
 def event_title(value):
     if not isinstance(value, str):
-        raise ValueError('Enter an event title on one line.')
+        raise ValueError(_('Enter an event title on one line.'))
     # Pasted Unicode line separators become spaces; CR/LF and other controls are refused.
     title = re.sub(r'[\t\x0b\x0c\x1c-\x1e\x85  ]', ' ', value).strip()
     if not title or any(unicodedata.category(char) == 'Cc' for char in title):
-        raise ValueError('Enter an event title on one line.')
+        raise ValueError(_('Enter an event title on one line.'))
     return title
 
 
@@ -141,7 +148,7 @@ def parse_event(raw, identity):
     if trigger is not None:
         match = re.fullmatch(r'-PT(\d+)M', trigger)
         if not match:
-            raise ValueError('Unsupported reminder trigger.')
+            raise ValueError(_('Unsupported reminder trigger.'))
         reminder = int(match[1])
     return dict(id=identity, title=unescape(props.get('SUMMARY', '')), date=date.isoformat(),
                 start=start, duration=duration, reminder=reminder, revision=digest(raw))
@@ -192,7 +199,7 @@ class Store:
         except FileNotFoundError:
             return {}
         if not isinstance(value, dict):
-            raise ValueError('The notes metadata is not an object.')
+            raise ValueError(_('The notes metadata is not an object.'))
         return value
 
     def metadata(self, errors=None):
@@ -214,10 +221,10 @@ class Store:
 
     def note_path(self, identity):
         if not isinstance(identity, str) or not identity or Path(identity).name != identity or identity in ('.', '..'):
-            raise ValueError('Invalid note identifier.')
+            raise ValueError(_('Invalid note identifier.'))
         path = self.notes / (identity + '.md')
         if path.is_symlink():
-            raise ValueError('Symbolic links cannot be edited as notes.')
+            raise ValueError(_('Symbolic links cannot be edited as notes.'))
         return path
 
     def note(self, path, metadata):
@@ -225,7 +232,7 @@ class Store:
         body = raw.decode('utf-8')
         # The revision covers the text only: pinning elsewhere never invalidates a draft.
         first = body.split('\n')[0]
-        return dict(id=path.stem, title=first.lstrip('# ').strip() or 'Untitled note', body=body,
+        return dict(id=path.stem, title=first.lstrip('# ').strip() or _('Untitled note'), body=body,
                     revision=digest(raw), pinned=metadata.get(path.stem, {}).get('pinned', False), updated=updated)
 
     def events(self):
@@ -243,7 +250,7 @@ class Store:
     def snapshot(self):
         notes, errors = [], []
         if self.notes.is_symlink() and not self.notes.is_dir():
-            errors.append(self.notes.name + ': the folder is a broken symbolic link.')
+            errors.append(_('%(path)s: the folder is a broken symbolic link.') % {'path': self.notes.name})
         metadata = self.metadata(errors)
         for path in sorted(self.notes.glob('*.md')):
             if path.is_symlink() or not path.is_file():
@@ -258,7 +265,7 @@ class Store:
 
     def require_revision(self, current, request):
         if not request.get('revision') or current['revision'] != request['revision']:
-            raise Conflict('This item changed elsewhere. Your edit has been kept; reload or save it as a new note.')
+            raise Conflict(_('This item changed elsewhere. Your edit has been kept; reload or save it as a new note.'))
 
     def request(self, request):
         try:
@@ -271,16 +278,16 @@ class Store:
 
     def write_body(self, path, body):
         if not isinstance(body, str):
-            raise ValueError('Note text must be text.')
+            raise ValueError(_('Note text must be text.'))
         data = body.encode('utf-8')
         if len(data) > MAX_FILE:
-            raise ValueError('A note cannot be larger than 1 MiB.')
+            raise ValueError(_('A note cannot be larger than 1 MiB.'))
         atomic_write(path, data)
 
     def mutate(self, request):
         action = request['action']
         if not isinstance(action, str):
-            raise ValueError('Action must be text.')
+            raise ValueError(_('Action must be text.'))
         if action.startswith('notes.'):
             if action == 'notes.create':
                 identity = uuid.uuid4().hex
@@ -292,7 +299,7 @@ class Store:
             try:
                 current = self.note(path, {})
             except FileNotFoundError:
-                raise Conflict('This note was removed elsewhere. Save your edit as a new note.') from None
+                raise Conflict(_('This note was removed elsewhere. Save your edit as a new note.')) from None
             self.require_revision(current, request)
             if action == 'notes.delete':
                 path.unlink()
@@ -306,7 +313,7 @@ class Store:
                 try:
                     metadata = self.sidecar_value()
                 except ValueError:
-                    raise ValueError('The notes metadata is invalid; restore it before pinning.') from None
+                    raise ValueError(_('The notes metadata is invalid; restore it before pinning.')) from None
                 info = metadata.get(current['id'])
                 if not isinstance(info, dict):
                     info = metadata[current['id']] = {}
@@ -324,59 +331,59 @@ class Store:
                     lines = body.split('\n')
                     line = request['line']
                     if isinstance(line, bool) or not isinstance(line, int) or line < 0 or line >= len(lines):
-                        raise ValueError('Task line is missing.')
+                        raise ValueError(_('Task line is missing.'))
                     match = re.match(r'^(\s*[-*+] \[)([ xX])(\])', lines[line])
                     if not match:
-                        raise ValueError('This line is not a task.')
+                        raise ValueError(_('This line is not a task.'))
                     lines[line] = lines[line][:match.start(2)] + ('x' if match[2] == ' ' else ' ') + lines[line][match.end(2):]
                     body = '\n'.join(lines)
                 elif action == 'notes.addTask':
                     task = request['text']
                     if not isinstance(task, str) or not task.strip() or re.search(r'[\r\n\x0b\x0c\x1c-\x1e\x85  ]', task):
-                        raise ValueError('Enter one task line.')
+                        raise ValueError(_('Enter one task line.'))
                     body += ('' if not body or body.endswith('\n') else '\n') + '- [ ] ' + task.strip() + '\n'
                 else:
-                    raise ValueError('Unknown notes action.')
+                    raise ValueError(_('Unknown notes action.'))
                 if not isinstance(body, str):
-                    raise ValueError('Note text must be text.')
+                    raise ValueError(_('Note text must be text.'))
                 # Recheck after preparing the edit, including changes by external editors.
                 self.require_revision(self.note(path, {}), request)
                 self.write_body(path, body)
             return dict(noteId=current['id'], revision=self.note(path, {})['revision'])
         if action not in ('calendar.save', 'calendar.delete'):
-            raise ValueError('Unknown action.')
+            raise ValueError(_('Unknown action.'))
         identity = request.get('eventId') or uuid.uuid4().hex
         if not isinstance(identity, str) or not re.fullmatch(r'[a-zA-Z0-9_-]+', identity):
-            raise ValueError('Invalid event identifier.')
+            raise ValueError(_('Invalid event identifier.'))
         path = self.calendar / (identity + '.ics')
         if path.is_symlink():
-            raise ValueError('Symbolic links cannot be edited as events.')
+            raise ValueError(_('Symbolic links cannot be edited as events.'))
         if request.get('eventId'):
             if not path.exists():
-                raise Conflict('This event was removed elsewhere.')
+                raise Conflict(_('This event was removed elsewhere.'))
             self.require_revision(read_event(path), request)
         if action == 'calendar.delete':
             if not request.get('eventId'):
-                raise ValueError('An event identifier is required.')
+                raise ValueError(_('An event identifier is required.'))
             path.unlink()
             return dict(eventId=identity)
         title = event_title(request['title'])
         if not isinstance(request['date'], str):
-            raise ValueError('Enter a date as YYYY-MM-DD.')
+            raise ValueError(_('Enter a date as YYYY-MM-DD.'))
         date = dt.date.fromisoformat(request['date']).isoformat()
         duration = request.get('duration', 60)
         if duration != 'all-day':
             if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0 or duration > 525600:
-                raise ValueError('Duration must be a positive number of minutes.')
+                raise ValueError(_('Duration must be a positive number of minutes.'))
         start = request.get('start') or '00:00'
         if not isinstance(start, str) or not re.fullmatch(r'\d{2}:\d{2}', start):
-            raise ValueError('Enter a start time as HH:MM.')
+            raise ValueError(_('Enter a start time as HH:MM.'))
         dt.time.fromisoformat(start)
         if duration == 'all-day':
             start = '00:00'
         reminder = request.get('reminder')
         if reminder is not None and (isinstance(reminder, bool) or not isinstance(reminder, int) or reminder < 0 or reminder > 525600):
-            raise ValueError('Reminder must be minutes before the event.')
+            raise ValueError(_('Reminder must be minutes before the event.'))
         event = dict(id=identity, title=title, date=date, start=start, duration=duration, reminder=reminder)
         # Validate the exact bytes before they replace anything.
         try:
@@ -385,7 +392,7 @@ class Store:
         except (ValueError, KeyError, OverflowError):
             stored = None
         if stored is None or any(stored[key] != event[key] for key in ('title', 'date', 'start', 'duration', 'reminder')):
-            raise ValueError('This event cannot be stored; check its date and title.')
+            raise ValueError(_('This event cannot be stored; check its date and title.'))
         self.calendar.mkdir(mode=0o700, parents=True, exist_ok=True)
         atomic_write(path, data)
         return dict(eventId=identity, revision=read_event(path)['revision'])
@@ -395,7 +402,7 @@ class Store:
         try:
             value = json.loads(path.read_bytes())
             if not isinstance(value, dict):
-                raise ValueError('not an object')
+                raise ValueError(_('not an object'))
         except FileNotFoundError:
             return {}
         except ValueError:
@@ -460,7 +467,7 @@ def desktop_notify(event):
         result = subprocess.run(['notify-send', '--app-name=Emaki Calendar', '--icon=emaki-notes',
                                  '--hint=string:desktop-entry:emaki-notes',
                                  '--', event['title'], event['date'] + ' · ' +
-                                 ('All day' if event['duration'] == 'all-day' else event['start'])],
+                                 (_('All day') if event['duration'] == 'all-day' else event['start'])],
                                 timeout=15, check=False, capture_output=True)
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
@@ -473,7 +480,7 @@ class Watcher:
         self.libc = ctypes.CDLL(None, use_errno=True)
         self.fd = self.libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
         if self.fd < 0:
-            raise OSError(ctypes.get_errno(), 'Cannot watch notes')
+            raise OSError(ctypes.get_errno(), _('Cannot watch notes'))
         self.paths = [Path(path) for path in paths]
         self.watches = {}
         self.refresh()
@@ -547,7 +554,7 @@ def serve(store):
             # Block on inotify; retry slowly only while a store directory is missing.
             ready = selector.select(None if watch.complete else WATCH_RETRY)
             changed = not ready and (watch.refresh() or watch.blind)
-            for key, _ in ready:
+            for key, events in ready:
                 if key.data == 'watch':
                     watch.drain()
                     changed = True
@@ -561,7 +568,7 @@ def serve(store):
                     try:
                         request = json.loads(line)
                         if not isinstance(request, dict):
-                            raise ValueError('A request must be an object.')
+                            raise ValueError(_('A request must be an object.'))
                     except ValueError as exc:
                         emit(dict(type='result', id=None, ok=False, error=str(exc)))
                         continue
@@ -577,7 +584,7 @@ def serve(store):
 
 def main():
     if len(sys.argv) != 2 or sys.argv[1] not in ('serve', 'remind', 'snapshot'):
-        raise SystemExit('Usage: backend.py {serve|remind|snapshot}')
+        raise SystemExit(_('Usage: backend.py {serve|remind|snapshot}'))
     store = Store()
     if sys.argv[1] == 'serve':
         serve(store)

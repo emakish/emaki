@@ -47,12 +47,12 @@ Scope {
                 settings.wallpaperChooserError = "";
                 settings.set("appearance.wallpaper", result.path);
             } else if (result.state !== "cancelled") {
-                settings.wallpaperChooserError = "Could not choose a picture. Your wallpaper has not changed.";
+                settings.wallpaperChooserError = qsTranslate("SettingsCatalog", "Could not choose a picture. Your wallpaper has not changed.");
             }
         }
         onStateChanged: {
             if (!["idle", "pending", "ready", "cancelled"].includes(state))
-                settings.wallpaperChooserError = "Could not choose a picture. Your wallpaper has not changed.";
+                settings.wallpaperChooserError = qsTranslate("SettingsCatalog", "Could not choose a picture. Your wallpaper has not changed.");
         }
     }
     function send(action: string, args: var): void {

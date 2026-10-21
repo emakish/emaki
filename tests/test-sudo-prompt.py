@@ -41,12 +41,14 @@ def main():
         shutil.copyfile(ROOT / 'tests/fixtures/SudoPromptTest.qml', profile / 'qml/shell.qml')
         env = dict(os.environ, HOME=str(profile), QT_QPA_PLATFORM='offscreen',
                    QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
+                   EMAKI_LANGUAGE='en', EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
+                   QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
                    XDG_RUNTIME_DIR=runtime, XDG_CACHE_HOME=str(profile / 'cache'),
                    XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                    XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=str(profile / 'data'),
                    TMPDIR=str(profile / 'tmp'), DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session'),
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'no-system'))
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QML_IMPORT_PATH', 'QML2_IMPORT_PATH', 'QT_LOGGING_RULES'):
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QML2_IMPORT_PATH', 'QT_LOGGING_RULES'):
             env.pop(name, None)
         result = subprocess.run([qs, '-p', str(profile / 'qml'), '--no-color'], env=env,
                                 text=True, capture_output=True, timeout=60, preexec_fn=no_core)

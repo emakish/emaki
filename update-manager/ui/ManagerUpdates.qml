@@ -45,14 +45,14 @@ ColumnLayout {
     readonly property real fraction: progress.step < 2 ? -1
         : ((progress.step - 1) + (progress.step === 3 && progress.total ? progress.done / progress.total : progress.step === 4 ? 0.5 : 0)) / progress.steps
     function stepText(): string {
-        const label = progress.step === 3 && progress.total ? "installing " + progress.done + " of " + progress.total : progress.label.toLowerCase();
-        return progress.step < 1 ? "Getting ready…" : "Step " + progress.step + " of " + progress.steps + " · " + label;
+        const label = progress.step === 3 && progress.total ? qsTranslate("ManagerUpdates", "installing %1 of %2").arg(progress.done).arg(progress.total) : progress.label.toLowerCase();
+        return progress.step < 1 ? qsTranslate("ManagerUpdates", "Getting ready…") : qsTranslate("ManagerUpdates", "Step %1 of %2 · %3").arg(progress.step).arg(progress.steps).arg(label);
     }
     readonly property var groups: [
-        {name: "Emaki", subtitle: "Made for Emaki"},
-        {name: "Arch", subtitle: "The system and programs from Arch"},
-        {name: "Flatpak", subtitle: "Programs from Flathub"},
-        {name: "AUR", subtitle: "Not part of Update all"}
+        {name: "Emaki", subtitle: qsTranslate("ManagerUpdates", "Made for Emaki")},
+        {name: "Arch", subtitle: qsTranslate("ManagerUpdates", "The system and programs from Arch")},
+        {name: "Flatpak", subtitle: qsTranslate("ManagerUpdates", "Programs from Flathub")},
+        {name: "AUR", subtitle: qsTranslate("ManagerUpdates", "Not part of Update all")}
     ]
     spacing: 14
     function group(row: var): string {
@@ -67,24 +67,21 @@ ColumnLayout {
         const count = (controller.completedUpdates || []).length;
         const stamp = new Date(controller.completedAt);
         const today = stamp.toDateString() === new Date().toDateString();
-        return count + (count === 1 ? " update installed " : " updates installed ") + (today ? "today at " + Qt.formatDateTime(stamp, "HH:mm") : "on " + date(controller.completedAt)) + ".";
+        return today ? Shell.Translation.englishPlural(qsTranslate("ManagerUpdates", "%n update(s) installed today at %1.", "", count), count).arg(Qt.formatDateTime(stamp, "HH:mm")) : Shell.Translation.englishPlural(qsTranslate("ManagerUpdates", "%n update(s) installed on %1.", "", count), count).arg(date(controller.completedAt));
     }
     function catalogProgram(row: var): var {
         const kind = row.aur ? "aur" : row.kind === "flatpak" || row.source === "Flatpak" ? "flatpak" : "arch";
         return Logic.catalogProgram(catalog, row.id || row.name, launchEntries, kind);
     }
     function plainName(row: var): string {
-        const names = {linux: "Linux kernel", "linux-lts": "Linux kernel (long-term support)", systemd: "System services", "linux-firmware": "Device firmware", mesa: "Graphics drivers", emaki: "Emaki", "emaki-config": "Emaki desktop settings"};
+        const names = {linux: qsTranslate("ManagerUpdates", "Linux kernel"), "linux-lts": qsTranslate("ManagerUpdates", "Linux kernel (long-term support)"), systemd: qsTranslate("ManagerUpdates", "System services"), "linux-firmware": qsTranslate("ManagerUpdates", "Device firmware"), mesa: qsTranslate("ManagerUpdates", "Graphics drivers"), emaki: "Emaki", "emaki-config": qsTranslate("ManagerUpdates", "Emaki desktop settings")};
         return row.displayName || row.appName || names[row.name] || catalogProgram(row).name || row.name;
     }
-    function bytes(value: var): string {
-        if (value === null || value === undefined) return "—";
-        return value >= 1000000000 ? (value / 1000000000).toFixed(1) + " GB" : (value / 1000000).toFixed(1) + " MB";
-    }
+    function bytes(value: var): string { return Logic.downloadText(value); }
     function date(value: var): string {
         if (!value) return "";
         const parsed = new Date(value);
-        return isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(Qt.locale("en_GB"), "ddd d MMM yyyy, HH:mm");
+        return isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_GB") : Qt.locale(), "ddd d MMM yyyy, HH:mm");
     }
     function confirmRestore(selected: var): void {
         if (locked || controller.restorePending || !selected) return;
@@ -94,9 +91,9 @@ ColumnLayout {
     function restoreTitle(selected: var): string {
         if (selected?.operation === "install")
             return selected.timestamp || selected.date
-                ? "Restore the system as it was before the install of " + date(selected.timestamp || selected.date)
-                : "Restore the system as it was before this install (snapshot " + selected.snapshot + ")";
-        return selected ? "Restore the system as it was before the update of " + date(selected.timestamp || selected.date) : "Nothing to restore yet. Emaki saves the system before every update."; }
+                ? qsTranslate("ManagerUpdates", "Restore the system as it was before the install of %1").arg(date(selected.timestamp || selected.date))
+                : qsTranslate("ManagerUpdates", "Restore the system as it was before this install (snapshot %1)").arg(selected.snapshot);
+        return selected ? qsTranslate("ManagerUpdates", "Restore the system as it was before the update of %1").arg(date(selected.timestamp || selected.date)) : qsTranslate("ManagerUpdates", "Nothing to restore yet. Emaki saves the system before every update."); }
     component Card: Rectangle {
         Layout.fillWidth: true
         color: Qt.alpha(Shell.ShellPalette.managerBackground, 0.42)
@@ -136,7 +133,7 @@ ColumnLayout {
     Muted {
         objectName: "aur-updates-disabled"
         visible: root.aurKnown && !root.aurEnabled && (root.controller.data.foreignPackageCount || 0) > 0
-        text: "AUR updates are not checked while the AUR is off."
+        text: qsTranslate("ManagerUpdates", "AUR updates are not checked while the AUR is off.")
     }
     Card {
         visible: root.controller.restart && (root.controller.reminder || root.controller.restorePending)
@@ -153,12 +150,12 @@ ColumnLayout {
             ColumnLayout {
                 Layout.row: root.tight ? 1 : 0; Layout.column: root.tight ? 0 : 1; Layout.columnSpan: root.tight ? 2 : 1
                 Layout.fillWidth: true
-                ManagerLabel { text: root.controller.restorePending ? (root.controller.restoredPoint ? "The system from before " + root.date(root.controller.restoredPoint.timestamp || root.controller.restoredPoint.date) + " is ready" : "The restored system is ready") : "Restart to finish the update"; font.bold: true; font.pixelSize: 15 }
-                Muted { text: root.controller.restorePending ? "Restart to use it. Your files in /home were not touched. The current system is kept, so this can be undone." : "The new kernel and system services start after a restart. Save your work first." }
+                ManagerLabel { text: root.controller.restorePending ? (root.controller.restoredPoint ? qsTranslate("ManagerUpdates", "The system from before %1 is ready").arg(root.date(root.controller.restoredPoint.timestamp || root.controller.restoredPoint.date)) : qsTranslate("ManagerUpdates", "The restored system is ready")) : qsTranslate("ManagerUpdates", "Restart to finish the update"); font.bold: true; font.pixelSize: 15 }
+                Muted { text: root.controller.restorePending ? qsTranslate("ManagerUpdates", "Restart to use it. Your files in /home were not touched. The current system is kept, so this can be undone.") : qsTranslate("ManagerUpdates", "The new kernel and system services start after a restart. Save your work first.") }
             }
             Buttons {
-                ManagerButton { text: "Later"; visible: !root.controller.restorePending; enabled: !root.locked; onClicked: root.controller.dismissReminder() }
-                ManagerButton { text: "Restart now"; primary: true; enabled: !root.locked; onClicked: restartDialog.open() }
+                ManagerButton { text: qsTranslate("ManagerUpdates", "Later"); visible: !root.controller.restorePending; enabled: !root.locked; onClicked: root.controller.dismissReminder() }
+                ManagerButton { text: qsTranslate("ManagerUpdates", "Restart now"); primary: true; enabled: !root.locked; onClicked: restartDialog.open() }
             }
         }
     }
@@ -193,13 +190,13 @@ ColumnLayout {
                     Layout.row: root.tight ? 1 : 0; Layout.column: releaseIcon.visible && !root.tight ? 1 : 0; Layout.columnSpan: releaseIcon.visible && !root.tight ? 1 : 2
                     Layout.fillWidth: true
                     spacing: 2
-                    ManagerLabel { text: "What’s new in Emaki " + (releaseCard.release?.version || ""); font.pixelSize: 17; font.bold: true }
-                    Muted { text: root.finished ? "Emaki " + releaseCard.release?.version + " is installed." : "Emaki " + releaseCard.release?.version + " is available. Update all installs it." }
+                    ManagerLabel { text: qsTranslate("ManagerUpdates", "What’s new in Emaki %1").arg(releaseCard.release?.version || ""); font.pixelSize: 17; font.bold: true }
+                    Muted { text: root.finished ? qsTranslate("ManagerUpdates", "Emaki %1 is installed.").arg(releaseCard.release?.version) : qsTranslate("ManagerUpdates", "Emaki %1 is available. Update all installs it.").arg(releaseCard.release?.version) }
                 }
                 Buttons {
                     visible: releaseCard.linkSafe
                     ManagerButton {
-                        text: releaseCard.release?.published ? "Read the release notes" : "See Emaki releases"
+                        text: releaseCard.release?.published ? qsTranslate("ManagerUpdates", "Read the release notes") : qsTranslate("ManagerUpdates", "See Emaki releases")
                         quiet: true
                         onClicked: Qt.openUrlExternally(releaseCard.release.url)
                     }
@@ -215,7 +212,7 @@ ColumnLayout {
                     ManagerLabel { text: parent.modelData; font.pixelSize: 13; lineHeight: 1.3 }
                 }
             }
-            Muted { visible: !(releaseCard.release?.items || []).length; text: "The notes for this release are not published yet." }
+            Muted { visible: !(releaseCard.release?.items || []).length; text: qsTranslate("ManagerUpdates", "The notes for this release are not published yet.") }
         }
     }
     Card {
@@ -236,17 +233,17 @@ ColumnLayout {
                 ColumnLayout {
                     Layout.row: root.tight ? 1 : 0; Layout.column: root.tight ? 0 : 1; Layout.columnSpan: root.tight ? 2 : 1
                     Layout.fillWidth: true
-                    ManagerLabel { objectName: "update-title"; text: root.running ? "Updating Emaki" : root.controller.phase === "checking" ? "Checking for updates…" : root.finished ? "Updated" : (root.controller.data.updates || []).length + ((root.controller.data.updates || []).length === 1 ? " update" : " updates"); font.pixelSize: 18; font.bold: true }
+                    ManagerLabel { objectName: "update-title"; text: root.running ? qsTranslate("ManagerUpdates", "Updating Emaki") : root.controller.phase === "checking" ? qsTranslate("ManagerUpdates", "Checking for updates…") : root.finished ? qsTranslate("ManagerUpdates", "Updated") : Shell.Translation.englishPlural(qsTranslate("ManagerUpdates", "%n update(s)", "", (root.controller.data.updates || []).length), (root.controller.data.updates || []).length); font.pixelSize: 18; font.bold: true }
                     Muted {
                         objectName: "update-step"
-                        text: root.running ? root.stepText() : root.finished ? root.completedSummary() : root.bytes(root.controller.data.downloadSize) + " to download" + (root.controller.data.checkedAt ? " · checked " + root.date(root.controller.data.checkedAt) : "")
+                        text: root.running ? root.stepText() : root.finished ? root.completedSummary() : (root.controller.data.checkedAt ? qsTranslate("ManagerUpdates", "%1 to download · checked %2").arg(root.bytes(root.controller.data.downloadSize)).arg(root.date(root.controller.data.checkedAt)) : qsTranslate("ManagerUpdates", "%1 to download").arg(root.bytes(root.controller.data.downloadSize)))
                     }
                 }
                 Buttons {
                     visible: !root.running
                     spacing: 18
-                    ManagerButton { text: "Check again"; visible: !root.running; enabled: !root.locked; onClicked: root.controller.check() }
-                    ManagerButton { text: "Update all"; primary: true; visible: !root.finished && !root.running; enabled: !root.locked && root.controller.managedCount > 0 && !root.controller.data.error && !root.controller.restorePending; onClicked: root.controller.apply() }
+                    ManagerButton { text: qsTranslate("ManagerUpdates", "Check again"); visible: !root.running; enabled: !root.locked; onClicked: root.controller.check() }
+                    ManagerButton { text: qsTranslate("ManagerUpdates", "Update all"); primary: true; visible: !root.finished && !root.running; enabled: !root.locked && root.controller.managedCount > 0 && !root.controller.data.error && !root.controller.restorePending; onClicked: root.controller.apply() }
                 }
             }
             Rectangle {
@@ -270,13 +267,13 @@ ColumnLayout {
                     NumberAnimation { target: pulse; property: "position"; from: -progressTrack.width * 0.35; to: progressTrack.width; duration: 1300; loops: Animation.Infinite; running: root.running && root.fraction < 0 }
                 }
             }
-            Muted { objectName: "update-restore-point"; visible: root.running && root.progress.restorePoint; text: "A restore point was made before the update. You can keep working." }
-            Muted { visible: root.running && !root.progress.restorePoint; text: "You can close this window. The update goes on, and Emaki tells you when it is done." }
+            Muted { objectName: "update-restore-point"; visible: root.running && root.progress.restorePoint; text: qsTranslate("ManagerUpdates", "A restore point was made before the update. You can keep working.") }
+            Muted { visible: root.running && !root.progress.restorePoint; text: qsTranslate("ManagerUpdates", "You can close this window. The update goes on, and Emaki tells you when it is done.") }
             ManagerButton {
                 // The raw log stays behind Details.
                 objectName: "update-details"
                 visible: root.controller.output.trim().length > 0 && (root.running || root.controller.phase === "finished")
-                text: root.showLog ? "Hide details" : "Details"
+                text: root.showLog ? qsTranslate("ManagerUpdates", "Hide details") : qsTranslate("ManagerUpdates", "Details")
                 onClicked: root.showLog = !root.showLog
             }
             Rectangle {
@@ -301,7 +298,7 @@ ColumnLayout {
             ManagerLabel { visible: root.controller.message.length > 0 && !root.finished; text: root.controller.message; color: root.controller.data.error ? Shell.ShellPalette.managerError : Shell.ShellPalette.managerInk }
             Muted { visible: !!root.controller.data.errorDetails; text: root.controller.data.errorDetails || "" }
             Muted { visible: !!root.controller.countError; text: root.controller.countError || "" }
-            Muted { visible: root.controller.signOut; text: "Save your work, log out and log in again after updating." }
+            Muted { visible: root.controller.signOut; text: qsTranslate("ManagerUpdates", "Save your work, log out and log in again after updating.") }
         }
     }
     Repeater {
@@ -364,18 +361,18 @@ ColumnLayout {
                                 columns: root.narrow ? 1 : 3
                                 columnSpacing: 12
                                 rowSpacing: 2
-                                Muted { Layout.fillWidth: false; visible: updateRow.modelData.restart === true; text: "Restart after"; color: Shell.ShellPalette.accentForeground; font.pixelSize: 11 }
-                                Muted { Layout.fillWidth: root.narrow; text: (updateRow.modelData.old || "") + " → " + (updateRow.modelData.new || ""); font.family: "Iosevka Nerd Font Mono"; font.pixelSize: 12 }
+                                Muted { Layout.fillWidth: false; visible: updateRow.modelData.restart === true; text: qsTranslate("ManagerUpdates", "Restart after"); color: Shell.ShellPalette.accentForeground; font.pixelSize: 11 }
+                                Muted { Layout.fillWidth: root.narrow; text: (updateRow.modelData.oldDisplay || updateRow.modelData.old || "") + " → " + (updateRow.modelData.new || ""); font.family: "Iosevka Nerd Font Mono"; font.pixelSize: 12 }
                                 Muted { Layout.fillWidth: false; Layout.preferredWidth: root.narrow ? -1 : 70; horizontalAlignment: root.narrow ? Text.AlignLeft : Text.AlignRight; text: updateRow.modelData.aur ? "" : root.finished ? "✓" : root.bytes(updateRow.modelData.downloadSize); font.pixelSize: 12 }
                             }
                         }
                     }
                 }
-                Muted { visible: groupCard.modelData.name === "AUR"; Layout.margins: 16; text: "Update all does not build these. Build each update from its page in the AUR tab, or in a terminal with your AUR tool." }
+                Muted { visible: groupCard.modelData.name === "AUR"; Layout.margins: 16; text: qsTranslate("ManagerUpdates", "Update all does not build these. Build each update from its page in the AUR tab, or in a terminal with your AUR tool.") }
             }
         }
     }
-    Muted { text: "IF SOMETHING BROKE"; font.pixelSize: 12; font.bold: true; font.letterSpacing: 0.8; Layout.topMargin: 12 }
+    Muted { text: qsTranslate("ManagerUpdates", "IF SOMETHING BROKE"); font.pixelSize: 12; font.bold: true; font.letterSpacing: 0.8; Layout.topMargin: 12 }
     Muted { visible: !!root.controller.restoreError; text: root.controller.restoreError || "" }
     Card {
         visible: !root.controller.restoreError || !!root.point
@@ -391,7 +388,7 @@ ColumnLayout {
                 Layout.row: root.tight ? 1 : 0; Layout.column: root.tight ? 0 : 1; Layout.columnSpan: root.tight ? 2 : 1
                 Layout.fillWidth: true
                 ManagerLabel { text: root.restoreTitle(root.point); font.bold: true }
-                Muted { text: root.point ? "Your files in /home stay as they are." : ""; visible: !!root.point }
+                Muted { text: root.point ? qsTranslate("ManagerUpdates", "Your files in /home stay as they are.") : ""; visible: !!root.point }
                 Muted { text: root.point ? root.point.notice || "" : ""; visible: text.length > 0 }
             }
             Buttons {
@@ -453,7 +450,7 @@ ColumnLayout {
                     visible: root.offeredRestorePoints.length > 1
                     model: root.offeredRestorePoints.map(point => root.date(point.timestamp || point.date))
                     currentIndex: root.restoreIndex
-                    displayText: root.offeredRestorePoints.length + (root.offeredRestorePoints.length === 1 ? " date" : " dates")
+                    displayText: Shell.Translation.englishPlural(qsTranslate("ManagerUpdates", "%n date(s)", "", root.offeredRestorePoints.length), root.offeredRestorePoints.length)
                     enabled: !root.locked && !root.controller.restorePending
                     onActivated: index => {
                         if (root.offeredRestorePoints[index]) {
@@ -463,7 +460,7 @@ ColumnLayout {
                     }
                 }
                 ManagerButton {
-                    text: "Restore…"
+                    text: qsTranslate("ManagerUpdates", "Restore…")
                     enabled: !!root.point && !root.locked && !root.controller.restorePending
                     onClicked: root.confirmRestore(root.point)
                 }
@@ -481,12 +478,12 @@ ColumnLayout {
         background: Rectangle { radius: 18; color: Shell.ShellPalette.managerPanel; border.width: 2; border.color: Qt.alpha(Shell.ShellPalette.accent, 0.6196078431372549) }
         contentItem: ColumnLayout {
             spacing: 14
-            ManagerLabel { text: "Restart now?"; font.pixelSize: 19; font.bold: true }
-            ManagerLabel { text: "The computer needs a restart. Save your work first." }
+            ManagerLabel { text: qsTranslate("ManagerUpdates", "Restart now?"); font.pixelSize: 19; font.bold: true }
+            ManagerLabel { text: qsTranslate("ManagerUpdates", "The computer needs a restart. Save your work first.") }
             ManagerActions {
                 spacing: 5
-                ManagerButton { text: "Cancel"; onClicked: restartDialog.close() }
-                ManagerButton { text: "Restart now"; primary: true; enabled: !root.locked && root.controller.restart; onClicked: { restartDialog.close(); root.controller.reboot(); } }
+                ManagerButton { text: qsTranslate("ManagerUpdates", "Cancel"); onClicked: restartDialog.close() }
+                ManagerButton { text: qsTranslate("ManagerUpdates", "Restart now"); primary: true; enabled: !root.locked && root.controller.restart; onClicked: { restartDialog.close(); root.controller.reboot(); } }
             }
         }
     }
@@ -517,15 +514,15 @@ ColumnLayout {
                     width: restoreScroll.availableWidth
                     spacing: 14
                     ManagerLabel { text: root.restoreTitle(root.controller.selectedRestore) + "?"; font.pixelSize: 19; font.bold: true }
-                    ManagerLabel { text: "Your files in /home stay as they are." }
-                    ManagerLabel { text: "The current system is kept, so you can undo this." }
-                    ManagerLabel { text: "The computer needs a restart. Save your work first." }
+                    ManagerLabel { text: qsTranslate("ManagerUpdates", "Your files in /home stay as they are.") }
+                    ManagerLabel { text: qsTranslate("ManagerUpdates", "The current system is kept, so you can undo this.") }
+                    ManagerLabel { text: qsTranslate("ManagerUpdates", "The computer needs a restart. Save your work first.") }
                 }
             }
             ManagerActions {
                 spacing: 5
-                ManagerButton { text: "Cancel"; onClicked: { root.controller.cancelRestore(); restoreDialog.close(); } }
-                ManagerButton { text: "Restore"; primary: true; enabled: !root.locked && !!root.controller.selectedRestore; onClicked: { root.controller.restore(); restoreDialog.close(); } }
+                ManagerButton { text: qsTranslate("ManagerUpdates", "Cancel"); onClicked: { root.controller.cancelRestore(); restoreDialog.close(); } }
+                ManagerButton { text: qsTranslate("ManagerUpdates", "Restore"); primary: true; enabled: !root.locked && !!root.controller.selectedRestore; onClicked: { root.controller.restore(); restoreDialog.close(); } }
             }
         }
     }

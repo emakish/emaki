@@ -1436,14 +1436,24 @@ impl Reply {
         }
     }
     pub fn human(&self) -> String {
-        let mut text = format!(
-            "settings: {} ({}); session_applied={}; generation={}\n",
-            self.status, self.reason, self.session_applied, self.generation_status
+        let mut text = crate::i18n::format_text(
+            "settings: {status} ({reason}); session_applied={session_applied}; generation={generation_status}\n",
+            &[
+                ("status", (self.status).to_string()),
+                ("reason", (self.reason).to_string()),
+                ("session_applied", (self.session_applied).to_string()),
+                ("generation_status", (self.generation_status).to_string()),
+            ],
         );
         for row in &self.settings {
-            text.push_str(&format!(
-                "{} = {} (source: {}; default: {})\n",
-                row.key, row.value, row.source, row.default
+            text.push_str(&crate::i18n::format_text(
+                "{key} = {value} (source: {source}; default: {default})\n",
+                &[
+                    ("key", (row.key).to_string()),
+                    ("value", (row.value).to_string()),
+                    ("source", (row.source).to_string()),
+                    ("default", (row.default).to_string()),
+                ],
             ));
         }
         for entry in &self.history {
@@ -1455,21 +1465,30 @@ impl Reply {
             ));
         }
         for conflict in &self.conflicts {
-            text.push_str(&format!(
-                "conflict {}: last change {:?}, requested {}\n",
-                conflict.key, conflict.actual_change, conflict.requested_change
-            ));
+            text.push_str(&crate::i18n::format_text("conflict {conflict_key}: last change {conflict_actual_change}, requested {conflict_requested_change}\n", &[
+                ("conflict_key", (conflict.key).to_string()),
+                ("conflict_actual_change", format!("{:?}", conflict.actual_change)),
+                ("conflict_requested_change", (conflict.requested_change).to_string()),
+            ]));
         }
         if let Some(change) = &self.machine_change {
-            text.push_str(&format!(
-                "machine {}: before {}, after {}\n",
-                change["key"].as_str().unwrap_or_default(),
-                change["before"],
-                change["after"]
+            text.push_str(&crate::i18n::format_text(
+                "machine {key}: before {before}, after {after}\n",
+                &[
+                    (
+                        "key",
+                        (change["key"].as_str().unwrap_or_default()).to_string(),
+                    ),
+                    ("before", (change["before"]).to_string()),
+                    ("after", (change["after"]).to_string()),
+                ],
             ));
         }
         for note in &self.recovery {
-            text.push_str(&format!("recovery: {note}\n"));
+            text.push_str(&crate::i18n::format_text(
+                "recovery: {note}\n",
+                &[("note", (note).to_string())],
+            ));
         }
         text
     }

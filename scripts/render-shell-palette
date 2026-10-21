@@ -4,6 +4,7 @@
 """Generate the shell palette and app icon from tokens.toml; --check never writes."""
 import argparse
 import json
+import re
 from pathlib import Path
 import tomllib
 
@@ -49,7 +50,7 @@ assert default in tokens['accents'], default
 # Appearance.qml repeats the default as its fallback; an unknown saved name falls back here.
 # Laid out as qmlformat prints it: tests/test-shell.py compares every shell file with qmlformat.
 lines += [f'    readonly property string defaultAccent: {json.dumps(default)}',
-          '    readonly property var accents: ' + json.dumps(rows, indent=4).replace('\n', '\n    '),
+          '    readonly property var accents: ' + re.sub(r'("name": )("[^"]*")', r'\1qsTranslate("ShellPalette", \2)', json.dumps(rows, indent=4)).replace('\n', '\n    '),
           '    readonly property var chosenAccent: accents.find(entry => entry.id === Appearance.accent) || accents.find(entry => entry.id === defaultAccent)']
 for name,key in [('accent','base'),('accentText','text'),('accentOnLight','on_light'),('accentOnDark','on_dark'),('accentSoft','soft'),('accentStrong','strong'),('accentShade','shade'),('accentDeep','deep'),('accentHover','hover'),('polkitAccent','polkit'),('polkitFocus','focus'),('settingsAvatarStart','avatar_start'),('settingsAvatarEnd','avatar_end')]:
     lines.append(f'    readonly property color {name}: chosenAccent.{key}')

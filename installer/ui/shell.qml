@@ -6,9 +6,11 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "file:///usr/share/emaki/shell" as Shell
 
 ShellRoot {
     id: root
+    readonly property bool translationsReady: Shell.Translation.initialize()
     Component.onCompleted: Quickshell.watchFiles = false
     // Brings the window back. The controller, and with it the plan, outlives both ways out:
     // Hide keeps this window object; a compositor close discards it and a new one is made here.
@@ -30,28 +32,28 @@ ShellRoot {
         return window.visible;
     }
     InstallerController {
-        id: controller
+        id: backend
     }
     Loader {
         id: windowLoader
         sourceComponent: FloatingWindow {
             id: window
-            title: "Install Emaki"
+            title: qsTranslate("shell", "Install Emaki")
             implicitWidth: 1024
             implicitHeight: 700
             minimumSize: Qt.size(960, 480)
             color: "transparent"
             onClosed: {
-                controller.clearPasswords();
+                backend.clearPasswords();
                 // Qt has already destroyed the surface. Drop the window; present() builds a new
                 // one, exactly as at startup, instead of reviving this one.
                 windowLoader.active = false;
             }
             InstallerView {
                 anchors.fill: parent
-                controller: controller
+                controller: backend
                 onHideRequested: {
-                    controller.clearPasswords();
+                    backend.clearPasswords();
                     window.visible = false;
                 }
             }

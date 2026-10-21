@@ -7,6 +7,18 @@ snapshot identity. Add-only installs undo through dependency-checked package
 removal. Changes to existing packages require the recorded system snapshot
 and a restart, preserving the complete prior package state.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -46,7 +58,7 @@ def changes(before, after):
 def record(kind, key, name, target, before, after, snapshot='', refs=(), directory=None, snapshot_token=''):
     """Record only the install delta from its post-update baseline, atomically."""
     if kind not in KINDS:
-        raise ValueError('Invalid receipt kind')
+        raise ValueError(_('Invalid receipt kind'))
     directory = DIRECTORY if directory is None else Path(directory)
     added, upgraded = changes(before, after)
     stamp = now()
@@ -122,12 +134,12 @@ def read(path, trusted=True):
     with os.fdopen(descriptor, 'rb') as source:
         metadata = os.fstat(source.fileno())
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > LIMIT:
-            raise ValueError('Invalid receipt file')
+            raise ValueError(_('Invalid receipt file'))
         if trusted and (metadata.st_uid != 0 or metadata.st_mode & 0o022):
-            raise ValueError('Untrusted receipt file')
+            raise ValueError(_('Untrusted receipt file'))
         value = json.loads(source.read(LIMIT + 1))
     if not valid(value) or value['id'] != Path(path).stem:
-        raise ValueError('Invalid receipt')
+        raise ValueError(_('Invalid receipt'))
     return value
 
 
@@ -196,7 +208,7 @@ def snapshot_plan(value):
                 target=value['target'], restoreToken=token, token=digest, remove=[], keep={}, gone=[],
                 removed=sorted(value.get('removed', {})), upgraded=sorted(value['upgraded']),
                 snapshot=value['snapshot'],
-                message='This install changed existing packages. Undo restores the whole system to the snapshot before the install and discards system changes made since then. Restart to use it. Your /home files stay untouched.')
+                message=_('This install changed existing packages. Undo restores the whole system to the snapshot before the install and discards system changes made since then. Restart to use it. Your /home files stay untouched.'))
 
 
 def undo_plan(value, pacman):
@@ -205,7 +217,7 @@ def undo_plan(value, pacman):
     pacman(*arguments) returns a CompletedProcess of a read-only query.
     """
     if value['kind'] == 'flatpak':
-        raise ValueError('Flatpak installs are undone by their own backend')
+        raise ValueError(_('Flatpak installs are undone by their own backend'))
     if value['undone']:
         return dict(ok=False, code='undone')
     if value['target'] == 'emaki-nvidia':
@@ -216,7 +228,7 @@ def undo_plan(value, pacman):
         return dict(ok=False, code='nothing')
     query = pacman('-Q')
     if query.returncode:
-        raise RuntimeError('Installed packages could not be read')
+        raise RuntimeError(_('Installed packages could not be read'))
     installed = dict(line.split(maxsplit=1) for line in query.stdout.splitlines())
     target = value['target']
     if target not in installed:

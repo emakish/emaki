@@ -10,12 +10,13 @@ import "file:@EMAKI_DATADIR@/shell" as Shell
 
 ShellRoot {
     id: root
+    readonly property bool translationsReady: Shell.Translation.initialize()
     property string initialNote: Quickshell.env("EMAKI_NOTES_ID") || ""
     Component.onCompleted: Quickshell.watchFiles = false
     Shell.SettingsCatalog { active: false; helper: Shell.Platform.dataDir + "/shell/helpers/launcher-tools.py" }
     FloatingWindow {
         id: window
-        title: "Emaki Notes" + (view.dirty ? " — Unsaved draft" : "")
+        title: view.dirty ? qsTranslate("shell", "Emaki Notes — Unsaved draft") : qsTranslate("shell", "Emaki Notes")
         implicitWidth: 1040
         implicitHeight: 740
         minimumSize: Qt.size(320, 400)

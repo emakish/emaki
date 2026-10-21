@@ -19,6 +19,7 @@ function production(name, parameters) {
 }
 const context = vm.createContext({});
 context.plainBody = production('plainBody', 'value');
+context.applicationId = production('applicationId', 'n');
 const snapshot = production('snapshot', 'n,time');
 function received(body) {
     return snapshot({id: 1, appName: 'blueman', appIcon: 'blueman', summary: 'Bluetooth',

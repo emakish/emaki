@@ -1,0 +1,731 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_XA\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "\nThe change could not be confirmed. Settings shows the current accounts."
+msgstr "\n[Ţĥé çĥàñĝé çöûļð ñöţ ƀé çöñƒîŕɱéð. Šéţţîñĝš šĥöŵš ţĥé çûŕŕéñţ àççöûñţš.·······················]"
+
+msgid "### Steps to reproduce"
+msgstr "[### Šţéþš ţö ŕéþŕöðûçé······]"
+
+msgid "### System"
+msgstr "[### Šÿšţéɱ··]"
+
+msgid "### What I expected"
+msgstr "[### Ŵĥàţ Î éẋþéçţéð·····]"
+
+msgid "### What happened"
+msgstr "[### Ŵĥàţ ĥàþþéñéð····]"
+
+msgid "1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it"
+msgstr "[1..4 ðîšţîñçţ ẊĶƁ ļàÿöûţš, çöɱɱà-šéþàŕàţéð (ûš,ŕû); ļàÿöûţ(ṽàŕîàñţ) àš ţĥé ẊĶƁ ŕûļéš ļîšţ îţ·······························]"
+
+msgid "<!-- Nothing else was collected from your computer. Logs help, but add them only if you choose to: Settings > About can save a diagnostics file for you to review first. -->"
+msgstr "[<!-- Nothing else was collected from your computer. Logs help, but add them only if you choose to: Settings > Àƀöûţ çàñ šàṽé à ðîàĝñöšţîçš ƒîļé ƒöŕ ÿöû ţö ŕéṽîéŵ ƒîŕšţ. -->···························································]"
+
+msgid "A previous display change needs recovery. Reopen Displays and try again."
+msgstr "[À þŕéṽîöûš ðîšþļàÿ çĥàñĝé ñééðš ŕéçöṽéŕÿ. Ŕéöþéñ Ðîšþļàÿš àñð ţŕÿ àĝàîñ.························]"
+
+msgid "A startup entry could not be read. Check its contents and try again."
+msgstr "[À šţàŕţûþ éñţŕÿ çöûļð ñöţ ƀé ŕéàð. Çĥéçķ îţš çöñţéñţš àñð ţŕÿ àĝàîñ.······················]"
+
+msgid "Alarm was not found"
+msgstr "[Àļàŕɱ ŵàš ñöţ ƒöûñð·····]"
+
+msgid "An interrupted display change from an earlier session was discarded."
+msgstr "[Àñ îñţéŕŕûþţéð ðîšþļàÿ çĥàñĝé ƒŕöɱ àñ éàŕļîéŕ šéššîöñ ŵàš ðîšçàŕðéð.······················]"
+
+msgid "An interrupted display change was reverted."
+msgstr "[Àñ îñţéŕŕûþţéð ðîšþļàÿ çĥàñĝé ŵàš ŕéṽéŕţéð.··············]"
+
+msgid "An interrupted display reset was reverted."
+msgstr "[Àñ îñţéŕŕûþţéð ðîšþļàÿ ŕéšéţ ŵàš ŕéṽéŕţéð.·············]"
+
+msgid "Another display change is waiting for confirmation."
+msgstr "[Àñöţĥéŕ ðîšþļàÿ çĥàñĝé îš ŵàîţîñĝ ƒöŕ çöñƒîŕɱàţîöñ.················]"
+
+msgid "Apps could not be read or changed. Refresh the page and try again."
+msgstr "[Àþþš çöûļð ñöţ ƀé ŕéàð öŕ çĥàñĝéð. Ŕéƒŕéšĥ ţĥé þàĝé àñð ţŕÿ àĝàîñ.······················]"
+
+msgid "Automatic locking and blanking are unavailable because required session components are missing."
+msgstr "[Àûţöɱàţîç ļöçķîñĝ àñð ƀļàñķîñĝ àŕé ûñàṽàîļàƀļé ƀéçàûšé ŕéǫûîŕéð šéššîöñ çöɱþöñéñţš àŕé ɱîššîñĝ.································]"
+
+msgid "Battery, profiles and session"
+msgstr "[Ɓàţţéŕÿ, þŕöƒîļéš àñð šéššîöñ·········]"
+
+msgid "Block devices"
+msgstr "[Ɓļöçķ ðéṽîçéš···]"
+
+msgid "Bluetooth"
+msgstr "[Ɓļûéţööţĥ··]"
+
+msgid "Brightness and night light"
+msgstr "[Ɓŕîĝĥţñéšš àñð ñîĝĥţ ļîĝĥţ········]"
+
+msgid "Browser"
+msgstr "[Ɓŕöŵšéŕ·]"
+
+msgid "Choose None, Automatic or Manual proxy settings."
+msgstr "[Çĥööšé Ñöñé, Àûţöɱàţîç öŕ Ṁàñûàļ þŕöẋÿ šéţţîñĝš.···············]"
+
+msgid "Choose a charge limit from 50 to 100 percent."
+msgstr "[Çĥööšé à çĥàŕĝé ļîɱîţ ƒŕöɱ 50 ţö 100 þéŕçéñţ.··············]"
+
+msgid "Choose a local VPN configuration file."
+msgstr "[Çĥööšé à ļöçàļ ṼÞÑ çöñƒîĝûŕàţîöñ ƒîļé.············]"
+
+msgid "Choose a readable VPN configuration file."
+msgstr "[Çĥööšé à ŕéàðàƀļé ṼÞÑ çöñƒîĝûŕàţîöñ ƒîļé.·············]"
+
+msgid "Choose a saved connection."
+msgstr "[Çĥööšé à šàṽéð çöññéçţîöñ.········]"
+
+msgid "Choose a supported network settings action."
+msgstr "[Çĥööšé à šûþþöŕţéð ñéţŵöŕķ šéţţîñĝš àçţîöñ.··············]"
+
+msgid "Choose a valid VPN type."
+msgstr "[Çĥööšé à ṽàļîð ṼÞÑ ţÿþé.·······]"
+
+msgid "Choose a valid display setting."
+msgstr "[Çĥööšé à ṽàļîð ðîšþļàÿ šéţţîñĝ.·········]"
+
+msgid "Choose a wallpaper"
+msgstr "[Çĥööšé à ŵàļļþàþéŕ·····]"
+
+msgid "Choose one of the available delays."
+msgstr "[Çĥööšé öñé öƒ ţĥé àṽàîļàƀļé ðéļàÿš.···········]"
+
+msgid "Choose whether the app starts automatically."
+msgstr "[Çĥööšé ŵĥéţĥéŕ ţĥé àþþ šţàŕţš àûţöɱàţîçàļļÿ.··············]"
+
+msgid "Choose your picture"
+msgstr "[Çĥööšé ÿöûŕ þîçţûŕé·····]"
+
+msgid "Clipboard history"
+msgstr "[Çļîþƀöàŕð ĥîšţöŕÿ····]"
+
+msgid "Clock command is too large"
+msgstr "[Çļöçķ çöɱɱàñð îš ţöö ļàŕĝé········]"
+
+msgid "Clock state directory must not be writable by others"
+msgstr "[Çļöçķ šţàţé ðîŕéçţöŕÿ ɱûšţ ñöţ ƀé ŵŕîţàƀļé ƀÿ öţĥéŕš·················]"
+
+msgid "Clock state is too large"
+msgstr "[Çļöçķ šţàţé îš ţöö ļàŕĝé·······]"
+
+msgid "Clock tools are already running in another session."
+msgstr "[Çļöçķ ţööļš àŕé àļŕéàðÿ ŕûññîñĝ îñ àñöţĥéŕ šéššîöñ.················]"
+
+msgid "Clock tools could not read or save their settings. Check access and available space."
+msgstr "[Çļöçķ ţööļš çöûļð ñöţ ŕéàð öŕ šàṽé ţĥéîŕ šéţţîñĝš. Çĥéçķ àççéšš àñð àṽàîļàƀļé šþàçé.····························]"
+
+msgid "Clock tools could not read that data. Please try again."
+msgstr "[Çļöçķ ţööļš çöûļð ñöţ ŕéàð ţĥàţ ðàţà. Þļéàšé ţŕÿ àĝàîñ.··················]"
+
+msgid "Close window"
+msgstr "[Çļöšé ŵîñðöŵ···]"
+
+msgid "Confirm password: "
+msgstr "[Çöñƒîŕɱ þàššŵöŕð: ·····]"
+
+msgid "Connection changed."
+msgstr "[Çöññéçţîöñ çĥàñĝéð.·····]"
+
+msgid "Could not check the screen timers."
+msgstr "[Çöûļð ñöţ çĥéçķ ţĥé šçŕééñ ţîɱéŕš.··········]"
+
+msgid "Cycle column widths"
+msgstr "[Çÿçļé çöļûɱñ ŵîðţĥš·····]"
+
+msgid "Disabled"
+msgstr "[Ðîšàƀļéð·]"
+
+msgid "Disabled displays are session-only and cannot be saved."
+msgstr "[Ðîšàƀļéð ðîšþļàÿš àŕé šéššîöñ-öñļÿ àñð çàññöţ ƀé šàṽéð.··················]"
+
+msgid "Display information could not be read."
+msgstr "[Ðîšþļàÿ îñƒöŕɱàţîöñ çöûļð ñöţ ƀé ŕéàð.············]"
+
+msgid "Display settings changed elsewhere. Reopen Displays and try again."
+msgstr "[Ðîšþļàÿ šéţţîñĝš çĥàñĝéð éļšéŵĥéŕé. Ŕéöþéñ Ðîšþļàÿš àñð ţŕÿ àĝàîñ.······················]"
+
+msgid "Display settings could not be saved. Check the available space and try again."
+msgstr "[Ðîšþļàÿ šéţţîñĝš çöûļð ñöţ ƀé šàṽéð. Çĥéçķ ţĥé àṽàîļàƀļé šþàçé àñð ţŕÿ àĝàîñ.·························]"
+
+msgid "Emaki landscape"
+msgstr "[Éɱàķî ļàñðšçàþé····]"
+
+msgid "Emaki problem report"
+msgstr "[Éɱàķî þŕöƀļéɱ ŕéþöŕţ·····]"
+
+msgid "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+msgstr "[Éñţéŕ à þàššŵöŕð ŵîţĥöûţ ļîñé ƀŕéàķš, ţàƀš öŕ öţĥéŕ çöñţŕöļ çĥàŕàçţéŕš (àţ ɱöšţ 1024 ÛŢƑ-8 ƀÿţéš).·································]"
+
+msgid "Enter a proxy address as host:port."
+msgstr "[Éñţéŕ à þŕöẋÿ àððŕéšš àš ĥöšţ:þöŕţ.···········]"
+
+msgid "Enter an HTTP or HTTPS proxy configuration URL."
+msgstr "[Éñţéŕ àñ ĤŢŢÞ öŕ ĤŢŢÞŠ þŕöẋÿ çöñƒîĝûŕàţîöñ ÛŔĻ.···············]"
+
+msgid "Enter between one and sixteen DNS server addresses."
+msgstr "[Éñţéŕ ƀéţŵééñ öñé àñð šîẋţééñ ÐÑŠ šéŕṽéŕ àððŕéššéš.················]"
+
+msgid "Enter valid DNS server addresses."
+msgstr "[Éñţéŕ ṽàļîð ÐÑŠ šéŕṽéŕ àððŕéššéš.··········]"
+
+msgid "Expected a clock command"
+msgstr "[Éẋþéçţéð à çļöçķ çöɱɱàñð·······]"
+
+msgid "Expected a whole number"
+msgstr "[Éẋþéçţéð à ŵĥöļé ñûɱƀéŕ·······]"
+
+msgid "Expected true or false"
+msgstr "[Éẋþéçţéð ţŕûé öŕ ƒàļšé······]"
+
+msgid "Failed system units"
+msgstr "[Ƒàîļéð šÿšţéɱ ûñîţš·····]"
+
+msgid "Failed user units"
+msgstr "[Ƒàîļéð ûšéŕ ûñîţš····]"
+
+msgid "Files"
+msgstr "[Ƒîļéš]"
+
+msgid "Float or tile window"
+msgstr "[Ƒļöàţ öŕ ţîļé ŵîñðöŵ·····]"
+
+msgid "Focus dock"
+msgstr "[Ƒöçûš ðöçķ··]"
+
+msgid "Focus left column"
+msgstr "[Ƒöçûš ļéƒţ çöļûɱñ····]"
+
+msgid "Focus newest notification"
+msgstr "[Ƒöçûš ñéŵéšţ ñöţîƒîçàţîöñ·······]"
+
+msgid "Focus right column"
+msgstr "[Ƒöçûš ŕîĝĥţ çöļûɱñ·····]"
+
+msgid "Focus top bar"
+msgstr "[Ƒöçûš ţöþ ƀàŕ···]"
+
+msgid "Focus window or workspace above"
+msgstr "[Ƒöçûš ŵîñðöŵ öŕ ŵöŕķšþàçé àƀöṽé·········]"
+
+msgid "Focus window or workspace below"
+msgstr "[Ƒöçûš ŵîñðöŵ öŕ ŵöŕķšþàçé ƀéļöŵ·········]"
+
+#, python-brace-format
+msgid "Go to workspace {number}"
+msgstr "[Ĝö ţö ŵöŕķšþàçé {number}·······]"
+
+msgid "Image viewer"
+msgstr "[Îɱàĝé ṽîéŵéŕ···]"
+
+msgid "Installation"
+msgstr "[Îñšţàļļàţîöñ···]"
+
+#, python-brace-format
+msgid "Installed with Emaki {value1}; current release matches"
+msgstr "[Îñšţàļļéð ŵîţĥ Éɱàķî {value1}; çûŕŕéñţ ŕéļéàšé ɱàţçĥéš·················]"
+
+#, python-brace-format
+msgid "Installed with Emaki {value1}; now on {value2}"
+msgstr "[Îñšţàļļéð ŵîţĥ Éɱàķî {value1}; ñöŵ öñ {value2}···············]"
+
+msgid "Invalid alarm identifier"
+msgstr "[Îñṽàļîð àļàŕɱ îðéñţîƒîéŕ·······]"
+
+msgid "Invalid alarm label"
+msgstr "[Îñṽàļîð àļàŕɱ ļàƀéļ·····]"
+
+msgid "Invalid application identifier."
+msgstr "[Îñṽàļîð àþþļîçàţîöñ îðéñţîƒîéŕ.·········]"
+
+msgid "Invalid clock state"
+msgstr "[Îñṽàļîð çļöçķ šţàţé·····]"
+
+msgid "Invalid duration"
+msgstr "[Îñṽàļîð ðûŕàţîöñ····]"
+
+msgid "Invalid laps"
+msgstr "[Îñṽàļîð ļàþš···]"
+
+msgid "Invalid notice"
+msgstr "[Îñṽàļîð ñöţîçé···]"
+
+msgid "Invalid repeat days"
+msgstr "[Îñṽàļîð ŕéþéàţ ðàÿš·····]"
+
+msgid "Invalid time zone search"
+msgstr "[Îñṽàļîð ţîɱé žöñé šéàŕçĥ·······]"
+
+msgid "Invalid timer state"
+msgstr "[Îñṽàļîð ţîɱéŕ šţàţé·····]"
+
+msgid "Keep at least one display turned on."
+msgstr "[Ķééþ àţ ļéàšţ öñé ðîšþļàÿ ţûŕñéð öñ.···········]"
+
+msgid "Keep or revert the current display change first."
+msgstr "[Ķééþ öŕ ŕéṽéŕţ ţĥé çûŕŕéñţ ðîšþļàÿ çĥàñĝé ƒîŕšţ.···············]"
+
+msgid "Keyboard layouts"
+msgstr "[Ķéÿƀöàŕð ļàÿöûţš····]"
+
+msgid "Lid behavior is managed by the system."
+msgstr "[Ļîð ƀéĥàṽîöŕ îš ɱàñàĝéð ƀÿ ţĥé šÿšţéɱ.············]"
+
+msgid "Linux kernel"
+msgstr "[Ļîñûẋ ķéŕñéļ···]"
+
+msgid "Lock screen"
+msgstr "[Ļöçķ šçŕééñ··]"
+
+msgid "Lower volume"
+msgstr "[Ļöŵéŕ ṽöļûɱé···]"
+
+msgid "Make column narrower"
+msgstr "[Ṁàķé çöļûɱñ ñàŕŕöŵéŕ·····]"
+
+msgid "Make column wider"
+msgstr "[Ṁàķé çöļûɱñ ŵîðéŕ····]"
+
+msgid "Make keyboard brighter"
+msgstr "[Ṁàķé ķéÿƀöàŕð ƀŕîĝĥţéŕ······]"
+
+msgid "Make keyboard dimmer"
+msgstr "[Ṁàķé ķéÿƀöàŕð ðîɱɱéŕ·····]"
+
+msgid "Make screen brighter"
+msgstr "[Ṁàķé šçŕééñ ƀŕîĝĥţéŕ·····]"
+
+msgid "Make screen dimmer"
+msgstr "[Ṁàķé šçŕééñ ðîɱɱéŕ·····]"
+
+msgid "Maximize column"
+msgstr "[Ṁàẋîɱîžé çöļûɱñ····]"
+
+msgid "Move column left"
+msgstr "[Ṁöṽé çöļûɱñ ļéƒţ····]"
+
+msgid "Move column right"
+msgstr "[Ṁöṽé çöļûɱñ ŕîĝĥţ····]"
+
+msgid "Move column to left monitor"
+msgstr "[Ṁöṽé çöļûɱñ ţö ļéƒţ ɱöñîţöŕ········]"
+
+msgid "Move column to monitor above"
+msgstr "[Ṁöṽé çöļûɱñ ţö ɱöñîţöŕ àƀöṽé········]"
+
+msgid "Move column to monitor below"
+msgstr "[Ṁöṽé çöļûɱñ ţö ɱöñîţöŕ ƀéļöŵ········]"
+
+msgid "Move column to right monitor"
+msgstr "[Ṁöṽé çöļûɱñ ţö ŕîĝĥţ ɱöñîţöŕ········]"
+
+#, python-brace-format
+msgid "Move column to workspace {number}"
+msgstr "[Ṁöṽé çöļûɱñ ţö ŵöŕķšþàçé {number}··········]"
+
+msgid "Move window down or to workspace below"
+msgstr "[Ṁöṽé ŵîñðöŵ ðöŵñ öŕ ţö ŵöŕķšþàçé ƀéļöŵ············]"
+
+msgid "Move window into or out of left column"
+msgstr "[Ṁöṽé ŵîñðöŵ îñţö öŕ öûţ öƒ ļéƒţ çöļûɱñ············]"
+
+msgid "Move window into or out of right column"
+msgstr "[Ṁöṽé ŵîñðöŵ îñţö öŕ öûţ öƒ ŕîĝĥţ çöļûɱñ············]"
+
+msgid "Move window up or to workspace above"
+msgstr "[Ṁöṽé ŵîñðöŵ ûþ öŕ ţö ŵöŕķšþàçé àƀöṽé···········]"
+
+msgid "Mute or unmute microphone"
+msgstr "[Ṁûţé öŕ ûñɱûţé ɱîçŕöþĥöñé·······]"
+
+msgid "Mute or unmute sound"
+msgstr "[Ṁûţé öŕ ûñɱûţé šöûñð·····]"
+
+msgid "Network settings could not be reached. Try again."
+msgstr "[Ñéţŵöŕķ šéţţîñĝš çöûļð ñöţ ƀé ŕéàçĥéð. Ţŕÿ àĝàîñ.················]"
+
+msgid "Network settings could not be read. Try again."
+msgstr "[Ñéţŵöŕķ šéţţîñĝš çöûļð ñöţ ƀé ŕéàð. Ţŕÿ àĝàîñ.···············]"
+
+msgid "Network settings took too long. Try again."
+msgstr "[Ñéţŵöŕķ šéţţîñĝš ţööķ ţöö ļöñĝ. Ţŕÿ àĝàîñ.·············]"
+
+msgid "NetworkManager could not complete this change. Check your connection and permissions."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ çöûļð ñöţ çöɱþļéţé ţĥîš çĥàñĝé. Çĥéçķ ÿöûŕ çöññéçţîöñ àñð þéŕɱîššîöñš.····························]"
+
+msgid "NetworkManager is not available."
+msgstr "[ÑéţŵöŕķṀàñàĝéŕ îš ñöţ àṽàîļàƀļé.··········]"
+
+#, python-brace-format
+msgid "New password for {value1}: "
+msgstr "[Ñéŵ þàššŵöŕð ƒöŕ {value1}: ········]"
+
+msgid "Next track"
+msgstr "[Ñéẋţ ţŕàçķ··]"
+
+msgid "Not recorded (please say whether this is a fresh installation or an updated one)"
+msgstr "[Ñöţ ŕéçöŕðéð (þļéàšé šàÿ ŵĥéţĥéŕ ţĥîš îš à ƒŕéšĥ îñšţàļļàţîöñ öŕ àñ ûþðàţéð öñé)··························]"
+
+msgid "Notifications, calendar and music"
+msgstr "[Ñöţîƒîçàţîöñš, çàļéñðàŕ àñð ɱûšîç··········]"
+
+msgid "Open files"
+msgstr "[Öþéñ ƒîļéš··]"
+
+msgid "Open launcher"
+msgstr "[Öþéñ ļàûñçĥéŕ···]"
+
+msgid "Open terminal"
+msgstr "[Öþéñ ţéŕɱîñàļ···]"
+
+msgid "Open terminal (works without Super)"
+msgstr "[Öþéñ ţéŕɱîñàļ (ŵöŕķš ŵîţĥöûţ Šûþéŕ)···········]"
+
+msgid "Password changed."
+msgstr "[Þàššŵöŕð çĥàñĝéð.····]"
+
+msgid "Password not changed."
+msgstr "[Þàššŵöŕð ñöţ çĥàñĝéð.······]"
+
+msgid "Pictures"
+msgstr "[Þîçţûŕéš·]"
+
+msgid "Play or pause media"
+msgstr "[Þļàÿ öŕ þàûšé ɱéðîà·····]"
+
+msgid "Power menu"
+msgstr "[Þöŵéŕ ɱéñû··]"
+
+msgid "Press Enter to close this window. "
+msgstr "[Þŕéšš Éñţéŕ ţö çļöšé ţĥîš ŵîñðöŵ. ··········]"
+
+msgid "Previous track"
+msgstr "[Þŕéṽîöûš ţŕàçķ···]"
+
+msgid "Privacy and capture activity"
+msgstr "[Þŕîṽàçÿ àñð çàþţûŕé àçţîṽîţÿ········]"
+
+msgid "Raise volume"
+msgstr "[Ŕàîšé ṽöļûɱé···]"
+
+msgid "Recent journal errors"
+msgstr "[Ŕéçéñţ ĵöûŕñàļ éŕŕöŕš······]"
+
+msgid "Record screen"
+msgstr "[Ŕéçöŕð šçŕééñ···]"
+
+msgid "Review this file before sharing. It may contain private information."
+msgstr "[Ŕéṽîéŵ ţĥîš ƒîļé ƀéƒöŕé šĥàŕîñĝ. Îţ ɱàÿ çöñţàîñ þŕîṽàţé îñƒöŕɱàţîöñ.······················]"
+
+msgid "Saved display settings cannot be read. Restore the managed display file to continue."
+msgstr "[Šàṽéð ðîšþļàÿ šéţţîñĝš çàññöţ ƀé ŕéàð. Ŕéšţöŕé ţĥé ɱàñàĝéð ðîšþļàÿ ƒîļé ţö çöñţîñûé.····························]"
+
+msgid "Search keyboard shortcuts"
+msgstr "[Šéàŕçĥ ķéÿƀöàŕð šĥöŕţçûţš·······]"
+
+msgid "Settings were saved. Reconnect this connection to apply them."
+msgstr "[Šéţţîñĝš ŵéŕé šàṽéð. Ŕéçöññéçţ ţĥîš çöññéçţîöñ ţö àþþļÿ ţĥéɱ.····················]"
+
+msgid "Show shortcut overview"
+msgstr "[Šĥöŵ šĥöŕţçûţ öṽéŕṽîéŵ······]"
+
+msgid "Show that the password window is real"
+msgstr "[Šĥöŵ ţĥàţ ţĥé þàššŵöŕð ŵîñðöŵ îš ŕéàļ···········]"
+
+msgid "Sound and app volume"
+msgstr "[Šöûñð àñð àþþ ṽöļûɱé·····]"
+
+msgid "Stop media"
+msgstr "[Šţöþ ɱéðîà··]"
+
+msgid "Switch keyboard layout"
+msgstr "[Šŵîţçĥ ķéÿƀöàŕð ļàÿöûţ······]"
+
+msgid "Switch windows"
+msgstr "[Šŵîţçĥ ŵîñðöŵš···]"
+
+msgid "Switch windows backwards"
+msgstr "[Šŵîţçĥ ŵîñðöŵš ƀàçķŵàŕðš·······]"
+
+msgid "Switch windows of the same app"
+msgstr "[Šŵîţçĥ ŵîñðöŵš öƒ ţĥé šàɱé àþþ·········]"
+
+msgid "Switch windows of the same app backwards"
+msgstr "[Šŵîţçĥ ŵîñðöŵš öƒ ţĥé šàɱé àþþ ƀàçķŵàŕðš············]"
+
+msgid "System details"
+msgstr "[Šÿšţéɱ ðéţàîļš···]"
+
+msgid "Take an interactive screenshot"
+msgstr "[Ţàķé àñ îñţéŕàçţîṽé šçŕééñšĥöţ·········]"
+
+msgid "Terminal"
+msgstr "[Ţéŕɱîñàļ·]"
+
+msgid "Text editor"
+msgstr "[Ţéẋţ éðîţöŕ··]"
+
+msgid "That resolution or refresh rate is not available on this display."
+msgstr "[Ţĥàţ ŕéšöļûţîöñ öŕ ŕéƒŕéšĥ ŕàţé îš ñöţ àṽàîļàƀļé öñ ţĥîš ðîšþļàÿ.·····················]"
+
+msgid "The account is ready."
+msgstr "[Ţĥé àççöûñţ îš ŕéàðÿ.······]"
+
+msgid "The account was not created."
+msgstr "[Ţĥé àççöûñţ ŵàš ñöţ çŕéàţéð.········]"
+
+msgid "The alarm limit is 64"
+msgstr "[Ţĥé àļàŕɱ ļîɱîţ îš 64······]"
+
+msgid "The application entry is too large."
+msgstr "[Ţĥé àþþļîçàţîöñ éñţŕÿ îš ţöö ļàŕĝé.···········]"
+
+msgid "The confirmation time expired. The previous settings were restored."
+msgstr "[Ţĥé çöñƒîŕɱàţîöñ ţîɱé éẋþîŕéð. Ţĥé þŕéṽîöûš šéţţîñĝš ŵéŕé ŕéšţöŕéð.······················]"
+
+msgid "The connected displays changed. Reopen Displays and try again."
+msgstr "[Ţĥé çöññéçţéð ðîšþļàÿš çĥàñĝéð. Ŕéöþéñ Ðîšþļàÿš àñð ţŕÿ àĝàîñ.····················]"
+
+msgid "The display configuration could not be loaded."
+msgstr "[Ţĥé ðîšþļàÿ çöñƒîĝûŕàţîöñ çöûļð ñöţ ƀé ļöàðéð.···············]"
+
+msgid "The display configuration reload was not confirmed."
+msgstr "[Ţĥé ðîšþļàÿ çöñƒîĝûŕàţîöñ ŕéļöàð ŵàš ñöţ çöñƒîŕɱéð.················]"
+
+msgid "The display did not confirm the requested settings."
+msgstr "[Ţĥé ðîšþļàÿ ðîð ñöţ çöñƒîŕɱ ţĥé ŕéǫûéšţéð šéţţîñĝš.················]"
+
+msgid "The display name is invalid."
+msgstr "[Ţĥé ðîšþļàÿ ñàɱé îš îñṽàļîð.········]"
+
+msgid "The display request is invalid."
+msgstr "[Ţĥé ðîšþļàÿ ŕéǫûéšţ îš îñṽàļîð.·········]"
+
+msgid "The display request is too large."
+msgstr "[Ţĥé ðîšþļàÿ ŕéǫûéšţ îš ţöö ļàŕĝé.··········]"
+
+msgid "The display service could not apply the change."
+msgstr "[Ţĥé ðîšþļàÿ šéŕṽîçé çöûļð ñöţ àþþļÿ ţĥé çĥàñĝé.···············]"
+
+msgid "The display service is unavailable."
+msgstr "[Ţĥé ðîšþļàÿ šéŕṽîçé îš ûñàṽàîļàƀļé.···········]"
+
+msgid "The display service returned an invalid response."
+msgstr "[Ţĥé ðîšþļàÿ šéŕṽîçé ŕéţûŕñéð àñ îñṽàļîð ŕéšþöñšé.················]"
+
+msgid "The display settings lock is not safe to use."
+msgstr "[Ţĥé ðîšþļàÿ šéţţîñĝš ļöçķ îš ñöţ šàƒé ţö ûšé.··············]"
+
+msgid "The idle policy stopped unexpectedly."
+msgstr "[Ţĥé îðļé þöļîçÿ šţöþþéð ûñéẋþéçţéðļÿ.···········]"
+
+msgid "The inherited configuration does not enable this display. Its settings were restored."
+msgstr "[Ţĥé îñĥéŕîţéð çöñƒîĝûŕàţîöñ ðöéš ñöţ éñàƀļé ţĥîš ðîšþļàÿ. Îţš šéţţîñĝš ŵéŕé ŕéšţöŕéð.····························]"
+
+msgid "The installed application is unavailable."
+msgstr "[Ţĥé îñšţàļļéð àþþļîçàţîöñ îš ûñàṽàîļàƀļé.·············]"
+
+msgid "The managed display directory is not safe to use."
+msgstr "[Ţĥé ɱàñàĝéð ðîšþļàÿ ðîŕéçţöŕÿ îš ñöţ šàƒé ţö ûšé.················]"
+
+msgid "The managed display file is not safe to use."
+msgstr "[Ţĥé ɱàñàĝéð ðîšþļàÿ ƒîļé îš ñöţ šàƒé ţö ûšé.··············]"
+
+msgid "The new display size would separate or overlap screens. Adjust their positions first."
+msgstr "[Ţĥé ñéŵ ðîšþļàÿ šîžé ŵöûļð šéþàŕàţé öŕ öṽéŕļàþ šçŕééñš. Àðĵûšţ ţĥéîŕ þöšîţîöñš ƒîŕšţ.····························]"
+
+msgid "The passwords do not match."
+msgstr "[Ţĥé þàššŵöŕðš ðö ñöţ ɱàţçĥ.········]"
+
+msgid "The pending display change cannot be recovered."
+msgstr "[Ţĥé þéñðîñĝ ðîšþļàÿ çĥàñĝé çàññöţ ƀé ŕéçöṽéŕéð.···············]"
+
+msgid "The personal configuration directory is not owned by you."
+msgstr "[Ţĥé þéŕšöñàļ çöñƒîĝûŕàţîöñ ðîŕéçţöŕÿ îš ñöţ öŵñéð ƀÿ ÿöû.··················]"
+
+msgid "The personal configuration directory must be absolute."
+msgstr "[Ţĥé þéŕšöñàļ çöñƒîĝûŕàţîöñ ðîŕéçţöŕÿ ɱûšţ ƀé àƀšöļûţé.·················]"
+
+msgid "The previous display settings could not be fully restored. Reconnect the display and try again."
+msgstr "[Ţĥé þŕéṽîöûš ðîšþļàÿ šéţţîñĝš çöûļð ñöţ ƀé ƒûļļÿ ŕéšţöŕéð. Ŕéçöññéçţ ţĥé ðîšþļàÿ àñð ţŕÿ àĝàîñ.································]"
+
+msgid "The previous display settings have been restored."
+msgstr "[Ţĥé þŕéṽîöûš ðîšþļàÿ šéţţîñĝš ĥàṽé ƀééñ ŕéšţöŕéð.················]"
+
+msgid "The remaining display was turned back on."
+msgstr "[Ţĥé ŕéɱàîñîñĝ ðîšþļàÿ ŵàš ţûŕñéð ƀàçķ öñ.·············]"
+
+msgid "The saved lid setting is not valid."
+msgstr "[Ţĥé šàṽéð ļîð šéţţîñĝ îš ñöţ ṽàļîð.···········]"
+
+msgid "The saved power settings are not valid."
+msgstr "[Ţĥé šàṽéð þöŵéŕ šéţţîñĝš àŕé ñöţ ṽàļîð.············]"
+
+msgid "The screen timers are not running. Apply a setting to try again."
+msgstr "[Ţĥé šçŕééñ ţîɱéŕš àŕé ñöţ ŕûññîñĝ. Àþþļÿ à šéţţîñĝ ţö ţŕÿ àĝàîñ.·····················]"
+
+msgid "The selected display is no longer connected."
+msgstr "[Ţĥé šéļéçţéð ðîšþļàÿ îš ñö ļöñĝéŕ çöññéçţéð.··············]"
+
+msgid "The startup directory is not owned by you."
+msgstr "[Ţĥé šţàŕţûþ ðîŕéçţöŕÿ îš ñöţ öŵñéð ƀÿ ÿöû.·············]"
+
+msgid "The startup entry is not a personal regular file."
+msgstr "[Ţĥé šţàŕţûþ éñţŕÿ îš ñöţ à þéŕšöñàļ ŕéĝûļàŕ ƒîļé.················]"
+
+msgid "The startup entry is not an application."
+msgstr "[Ţĥé šţàŕţûþ éñţŕÿ îš ñöţ àñ àþþļîçàţîöñ.············]"
+
+msgid "The startup entry is too large."
+msgstr "[Ţĥé šţàŕţûþ éñţŕÿ îš ţöö ļàŕĝé.·········]"
+
+msgid "The stopwatch has 100 laps; reset to record more"
+msgstr "[Ţĥé šţöþŵàţçĥ ĥàš 100 ļàþš; ŕéšéţ ţö ŕéçöŕð ɱöŕé···············]"
+
+msgid "The system could not apply the power setting."
+msgstr "[Ţĥé šÿšţéɱ çöûļð ñöţ àþþļÿ ţĥé þöŵéŕ šéţţîñĝ.··············]"
+
+msgid "The world clock limit is 24"
+msgstr "[Ţĥé ŵöŕļð çļöçķ ļîɱîţ îš 24········]"
+
+msgid "Their login wallet may still use the previous password."
+msgstr "[Ţĥéîŕ ļöĝîñ ŵàļļéţ ɱàÿ šţîļļ ûšé ţĥé þŕéṽîöûš þàššŵöŕð.··················]"
+
+msgid "There is no display change to keep."
+msgstr "[Ţĥéŕé îš ñö ðîšþļàÿ çĥàñĝé ţö ķééþ.···········]"
+
+msgid "This VPN type needs its NetworkManager plugin."
+msgstr "[Ţĥîš ṼÞÑ ţÿþé ñééðš îţš ÑéţŵöŕķṀàñàĝéŕ þļûĝîñ.···············]"
+
+msgid "This app already has a personal startup entry. Check it before adding the app again."
+msgstr "[Ţĥîš àþþ àļŕéàðÿ ĥàš à þéŕšöñàļ šţàŕţûþ éñţŕÿ. Çĥéçķ îţ ƀéƒöŕé àððîñĝ ţĥé àþþ àĝàîñ.····························]"
+
+msgid "This battery does not expose a charge limit."
+msgstr "[Ţĥîš ƀàţţéŕÿ ðöéš ñöţ éẋþöšé à çĥàŕĝé ļîɱîţ.··············]"
+
+msgid "This connection is no longer available."
+msgstr "[Ţĥîš çöññéçţîöñ îš ñö ļöñĝéŕ àṽàîļàƀļé.············]"
+
+msgid "This display change applies until the session ends."
+msgstr "[Ţĥîš ðîšþļàÿ çĥàñĝé àþþļîéš ûñţîļ ţĥé šéššîöñ éñðš.················]"
+
+msgid "This file has not been uploaded."
+msgstr "[Ţĥîš ƒîļé ĥàš ñöţ ƀééñ ûþļöàðéð.··········]"
+
+msgid "Toggle fullscreen"
+msgstr "[Ţöĝĝļé ƒûļļšçŕééñ····]"
+
+msgid "Toggle overview"
+msgstr "[Ţöĝĝļé öṽéŕṽîéŵ····]"
+
+msgid "Too many clock entries"
+msgstr "[Ţöö ɱàñÿ çļöçķ éñţŕîéš······]"
+
+msgid "Tray applications"
+msgstr "[Ţŕàÿ àþþļîçàţîöñš····]"
+
+msgid "Turn this display on before changing its settings."
+msgstr "[Ţûŕñ ţĥîš ðîšþļàÿ öñ ƀéƒöŕé çĥàñĝîñĝ îţš šéţţîñĝš.················]"
+
+msgid "Unavailable"
+msgstr "[Ûñàṽàîļàƀļé··]"
+
+msgid "Unexpected startup argument."
+msgstr "[Ûñéẋþéçţéð šţàŕţûþ àŕĝûɱéñţ.········]"
+
+msgid "Unknown clock command"
+msgstr "[Ûñķñöŵñ çļöçķ çöɱɱàñð······]"
+
+msgid "Unknown power setting."
+msgstr "[Ûñķñöŵñ þöŵéŕ šéţţîñĝ.······]"
+
+msgid "Unknown startup action."
+msgstr "[Ûñķñöŵñ šţàŕţûþ àçţîöñ.·······]"
+
+msgid "Unknown time zone"
+msgstr "[Ûñķñöŵñ ţîɱé žöñé····]"
+
+msgid "Unknown user"
+msgstr "[Ûñķñöŵñ ûšéŕ···]"
+
+msgid "Unsafe clock state file"
+msgstr "[Ûñšàƒé çļöçķ šţàţé ƒîļé·······]"
+
+msgid "Unsafe clock state lock"
+msgstr "[Ûñšàƒé çļöçķ šţàţé ļöçķ·······]"
+
+msgid "Unsupported clock state version"
+msgstr "[Ûñšûþþöŕţéð çļöçķ šţàţé ṽéŕšîöñ·········]"
+
+msgid "Update channel"
+msgstr "[Ûþðàţé çĥàññéļ···]"
+
+msgid "Use only letters, digits and symbols of the English (US) keyboard."
+msgstr "[Ûšé öñļÿ ļéţţéŕš, ðîĝîţš àñð šÿɱƀöļš öƒ ţĥé Éñĝļîšĥ (ÛŠ) ķéÿƀöàŕð.······················]"
+
+msgid "Use status, add, set or reset with --json."
+msgstr "[Ûšé šţàţûš, àðð, šéţ öŕ ŕéšéţ ŵîţĥ --ĵšöñ.·············]"
+
+msgid "VPN imported."
+msgstr "[ṼÞÑ îɱþöŕţéð.···]"
+
+msgid "Video player"
+msgstr "[Ṽîðéö þļàÿéŕ···]"
+
+msgid "Welcome to Emaki"
+msgstr "[Ŵéļçöɱé ţö Éɱàķî····]"
+
+msgid "Wi-Fi and VPN"
+msgstr "[Ŵî-Ƒî àñð ṼÞÑ···]"
+
+msgid "Your saved clocks could not be read. Start over to keep a backup and reset them."
+msgstr "[Ÿöûŕ šàṽéð çļöçķš çöûļð ñöţ ƀé ŕéàð. Šţàŕţ öṽéŕ ţö ķééþ à ƀàçķûþ àñð ŕéšéţ ţĥéɱ.··························]"
+
+msgid "Your startup entries could not be accessed. Check their permissions and try again."
+msgstr "[Ÿöûŕ šţàŕţûþ éñţŕîéš çöûļð ñöţ ƀé àççéššéð. Çĥéçķ ţĥéîŕ þéŕɱîššîöñš àñð ţŕÿ àĝàîñ.···························]"
+
+msgid "a time zone name of the tz database (Europe/Berlin, UTC)"
+msgstr "[à ţîɱé žöñé ñàɱé öƒ ţĥé ţž ðàţàƀàšé (Éûŕöþé/Ɓéŕļîñ, ÛŢÇ)··················]"
+
+msgid "an installed UTF-8 locale (en_US.UTF-8)"
+msgstr "[àñ îñšţàļļéð ÛŢƑ-8 ļöçàļé (éñ_ÛŠ.ÛŢƑ-8)············]"
+
+msgid "an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language"
+msgstr "[àñ îñšţàļļéð ÛŢƑ-8 ļöçàļé ƒöŕ ñûɱƀéŕš, ðàţéš, ɱöñéÿ, ûñîţš àñð þàþéŕ; éɱþţÿ ƒöļļöŵš ţĥé ļàñĝûàĝé································]"
+
+msgid "emaki-settings-wallpaper: wallpaper apply or verification failed"
+msgstr "[éɱàķî-šéţţîñĝš-ŵàļļþàþéŕ: ŵàļļþàþéŕ àþþļÿ öŕ ṽéŕîƒîçàţîöñ ƒàîļéð·····················]"
+
+msgid "invalid block tree"
+msgstr "[îñṽàļîð ƀļöçķ ţŕéé·····]"
+
+msgid "missing or unsafe runtime directory"
+msgstr "[ɱîššîñĝ öŕ ûñšàƒé ŕûñţîɱé ðîŕéçţöŕÿ···········]"
+
+#, python-brace-format
+msgid "read the machine: emaki-machine-settings get {value1} --json"
+msgstr "[ŕéàð ţĥé ɱàçĥîñé: éɱàķî-ɱàçĥîñé-šéţţîñĝš ĝéţ {value1} --ĵšöñ···················]"
+
+msgid "set the before value again to go back once that read shows the change; do not repeat the change blindly"
+msgstr "[šéţ ţĥé ƀéƒöŕé ṽàļûé àĝàîñ ţö ĝö ƀàçķ öñçé ţĥàţ ŕéàð šĥöŵš ţĥé çĥàñĝé; ðö ñöţ ŕéþéàţ ţĥé çĥàñĝé ƀļîñðļÿ···································]"
+
+msgid "unsafe lock directory"
+msgstr "[ûñšàƒé ļöçķ ðîŕéçţöŕÿ······]"
+
+msgid "unsafe lock file"
+msgstr "[ûñšàƒé ļöçķ ƒîļé····]"
+
+#, python-brace-format
+msgid "{total:.1f} GiB · {free:.1f} GiB free"
+msgstr "[{total:.1f} ĜîƁ · {free:.1f} ĜîƁ ƒŕéé···········]"

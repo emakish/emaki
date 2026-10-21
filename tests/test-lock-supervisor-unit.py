@@ -510,10 +510,11 @@ def run():
                 assert lock.runtime_directory() != first
         captured = []
         def fake_spawn(*args, **kwargs): captured.append(kwargs['env']); return Child()
-        with patch.dict(os.environ, LC_ALL='ru_RU.UTF-8', LANG='ru_RU.UTF-8', LC_CTYPE='ru_RU.UTF-8', WAYLAND_DEBUG='1', MALLOC_CONF='thp:always'):
+        with patch.dict(os.environ, LC_ALL='ru_RU.UTF-8', LANG='ru_RU.UTF-8', LC_CTYPE='ru_RU.UTF-8', WAYLAND_DEBUG='1', MALLOC_CONF='thp:always', EMAKI_LANGUAGE='', LANGUAGE=''):
             with patch.object(lock.subprocess, 'Popen', fake_spawn), patch.object(lock, 'process_identity', return_value={'start': 'fixture', 'boot': 'fixture'}):
                 lock.Supervisor(directory).spawn()
         assert captured[0]['LC_MESSAGES'] == 'C' and 'LC_ALL' not in captured[0]
+        assert captured[0]['EMAKI_LANGUAGE'] == 'ru_RU.UTF-8'
         assert captured[0]['LC_CTYPE'] == 'ru_RU.UTF-8' and captured[0]['LANG'] == 'ru_RU.UTF-8'
         assert 'WAYLAND_DEBUG' not in captured[0]
         assert captured[0]['MALLOC_CONF'] == 'thp:always'

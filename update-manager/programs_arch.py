@@ -1,6 +1,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Read repository metadata and preview full repository installation transactions."""
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from contextlib import contextmanager
 import fcntl
 import hashlib
@@ -25,9 +37,9 @@ NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9@._+\-]*\Z')
 
 class MetadataUnavailable(RuntimeError):
     def __init__(self, repositories=()):
-        detail = ('Repository metadata is unavailable: ' + ', '.join(repositories) + '.'
-                  if repositories else 'Repository metadata is incomplete.')
-        super().__init__(detail + ' Refresh the catalog and try again.')
+        detail = (_('Repository metadata is unavailable: {repositories}. Refresh the catalog and try again.').format(repositories=', '.join(repositories))
+                  if repositories else _('Repository metadata is incomplete. Refresh the catalog and try again.'))
+        super().__init__(detail)
 
 
 def cache_directory():
@@ -40,7 +52,7 @@ def cache_directory():
 def repository_names():
     names = run(['pacman-conf', '--repo-list']).splitlines()
     if not names or any(not NAME.fullmatch(name) for name in names):
-        raise ValueError('Invalid repository name')
+        raise ValueError(_('Invalid repository name'))
     return names
 
 
@@ -108,9 +120,9 @@ def private_database(cache=None, refresh=False, strict=True, warnings=None):
         repositories = repository_names()
         system = Path(run(['pacman-conf', 'DBPath']).strip())
         if not system.is_absolute():
-            raise ValueError('Invalid package database path')
+            raise ValueError(_('Invalid package database path'))
         if (system / 'db.lck').exists():
-            raise RuntimeError('Another package transaction is running. Wait for it to finish and try again.')
+            raise RuntimeError(_('Another package transaction is running. Wait for it to finish and try again.'))
         before = parse_versions(run(['pacman', '-Q']))
         with tempfile.TemporaryDirectory(prefix='repository-query-', dir=cache) as temporary:
             database = Path(temporary)
@@ -131,7 +143,7 @@ def private_database(cache=None, refresh=False, strict=True, warnings=None):
                 except (OSError, subprocess.SubprocessError):
                     refreshed = False
                 if not refreshed and warnings is not None:
-                    warnings.append('Repository metadata could not be refreshed. Cached programs are shown where available.')
+                    warnings.append(_('Repository metadata could not be refreshed. Cached programs are shown where available.'))
                 # Keep successful repositories even if a different remote failed.
                 for repository in repositories:
                     for suffix in ('.db', '.db.sig'):
@@ -142,28 +154,28 @@ def private_database(cache=None, refresh=False, strict=True, warnings=None):
                         else:
                             (saved / source.name).unlink(missing_ok=True)
             if ((system / 'db.lck').exists() or before != parse_versions(run(['pacman', '-Q']))):
-                raise RuntimeError('Installed packages changed. Refresh the catalog and try again.')
+                raise RuntimeError(_('Installed packages changed. Refresh the catalog and try again.'))
             unavailable = [name for name in repositories if not (database / 'sync' / (name + '.db')).is_file()]
             if strict and unavailable:
                 raise MetadataUnavailable(unavailable)
             yield database
             if (system / 'db.lck').exists() or before != parse_versions(run(['pacman', '-Q'])):
-                raise RuntimeError('Installed packages changed. Refresh the catalog and try again.')
+                raise RuntimeError(_('Installed packages changed. Refresh the catalog and try again.'))
 
 
 def validate_target(target):
     if not isinstance(target, str) or len(target) > 512:
-        raise ValueError('Select one repository program.')
+        raise ValueError(_('Select one repository program.'))
     pieces = target.split('/')
     if len(pieces) != 2 or any(not NAME.fullmatch(piece) for piece in pieces):
-        raise ValueError('Select one repository program.')
+        raise ValueError(_('Select one repository program.'))
     return pieces
 
 
 def run(arguments, timeout=60):
     result = subprocess.run(arguments, capture_output=True, text=True, cwd='/', env=ENV, timeout=timeout)
     if result.returncode:
-        raise RuntimeError('Repository package information could not be read.')
+        raise RuntimeError(_('Repository package information could not be read.'))
     return result.stdout
 
 
@@ -172,7 +184,7 @@ def parse_versions(text):
     for line in text.splitlines():
         name, version = line.split(maxsplit=1)
         if not NAME.fullmatch(name) or not version:
-            raise ValueError('Invalid installed package record')
+            raise ValueError(_('Invalid installed package record'))
         result[name] = version
     return result
 
@@ -197,7 +209,7 @@ def parse_desc(text, repository):
     name = field('NAME')
     validate_target(repository + '/' + name)
     if not field('VERSION'):
-        raise ValueError('Missing package version')
+        raise ValueError(_('Missing package version'))
     return {'repository': repository, 'package': name, 'version': field('VERSION'),
             'summary': field('DESC'), 'licence': field('LICENSE'),
             'optionalPackages': package_names('OPTDEPENDS'),
@@ -214,7 +226,7 @@ def inventory(database=None, warnings=None, cache=None, refresh=False):
     installed = parse_versions(run(['pacman', '-Q']))
     database = Path(run(['pacman-conf', 'DBPath']).strip()) if database is None else Path(database)
     if not database.is_absolute():
-        raise ValueError('Invalid package database path')
+        raise ValueError(_('Invalid package database path'))
     packages = {}
     for repository in repository_names():
         records = {}
@@ -224,13 +236,13 @@ def inventory(database=None, warnings=None, cache=None, refresh=False):
                     if not member.isfile() or not member.name.endswith('/desc'):
                         continue
                     if member.size > 1024 * 1024:
-                        raise ValueError('Oversized package metadata')
+                        raise ValueError(_('Oversized package metadata'))
                     with archive.extractfile(member) as stream:
                         package = parse_desc(stream.read().decode('utf-8'), repository)
                     records[repository + '/' + package['package']] = package
         except (OSError, ValueError, tarfile.TarError):
             if warnings is not None:
-                warnings.append('Repository metadata is unavailable: ' + repository + '.')
+                warnings.append(_('Repository metadata is unavailable: {repository}.').format(repository=repository))
             continue
         packages.update(records)
     return packages, installed
@@ -244,11 +256,11 @@ def parse_plan(text):
             continue
         fields = line.split('|')
         if len(fields) != 4:
-            raise ValueError('Invalid transaction record')
+            raise ValueError(_('Invalid transaction record'))
         repository, name, version, size = fields
         validate_target(repository + '/' + name)
         if not version:
-            raise ValueError('Missing transaction version')
+            raise ValueError(_('Missing transaction version'))
         packages.append({'repository': repository, 'package': name, 'version': version,
                          'downloadSize': int(size) if size.isascii() and size.isdigit() else None})
     return sorted(packages, key=lambda item: (item['repository'], item['package']))
@@ -278,9 +290,9 @@ def install_targets(target, packages, devices=None):
         by_name.setdefault(key.split('/', 1)[1], key)
     names = graphics_policy().package_selection(graphics_devices() if devices is None else devices, by_name)
     if not names:
-        raise ValueError('This hardware uses the built-in graphics driver. NVIDIA support is not needed.')
+        raise ValueError(_('This hardware uses the built-in graphics driver. NVIDIA support is not needed.'))
     if any(name not in by_name for name in names):
-        raise ValueError('The NVIDIA support packages are not available. Refresh repository updates and try again.')
+        raise ValueError(_('The NVIDIA support packages are not available. Refresh repository updates and try again.'))
     return [target if name == 'emaki-nvidia' else by_name[name] for name in names]
 
 
@@ -292,7 +304,7 @@ def install_plan(target, cache=None, refresh=False, database=None):
     packages, installed = inventory(database)
     if target not in packages:
         return {'ok': False, 'code': 'unavailable', 'action': 'install', 'kind': 'arch', 'target': target,
-                'message': 'This repository program is no longer available.'}
+                'message': _('This repository program is no longer available.')}
     try:
         targets = install_targets(target, packages)
     except ValueError as error:
@@ -304,4 +316,4 @@ def install_plan(target, cache=None, refresh=False, database=None):
     token = hashlib.sha256(json.dumps(state, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return {'ok': True, 'code': 'ready', 'action': 'install', 'kind': 'arch', 'target': target,
             'targets': targets, 'packages': planned, 'token': token, 'fullUpgrade': True,
-            'message': 'Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change.'}
+            'message': _('Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change.')}

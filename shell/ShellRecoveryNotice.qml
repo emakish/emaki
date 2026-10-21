@@ -58,9 +58,9 @@ Scope {
                     const notice = JSON.parse(text);
                     // The action only opens the report window; nothing is sent from a notice.
                     if (typeof notice.backup === "string" && notice.backup.length > 0)
-                        recovery.store.offer("Panel recovery", "Your panel customisation failed to load.", "It was set aside (" + notice.backup + "). Emaki is using its own panel until you sign in again.", "report:shell", "Report…");
+                        recovery.store.offer("Panel recovery", qsTranslate("ShellRecoveryNotice", "Your panel customisation failed to load."), qsTranslate("ShellRecoveryNotice", "It was set aside (%1). Emaki is using its own panel until you sign in again.").arg(notice.backup), "report:shell", qsTranslate("ShellRecoveryNotice", "Report…"));
                     else if (notice.crashed === true)
-                        recovery.store.offer("Panel recovery", "The panel stopped and was restarted.", "You can report the problem. Nothing is sent until you review the report and choose Send.", "report:shell", "Report…");
+                        recovery.store.offer("Panel recovery", qsTranslate("ShellRecoveryNotice", "The panel stopped and was restarted."), qsTranslate("ShellRecoveryNotice", "You can report the problem. Nothing is sent until you review the report and choose Send."), "report:shell", qsTranslate("ShellRecoveryNotice", "Report…"));
                 } catch (_) {}
             }
         }

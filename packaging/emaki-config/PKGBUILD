@@ -4,15 +4,15 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.10.0
-pkgrel=1
+pkgver=0.11.0
+pkgrel=3
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later' 'Bitstream-Vera' 'OFL-1.1' 'GPL-2.0-or-later')  # GPL-2.0-or-later: Plymouth's prompt pictures
 depends=(
     'pacman' 'pacman-contrib' 'fakeroot' 'reflector' 'polkit'
-    'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative'
+    'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative>=6.12' 'qt6-base>=6.12.0' 'qt6-base<6.13'
     'niri-emaki=26.04-28' 'quickshell-emaki>=0.3.1-13'
     'python' 'python-gobject' 'python-pillow' 'gtk3' 'libnotify'
     'appstream' 'archlinux-appstream-data' 'kimageformats' 'libjxl'
@@ -31,11 +31,15 @@ depends=(
     'plymouth'  # the startup logo: boot/plymouth
     'zsh' 'zsh-autosuggestions' 'zsh-syntax-highlighting'  # the default shell for new accounts: zsh/
 )
-makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools' 'cmake' 'gcc' 'pkgconf')
+makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools' 'qt6-tools' 'gettext' 'cmake' 'gcc' 'pkgconf')
 checkdepends=('niri' 'nodejs')  # nodejs: shell JavaScript tests in make check
 optdepends=('swayidle: optional emaki-idle policy'
             'python-yaml: validate optional AppStream YAML catalogs')
 conflicts=('emaki-core')
+# The translation plugin uses Qt private symbols: build() refuses any other Qt, and
+# emaki-qt-check compares this record with the installed qt6-base.
+_qtver=6.12.0
+provides=("emaki-i18n-qt-build=$_qtver")
 backup=('etc/pam.d/emaki-sudo' 'etc/sudoers.d/10-emaki-wheel'
         'etc/niri/config.kdl' 'etc/xdg/hypr/hyprlock.conf' 'etc/xdg/fastfetch/config.jsonc'
         'etc/xdg/kwalletrc' 'etc/xdg/mimeapps.list' 'etc/xdg/kdeglobals' 'etc/xdg/dolphinrc' 'etc/xdg/qt6ct/qt6ct.conf'
@@ -92,7 +96,13 @@ prepare() {
 
 build() {
     _emaki_source
-    _emaki_make build
+    _emaki_make build || return
+    local qt_build_version
+    qt_build_version=$(pkg-config --modversion Qt6Core) || return
+    if [[ $qt_build_version != "$_qtver" ]]; then
+        printf 'The translation plugin must be built with Qt %s (found %s).\n' "$_qtver" "$qt_build_version" >&2
+        return 1
+    fi
 }
 
 check() {

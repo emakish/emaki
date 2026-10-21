@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Run the NTFS writable-open checks against a disposable snapshot only."""
+from .i18n import _
 from pathlib import Path
 import re
 import tempfile
@@ -8,9 +9,7 @@ import tempfile
 from .errors import Code, InstallError, require
 
 
-REFUSAL = ('Emaki could not confirm that the Windows disk is safe to shrink. '
-           'Start Windows, let it check the disk if it asks, then choose Shut down (not Restart) '
-           'and start from the USB stick again.')
+REFUSAL = (_('Emaki could not confirm that the Windows disk is safe to shrink. Start Windows, let it check the disk if it asks, then choose Shut down (not Restart) and start from the USB stick again.'))
 CLEANUP_REFUSAL = ('A safety check could not finish cleanly. Windows was not changed. '
                    'Restart the computer from the USB stick and try again.')
 
@@ -22,7 +21,7 @@ def _remove_snapshot(runner, name):
     kernel must release the snapshot before either backing loop is detached.
     """
     settle_failure = None
-    for _ in range(3):
+    for ignored in range(3):
         try:
             runner.run(['udevadm', 'settle', '--timeout=5'], timeout=5)
         except (OSError, RuntimeError) as exc:

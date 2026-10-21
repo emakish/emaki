@@ -26,7 +26,7 @@ RUNTIME_ROOTS = (
     'packaging/emaki-apps', 'packaging/emaki-desktop', 'packaging/emaki-keyring',
     'packaging/emaki-mirrorlist', 'packaging/emaki-installer', 'packaging/emaki-nvidia',
     'packaging/snapguard', 'packaging/emaki-shim-signed', 'iso/profile/airootfs', 'crates',
-    'update-manager', 'notes', 'capture', 'zsh', 'packaging/emaki-font-iosevka',
+    'update-manager', 'notes', 'capture', 'zsh', 'packaging/emaki-font-iosevka', 'i18n',
 )
 LOCAL_PACKAGES = ('emaki-installer', 'emaki-apps', 'emaki-desktop',
                   'emaki-keyring', 'emaki-mirrorlist', 'emaki-nvidia', 'emaki-sudo-key',
@@ -35,7 +35,7 @@ LOCAL_PACKAGES = ('emaki-installer', 'emaki-apps', 'emaki-desktop',
 # Their installed contents are checked by tests/test-paths.py.
 GENERATED_PATH_MODULES = frozenset((
     'scripts/emaki_paths.py', 'scripts/paths',
-    'shell/Platform.qml', 'shell/helpers/emaki_paths.py',
+    'shell/Platform.qml', 'shell/helpers/emaki_paths.py', 'shell/helpers/emaki_i18n.py',
 ))
 
 
@@ -61,7 +61,8 @@ def candidates(root):
     for directory in RUNTIME_ROOTS:
         for path in (root / directory).rglob('*'):
             relative = path.relative_to(root)
-            if '__pycache__' in relative.parts or path.suffix in ('.pyc', '.pyo'):
+            if ('__pycache__' in relative.parts or path.suffix in ('.pyc', '.pyo')
+                    or relative.parts[:2] == ('i18n', 'locale')):
                 continue
             # Build output is never a source; all other untracked files count too.
             if directory.startswith('packaging/') and any(
@@ -130,6 +131,12 @@ export -f install cp
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text('delivery staging placeholder\n')
         (sudo_build / 'install-paths').write_text('/usr|/usr/share/emaki|/usr/libexec/emaki\n')
+        i18n_build = work / 'i18n-build'
+        plugin = i18n_build / 'qml/Emaki/I18n'
+        plugin.mkdir(parents=True)
+        (plugin / 'libemakii18nplugin.so').write_text('delivery staging placeholder\n')
+        (plugin / 'qmldir').write_bytes((root / 'i18n/native/qmldir').read_bytes())
+        (i18n_build / 'install-paths').write_text('/usr|/usr/share/emaki/locale\n')
         environment = {key: value for key, value in os.environ.items()
                        if key not in ('MAKEFLAGS', 'MFLAGS', 'MAKELEVEL', 'DESTDIR',
                                       'BASH_ENV', 'EMAKI_SOURCE_COMMIT')}
@@ -144,7 +151,7 @@ export -f install cp
              'SHELL=/bin/bash', f'DESTDIR={stage}', 'PREFIX=/usr', f'CORE_BIN={core}',
              'INSTALL_SUDO_TURN_INTEGRATION=0', f'CAPTURE_BIN={recorder}',
              'CORE_SRC=', 'SHADERS=', f'SUDO_BUILD={sudo_build}', 'SUDO_SRC=',
-             'SUDO_ARTIFACTS=', 'EMAKI_COMMIT=' + '0' * 40], root, environment)
+             'SUDO_ARTIFACTS=', f'I18N_BUILD={i18n_build}', 'EMAKI_COMMIT=' + '0' * 40], root, environment)
         notice = stage / 'usr/share/licenses/emaki-config/THIRD-PARTY-NOTICES'
         notice.parent.mkdir(parents=True, exist_ok=True)
         notice.write_text('delivery staging placeholder\n')

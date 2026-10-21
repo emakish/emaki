@@ -3,9 +3,15 @@
 [Desktop Entry]
 Type=Application
 Name=Report a problem
+Name[es]=Reportar un problema
+Name[pt_BR]=Relatar um problema
 Comment=Describe a problem and review what will be sent before anything leaves this computer
+Comment[es]=Describe un problema y revisa lo que se enviará antes de que algo salga de esta computadora
+Comment[pt_BR]=Descreva um problema e revise o que será enviado antes que algo saia deste computador
 Exec=emaki-shell call report open other
 Icon=emaki-report
 Terminal=false
 Categories=Utility;
 Keywords=report;problem;bug;issue;crash;feedback;help;
+Keywords[es]=reportar;problema;error;fallo;comentarios;ayuda;
+Keywords[pt_BR]=relatar;problema;erro;falha;comentários;ajuda;

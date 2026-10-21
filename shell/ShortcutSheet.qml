@@ -75,7 +75,7 @@ FocusScope {
         id: heading
         x: 24
         y: 20
-        text: "Keyboard shortcuts"
+        text: qsTranslate("ShortcutSheet", "Keyboard shortcuts")
         font.family: ShellPalette.uiFont
         font.pixelSize: 22
         color: LiquidPalette.ink
@@ -85,7 +85,7 @@ FocusScope {
         x: 24
         y: heading.y + heading.height + 8
         width: parent.width - 48
-        text: "Emaki defaults · Personal changes may differ."
+        text: qsTranslate("ShortcutSheet", "Emaki defaults · Personal changes may differ.")
         font.family: ShellPalette.uiFont
         font.pixelSize: 13
         color: LiquidPalette.plateDim
@@ -109,7 +109,7 @@ FocusScope {
             font.pixelSize: 15
             color: LiquidPalette.ink
             clip: true
-            Accessible.name: "Search shortcuts"
+            Accessible.name: qsTranslate("ShortcutSheet", "Search shortcuts")
             Keys.onDownPressed: {
                 (list.count ? list : close).forceActiveFocus();
                 list.currentIndex = 0;
@@ -118,7 +118,7 @@ FocusScope {
             onTextChanged: list.currentIndex = 0
             Text {
                 visible: !search.text
-                text: "Search shortcuts"
+                text: qsTranslate("ShortcutSheet", "Search shortcuts")
                 color: LiquidPalette.plateDim
                 font: search.font
             }
@@ -209,7 +209,7 @@ FocusScope {
         Text {
             anchors.centerIn: parent
             visible: !list.count
-            text: sheet.loadState === "unavailable" ? "Shortcuts could not be read." : sheet.loadState === "loading" ? "Loading shortcuts…" : "No matching shortcuts."
+            text: sheet.loadState === "unavailable" ? qsTranslate("ShortcutSheet", "Shortcuts could not be read.") : sheet.loadState === "loading" ? qsTranslate("ShortcutSheet", "Loading shortcuts…") : qsTranslate("ShortcutSheet", "No matching shortcuts.")
             color: LiquidPalette.plateDim
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
@@ -220,7 +220,7 @@ FocusScope {
         objectName: "shortcutClose"
         x: sheet.width - width - 24
         y: sheet.height - height - 20
-        text: "Close"
+        text: qsTranslate("ShortcutSheet", "Close")
         onClicked: sheet.closeRequested()
         Keys.onUpPressed: {
             if (list.count) {

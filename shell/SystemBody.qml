@@ -45,22 +45,22 @@ Item {
     property string hiddenName: ""
     property string hiddenPassword: ""
     readonly property var wifiErrors: ({
-            wifi_restart_failed: "Wi-Fi could not restart. Try again later.",
-            wrong_password: "Wrong password. Try again.",
-            auth_timeout: "The network did not answer in time. Try again.",
-            network_lost: "The network disappeared while connecting.",
-            network_connection_failed: "Couldn’t connect to this network.",
-            password_or_security_unsupported: "Password must be 8–63 characters; only open, WPA-PSK and WPA3 networks are supported here.",
-            network_gone: "This network is no longer in range.",
-            invalid_ssid: "Enter the network name (up to 32 bytes).",
-            invalid_password: "Password must be 8–63 characters, or leave it empty for an open network.",
-            activation_failed: "Couldn’t connect. Check the name and password.",
-            network_not_found: "No network with that name was found.",
-            nm_not_running: "Networking isn’t running (NetworkManager).",
-            password_required: "This network needs a password.",
-            timeout: "The connection attempt timed out.",
-            no_handler: "No browser is set for http links.",
-            open_failed: "The browser could not be opened."
+            wifi_restart_failed: qsTranslate("SystemBody", "Wi-Fi could not restart. Try again later."),
+            wrong_password: qsTranslate("SystemBody", "Wrong password. Try again."),
+            auth_timeout: qsTranslate("SystemBody", "The network did not answer in time. Try again."),
+            network_lost: qsTranslate("SystemBody", "The network disappeared while connecting."),
+            network_connection_failed: qsTranslate("SystemBody", "Couldn’t connect to this network."),
+            password_or_security_unsupported: qsTranslate("SystemBody", "Password must be 8–63 characters; only open, WPA-PSK and WPA3 networks are supported here."),
+            network_gone: qsTranslate("SystemBody", "This network is no longer in range."),
+            invalid_ssid: qsTranslate("SystemBody", "Enter the network name (up to 32 bytes)."),
+            invalid_password: qsTranslate("SystemBody", "Password must be 8–63 characters, or leave it empty for an open network."),
+            activation_failed: qsTranslate("SystemBody", "Couldn’t connect. Check the name and password."),
+            network_not_found: qsTranslate("SystemBody", "No network with that name was found."),
+            nm_not_running: qsTranslate("SystemBody", "Networking isn’t running (NetworkManager)."),
+            password_required: qsTranslate("SystemBody", "This network needs a password."),
+            timeout: qsTranslate("SystemBody", "The connection attempt timed out."),
+            no_handler: qsTranslate("SystemBody", "No browser is set for http links."),
+            open_failed: qsTranslate("SystemBody", "The browser could not be opened.")
         })
     property var selectedTray: null
     property var selectedSub: null
@@ -249,7 +249,7 @@ Item {
         if (bus === "bluetooth")
             return {
                 name: description,
-                detail: "Bluetooth"
+                detail: qsTranslate("SystemBody", "Bluetooth")
             };
         if (profile && description.endsWith(" " + profile))
             return {
@@ -258,7 +258,7 @@ Item {
             };
         return {
             name: description,
-            detail: bus === "usb" ? "USB" : n?.isSink ? "Output" : "Input"
+            detail: bus === "usb" ? "USB" : n?.isSink ? qsTranslate("SystemBody", "Output") : qsTranslate("SystemBody", "Input")
         };
     }
     function signalOf(n: var): real {
@@ -287,7 +287,7 @@ Item {
             return Array.from(backend?.networks ?? []).slice().sort((a, b) => (b.connected ? 1 : 0) - (a.connected ? 1 : 0) || signalOf(b) - signalOf(a)).map(n => entry({
                     key: "net-" + n.key,
                     name: n.name,
-                    detail: n.busy ? "Connecting…" : n.connected ? (backend.connectivity === "portal" ? "Connected · sign-in required" : backend.connectivity === "limited" || backend.connectivity === "none" ? "Connected · no internet" : "Connected") : n.known ? "Saved" : n.open ? "Open network" : "Secured",
+                    detail: n.busy ? qsTranslate("SystemBody", "Connecting…") : n.connected ? (backend.connectivity === "portal" ? qsTranslate("SystemBody", "Connected · sign-in required") : backend.connectivity === "limited" || backend.connectivity === "none" ? qsTranslate("SystemBody", "Connected · no internet") : qsTranslate("SystemBody", "Connected")) : n.known ? qsTranslate("SystemBody", "Saved") : n.open ? qsTranslate("SystemBody", "Open network") : qsTranslate("SystemBody", "Secured"),
                     action: "network",
                     value: n.key,
                     icon: SystemIcons.signal(n.signal),
@@ -302,18 +302,18 @@ Item {
             return list.filter(d => d.paired).map(d => entry({
                     key: "dev-" + d.key,
                     name: d.name,
-                    detail: d.connected ? "Connected" + (d.battery >= 0 ? " · " + d.battery + "%" : "") : "Not connected",
+                    detail: d.connected ? qsTranslate("SystemBody", "Connected") + (d.battery >= 0 ? " · " + d.battery + "%" : "") : qsTranslate("SystemBody", "Not connected"),
                     action: d.connected ? "bt-disconnect" : "bt-connect",
                     value: d.key,
                     icon: SystemIcons.bluetoothDevice(d.icon ?? ""),
                     fallback: "bt",
                     active: d.connected === true,
-                    secondary: "Forget",
+                    secondary: qsTranslate("SystemBody", "Forget"),
                     secondaryAction: "bt-forget"
                 })).concat(list.filter(d => !d.paired).map(d => entry({
                     key: "near-" + d.key,
                     name: d.name,
-                    detail: d.pairing ? "Pairing…" : failed && pairTarget === d.key ? "Couldn’t pair. Make sure it’s in pairing mode." : "Click to pair",
+                    detail: d.pairing ? qsTranslate("SystemBody", "Pairing…") : failed && pairTarget === d.key ? qsTranslate("SystemBody", "Couldn’t pair. Make sure it’s in pairing mode.") : qsTranslate("SystemBody", "Click to pair"),
                     action: d.pairing ? "bt-cancel-pair" : "bt-pair",
                     value: d.key,
                     icon: SystemIcons.bluetoothDevice(d.icon ?? ""),
@@ -324,9 +324,9 @@ Item {
             return (service.profiles.profiles ?? []).map(p => entry({
                     key: "profile-" + p,
                     name: ({
-                            "power-saver": "Power saver",
-                            balanced: "Balanced",
-                            performance: "Performance"
+                            "power-saver": qsTranslate("SystemBody", "Power saver"),
+                            balanced: qsTranslate("SystemBody", "Balanced"),
+                            performance: qsTranslate("SystemBody", "Performance")
                         })[p] ?? p,
                     action: p === service.profiles.current ? "" : "profile",
                     value: p,
@@ -347,7 +347,7 @@ Item {
             return service.tray.items.map((t, i) => entry({
                     key: "tray-" + i,
                     name: t.title || t.id,
-                    detail: t.tooltipTitle && t.tooltipTitle !== (t.title || t.id) ? t.tooltipTitle : "Running",
+                    detail: t.tooltipTitle && t.tooltipTitle !== (t.title || t.id) ? t.tooltipTitle : qsTranslate("SystemBody", "Running"),
                     action: "tray",
                     value: i,
                     image: t.icon || ""
@@ -403,7 +403,7 @@ Item {
         for (const s of Array.from(backend?.streams ?? [])) {
             if (!s.audio)
                 continue;
-            const name = String(s.name || "Unknown app");
+            const name = String(s.name || qsTranslate("SystemBody", "Unknown app"));
             let g = groups.find(g => g.name === name);
             if (!g) {
                 g = {
@@ -421,7 +421,7 @@ Item {
                 g.details.push(String(s.detail));
         }
         return groups.map(g => Object.assign(g, {
-                detail: g.ids.length > 1 ? g.ids.length + " streams" : g.details[0] ?? ""
+                detail: g.ids.length > 1 ? Translation.englishPlural(qsTranslate("SystemBody", "%n stream(s)", "", g.ids.length), g.ids.length) : g.details[0] ?? ""
             }));
     }
     function appIcon(name: string, icon: string): string {
@@ -433,44 +433,44 @@ Item {
     }
     function duration(seconds: real): string {
         const minutes = Math.round(seconds / 60);
-        return minutes >= 60 ? Math.floor(minutes / 60) + " h " + minutes % 60 + " min" : minutes + " min";
+        return minutes >= 60 ? qsTranslate("SystemBody", "%1 h %2 min").arg(Math.floor(minutes / 60).toFixed(0)).arg((minutes % 60).toFixed(0)) : qsTranslate("SystemBody", "%n min", "", minutes);
     }
     readonly property int batteryPercent: service.batteryPercent
     readonly property string batterySub: {
         if (batteryPercent < 0)
-            return "No battery";
+            return qsTranslate("SystemBody", "No battery");
         const b = backend?.battery;
         if (backend?.charging)
-            return batteryPercent + "% · Charging" + (b?.timeToFull > 0 ? " · full in " + duration(b.timeToFull) : "");
+            return b?.timeToFull > 0 ? qsTranslate("SystemBody", "%1% · Charging · full in %2").arg(batteryPercent).arg(duration(b.timeToFull)) : qsTranslate("SystemBody", "%1% · Charging").arg(batteryPercent);
         if (backend?.batteryPower)
-            return batteryPercent + "%" + (b?.timeToEmpty > 0 ? " · " + duration(b.timeToEmpty) + " remaining" : " · On battery");
-        return batteryPercent + "% · Connected to power";
+            return b?.timeToEmpty > 0 ? qsTranslate("SystemBody", "%1% · %2 remaining").arg(batteryPercent).arg(duration(b.timeToEmpty)) : qsTranslate("SystemBody", "%1% · On battery").arg(batteryPercent);
+        return qsTranslate("SystemBody", "%1% · Connected to power").arg(batteryPercent);
     }
-    readonly property string soundSub: backend?.audioReady ? (backend.sink ? audioName(backend.sink).name : "No output") : "Sound unavailable"
-    readonly property string wifiSub: !backend?.networkReady ? "Networking unavailable" : backend.wiredConnected ? "Wired · Connected" : !backend.wifiDevices.length ? "No Wi-Fi adapter" : !backend.wifiHardwareEnabled ? "Wi-Fi is hardware blocked" : !backend.wifiEnabled ? "Off" : connectedNetwork ? "Connected to " + connectedNetwork.name : "Not connected"
+    readonly property string soundSub: backend?.audioReady ? (backend.sink ? audioName(backend.sink).name : qsTranslate("SystemBody", "No output")) : qsTranslate("SystemBody", "Sound unavailable")
+    readonly property string wifiSub: !backend?.networkReady ? qsTranslate("SystemBody", "Networking unavailable") : backend.wiredConnected ? qsTranslate("SystemBody", "Wired · Connected") : !backend.wifiDevices.length ? qsTranslate("SystemBody", "No Wi-Fi adapter") : !backend.wifiHardwareEnabled ? qsTranslate("SystemBody", "Wi-Fi is hardware blocked") : !backend.wifiEnabled ? qsTranslate("SystemBody", "Off") : connectedNetwork ? qsTranslate("SystemBody", "Connected to %1").arg(connectedNetwork.name) : qsTranslate("SystemBody", "Not connected")
     readonly property string btSub: {
         const a = backend?.adapter;
         if (!a)
-            return "No Bluetooth adapter or service";
+            return qsTranslate("SystemBody", "No Bluetooth adapter or service");
         if (!a.enabled)
-            return "Off";
+            return qsTranslate("SystemBody", "Off");
         if (a.discoverable && a.name)
-            return "Discoverable as “" + a.name + "”";
+            return qsTranslate("SystemBody", "Discoverable as “%1”").arg(a.name);
         const connected = (backend.devices ?? []).filter(d => d.connected).length;
-        return connected ? connected + " connected" : "On";
+        return connected ? qsTranslate("SystemBody", "%n connected", "", connected) : qsTranslate("SystemBody", "On");
     }
     readonly property string nightDetail: stateNote("night", service.night.state)
     // Words for a service's state: an internal code never reaches the screen.
     function stateNote(what: string, s: string): string {
         switch (what) {
         case "night":
-            return s === "on" ? "On · warmer colors" : s === "off" ? "Off" : s === "not_installed" ? "Night Light isn’t installed (wlsunset)." : s === "starting" ? "Starting…" : s === "checking" ? "Checking…" : s === "disabled" ? "Not available in this session" : "Unavailable";
+            return s === "on" ? qsTranslate("SystemBody", "On · warmer colors") : s === "off" ? qsTranslate("SystemBody", "Off") : s === "not_installed" ? qsTranslate("SystemBody", "Night Light isn’t installed (wlsunset).") : s === "starting" ? qsTranslate("SystemBody", "Starting…") : s === "checking" ? qsTranslate("SystemBody", "Checking…") : s === "disabled" ? qsTranslate("SystemBody", "Not available in this session") : qsTranslate("SystemBody", "Unavailable");
         case "brightness":
-            return s === "ready" ? "Built-in display" : s === "unavailable" ? "No brightness control" : "Brightness can’t be changed right now.";
+            return s === "ready" ? qsTranslate("SystemBody", "Built-in display") : s === "unavailable" ? qsTranslate("SystemBody", "No brightness control") : qsTranslate("SystemBody", "Brightness can’t be changed right now.");
         case "tray":
-            return s === "active" ? service.tray.items.length + " running" : s === "owned_elsewhere" ? "The tray is shown by another program" : s === "disabled" ? "The tray is off in this session" : s === "checking" || s === "registering" ? "Starting…" : "The tray isn’t available.";
+            return s === "active" ? qsTranslate("SystemBody", "%n running", "", service.tray.items.length) : s === "owned_elsewhere" ? qsTranslate("SystemBody", "The tray is shown by another program") : s === "disabled" ? qsTranslate("SystemBody", "The tray is off in this session") : s === "checking" || s === "registering" ? qsTranslate("SystemBody", "Starting…") : qsTranslate("SystemBody", "The tray isn’t available.");
         case "vpn":
-            return s === "ready" || s === "unavailable" ? "" : "VPN connections couldn’t be listed.";
+            return s === "ready" || s === "unavailable" ? "" : qsTranslate("SystemBody", "VPN connections couldn’t be listed.");
         }
         return "";
     }
@@ -478,8 +478,8 @@ Item {
     // outcome counts only when niri's last action is a switch-layout, never another action's.
     function layoutNote(state: string, outcome: string): string {
         if (state === "niri_unavailable")
-            return "Layout switching isn’t available; use Super+Space.";
-        return state === "requested" && niri.actionKind === "switch-layout" && ["rejected", "unconfirmed", "error"].includes(outcome) ? "The layout switch wasn’t confirmed." : "";
+            return qsTranslate("SystemBody", "Layout switching isn’t available; use Super+Space.");
+        return state === "requested" && niri.actionKind === "switch-layout" && ["rejected", "unconfirmed", "error"].includes(outcome) ? qsTranslate("SystemBody", "The layout switch wasn’t confirmed.") : "";
     }
     // One line at the foot of the page: what the last action did (only when it needs words),
     // then what the page cannot do yet.
@@ -490,19 +490,19 @@ Item {
         if (onPage === "wifi" && wifiErrors[s])
             return wifiErrors[s];
         return ({
-                pending: "Working…",
-                busy: "Still busy with the last change.",
-                requested: "Requested.",
-                locked: "Screen locked.",
-                hibernate_unavailable: "Hibernation is unavailable.",
-                lock_failed: "The screen lock was not confirmed. Sleep was cancelled.",
-                confirmation_timeout: "The service did not confirm the change yet.",
-                pairing_failed: "Couldn’t pair.",
-                disabled: "This control is off in this session.",
-                unavailable: "The service is unavailable."
-            })[s] ?? "The change didn’t go through.";
+                pending: qsTranslate("SystemBody", "Working…"),
+                busy: qsTranslate("SystemBody", "Still busy with the last change."),
+                requested: qsTranslate("SystemBody", "Requested."),
+                locked: qsTranslate("SystemBody", "Screen locked."),
+                hibernate_unavailable: qsTranslate("SystemBody", "Hibernation is unavailable."),
+                lock_failed: qsTranslate("SystemBody", "The screen lock was not confirmed. Sleep was cancelled."),
+                confirmation_timeout: qsTranslate("SystemBody", "The service did not confirm the change yet."),
+                pairing_failed: qsTranslate("SystemBody", "Couldn’t pair."),
+                disabled: qsTranslate("SystemBody", "This control is off in this session."),
+                unavailable: qsTranslate("SystemBody", "The service is unavailable.")
+            })[s] ?? qsTranslate("SystemBody", "The change didn’t go through.");
     }
-    readonly property string note: page === "wifi" ? stateNote("vpn", service.vpn.state) : page === "bt" && rows.some(r => r.action === "bt-pair" || r.action === "bt-cancel-pair") ? "Confirm Bluetooth codes in the notification at the top of the screen; enter PINs in the Bluetooth dialog. While sharing your screen, open the notification drawer to read the request." : page === "kb" ? layoutNote(layoutState, niri.actionState) : page === "tray" && selectedSub ? "Deeper menus than one level are not shown." : ""
+    readonly property string note: page === "wifi" ? stateNote("vpn", service.vpn.state) : page === "bt" && rows.some(r => r.action === "bt-pair" || r.action === "bt-cancel-pair") ? qsTranslate("SystemBody", "Confirm Bluetooth codes in the notification at the top of the screen; enter PINs in the Bluetooth dialog. While sharing your screen, open the notification drawer to read the request.") : page === "kb" ? layoutNote(layoutState, niri.actionState) : page === "tray" && selectedSub ? qsTranslate("SystemBody", "Deeper menus than one level are not shown.") : ""
 
     // ---- Parts (system.js drawItem) ----
     component Label: Text {
@@ -1189,7 +1189,7 @@ Item {
                 width: parent.width
                 visible: body.page === "sound"
                 Title {
-                    text: "Sound"
+                    text: qsTranslate("SystemBody", "Sound")
                     sub: body.soundSub
                 }
                 PanelSlider {
@@ -1199,7 +1199,7 @@ Item {
                     icon: SystemIcons.sound(true, body.service.sinkVolume, body.service.sinkMuted)
                     fallback: body.service.sinkMuted ? "muted" : "sound"
                     iconPressable: true
-                    iconLabel: body.service.sinkMuted ? "Unmute" : "Mute"
+                    iconLabel: body.service.sinkMuted ? qsTranslate("SystemBody", "Unmute") : qsTranslate("SystemBody", "Mute")
                     off: body.service.sinkMuted
                     wheelSteps: true
                     onIconClicked: body.service.act("mute", null)
@@ -1214,7 +1214,7 @@ Item {
                     icon: body.backend?.source?.audio?.muted ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic"
                     fallback: "mic"
                     iconPressable: true
-                    iconLabel: body.backend?.source?.audio?.muted ? "Enable microphone" : "Mute microphone"
+                    iconLabel: body.backend?.source?.audio?.muted ? qsTranslate("SystemBody", "Enable microphone") : qsTranslate("SystemBody", "Mute microphone")
                     off: body.backend?.source?.audio?.muted ?? false
                     level: body.backend?.micMeter ? (body.backend?.micLevel ?? 0) : -1
                     onIconClicked: body.service.act("mic", null)
@@ -1225,7 +1225,7 @@ Item {
                     visible: body.streamGroups.length > 0
                 }
                 Section {
-                    text: "Apps"
+                    text: qsTranslate("SystemBody", "Apps")
                     visible: body.streamGroups.length > 0
                 }
                 Repeater {
@@ -1253,7 +1253,7 @@ Item {
                     height: 6
                 }
                 Section {
-                    text: "Output"
+                    text: qsTranslate("SystemBody", "Output")
                     visible: body.rows.some(r => r.action === "output")
                 }
                 Repeater {
@@ -1265,7 +1265,7 @@ Item {
                     visible: body.rows.some(r => r.action === "input")
                 }
                 Section {
-                    text: "Input"
+                    text: qsTranslate("SystemBody", "Input")
                     visible: body.rows.some(r => r.action === "input")
                 }
                 Repeater {
@@ -1279,7 +1279,7 @@ Item {
                 width: parent.width
                 visible: body.page === "light"
                 Title {
-                    text: "Display"
+                    text: qsTranslate("SystemBody", "Display")
                     sub: body.stateNote("brightness", body.service.brightness.state)
                 }
                 PanelSlider {
@@ -1298,7 +1298,7 @@ Item {
                 }
                 ToggleRow {
                     key: "night"
-                    text: "Night Light"
+                    text: qsTranslate("SystemBody", "Night Light")
                     detail: body.nightDetail
                     on: body.service.night.on
                     available: ["on", "off", "starting"].includes(body.service.night.state)
@@ -1308,7 +1308,7 @@ Item {
                     key: "warmth"
                     value: body.service.night.warmth
                     icon: "night-light-symbolic"
-                    iconLabel: "Warmth"
+                    iconLabel: qsTranslate("SystemBody", "Warmth")
                     // Warmth can be set before the light is on (system.js); it is stored and
                     // used when Night Light starts.
                     off: !body.service.night.on
@@ -1323,13 +1323,13 @@ Item {
                 visible: body.page === "wifi"
                 Title {
                     id: wifiTitle
-                    text: "Wi-Fi"
+                    text: qsTranslate("SystemBody", "Wi-Fi")
                     sub: body.wifiSub
                     Toggle {
                         x: body.inner - 38
                         y: 9
                         key: "wifi-on"
-                        label: "Wi-Fi"
+                        label: qsTranslate("SystemBody", "Wi-Fi")
                         visible: body.wifiPresent
                         enabled: body.backend?.wifiHardwareEnabled ?? false
                         on: body.wifiOn
@@ -1343,19 +1343,19 @@ Item {
                     Label {
                         width: parent.width
                         height: 28
-                        text: "This network wants you to sign in before the internet works."
+                        text: qsTranslate("SystemBody", "This network wants you to sign in before the internet works.")
                         color: body.ink
                     }
                     Word {
                         x: -10
                         y: 30
                         key: "portal"
-                        label: "Open sign-in page"
+                        label: qsTranslate("SystemBody", "Open sign-in page")
                         onClicked: body.service.act("portal", null)
                     }
                 }
                 Section {
-                    text: "Networks"
+                    text: qsTranslate("SystemBody", "Networks")
                     visible: body.wifiOn
                 }
                 Repeater {
@@ -1400,7 +1400,7 @@ Item {
                                 onVisibleChanged: if (visible)
                                     Qt.callLater(body.focusWifiPassword)
                                 secret: true
-                                placeholder: "Password"
+                                placeholder: qsTranslate("SystemBody", "Password")
                                 text: body.wifiPassword
                                 onTextChanged: body.wifiPassword = text
                                 onAccepted: body.wifiConnect()
@@ -1410,7 +1410,7 @@ Item {
                                 spacing: 2
                                 Word {
                                     key: network.row.key + ":go"
-                                    label: body.selected?.connected ? "Disconnect" : "Connect"
+                                    label: body.selected?.connected ? qsTranslate("SystemBody", "Disconnect") : qsTranslate("SystemBody", "Connect")
                                     onClicked: {
                                         if (body.selected?.connected)
                                             body.service.act("wifi-disconnect", {
@@ -1422,7 +1422,7 @@ Item {
                                 }
                                 Word {
                                     key: network.row.key + ":forget"
-                                    label: "Forget network"
+                                    label: qsTranslate("SystemBody", "Forget network")
                                     visible: body.selected?.known ?? false
                                     onClicked: body.service.act("wifi-forget", {
                                         key: body.selectedNetwork
@@ -1430,7 +1430,7 @@ Item {
                                 }
                                 Word {
                                     key: network.row.key + ":cancel"
-                                    label: "Cancel"
+                                    label: qsTranslate("SystemBody", "Cancel")
                                     onClicked: {
                                         body.selectedNetwork = "";
                                         body.wifiPassword = "";
@@ -1452,7 +1452,7 @@ Item {
                         x: 6
                         y: 2
                         key: "wifi-restart"
-                        label: "Restart Wi-Fi"
+                        label: qsTranslate("SystemBody", "Restart Wi-Fi")
                         enabled: !body.service.wifiRestartRunning
                         onClicked: body.service.act("wifi-restart", null)
                     }
@@ -1466,7 +1466,7 @@ Item {
                         x: 6
                         y: 2
                         key: "hidden"
-                        label: body.hiddenOpen ? "Join hidden network" : "Join hidden network…"
+                        label: body.hiddenOpen ? qsTranslate("SystemBody", "Join hidden network") : qsTranslate("SystemBody", "Join hidden network…")
                         onClicked: body.hiddenOpen = !body.hiddenOpen
                     }
                 }
@@ -1475,7 +1475,7 @@ Item {
                     visible: body.wifiOn && body.hiddenOpen
                     spacing: 6
                     Field {
-                        placeholder: "Network name"
+                        placeholder: qsTranslate("SystemBody", "Network name")
                         secret: false
                         maximumLength: 32
                         text: body.hiddenName
@@ -1487,14 +1487,14 @@ Item {
                         spacing: 2
                         Word {
                             key: "hidden-open"
-                            label: "Open"
+                            label: qsTranslate("SystemBody", "Open")
                             strong: !body.hiddenSecured
                             color: body.hiddenSecured ? body.dim : body.ink
                             onClicked: body.hiddenSecured = false
                         }
                         Word {
                             key: "hidden-secured"
-                            label: "Password"
+                            label: qsTranslate("SystemBody", "Password")
                             strong: body.hiddenSecured
                             color: body.hiddenSecured ? body.ink : body.dim
                             onClicked: body.hiddenSecured = true
@@ -1502,7 +1502,7 @@ Item {
                     }
                     Field {
                         visible: body.hiddenSecured
-                        placeholder: "Password"
+                        placeholder: qsTranslate("SystemBody", "Password")
                         secret: true
                         text: body.hiddenPassword
                         onTextChanged: body.hiddenPassword = text
@@ -1513,7 +1513,7 @@ Item {
                         spacing: 2
                         Word {
                             key: "hidden-cancel"
-                            label: "Cancel"
+                            label: qsTranslate("SystemBody", "Cancel")
                             onClicked: {
                                 body.hiddenOpen = false;
                                 body.hiddenName = "";
@@ -1522,7 +1522,7 @@ Item {
                         }
                         Word {
                             key: "hidden-join"
-                            label: "Join"
+                            label: qsTranslate("SystemBody", "Join")
                             onClicked: body.joinHidden()
                         }
                     }
@@ -1531,7 +1531,7 @@ Item {
                     }
                 }
                 Section {
-                    text: "VPN"
+                    text: qsTranslate("SystemBody", "VPN")
                     visible: body.vpnRows.length > 0
                 }
                 Repeater {
@@ -1540,7 +1540,7 @@ Item {
                         required property var modelData
                         key: "vpn-" + modelData.uuid
                         text: modelData.name
-                        detail: (modelData.kind === "wireguard" ? "WireGuard" : "VPN") + " · " + (modelData.active ? "Connected" : "Not connected")
+                        detail: (modelData.kind === "wireguard" ? qsTranslate("SystemBody", "WireGuard") : qsTranslate("SystemBody", "VPN")) + " · " + (modelData.active ? qsTranslate("SystemBody", "Connected") : qsTranslate("SystemBody", "Not connected"))
                         on: modelData.active
                         onToggled: body.service.act("vpn", {
                             uuid: modelData.uuid,
@@ -1555,20 +1555,20 @@ Item {
                 width: parent.width
                 visible: body.page === "bt"
                 Title {
-                    text: "Bluetooth"
+                    text: qsTranslate("SystemBody", "Bluetooth")
                     sub: body.btSub
                     Toggle {
                         x: body.inner - 38
                         y: 9
                         key: "bt-on"
-                        label: "Bluetooth"
+                        label: qsTranslate("SystemBody", "Bluetooth")
                         visible: !!body.backend?.adapter
                         on: body.btOn
                         onClicked: body.service.act("bt-power", null)
                     }
                 }
                 Section {
-                    text: "My devices"
+                    text: qsTranslate("SystemBody", "My devices")
                     visible: body.btOn && body.rows.some(r => r.secondaryAction === "bt-forget")
                 }
                 Repeater {
@@ -1598,7 +1598,7 @@ Item {
                                 visible: device.hot || device.activeFocus || activeFocus
                                 owner: device
                                 key: device.key + ":forget"
-                                label: "Forget"
+                                label: qsTranslate("SystemBody", "Forget")
                                 onClicked: body.activateRow({
                                     action: "bt-forget",
                                     value: pairedBlock.modelData.value
@@ -1617,7 +1617,7 @@ Item {
                     visible: body.btOn
                     Label {
                         height: 20
-                        text: "NEARBY"
+                        text: qsTranslate("SystemBody", "NEARBY")
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
                     }
@@ -1625,7 +1625,7 @@ Item {
                         x: body.inner - width
                         y: -4
                         key: "search"
-                        label: body.backend?.adapter?.discovering ? "Stop" : "Search"
+                        label: body.backend?.adapter?.discovering ? qsTranslate("SystemBody", "Stop") : qsTranslate("SystemBody", "Search")
                         onClicked: body.service.act("bt-scan", null)
                     }
                 }
@@ -1640,7 +1640,7 @@ Item {
                     Label {
                         width: parent.width
                         height: 24
-                        text: body.backend?.adapter?.discovering ? "Searching…" : "Put a device in pairing mode, then press Search."
+                        text: body.backend?.adapter?.discovering ? qsTranslate("SystemBody", "Searching…") : qsTranslate("SystemBody", "Put a device in pairing mode, then press Search.")
                     }
                 }
             }
@@ -1650,11 +1650,11 @@ Item {
                 width: parent.width
                 visible: body.page === "power"
                 Title {
-                    text: body.batteryPercent >= 0 ? "Battery" : "Power"
+                    text: body.batteryPercent >= 0 ? qsTranslate("SystemBody", "Battery") : qsTranslate("SystemBody", "Power")
                     sub: body.batterySub
                 }
                 Section {
-                    text: "Power mode"
+                    text: qsTranslate("SystemBody", "Power mode")
                     visible: body.page === "power" && body.rows.length > 0
                 }
                 Repeater {
@@ -1665,7 +1665,7 @@ Item {
                     height: 4
                 }
                 Section {
-                    text: "Power"
+                    text: qsTranslate("SystemBody", "Power")
                 }
                 Row {
                     width: body.inner
@@ -1673,7 +1673,7 @@ Item {
                         visible: Quickshell.env("EMAKI_LIVE_SESSION") !== "1"
                         key: "act-lock"
                         kind: "lock"
-                        text: "Lock"
+                        text: qsTranslate("SystemBody", "Lock")
                         onClicked: {
                             body.confirmation = "";
                             body.service.act("lock", null);
@@ -1682,32 +1682,32 @@ Item {
                     Round {
                         key: "act-sleep"
                         kind: "sleep"
-                        text: "Sleep"
+                        text: qsTranslate("SystemBody", "Sleep")
                         onClicked: body.confirmation = body.confirmation === "suspend" ? "" : "suspend"
                     }
                     Round {
                         key: "act-reboot"
                         kind: "restart"
-                        text: "Restart"
+                        text: qsTranslate("SystemBody", "Restart")
                         onClicked: body.confirmation = body.confirmation === "reboot" ? "" : "reboot"
                     }
                     Round {
                         key: "act-off"
                         kind: "shutdown"
-                        text: "Shut down"
+                        text: qsTranslate("SystemBody", "Shut down")
                         onClicked: body.confirmation = body.confirmation === "poweroff" ? "" : "poweroff"
                     }
                     Round {
                         key: "act-logout"
                         kind: "logout"
-                        text: "Log out"
+                        text: qsTranslate("SystemBody", "Log out")
                         onClicked: body.confirmation = body.confirmation === "logout" ? "" : "logout"
                     }
                     Round {
                         visible: body.service.canHibernate
                         key: "act-hibernate"
                         kind: "hibernate"
-                        text: "Hibernate"
+                        text: qsTranslate("SystemBody", "Hibernate")
                         onClicked: body.confirmation = body.confirmation === "hibernate" ? "" : "hibernate"
                     }
                 }
@@ -1717,12 +1717,12 @@ Item {
                     width: body.inner
                     height: 48
                     visible: body.confirmation !== ""
-                    readonly property string action: body.confirmation === "reboot" ? "Restart" : body.confirmation === "suspend" ? "Sleep" : body.confirmation === "logout" ? "Log out" : body.confirmation === "hibernate" ? "Hibernate" : "Shut down"
+                    readonly property string action: body.confirmation === "reboot" ? qsTranslate("SystemBody", "Restart") : body.confirmation === "suspend" ? qsTranslate("SystemBody", "Sleep") : body.confirmation === "logout" ? qsTranslate("SystemBody", "Log out") : body.confirmation === "hibernate" ? qsTranslate("SystemBody", "Hibernate") : qsTranslate("SystemBody", "Shut down")
                     Label {
                         y: -4
                         width: body.inner - 180
                         height: 20
-                        text: confirmBlock.action + " now?"
+                        text: qsTranslate("SystemBody", "%1 now?").arg(confirmBlock.action)
                         font.pixelSize: 14
                         color: body.ink
                     }
@@ -1730,7 +1730,7 @@ Item {
                         y: 16
                         width: body.inner - 180
                         height: 18
-                        text: ["suspend", "hibernate"].includes(body.confirmation) ? "The screen locks first." : "Save your work first."
+                        text: ["suspend", "hibernate"].includes(body.confirmation) ? qsTranslate("SystemBody", "The screen locks first.") : qsTranslate("SystemBody", "Save your work first.")
                     }
                     Row {
                         x: body.inner - width
@@ -1738,7 +1738,7 @@ Item {
                         spacing: 4
                         Word {
                             key: "confirm-no"
-                            label: "Cancel"
+                            label: qsTranslate("SystemBody", "Cancel")
                             onClicked: body.confirmation = ""
                         }
                         Word {
@@ -1755,8 +1755,8 @@ Item {
                 width: parent.width
                 visible: body.page === "kb"
                 Title {
-                    text: "Keyboard"
-                    sub: "Super+Space switches the layout"
+                    text: qsTranslate("SystemBody", "Keyboard")
+                    sub: qsTranslate("SystemBody", "Super+Space switches the layout")
                 }
                 Repeater {
                     model: body.page === "kb" ? body.rows : []
@@ -1769,7 +1769,7 @@ Item {
                 width: parent.width
                 visible: body.page === "tray"
                 Title {
-                    text: "Background apps"
+                    text: qsTranslate("SystemBody", "Background apps")
                     sub: body.stateNote("tray", body.service.tray.state)
                 }
                 Repeater {
@@ -1856,7 +1856,7 @@ Item {
                 objectName: "quick-settings-link"
                 visible: body.settingsPage !== ""
                 key: "open-settings"
-                label: "Open settings"
+                label: qsTranslate("SystemBody", "Open settings")
                 onClicked: body.settingsRequested(body.settingsPage)
             }
         }

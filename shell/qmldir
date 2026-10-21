@@ -1,4 +1,5 @@
 singleton Platform 1.0 Platform.qml
+singleton Translation 1.0 Translation.qml
 CaptureController 1.0 CaptureController.qml
 CaptureService 1.0 CaptureService.qml
 CaptureOverlay 1.0 CaptureOverlay.qml
@@ -29,6 +30,7 @@ NotificationReceiver 1.0 NotificationReceiver.qml
 ShellRecoveryNotice 1.0 ShellRecoveryNotice.qml
 SessionUpdateNotice 1.0 SessionUpdateNotice.qml
 SecureBootNotice 1.0 SecureBootNotice.qml
+UpdatesNotice 1.0 UpdatesNotice.qml
 CalendarMonth 1.0 CalendarMonth.qml
 ClockBody 1.0 ClockBody.qml
 PrivateJob 1.0 PrivateJob.qml
@@ -75,6 +77,8 @@ KeyboardFocusKeeper 1.0 KeyboardFocusKeeper.qml
 ShortcutSheet 1.0 ShortcutSheet.qml
 ClockIsland 1.0 ClockIsland.qml
 ClockPanel 1.0 ClockPanel.qml
+ClockToolsService 1.0 ClockToolsService.qml
+ClockTools 1.0 ClockTools.qml
 SystemIsland 1.0 SystemIsland.qml
 SystemPanel 1.0 SystemPanel.qml
 GlassCopy 1.0 GlassCopy.qml
@@ -106,6 +110,8 @@ WelcomeGlass 1.0 WelcomeGlass.qml
 WelcomeStore 1.0 WelcomeStore.qml
 WelcomeWindow 1.0 WelcomeWindow.qml
 WelcomeController 1.0 WelcomeController.qml
+WhatsNew 1.0 WhatsNew.qml
+WhatsNewStore 1.0 WhatsNewStore.qml
 SnapshotPrompt 1.0 SnapshotPrompt.qml
 SnapshotRecovery 1.0 SnapshotRecovery.qml
 singleton UpdateService 1.0 UpdateService.qml

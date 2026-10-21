@@ -278,10 +278,10 @@ Item {
     property string pendingRecentApp: ""
     function recentRows(): var {
         const groups = {
-            app: "Apps",
-            window: "Windows",
-            file: "Files",
-            clip: "Clipboard"
+            app: qsTranslate("LauncherBody", "Apps"),
+            window: qsTranslate("LauncherBody", "Windows"),
+            file: qsTranslate("LauncherBody", "Files"),
+            clip: qsTranslate("LauncherBody", "Clipboard")
         };
         const rows = [];
         const seenWindows = {};
@@ -298,7 +298,7 @@ Item {
                         t: e.t,
                         entry: entry,
                         label: entry.name,
-                        detail: entry.genericName || "Recently opened"
+                        detail: entry.genericName || qsTranslate("LauncherBody", "Recently opened")
                     });
             } else if (e.kind === "file") {
                 rows.push({
@@ -323,7 +323,7 @@ Item {
                         t: e.t,
                         id: open.id,
                         label: entry?.name || e.ref,
-                        detail: metadata?.title || "Untitled window",
+                        detail: metadata?.title || qsTranslate("LauncherBody", "Untitled window"),
                         entry: entry,
                         tag: ws?.idx ?? "?"
                     });
@@ -338,7 +338,7 @@ Item {
                         id: c.id,
                         image: c.image,
                         label: c.preview,
-                        detail: c.image ? "Image · Enter copies, never pastes" : "Text · Enter copies, never pastes"
+                        detail: c.image ? qsTranslate("LauncherBody", "Image · Enter copies, never pastes") : qsTranslate("LauncherBody", "Text · Enter copies, never pastes")
                     });
             }
         }
@@ -376,6 +376,7 @@ Item {
     readonly property int frequentCount: gridMode && queryText.length === 0 && category === "All" ? apps.frequent.length : 0
     readonly property bool categoriesShown: !settingsActive && gridMode && queryText.length === 0
     readonly property var categories: ["All", "Development", "Internet", "Media", "Games", "Learning", "Office", "System"]
+    readonly property var categoryLabels: ({All: qsTranslate("LauncherBody", "All"), Development: qsTranslate("LauncherBody", "Development"), Internet: qsTranslate("LauncherBody", "Internet"), Media: qsTranslate("LauncherBody", "Media"), Games: qsTranslate("LauncherBody", "Games"), Learning: qsTranslate("LauncherBody", "Learning"), Office: qsTranslate("LauncherBody", "Office"), System: qsTranslate("LauncherBody", "System")})
     readonly property var results: buildResults()
     readonly property int side: 22
     readonly property int bodyTop: Metrics.launcherHeader + 10
@@ -500,7 +501,8 @@ Item {
     }
     // The launcher's own word for an app (the first category chip it falls under).
     function categoryOf(entry: DesktopEntry): string {
-        return categories.slice(1).find(name => categoryMapping[name].some(c => entry.categories.includes(c))) ?? "";
+        const id = categories.slice(1).find(name => categoryMapping[name].some(c => entry.categories.includes(c)));
+        return categoryLabels[id] || "";
     }
     function buildResults(): var {
         const text = query.text.trim().toLocaleLowerCase();
@@ -512,9 +514,9 @@ Item {
             if (value !== null)
                 rows.push({
                     kind: "calculator",
-                    group: "Calculator",
+                    group: qsTranslate("LauncherBody", "Calculator"),
                     label: "= " + value,
-                    detail: "Enter to copy",
+                    detail: qsTranslate("LauncherBody", "Enter to copy"),
                     value: String(value)
                 });
         }
@@ -524,7 +526,7 @@ Item {
                     kind: "frequent",
                     entry: entry,
                     label: entry.name,
-                    detail: "Frequently opened"
+                    detail: qsTranslate("LauncherBody", "Frequently opened")
                 });
         }
         if (modeIndex < 2 && (text || modeIndex === 1)) {
@@ -532,20 +534,20 @@ Item {
             const found = text ? apps.entries : apps.entries.filter(entry => matchesCategory(entry));
             const appRows = found.map(entry => ({
                         kind: "app",
-                        group: "Apps",
+                        group: qsTranslate("LauncherBody", "Apps"),
                         entry: entry,
                         label: entry.name,
                         score: text ? appScore(entry, words) : 0,
                         uses: apps.counts[entry.id] || 0,
                         // An app row names its category, as launcher.js does ("Internet").
-                        detail: entry.runInTerminal ? "Terminal app" : categoryOf(entry) || entry.genericName || ""
+                        detail: entry.runInTerminal ? qsTranslate("LauncherBody", "Terminal app") : categoryOf(entry) || entry.genericName || ""
                     })).filter(row => !text || row.score > 0);
             const score = text && !assignFor ? settingsScore(words) : 0;
             if (score > 0)
                 appRows.push({
                     kind: "settings",
-                    group: "Apps",
-                    label: "Settings",
+                    group: qsTranslate("LauncherBody", "Apps"),
+                    label: qsTranslate("LauncherBody", "Settings"),
                     detail: "",
                     score: score,
                     uses: 0
@@ -558,14 +560,14 @@ Item {
         if (modeIndex === 2 || (modeIndex === 0 && text)) {
             for (const w of niri.windows) {
                 const metadata = labels.values[w.id];
-                const title = metadata?.title || "Untitled window";
+                const title = metadata?.title || qsTranslate("LauncherBody", "Untitled window");
                 const entry = metadata?.appId ? DesktopEntries.heuristicLookup(metadata.appId) : null;
-                const name = entry?.name || metadata?.appId || "Window #" + w.id;
+                const name = entry?.name || metadata?.appId || qsTranslate("LauncherBody", "Window #%1").arg(w.id);
                 const ws = niri.workspaces.find(item => item.id === w.workspace_id);
                 if (!text || (name + " " + title).toLocaleLowerCase().includes(text))
                     rows.push({
                         kind: "window",
-                        group: "Windows",
+                        group: qsTranslate("LauncherBody", "Windows"),
                         id: w.id,
                         label: name,
                         detail: title,
@@ -579,7 +581,7 @@ Item {
             for (const file of found)
                 rows.push({
                     kind: "file",
-                    group: "Files",
+                    group: qsTranslate("LauncherBody", "Files"),
                     label: file.name,
                     detail: file.path,
                     path: file.path
@@ -592,15 +594,15 @@ Item {
                     id: c.id,
                     image: c.image,
                     label: c.preview,
-                    detail: c.image ? "Image · Enter copies, never pastes" : "Text · Enter copies, never pastes"
+                    detail: c.image ? qsTranslate("LauncherBody", "Image · Enter copies, never pastes") : qsTranslate("LauncherBody", "Text · Enter copies, never pastes")
                 });
         }
         if (modeIndex === 0 && text)
             rows.push({
                 kind: "web",
-                group: "Web",
-                label: "Search the web for “" + query.text.trim() + "”",
-                detail: "DuckDuckGo · default browser",
+                group: qsTranslate("LauncherBody", "Web"),
+                label: qsTranslate("LauncherBody", "Search the web for “%1”").arg(query.text.trim()),
+                detail: qsTranslate("LauncherBody", "DuckDuckGo · default browser"),
                 value: query.text.trim()
             });
         return rows;
@@ -719,29 +721,30 @@ Item {
     readonly property int queryLength: query.length
     property int modeIndex: 1 // Apps by default (23.09): All is the search + Recent view
     readonly property var modes: ["All", "Apps", "Windows", "Files", "Clipboard"]
+    readonly property var modeLabels: [qsTranslate("LauncherBody", "All"), qsTranslate("LauncherBody", "Apps"), qsTranslate("LauncherBody", "Windows"), qsTranslate("LauncherBody", "Files"), qsTranslate("LauncherBody", "Clipboard")]
 
     function filesMessage(): string {
         if (!["idle", "pending", "requested"].includes(files.openState))
             return stateNote("file-open", files.openState);
         if (files.openState === "pending")
-            return "Opening file…";
+            return qsTranslate("LauncherBody", "Opening file…");
         if (files.state === "loading")
-            return "Reading recent files…";
+            return qsTranslate("LauncherBody", "Reading recent files…");
         if (files.state === "absent")
-            return "No recent files yet.";
+            return qsTranslate("LauncherBody", "No recent files yet.");
         if (files.state !== "ready") {
             if (files.state === "access_denied")
-                return "Permission denied reading recent files.";
+                return qsTranslate("LauncherBody", "Permission denied reading recent files.");
             if (["source_too_large", "too_many_entries", "xml_limit"].includes(files.state))
-                return "The recent-files list is too large to read safely.";
+                return qsTranslate("LauncherBody", "The recent-files list is too large to read safely.");
             if (["invalid_xbel", "dtd_not_allowed"].includes(files.state))
-                return "The recent-files list is damaged or unsupported.";
+                return qsTranslate("LauncherBody", "The recent-files list is damaged or unsupported.");
             if (files.state === "timeout")
-                return "Reading recent files took too long. Reopen to retry.";
-            return "Recent files are unavailable.";
+                return qsTranslate("LauncherBody", "Reading recent files took too long. Reopen to retry.");
+            return qsTranslate("LauncherBody", "Recent files are unavailable.");
         }
         if (!results.length)
-            return query.text.trim() ? "No recent filenames match." : "No existing recent files.";
+            return query.text.trim() ? qsTranslate("LauncherBody", "No recent filenames match.") : qsTranslate("LauncherBody", "No existing recent files.");
         return "";
     }
     // Words for a helper's or service's state that has something to say (`what`: its source);
@@ -749,25 +752,25 @@ Item {
     function stateNote(what: string, s: string): string {
         switch (what) {
         case "clipboard":
-            return s === "idle" || s === "pending" ? "Reading clipboard history…" : "Clipboard history isn’t available.";
+            return s === "idle" || s === "pending" ? qsTranslate("LauncherBody", "Reading clipboard history…") : qsTranslate("LauncherBody", "Clipboard history isn’t available.");
         case "clipboard-action":
-            return "The clipboard action didn’t go through.";
+            return qsTranslate("LauncherBody", "The clipboard action didn’t go through.");
         case "web":
-            return s === "pending" ? "Opening the web search…" : "Couldn’t open the web search.";
+            return s === "pending" ? qsTranslate("LauncherBody", "Opening the web search…") : qsTranslate("LauncherBody", "Couldn’t open the web search.");
         case "launch":
-            return s === "pending" ? "Starting the app…" : "Couldn’t start the app.";
+            return s === "pending" ? qsTranslate("LauncherBody", "Starting the app…") : qsTranslate("LauncherBody", "Couldn’t start the app.");
         case "windows":
-            return "Open windows can’t be listed right now.";
+            return qsTranslate("LauncherBody", "Open windows can’t be listed right now.");
         case "labels":
-            return s === "connecting" ? "Reading window titles…" : "Window titles unavailable.";
+            return s === "connecting" ? qsTranslate("LauncherBody", "Reading window titles…") : qsTranslate("LauncherBody", "Window titles unavailable.");
         case "file-open":
             return ({
-                    file_missing: "This file no longer exists.",
-                    no_handler: "No default application for this file type.",
-                    access_denied: "Permission denied opening this file.",
-                    timeout: "Open was not confirmed in time; the application may still open.",
-                    helper_dependency_missing: "Files can’t be opened from here on this system."
-                })[s] || "Could not open this file with its default application.";
+                    file_missing: qsTranslate("LauncherBody", "This file no longer exists."),
+                    no_handler: qsTranslate("LauncherBody", "No default application for this file type."),
+                    access_denied: qsTranslate("LauncherBody", "Permission denied opening this file."),
+                    timeout: qsTranslate("LauncherBody", "Open was not confirmed in time; the application may still open."),
+                    helper_dependency_missing: qsTranslate("LauncherBody", "Files can’t be opened from here on this system.")
+                })[s] || qsTranslate("LauncherBody", "Could not open this file with its default application.");
         }
         return "";
     }
@@ -781,12 +784,12 @@ Item {
             if (!["idle", "pending", "copied", "deleted"].includes(clips.actionState))
                 return stateNote("clipboard-action", clips.actionState);
             if (clips.recorder === "paused")
-                return "Recording is paused — new copies are not saved.";
+                return qsTranslate("LauncherBody", "Recording is paused — new copies are not saved.");
             if (clips.recorder === "failed")
-                return "The clipboard recorder stopped unexpectedly · Resume restarts it";
+                return qsTranslate("LauncherBody", "The clipboard recorder stopped unexpectedly · Resume restarts it");
             if (!clips.entries.length)
-                return "Clipboard history is empty";
-            return results.length ? "" : "Nothing matches “" + queryText + "”";
+                return qsTranslate("LauncherBody", "Clipboard history is empty");
+            return results.length ? "" : qsTranslate("LauncherBody", "Nothing matches “%1”").arg(queryText);
         }
         if (!["idle", "requested"].includes(web.state))
             return stateNote("web", web.state);
@@ -797,9 +800,9 @@ Item {
         if (modeIndex === 2 && !niri.connected)
             return stateNote("windows", niri.reason);
         if (recentMode)
-            return results.length ? "" : "Nothing opened from here yet · type to search everything";
+            return results.length ? "" : qsTranslate("LauncherBody", "Nothing opened from here yet · type to search everything");
         if (!results.length)
-            return queryText ? "Nothing matches “" + queryText + "”" : modeIndex === 2 ? "No windows are open." : "Nothing found.";
+            return queryText ? qsTranslate("LauncherBody", "Nothing matches “%1”").arg(queryText) : modeIndex === 2 ? qsTranslate("LauncherBody", "No windows are open.") : qsTranslate("LauncherBody", "Nothing found.");
         if (modeIndex === 2 && labels.state !== "ready")
             return stateNote("labels", labels.state);
         return "";
@@ -1389,7 +1392,7 @@ Item {
                         onClicked: body.dismissed()
                     }
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Close launcher"
+                    Accessible.name: qsTranslate("LauncherBody", "Close launcher")
                     Accessible.onPressAction: {
                         if (body.opened)
                             body.dismissed();
@@ -1407,7 +1410,7 @@ Item {
                         Item {
                             id: modeItem
                             Accessible.role: Accessible.PageTab
-                            Accessible.name: modelData
+                            Accessible.name: body.modeLabels[index]
                             Accessible.selected: !body.settingsActive && body.modeIndex === index
                             Accessible.onPressAction: activate()
                             activeFocusOnTab: true
@@ -1434,7 +1437,7 @@ Item {
                             Text {
                                 id: modeLabel
                                 anchors.centerIn: parent
-                                text: modeItem.modelData
+                                text: body.modeLabels[modeItem.index]
                                 textFormat: Text.PlainText
                                 font.family: ShellPalette.uiFont
                                 font.pixelSize: 13
@@ -1496,7 +1499,7 @@ Item {
                         onClicked: settingsButton.activate()
                     }
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Settings"
+                    Accessible.name: qsTranslate("LauncherBody", "Settings")
                     Accessible.onPressAction: settingsButton.activate()
                 }
                 Rectangle {
@@ -1534,7 +1537,7 @@ Item {
                         height: 18
                         visible: body.frequentCount > 0
                         verticalAlignment: Text.AlignVCenter
-                        text: "FREQUENT"
+                        text: qsTranslate("LauncherBody", "FREQUENT")
                         font.family: ShellPalette.uiFont
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
@@ -1564,7 +1567,7 @@ Item {
                             Item {
                                 id: chip
                                 Accessible.role: Accessible.PageTab
-                                Accessible.name: modelData
+                                Accessible.name: body.categoryLabels[modelData]
                                 Accessible.selected: current
                                 Accessible.onPressAction: activate()
                                 activeFocusOnTab: true
@@ -1587,7 +1590,7 @@ Item {
                                 Text {
                                     id: chipLabel
                                     anchors.centerIn: parent
-                                    text: chip.modelData
+                                    text: body.categoryLabels[chip.modelData]
                                     textFormat: Text.PlainText
                                     font.family: ShellPalette.uiFont
                                     font.pixelSize: 13
@@ -1673,14 +1676,14 @@ Item {
                                 spacing: 8
                                 ActionText {
                                     id: clearClips
-                                    text: "Clear all"
+                                    text: qsTranslate("LauncherBody", "Clear all")
                                     color: body.danger
                                     onClicked: body.clipboard.clear()
                                 }
                                 ActionText {
                                     id: recordClips
                                     visible: body.clipboard.recorderOwned
-                                    text: body.clipboard.recorder === "recording" ? "Pause recording" : "Resume recording"
+                                    text: body.clipboard.recorder === "recording" ? qsTranslate("LauncherBody", "Pause recording") : qsTranslate("LauncherBody", "Resume recording")
                                     onClicked: body.clipboard.setRecording(body.clipboard.recorder !== "recording")
                                 }
                             }
@@ -1760,7 +1763,7 @@ Item {
             opacity: body.modeAlpha
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
-            text: body.modes[body.modeIndex]
+            text: body.modeLabels[body.modeIndex]
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 13
@@ -1776,7 +1779,7 @@ Item {
             opacity: body.categoryAlpha
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
-            text: body.category
+            text: body.categoryLabels[body.category]
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 13
@@ -1834,7 +1837,7 @@ Item {
             focus: body.opened
             selectByMouse: true
             maximumLength: 4096
-            Accessible.name: "Search everything"
+            Accessible.name: qsTranslate("LauncherBody", "Search everything")
             onTextChanged: {
                 body.selectionKey = "";
                 if (body.opened && !body.apps.busy)
@@ -1887,7 +1890,7 @@ Item {
                 anchors.fill: parent
                 verticalAlignment: Text.AlignVCenter
                 visible: query.length === 0 && !query.inputMethodComposing
-                text: body.assignFor ? "Choose the app for this window" : "Search everything"
+                text: body.assignFor ? qsTranslate("LauncherBody", "Choose the app for this window") : qsTranslate("LauncherBody", "Search everything")
                 textFormat: Text.PlainText
                 font: query.font
                 color: body.faint

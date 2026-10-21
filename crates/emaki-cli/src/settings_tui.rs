@@ -1,5 +1,6 @@
 // Copyright (C) 2026 Artur Yakymenko
 // SPDX-License-Identifier: GPL-3.0-or-later
+use emaki_core::i18n::{format_text, tr};
 
 use emaki_core::settings::{Operation, run as settings};
 use std::io::{self, BufRead, IsTerminal, Read, Write};
@@ -19,7 +20,7 @@ impl TerminalMode {
             .stdin(Stdio::inherit())
             .output()?;
         if !saved.status.success() {
-            return Err(io::Error::other("Cannot read terminal settings"));
+            return Err(io::Error::other(tr("Cannot read terminal settings")));
         }
         let mode = Self(String::from_utf8_lossy(&saved.stdout).trim().to_owned());
         if !Command::new("stty")
@@ -27,7 +28,7 @@ impl TerminalMode {
             .status()?
             .success()
         {
-            return Err(io::Error::other("Cannot set terminal input mode"));
+            return Err(io::Error::other(tr("Cannot set terminal input mode")));
         }
         Ok(mode)
     }
@@ -137,7 +138,7 @@ fn escape_key(reader: &mut impl Read) -> io::Result<Key> {
         {
             Ok(())
         } else {
-            Err(io::Error::other("Cannot set terminal input timing"))
+            Err(io::Error::other(tr("Cannot set terminal input timing")))
         }
     }
     timing("0", "1")?;
@@ -240,9 +241,9 @@ fn command(
     interactive: bool,
 ) -> io::Result<Option<String>> {
     if !interactive {
-        return input(reader, writer, "settings> ", false);
+        return input(reader, writer, &tr("settings> "), false);
     }
-    write!(writer, "settings> ")?;
+    write!(writer, "{}", tr("settings> "))?;
     writer.flush()?;
     let mut number = String::new();
     loop {
@@ -280,7 +281,7 @@ fn menu(
     timeout: Duration,
     interactive: bool,
 ) -> io::Result<u8> {
-    writeln!(writer, "Emaki settings — draft keyboard menu")?;
+    writeln!(writer, "{}", tr("Emaki settings — draft keyboard menu"))?;
     let mut selected = 0;
     loop {
         let list = settings(Operation::List, root, timeout);
@@ -311,12 +312,18 @@ fn menu(
         if interactive {
             writeln!(
                 writer,
-                "Arrows/Tab/j/k: select; Enter/e: edit; Esc/q: quit; r: reset; h: history; u: undo. Number + Enter: select."
+                "{}",
+                tr(
+                    "Arrows/Tab/j/k: select; Enter/e: edit; Esc/q: quit; r: reset; h: history; u: undo. Number + Enter: select."
+                )
             )?;
         } else {
             writeln!(
                 writer,
-                "Number: select; j/k: next/previous; e: edit; r: reset; h: history; u: undo; q: quit. Press Enter after each command."
+                "{}",
+                tr(
+                    "Number: select; j/k: next/previous; e: edit; r: reset; h: history; u: undo; q: quit. Press Enter after each command."
+                )
             )?;
         }
         let Some(command) = command(reader, writer, interactive)? else {
@@ -338,13 +345,19 @@ fn menu(
                 };
                 writeln!(
                     writer,
-                    "{}: {}. Enter value; :cancel returns without changing it.",
-                    row.key, row.allowed
+                    "{}",
+                    format_text(
+                        "{key}: {allowed}. Enter value; :cancel returns without changing it.",
+                        &[
+                            ("key", row.key.into()),
+                            ("allowed", allowed_text(row.allowed))
+                        ]
+                    )
                 )?;
                 if interactive {
-                    writeln!(writer, "Esc: cancel; Enter: save.")?;
+                    writeln!(writer, "{}", tr("Esc: cancel; Enter: save."))?;
                 }
-                let Some(value) = input(reader, writer, "value> ", interactive)? else {
+                let Some(value) = input(reader, writer, &tr("value> "), interactive)? else {
                     return Ok(0);
                 };
                 if value == ":cancel" {
@@ -375,7 +388,7 @@ fn menu(
                 let Some(id) = input(
                     reader,
                     writer,
-                    "Change ID to undo (empty cancels)> ",
+                    &tr("Change ID to undo (empty cancels)> "),
                     interactive,
                 )?
                 else {
@@ -397,12 +410,60 @@ fn menu(
                 } else {
                     writeln!(
                         writer,
-                        "Unknown command. Choose a listed number or command."
+                        "{}",
+                        tr("Unknown command. Choose a listed number or command.")
                     )?;
                 }
                 continue;
             }
         };
         write!(writer, "{}", reply.human())?;
+    }
+}
+
+fn allowed_text(source: &str) -> String {
+    match source {
+        "0..64 logical pixels" => tr("0..64 logical pixels"),
+        "1..4 distinct XKB layout codes, comma-separated (us,ru); empty unsets" => {
+            tr("1..4 distinct XKB layout codes, comma-separated (us,ru); empty unsets")
+        }
+        "HH:MM local time, distinct from dark_time; empty unsets" => {
+            tr("HH:MM local time, distinct from dark_time; empty unsets")
+        }
+        "HH:MM local time, distinct from light_time; empty unsets" => {
+            tr("HH:MM local time, distinct from light_time; empty unsets")
+        }
+        "Mod + optional Ctrl/Alt/Shift + one XKB keysym; <=80 ASCII bytes" => {
+            tr("Mod + optional Ctrl/Alt/Shift + one XKB keysym; <=80 ASCII bytes")
+        }
+        "Super+Space | Alt+Shift | Caps Lock; empty unsets" => {
+            tr("Super+Space | Alt+Shift | Caps Lock; empty unsets")
+        }
+        "absolute path to an existing regular image file; <=4096 bytes, no quotes/backslashes/control characters; empty unsets" => {
+            tr(
+                "absolute path to an existing regular image file; <=4096 bytes, no quotes/backslashes/control characters; empty unsets",
+            )
+        }
+        "always | desktop | fullscreen | never; empty unsets both visibility flags" => {
+            tr("always | desktop | fullscreen | never; empty unsets both visibility flags")
+        }
+        "desktop entry id ending in .desktop; empty unsets" => {
+            tr("desktop entry id ending in .desktop; empty unsets")
+        }
+        "full | half | third | twothirds; empty unsets" => {
+            tr("full | half | third | twothirds; empty unsets")
+        }
+        "light | dark | automatic; empty unsets" => tr("light | dark | automatic; empty unsets"),
+        "orange | coral | rose | amber | green | teal | blue | violet; empty unsets" => {
+            tr("orange | coral | rose | amber | green | teal | blue | violet; empty unsets")
+        }
+        "true | false; empty unsets" => tr("true | false; empty unsets"),
+        "true | false; false or empty restores inherited focus behavior" => {
+            tr("true | false; false or empty restores inherited focus behavior")
+        }
+        "validated notification or sound policy; empty unsets" => {
+            tr("validated notification or sound policy; empty unsets")
+        }
+        other => other.into(),
     }
 }

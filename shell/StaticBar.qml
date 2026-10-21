@@ -117,13 +117,11 @@ Item {
         Date.timeZoneUpdated();
         dateTimeChanged();
     }
-    readonly property string clockTime: Qt.formatDateTime(dateTime, (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true) ? "HH:mm" : "h:mm AP")
-    // The island's short date and the panel's long one (clock.js shortDate/longDate). English
-    // names from fixed lists: the island's width is measured on them (ClockCompactRow).
-    readonly property var dayNames: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    readonly property var monthNames: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-    readonly property string clockDate: dayNames[dateTime.getDay()].slice(0, 3) + " " + dateTime.getDate() + " " + monthNames[dateTime.getMonth()].slice(0, 3)
-    readonly property string clockLongDate: dayNames[dateTime.getDay()] + ", " + dateTime.getDate() + " " + monthNames[dateTime.getMonth()]
+    readonly property string clockTime: dateTime.toLocaleTimeString(Qt.locale(), (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true) ? "HH:mm" : "h:mm AP")
+    // English sessions keep 0.10's names ("Sep", not en_GB's "Sept"); other languages name days and months themselves.
+    readonly property string clockDate: dateTime.toLocaleDateString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_US") : Qt.locale(), "ddd d MMM")
+    //: Qt date pattern: d, dddd and MMMM are fields; put literal words in single quotes, as in 'de'.
+    readonly property string clockLongDate: dateTime.toLocaleDateString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_US") : Qt.locale(), qsTranslate("StaticBar", "dddd, d MMMM"))
     property bool clockPresent: false
     property int notificationCount: 0
     property bool dnd: false
@@ -199,7 +197,7 @@ Item {
     readonly property alias dateLabel: clockIsland.dateLabel
     KeyboardTarget {
         parent: clockIsland.hit
-        label: "Calendar and notifications"
+        label: qsTranslate("StaticBar", "Calendar and notifications")
         onActivated: bar.clockClicked()
     }
     // The system island on liquid glass (liquid-glass/system.html); SystemPanel grows out of it.
@@ -229,7 +227,7 @@ Item {
         y: bar.privacyItem ? bar.privacyItem.y - bar.y : 0
         width: bar.privacyItem ? bar.privacyItem.width : 0
         height: bar.privacyItem ? bar.privacyItem.height : 0
-        label: "Privacy"
+        label: qsTranslate("StaticBar", "Privacy")
         onActivated: bar.privacyClicked()
     }
     KeyboardTarget {
@@ -241,7 +239,7 @@ Item {
         y: bar.notesItem ? bar.notesItem.y - bar.y : 0
         width: bar.notesItem ? bar.notesItem.width : 0
         height: bar.notesItem ? bar.notesItem.height : 0
-        label: "Pinned notes"
+        label: qsTranslate("StaticBar", "Pinned notes")
         onActivated: bar.notesClicked()
     }
     GlassText {
@@ -249,7 +247,7 @@ Item {
         x: Metrics.logoX
         y: 49
         visible: !bar.launcherPresent && bar.policy.normalIslands && ["rejected", "unconfirmed", "error"].includes(bar.niri.actionState)
-        text: "The last window action didn’t go through."
+        text: qsTranslate("StaticBar", "The last window action didn’t go through.")
         font.family: ShellPalette.uiFont
         font.pixelSize: 11
         fallbackColor: ShellPalette.muted

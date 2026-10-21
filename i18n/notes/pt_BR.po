@@ -1,0 +1,125 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: pt_BR\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#, python-format
+msgid "%(path)s: the folder is a broken symbolic link."
+msgstr "%(path)s: a pasta é um link simbólico quebrado."
+
+msgid "A note cannot be larger than 1 MiB."
+msgstr "Uma nota não pode ter mais de 1 MiB."
+
+msgid "A request must be an object."
+msgstr "Uma solicitação deve ser um objeto."
+
+msgid "Action must be text."
+msgstr "A ação deve ser um texto."
+
+msgid "All day"
+msgstr "Dia inteiro"
+
+msgid "An event identifier is required."
+msgstr "É necessário um identificador de evento."
+
+msgid "Cannot watch notes"
+msgstr "Não é possível monitorar as notas"
+
+msgid "Duration must be a positive number of minutes."
+msgstr "A duração deve ser um número positivo de minutos."
+
+msgid "Emaki Notes needs a user runtime directory"
+msgstr "O Notas do Emaki precisa de um diretório de execução do usuário"
+
+msgid "Enter a date as YYYY-MM-DD."
+msgstr "Digite uma data no formato AAAA-MM-DD."
+
+msgid "Enter a start time as HH:MM."
+msgstr "Digite um horário de início no formato HH:MM."
+
+msgid "Enter an event title on one line."
+msgstr "Digite o título do evento em uma linha."
+
+msgid "Enter one task line."
+msgstr "Digite uma linha de tarefa."
+
+msgid "Invalid event identifier."
+msgstr "Identificador de evento inválido."
+
+msgid "Invalid note identifier."
+msgstr "Identificador de nota inválido."
+
+msgid "Larger than 1 MiB; open it in a text editor."
+msgstr "Maior que 1 MiB; abra em um editor de texto."
+
+msgid "Not a regular file."
+msgstr "Não é um arquivo comum."
+
+msgid "Note text must be text."
+msgstr "O conteúdo da nota deve ser um texto."
+
+msgid "Open Emaki Notes as a regular user."
+msgstr "Abra o Notas do Emaki como um usuário comum."
+
+msgid "Reminder must be minutes before the event."
+msgstr "O lembrete deve ser definido em minutos antes do evento."
+
+msgid "Symbolic links cannot be edited as events."
+msgstr "Links simbólicos não podem ser editados como eventos."
+
+msgid "Symbolic links cannot be edited as notes."
+msgstr "Links simbólicos não podem ser editados como notas."
+
+msgid "Task line is missing."
+msgstr "A linha da tarefa está ausente."
+
+msgid "The Emaki Notes window could not be shown."
+msgstr "Não foi possível exibir a janela do Notas do Emaki."
+
+msgid "The notes metadata is invalid; restore it before pinning."
+msgstr "Os metadados das notas são inválidos; restaure-os antes de fixar notas."
+
+msgid "The notes metadata is not an object."
+msgstr "Os metadados das notas não são um objeto."
+
+msgid "This event cannot be stored; check its date and title."
+msgstr "Não é possível salvar este evento; verifique a data e o título."
+
+msgid "This event was removed elsewhere."
+msgstr "Este evento foi removido em outro lugar."
+
+msgid "This item changed elsewhere. Your edit has been kept; reload or save it as a new note."
+msgstr "Este item foi alterado em outro lugar. Sua edição foi mantida; recarregue ou salve como uma nova nota."
+
+msgid "This line is not a task."
+msgstr "Esta linha não é uma tarefa."
+
+msgid "This note was removed elsewhere. Save your edit as a new note."
+msgstr "Esta nota foi removida em outro lugar. Salve sua edição como uma nova nota."
+
+msgid "Unknown action."
+msgstr "Ação desconhecida."
+
+msgid "Unknown notes action."
+msgstr "Ação de notas desconhecida."
+
+msgid "Unsupported reminder trigger."
+msgstr "Acionamento de lembrete não suportado."
+
+msgid "Untitled note"
+msgstr "Nota sem título"
+
+msgid "Usage: backend.py {serve|remind|snapshot}"
+msgstr "Uso: backend.py {serve|remind|snapshot}"
+
+msgid "Usage: emaki-notes [--note ID]"
+msgstr "Uso: emaki-notes [--note ID]"
+
+msgid "not an object"
+msgstr "não é um objeto"

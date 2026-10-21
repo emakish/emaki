@@ -67,6 +67,8 @@ elif operation == '--apply':
         sys.exit(0)
     if scenario == 'empty':
         sys.exit(0)
+    if scenario == 'flatpak':
+        emit(dict(type='progress', phase='flatpak', message='[Translated Flatpak progress]'))
     if scenario == 'long-log':
         # Piped pacman: a plain count, then far more ordinary output than the 32 KB log window.
         emit(dict(type='progress', message='Packages (2) linux-6.1-1  mesa-1-1\\n:: Retrieving packages...\\n'

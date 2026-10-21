@@ -117,7 +117,7 @@ def render(qml, png=None, stats=None, properties=None, width=640, height=480, sc
             options[name] = str(path)
     with tempfile.TemporaryDirectory(prefix='profile-', dir=CACHE) as temporary:
         profile = Path(temporary)
-        for name in ('runtime', 'cache', 'config', 'state', 'data', 'tmp'):
+        for name in ('home', 'runtime', 'cache', 'config', 'state', 'data', 'tmp'):
             (profile / name).mkdir(mode=0o700)
         font_config = shipped_font_config(profile)
         target = profile / 'qml'
@@ -146,14 +146,14 @@ ShellRoot {
     }
 }
 ''' % (json.dumps(fixture.as_uri()), json.dumps(properties or {}), json.dumps(options)))
-        env = dict(os.environ, XDG_RUNTIME_DIR=str(runtime_path(profile)),
+        env = dict(os.environ, HOME=str(profile / 'home'), XDG_CONFIG_DIRS=str(profile / 'config'), XDG_RUNTIME_DIR=str(runtime_path(profile)),
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
                    XDG_DATA_DIRS=str(profile / 'data'), TMPDIR=str(profile / 'tmp'),
                    FONTCONFIG_FILE=str(font_config),
                    QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='rhi', QML_DISABLE_DISK_CACHE='1',
                    QML_IMPORT_PATH=str(imports), EGL_PLATFORM='surfaceless', LIBGL_ALWAYS_SOFTWARE='1',
-                   GALLIUM_DRIVER='llvmpipe', LP_NUM_THREADS='1', QS_DISABLE_CRASH_HANDLER='1', NIRI_SOCKET='',
+                   GALLIUM_DRIVER='llvmpipe', LP_NUM_THREADS='1', QS_DISABLE_CRASH_HANDLER='1',
                    DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'none-session-bus'),
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'none-system-bus'))
         if shader_dir:
@@ -163,7 +163,7 @@ ShellRoot {
         # --scale sets only the redirected target's DPR; --screen-scale sets the
         # independent offscreen QScreen DPR (e.g. 2 versus target DPR 1.25).
         # Production wallpaper/blur DPR remains a separate fixture property.
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_QPA_PLATFORMTHEME',
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME',
                      'QT_SCALE_FACTOR', 'QT_SCREEN_SCALE_FACTORS', 'QT_AUTO_SCREEN_SCALE_FACTOR'):
             env.pop(name, None)
         env['QT_SCALE_FACTOR'] = str(screen_scale)

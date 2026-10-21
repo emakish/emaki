@@ -213,7 +213,7 @@ Item {
             }
             byKey[key].windows.push({
                 id: w.id,
-                title: meta?.title || "Window #" + w.id,
+                title: meta?.title || qsTranslate("Dock", "Window #%1").arg(w.id),
                 workspace: workspaceIndex[w.workspace_id] ?? 0
             });
         }
@@ -370,29 +370,29 @@ Item {
                     tag: String(w.workspace)
                 }));
             rows.push(row("line", "", ""));
-            rows.push(row("new", "New window", "+"));
+            rows.push(row("new", qsTranslate("Dock", "New window"), "+"));
             return {
-                header: item.label + " · " + item.windows.length + " windows",
+                header: item.label + " · " + Translation.englishPlural(qsTranslate("Dock", "%n window(s)", "", item.windows.length), item.windows.length),
                 rows: rows
             };
         }
         if (item.entry)
-            rows.push(row("new", "New window", "+"));
+            rows.push(row("new", qsTranslate("Dock", "New window"), "+"));
         if (item.pinned || item.entry)
-            rows.push(item.pinned ? row("unpin", "Unpin from Dock", "−") : row("pin", "Pin to Dock", "+"));
+            rows.push(item.pinned ? row("unpin", qsTranslate("Dock", "Unpin from Dock"), "−") : row("pin", qsTranslate("Dock", "Pin to Dock"), "+"));
         // No entry claims this window: let the person say which app it is. A learned or
         // guessed match can be corrected the same way.
         if (item.appId && !item.entry)
-            rows.push(row("assign", "Choose app…", "?", {
-                note: "Pick the app this window belongs to"
+            rows.push(row("assign", qsTranslate("Dock", "Choose app…"), "?", {
+                note: qsTranslate("Dock", "Pick the app this window belongs to")
             }));
         else if (item.appId && (item.source === "learned" || item.source === "guess"))
-            rows.push(row("assign", "Not this app…", "?", {
-                note: "Pick the right app for this window"
+            rows.push(row("assign", qsTranslate("Dock", "Not this app…"), "?", {
+                note: qsTranslate("Dock", "Pick the right app for this window")
             }));
         if (item.windows.length) {
             rows.push(row("line", "", ""));
-            rows.push(row("closeall", "Close " + (item.windows.length === 1 ? "window" : "all " + item.windows.length + " windows"), "×", {
+            rows.push(row("closeall", item.windows.length === 1 ? qsTranslate("Dock", "Close window") : Translation.englishPlural(qsTranslate("Dock", "Close all %n window(s)", "", item.windows.length), item.windows.length), "×", {
                 danger: true
             }));
         }
@@ -1218,7 +1218,7 @@ Item {
         const tipKey = drag && drag.remove ? drag.key : hovered;
         const tipEntry = tipKey ? entryOf(tipKey) : null;
         if (tipEntry && !popup.progress.target && p < .03 && (!drag || drag.remove) && visibility.x > .1) {
-            const label = drag && drag.remove ? "Unpin" : tipEntry.label + (!tipEntry.pinned && tipEntry.entry ? " · Right-click to pin" : "");
+            const label = drag && drag.remove ? qsTranslate("Dock", "Unpin") : !tipEntry.pinned && tipEntry.entry ? qsTranslate("Dock", "%1 · Right-click to pin").arg(tipEntry.label) : tipEntry.label;
             const tw = Math.max(56, tipMetrics.measure(label) + 24);
             const center = visual(tipKey).center;
             const tcx = clamp(center[0], tw / 2 + 8, width - tw / 2 - 8);

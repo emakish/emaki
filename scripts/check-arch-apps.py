@@ -110,7 +110,9 @@ def main():
                 if not options:
                     raise ValueError(f'No current repository provider for {dep}')
                 dep = next((p for p in options if p in seen or p in pending), options[0])
-                choices[dep] = options
+                # The chosen provider and how many Arch offers; the other names are not recorded,
+                # since this evidence ships in the public source.
+                choices[dep] = len(options)
             if dep in seen:
                 continue
             seen.add(dep)

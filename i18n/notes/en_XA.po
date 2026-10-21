@@ -1,0 +1,125 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_XA\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#, python-format
+msgid "%(path)s: the folder is a broken symbolic link."
+msgstr "[%(path)s: ţĥé ƒöļðéŕ îš à ƀŕöķéñ šÿɱƀöļîç ļîñķ.···············]"
+
+msgid "A note cannot be larger than 1 MiB."
+msgstr "[À ñöţé çàññöţ ƀé ļàŕĝéŕ ţĥàñ 1 ṀîƁ.···········]"
+
+msgid "A request must be an object."
+msgstr "[À ŕéǫûéšţ ɱûšţ ƀé àñ öƀĵéçţ.········]"
+
+msgid "Action must be text."
+msgstr "[Àçţîöñ ɱûšţ ƀé ţéẋţ.·····]"
+
+msgid "All day"
+msgstr "[Àļļ ðàÿ·]"
+
+msgid "An event identifier is required."
+msgstr "[Àñ éṽéñţ îðéñţîƒîéŕ îš ŕéǫûîŕéð.··········]"
+
+msgid "Cannot watch notes"
+msgstr "[Çàññöţ ŵàţçĥ ñöţéš·····]"
+
+msgid "Duration must be a positive number of minutes."
+msgstr "[Ðûŕàţîöñ ɱûšţ ƀé à þöšîţîṽé ñûɱƀéŕ öƒ ɱîñûţéš.···············]"
+
+msgid "Emaki Notes needs a user runtime directory"
+msgstr "[Éɱàķî Ñöţéš ñééðš à ûšéŕ ŕûñţîɱé ðîŕéçţöŕÿ·············]"
+
+msgid "Enter a date as YYYY-MM-DD."
+msgstr "[Éñţéŕ à ðàţé àš ŸŸŸŸ-ṀṀ-ÐÐ.········]"
+
+msgid "Enter a start time as HH:MM."
+msgstr "[Éñţéŕ à šţàŕţ ţîɱé àš ĤĤ:ṀṀ.········]"
+
+msgid "Enter an event title on one line."
+msgstr "[Éñţéŕ àñ éṽéñţ ţîţļé öñ öñé ļîñé.··········]"
+
+msgid "Enter one task line."
+msgstr "[Éñţéŕ öñé ţàšķ ļîñé.·····]"
+
+msgid "Invalid event identifier."
+msgstr "[Îñṽàļîð éṽéñţ îðéñţîƒîéŕ.·······]"
+
+msgid "Invalid note identifier."
+msgstr "[Îñṽàļîð ñöţé îðéñţîƒîéŕ.·······]"
+
+msgid "Larger than 1 MiB; open it in a text editor."
+msgstr "[Ļàŕĝéŕ ţĥàñ 1 ṀîƁ; öþéñ îţ îñ à ţéẋţ éðîţöŕ.··············]"
+
+msgid "Not a regular file."
+msgstr "[Ñöţ à ŕéĝûļàŕ ƒîļé.·····]"
+
+msgid "Note text must be text."
+msgstr "[Ñöţé ţéẋţ ɱûšţ ƀé ţéẋţ.·······]"
+
+msgid "Open Emaki Notes as a regular user."
+msgstr "[Öþéñ Éɱàķî Ñöţéš àš à ŕéĝûļàŕ ûšéŕ.···········]"
+
+msgid "Reminder must be minutes before the event."
+msgstr "[Ŕéɱîñðéŕ ɱûšţ ƀé ɱîñûţéš ƀéƒöŕé ţĥé éṽéñţ.·············]"
+
+msgid "Symbolic links cannot be edited as events."
+msgstr "[Šÿɱƀöļîç ļîñķš çàññöţ ƀé éðîţéð àš éṽéñţš.·············]"
+
+msgid "Symbolic links cannot be edited as notes."
+msgstr "[Šÿɱƀöļîç ļîñķš çàññöţ ƀé éðîţéð àš ñöţéš.·············]"
+
+msgid "Task line is missing."
+msgstr "[Ţàšķ ļîñé îš ɱîššîñĝ.······]"
+
+msgid "The Emaki Notes window could not be shown."
+msgstr "[Ţĥé Éɱàķî Ñöţéš ŵîñðöŵ çöûļð ñöţ ƀé šĥöŵñ.·············]"
+
+msgid "The notes metadata is invalid; restore it before pinning."
+msgstr "[Ţĥé ñöţéš ɱéţàðàţà îš îñṽàļîð; ŕéšţöŕé îţ ƀéƒöŕé þîññîñĝ.··················]"
+
+msgid "The notes metadata is not an object."
+msgstr "[Ţĥé ñöţéš ɱéţàðàţà îš ñöţ àñ öƀĵéçţ.···········]"
+
+msgid "This event cannot be stored; check its date and title."
+msgstr "[Ţĥîš éṽéñţ çàññöţ ƀé šţöŕéð; çĥéçķ îţš ðàţé àñð ţîţļé.·················]"
+
+msgid "This event was removed elsewhere."
+msgstr "[Ţĥîš éṽéñţ ŵàš ŕéɱöṽéð éļšéŵĥéŕé.··········]"
+
+msgid "This item changed elsewhere. Your edit has been kept; reload or save it as a new note."
+msgstr "[Ţĥîš îţéɱ çĥàñĝéð éļšéŵĥéŕé. Ÿöûŕ éðîţ ĥàš ƀééñ ķéþţ; ŕéļöàð öŕ šàṽé îţ àš à ñéŵ ñöţé.·····························]"
+
+msgid "This line is not a task."
+msgstr "[Ţĥîš ļîñé îš ñöţ à ţàšķ.·······]"
+
+msgid "This note was removed elsewhere. Save your edit as a new note."
+msgstr "[Ţĥîš ñöţé ŵàš ŕéɱöṽéð éļšéŵĥéŕé. Šàṽé ÿöûŕ éðîţ àš à ñéŵ ñöţé.····················]"
+
+msgid "Unknown action."
+msgstr "[Ûñķñöŵñ àçţîöñ.····]"
+
+msgid "Unknown notes action."
+msgstr "[Ûñķñöŵñ ñöţéš àçţîöñ.······]"
+
+msgid "Unsupported reminder trigger."
+msgstr "[Ûñšûþþöŕţéð ŕéɱîñðéŕ ţŕîĝĝéŕ.·········]"
+
+msgid "Untitled note"
+msgstr "[Ûñţîţļéð ñöţé···]"
+
+msgid "Usage: backend.py {serve|remind|snapshot}"
+msgstr "[Ûšàĝé: ƀàçķéñð.þÿ {serve|remind|snapshot}·············]"
+
+msgid "Usage: emaki-notes [--note ID]"
+msgstr "[Ûšàĝé: éɱàķî-ñöţéš [--ñöţé ÎÐ]·········]"
+
+msgid "not an object"
+msgstr "[ñöţ àñ öƀĵéçţ···]"

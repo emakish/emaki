@@ -8,6 +8,7 @@ import importlib.util
 import os
 from pathlib import Path
 import re
+import runpy
 import shutil
 import signal
 import subprocess
@@ -68,6 +69,11 @@ class SpaceTransactions(unittest.TestCase):
             shutil.copy2(library, self.root / 'transport.so')
             self.inner_command = ['env', 'LD_PRELOAD=/transport.so', 'pacman']
         self.estimator = self.root / 'usr/libexec/emaki/emaki_update_space.py'
+        # The full package installs these shared modules outside install-upkeep.
+        shutil.copy2(ROOT / 'scripts/emaki_i18n.py', self.estimator.parent / 'emaki_i18n.py')
+        renderer = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+        (self.estimator.parent / 'emaki_paths.py').write_text(
+            renderer['modules'](renderer['paths']())[0])
         source = self.estimator.read_text()
         marker = "if __name__ == '__main__':"
         self.assertEqual(source.count(marker), 1)
@@ -147,6 +153,18 @@ class SpaceTransactions(unittest.TestCase):
         self.success(result)
         self.measured(result)
         self.assertEqual(self.pacman('-Q', 'other').stdout, 'other 9-1\n')
+
+    def test_translated_shortage_still_refuses(self):
+        source = self.estimator.read_text()
+        self.estimator.write_text(source.replace(
+            "if __name__ == '__main__':",
+            "_ = lambda text: text.replace('Not enough free space', 'Translated shortage')\n"
+            "if __name__ == '__main__':"))
+        result = self.pacman('-Syyu', free=1024 ** 3 + 100 * 1024 ** 2)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Translated shortage', result.stdout + result.stderr)
+        self.measured(result)
+        self.assertEqual(self.pacman('-Q', 'changed', 'other').stdout, 'changed 1-1\nother 1-1\n')
 
     def test_group_selection_is_measured_without_waiting_for_deadline(self):
         started = time.monotonic()

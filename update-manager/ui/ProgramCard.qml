@@ -84,7 +84,7 @@ C.AbstractButton {
             objectName: "featured-install"
             visible: card.featured
             Layout.row: card.featured && !card.compact ? 0 : 1; Layout.column: card.featured && !card.compact ? 2 : 1
-            text: card.program.installed ? "Installed" : "Install"
+            text: card.program.installed ? qsTranslate("ProgramCard", "Installed") : qsTranslate("ProgramCard", "Install")
             primary: !card.program.installed
             enabled: !card.program.installed && card.installEnabled
             onClicked: card.installRequested()

@@ -6,6 +6,7 @@ import copy
 import fcntl
 import hashlib
 from datetime import datetime, timezone
+import http.client
 import importlib.util
 import io
 import json
@@ -123,6 +124,22 @@ class Parsing(unittest.TestCase):
 
 
 class Checking(unittest.TestCase):
+    def test_language_change_discards_translated_update_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            previous = dict(language='en_US.UTF-8', checkedAt=datetime.now(timezone.utc).isoformat(),
+                            databaseStamp='same', warnings=['English warning'])
+            backend.save_json(cache / 'updates.json', previous)
+            with patch.dict(os.environ, EMAKI_LANGUAGE='pt_BR'), \
+                    patch.object(backend, 'cleanup_databases'), \
+                    patch.object(backend, 'package_paths', return_value=(cache, cache / 'log')), \
+                    patch.object(backend, 'fingerprint', return_value='same'), \
+                    patch.object(backend, 'discover', return_value={'warnings': ['Translated warning']}) as discover:
+                result = backend.check(cache, False)
+            discover.assert_called_once_with(cache)
+            self.assertEqual(result['language'], 'pt_BR')
+            self.assertEqual(result['warnings'], ['Translated warning'])
+
     def setUp(self):
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
@@ -321,6 +338,20 @@ class Checking(unittest.TestCase):
             with patch.object(backend.time, 'time', return_value=10**12), \
                     patch.object(backend, 'urlopen', side_effect=OSError('offline')):
                 self.assertEqual(backend.fetch(response.url, root, json.loads), ({'ok': True}, True))
+
+    def test_fetch_treats_a_cut_off_response_as_a_network_failure(self):
+        url = 'https://archlinux.org/feeds/news/'
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            response = Mock(url=url)
+            response.__enter__ = Mock(return_value=response)
+            response.__exit__ = Mock(return_value=False)
+            response.read.side_effect = http.client.IncompleteRead(b'<rss', 1000)
+            with patch.object(backend, 'urlopen', return_value=response), self.assertRaises(RuntimeError):
+                backend.fetch(url, cache, json.loads)
+            backend.save_json(cache / (hashlib.sha256(url.encode()).hexdigest() + '.json'), {'time': 0, 'body': '{}'})
+            with patch.object(backend, 'urlopen', return_value=response):
+                self.assertEqual(backend.fetch(url, cache, json.loads), ({}, True))
 
     def test_fetch_rejects_insecure_redirect_before_reading_or_caching(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -657,6 +688,25 @@ with patch.object(backend, 'package_paths', return_value=(root / 'system', root 
                 data = backend.check(cache, True)
             self.assertEqual(data['updates'], old['updates'])
             self.assertIn('previous check', data['error'])
+
+    def test_status_keeps_new_packages_across_translation_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            with patch.object(catalog, '_', side_effect=lambda text: 'first: ' + text):
+                rows = catalog.transaction('core|new-package|2|0\ncore|existing|2|0', {'existing': '1'})
+            self.assertEqual(rows[0]['old'], 'Not installed')
+            self.assertEqual(rows[0]['oldDisplay'], 'first: Not installed')
+            self.assertNotIn('oldDisplay', rows[1])
+            backend.save_json(cache / 'updates.json', dict(updates=rows, language='first'))
+            with patch.object(backend, '_', side_effect=lambda text: 'second: ' + text), \
+                    patch.object(backend, 'command', return_value='existing 1\n'):
+                self.assertEqual(backend.status(cache)['pending'], 2)
+            # A terminal install/update clears both rows; removing the existing
+            # package clears its update while keeping the uninstalled dependency.
+            with patch.object(backend, 'command', return_value='new-package 2\nexisting 2\n'):
+                self.assertEqual(backend.status(cache)['pending'], 0)
+            with patch.object(backend, 'command', return_value=''):
+                self.assertEqual(backend.status(cache)['pending'], 1)
 
     def test_indicator_clears_after_terminal_update_without_network(self):
         with tempfile.TemporaryDirectory() as directory:

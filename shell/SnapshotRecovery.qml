@@ -38,14 +38,15 @@ Scope {
         }
         onExited: code => {
             recovery.succeeded = code === 0;
-            recovery.error = code === 0 ? "" : code === 126 ? "Authentication was cancelled. Nothing changed." : errors.text.trim() || "Could not keep this state. You can try again.";
+            recovery.error = code === 0 ? "" : code === 126 ? qsTranslate("SnapshotRecovery", "Authentication was cancelled. Nothing changed.") : errors.text.trim() || qsTranslate("SnapshotRecovery", "Could not keep this state. You can try again.");
         }
     }
     LazyLoader {
         active: recovery.opened
         FloatingWindow {
+            readonly property bool identified: Translation.identify(prompt.Window.window, "org.emaki.recovery")
             objectName: "snapshotRecoveryWindow"
-            title: "Recovery snapshot"
+            title: qsTranslate("SnapshotRecovery", "Recovery snapshot")
             color: "transparent"
             implicitWidth: Math.min(prompt.implicitWidth, Math.max(1, (screen?.width ?? 492) - 32))
             implicitHeight: Math.min(prompt.implicitHeight, Math.max(1, (screen?.height ?? 632) - 32))

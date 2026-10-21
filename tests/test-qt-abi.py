@@ -9,6 +9,7 @@ import importlib.util
 import io
 import os
 from pathlib import Path
+import re
 import runpy
 import subprocess
 import sys
@@ -40,14 +41,53 @@ class QtAbiTests(unittest.TestCase):
         self.stamp = self.work / 'qt-build-version'
         self.stamp.write_text('6.11.2\n')
 
-    def check(self, output, failure=None, *, hook=False):
-        result = subprocess.CompletedProcess([], 0, output, '')
-        with patch.object(guard.subprocess, 'run', return_value=result, side_effect=failure), redirect_stderr(io.StringIO()) as log:
+    def check(self, output, failure=None, *, hook=False, plugin='6.11.2'):
+        def run(argv, **kwargs):
+            if failure:
+                raise failure
+            text = ('Provides : emaki-i18n-qt-build=' + plugin + '\n'
+                    if argv == ['/usr/bin/pacman', '-Qi', 'emaki-config'] else output)
+            return subprocess.CompletedProcess(argv, 0, text, '')
+        with patch.object(guard.subprocess, 'run', side_effect=run), redirect_stderr(io.StringIO()) as log:
             status = guard.main(self.stamp, hook=hook)
         return status, log.getvalue()
 
     def test_matching_releases_ignore_epoch_and_package_rebuild(self):
         self.assertEqual(self.check('qt6-base 1:6.11.2-9\nqt6-declarative 6.11.2-1.2\n'), (0, ''))
+
+    def test_translation_plugin_rebuild_is_checked_independently(self):
+        output = 'qt6-base 6.11.2-1\nqt6-declarative 6.11.2-1\n'
+        for version in ('6.11.1', '6.11.3', '6.12.0'):
+            with self.subTest(version=version):
+                status, log = self.check(output, plugin=version)
+                self.assertEqual(status, 1)
+                self.assertIn(f'emaki-config translation plugin was built with Qt {version}', log)
+                self.assertIn('emaki-config rebuilds', log)
+                self.assertEqual(self.check(output, plugin=version, hook=True)[0], 0)
+
+    def test_translation_plugin_missing_or_invalid_metadata_warns(self):
+        output = 'qt6-base 6.11.2-1\nqt6-declarative 6.11.2-1\n'
+        for value in ('', '6.11', '6.11.2 emaki-i18n-qt-build=6.11.3'):
+            with self.subTest(value=value):
+                status, log = self.check(output, plugin=value)
+                self.assertEqual(status, 1)
+                self.assertIn('emaki-config has', log)
+
+    def test_translation_package_records_actual_build_version(self):
+        # makepkg reads provides before building, so the record is the recipe's pinned
+        # Qt and build() refuses any other Qt: the record always equals the real build.
+        recipe = (ROOT / 'packaging/emaki-config/PKGBUILD').read_text()
+        pinned = re.search(r'^_qtver=([0-9]+\.[0-9]+\.[0-9]+)$', recipe, re.M).group(1)
+        self.assertIn('provides=("emaki-i18n-qt-build=$_qtver")', recipe)
+        build = recipe.split('build() {', 1)[1].split('\n}', 1)[0]
+        for found, status in ((pinned, 0), ('6.12.4' if pinned != '6.12.4' else '6.12.5', 1)):
+            with self.subTest(found=found):
+                script = (f'_qtver={pinned}; _emaki_source() {{ :; }}; _emaki_make() {{ :; }}; '
+                          f'pkg-config() {{ test "$*" = "--modversion Qt6Core" && echo {found}; }};\n'
+                          'build() {' + build + '\n}; build')
+                result = subprocess.run(['bash', '-c', script], env=dict(os.environ, srcdir=str(self.work)),
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, status, result.stderr)
 
     def test_each_component_patch_minor_and_older_release_warn(self):
         for changed in guard.COMPONENTS:
@@ -102,7 +142,8 @@ class QtAbiTests(unittest.TestCase):
                 'Depends On      : qt6-base>=6.11.2\n', '')
             installed = subprocess.CompletedProcess([], 0,
                 'qt6-base 6.11.2-1\nqt6-declarative 6.11.2-1\n', '')
-            with patch.object(guard.subprocess, 'run', side_effect=[metadata, installed]) as run, redirect_stderr(io.StringIO()):
+            with patch.object(guard.subprocess, 'run', side_effect=[metadata, installed, subprocess.CompletedProcess([], 0,
+                    'Provides : emaki-i18n-qt-build=6.11.2\n', '')]) as run, redirect_stderr(io.StringIO()):
                 self.assertEqual(guard.main(self.stamp), 0 if version == '6.11.2' else 1)
             self.assertEqual(run.call_args_list[0].args[0],
                              ['/usr/bin/pacman', '-Qi', 'quickshell-emaki'])

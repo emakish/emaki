@@ -105,7 +105,7 @@ def main():
         for path in list(staged.glob('*.qml')) + list((staged / 'tests').glob('*.qml')):
             path.write_text(path.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
         linted = sorted(staged.glob('*.qml')) + sorted((staged / 'tests').glob('*.qml'))
-        result = subprocess.run([lint, '--ignore-settings', '-W', '0', '--json', '-', '-I', '/usr/lib/qt6/qml', *map(str, linted)], text=True, capture_output=True, timeout=30)
+        result = subprocess.run([lint, '--ignore-settings', '-W', '0', '--json', '-', '-I', '/usr/lib/qt6/qml', '-I', str(ROOT / '.cache/i18n-native/qml'), *map(str, linted)], text=True, capture_output=True, timeout=30)
     report = json.loads(result.stdout)
     known = []
     # Exactly the two upstream metadata omissions already allowed by

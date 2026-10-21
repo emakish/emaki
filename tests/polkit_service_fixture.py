@@ -59,7 +59,7 @@ def exercise_service(root, profile, runtime, env, qs):
     assert build.returncode == 0, build.stdout + build.stderr
     isolated = dict(env, QT_QPA_PLATFORM='wayland', WLR_BACKENDS='headless',
                     WLR_RENDERER='pixman', WLR_LIBINPUT_NO_DEVICES='1',
-                    QML_IMPORT_PATH=str(sudo_build / 'qml'),
+                    QML_IMPORT_PATH=str(sudo_build / 'qml') + ':' + str(root / '.cache/i18n-native/qml'),
                     DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session.sock'),
                     DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'no-system.sock'))
     for key in ('DISPLAY', 'NIRI_SOCKET', 'WAYLAND_SOCKET', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'SESSION_MANAGER'):

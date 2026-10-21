@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Subprocess logging, secret handling, and confined target file writes."""
+from .i18n import _
 import codecs
 from contextlib import contextmanager
 import os
@@ -139,7 +140,7 @@ class Runner:
         it may leave an unkillable process behind and is unsuitable for disk writes.
         """
         if termination_timeout is not None and (timeout is None or termination_timeout <= 0 or input is not None):
-            raise ValueError("Bounded termination requires a timeout, a positive budget and no stdin.")
+            raise ValueError(_('Bounded termination requires a timeout, a positive budget and no stdin.'))
         argv = [str(x) for x in argv]
         if not quiet:
             safe_log(self.log, self.redactor.text('$ ' + shlex.join(argv)))
@@ -171,10 +172,10 @@ class Runner:
                         if cancelled is not None and cancelled.is_set():
                             if termination_timeout is None:
                                 stop_group(process)
-                            raise InstallError(Code.CANCELLED, 'Update download stopped.')
+                            raise InstallError(Code.CANCELLED, _('Update download stopped.'))
                         if timeout is not None and time.monotonic() - start > timeout:
                             self._timed_out(process, argv, termination_timeout)
-                        for key, _ in selector.select(0.2):
+                        for key, ignored in selector.select(0.2):
                             data = os.read(key.fd, 16384)
                             if not data:
                                 selector.unregister(key.fileobj)
@@ -193,7 +194,7 @@ class Runner:
                                 if not dropping:
                                     pending += segment
                                     if len(pending) > 65536:
-                                        safe_log(self.log, 'Oversized subprocess log line suppressed.')
+                                        safe_log(self.log, _('Oversized subprocess log line suppressed.'))
                                         pending, dropping = '', True
                                 if index < len(segments) - 1:
                                     if not dropping:
@@ -206,7 +207,7 @@ class Runner:
                         if cancelled.is_set():
                             if termination_timeout is None:
                                 stop_group(process)
-                            raise InstallError(Code.CANCELLED, 'Update download stopped.')
+                            raise InstallError(Code.CANCELLED, _('Update download stopped.'))
                         if timeout is not None and time.monotonic() - start > timeout:
                             self._timed_out(process, argv, termination_timeout)
                         time.sleep(0.05)
@@ -220,20 +221,20 @@ class Runner:
                     except subprocess.TimeoutExpired:
                         self._timed_out(process, argv, termination_timeout)
         except OSError as exc:
-            raise InstallError(Code.COMMAND_FAILED, f'Cannot run {argv[0]}: {exc.strerror}.') from exc
+            raise InstallError(Code.COMMAND_FAILED, _('Cannot run {value1}: {value2}.').format(value1=argv[0], value2=exc.strerror)) from exc
         if not quiet:
             safe_log(self.log, f'{Path(argv[0]).name}: exit {status}' + (' (private input/output)' if secret else ''))
         if self.progress and not secret and not quiet and status == 0:
             self.progress(command_done=argv)
         if check and status:
-            raise InstallError(Code.COMMAND_FAILED, f'{Path(argv[0]).name} exited with status {status}.',
+            raise InstallError(Code.COMMAND_FAILED, _('{value1} exited with status {value2}.').format(value1=Path(argv[0]).name, value2=status),
                                output='' if secret else self.redactor.text(''.join(chunks)), returncode=status)
         return '' if secret else ''.join(chunks)
 
     def _timed_out(self, process, argv, termination_timeout=None):
         if termination_timeout is None and not stop_group(process):
             safe_log(self.log, f'{Path(argv[0]).name}: processes of the stopped command are still running.')
-        raise InstallError(Code.COMMAND_FAILED, f'{argv[0]} timed out.')
+        raise InstallError(Code.COMMAND_FAILED, _('{value1} timed out.').format(value1=argv[0]))
 
     def _line(self, line, watch=None):
         if line:
@@ -255,13 +256,13 @@ class TargetFiles:
 
     def path(self, name):
         require(name.startswith('/') and '..' not in Path(name).parts,
-                Code.UNSAFE_DISK, 'Invalid target path.')
+                Code.UNSAFE_DISK, _('Invalid target path.'))
         path = self.root / name.lstrip('/')
         current = self.root
-        require(not current.is_symlink(), Code.UNSAFE_DISK, 'Target root is a symlink.')
+        require(not current.is_symlink(), Code.UNSAFE_DISK, _('Target root is a symlink.'))
         for part in Path(name).parts[1:]:
             current /= part
-            require(not current.is_symlink(), Code.UNSAFE_DISK, f'Target symlink refused: {name}.')
+            require(not current.is_symlink(), Code.UNSAFE_DISK, _('Target symlink refused: {value1}.').format(value1=name))
         return path
 
     def mkdir(self, name, mode=0o755):
@@ -287,7 +288,7 @@ class TargetFiles:
 
     def read(self, name):
         p = self.path(name)
-        require(p.is_file(), Code.UNSAFE_DISK, f'Required target file missing: {name}.')
+        require(p.is_file(), Code.UNSAFE_DISK, _('Required target file missing: {value1}.').format(value1=name))
         return p.read_text()
 
 
@@ -308,7 +309,7 @@ def mounts_under(root, mountinfo=None):
 def processes_under(root, proc=Path('/proc')):
     """Only chrooted processes, never live processes with a cwd under target."""
     root = Path(root).resolve(strict=True)
-    require(root != Path('/'), Code.UNSAFE_DISK, 'Refusing process cleanup of the live root.')
+    require(root != Path('/'), Code.UNSAFE_DISK, _('Refusing process cleanup of the live root.'))
     result = []
     for entry in proc.iterdir():
         if not entry.name.isdecimal():
@@ -325,7 +326,7 @@ def processes_under(root, proc=Path('/proc')):
 def stop_target_processes(runner, root):
     for sig in (signal.SIGTERM, signal.SIGKILL):
         signalled = False
-        for pid, _ in processes_under(root):
+        for pid, ignored in processes_under(root):
             try:
                 # Pin the process before rechecking its root: a recycled PID
                 # must never redirect a signal to an unrelated live process.
@@ -333,7 +334,7 @@ def stop_target_processes(runner, root):
                 try:
                     if pid not in dict(processes_under(root)):
                         continue
-                    safe_log(runner.log, f'Stopping target process {pid}: {sig.name}')
+                    safe_log(runner.log, _('Stopping target process {value1}: {value2}').format(value1=pid, value2=sig.name))
                     signal.pidfd_send_signal(fd, sig)
                     signalled = True
                 finally:
@@ -341,7 +342,7 @@ def stop_target_processes(runner, root):
             except ProcessLookupError:
                 pass
             except OSError as exc:
-                safe_log(runner.log, f'Could not stop target process {pid}: {exc}')
+                safe_log(runner.log, _('Could not stop target process {value1}: {value2}').format(value1=pid, value2=exc))
         if sig == signal.SIGTERM and signalled:
             time.sleep(0.5)
 
@@ -382,13 +383,13 @@ def cleanup(runner, roots, *, lazy=False, before_unmount=None):
                         continue
                     errors.append(exc.message)
                     if not lazy:
-                        safe_log(runner.log, f'Unmount failed after {attempts} attempts: {mount}')
+                        safe_log(runner.log, _('Unmount failed after {value1} attempts: {value2}').format(value1=attempts, value2=mount))
                         try:
                             runner.run(['fuser', '-vm', '--', str(mount)], check=False)
                         except InstallError as diagnostic:
                             safe_log(runner.log, 'fuser diagnostic failed: ' + diagnostic.message)
                         remaining = processes_under(root) if root.exists() else []
-                        safe_log(runner.log, 'Processes rooted inside target: ' +
+                        safe_log(runner.log, _('Processes rooted inside target: ') +
                                  (', '.join(f'{pid} root={path}' for pid, path in remaining) or 'none'))
     require(not errors, Code.CLEANUP_FAILED, '; '.join(errors))
 
@@ -398,6 +399,6 @@ def secure_log(path):
     info = os.fstat(fd)
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
         os.close(fd)
-        raise InstallError(Code.UNSAFE_DISK, 'Unsafe log destination.')
+        raise InstallError(Code.UNSAFE_DISK, _('Unsafe log destination.'))
     os.fchmod(fd, 0o600)
     return os.fdopen(fd, 'a', buffering=1)

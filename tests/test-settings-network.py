@@ -187,7 +187,8 @@ class Network(unittest.TestCase):
         plugins = prefix / 'lib/NetworkManager/VPN'
         plugins.mkdir(parents=True)
         executable = prefix / 'bin/nmcli'
-        with patch.object(backend.shutil, 'which', return_value=str(executable)):
+        with patch.object(backend.shutil, 'which', return_value=str(executable)), \
+                patch.object(backend, '_', side_effect=lambda value: '[' + value + ']'):
             self.assertEqual([item['value'] for item in backend.vpn_types()], ['wireguard'])
             (plugins / 'nm-openvpn-service.name').write_text(
                 '[VPN Connection]\nservice=org.freedesktop.NetworkManager.openvpn\n')

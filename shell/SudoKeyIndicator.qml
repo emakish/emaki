@@ -17,11 +17,11 @@ Column {
         model: indicator.keys
         SettingsButton {
             required property var modelData
-            readonly property string requester: Details.clean(modelData.label || Copy.requesterUnavailable)
+            readonly property string requester: Details.clean(modelData.label || Copy.requesterUnavailable())
             objectName: "sudo-key-revoke-" + modelData.id
             width: indicator.width
-            text: "⚿ " + requester + " · " + (modelData.kind === "turns" ? Copy.keyTurnsRemaining(modelData.remainingTurns) : modelData.session ? Copy.keySessionRemaining : Math.max(0, Math.ceil(modelData.remainingSeconds / 60)) + " min")
-            Accessible.name: Copy.keyRevoke + ": " + requester
+            text: "⚿ " + requester + " · " + (modelData.kind === "turns" ? Copy.keyTurnsRemaining(modelData.remainingTurns) : modelData.session ? Copy.keySessionRemaining() : qsTranslate("SudoKeyIndicator", "%n min", "", Math.max(0, Math.ceil(modelData.remainingSeconds / 60))))
+            Accessible.name: Copy.keyRevoke() + ": " + requester
             onClicked: indicator.backend.revoke(modelData.id)
         }
     }

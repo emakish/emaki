@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Artur Yakymenko
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::{bad_arguments, json_output, output};
+use emaki_core::i18n::{format_text, tr};
 use emaki_core::settings::{Operation, run as settings};
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
@@ -41,11 +42,14 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
     if args == ["session-config"] {
         return match emaki_core::settings::session_config(Duration::from_secs(2)) {
             Ok(path) => output(&format!("{}\n", path.display()), 0),
-            Err(reason) => output(&format!("settings: {reason}\n"), 1),
+            Err(reason) => output(
+                &format_text("settings: {reason}\n", &[("reason", reason.into())]),
+                1,
+            ),
         };
     }
     if args == ["--help"] || args == ["-h"] {
-        return output(&format!("{HELP}\n"), 0);
+        return output(&format!("{}\n", tr(HELP)), 0);
     }
     if let [page] = args {
         if PAGES.contains(page) {
@@ -176,7 +180,9 @@ fn open_launcher_settings(page: &str) -> ExitCode {
         ExitCode::SUCCESS
     } else {
         output(
-            "settings: launcher unavailable; use emaki settings --text for the keyboard menu.\n",
+            &tr(
+                "settings: launcher unavailable; use emaki settings --text for the keyboard menu.\n",
+            ),
             1,
         )
     }

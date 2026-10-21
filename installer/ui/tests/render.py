@@ -5,7 +5,7 @@
 
 Like tests/test-shell.py: isolated XDG directories, offscreen Qt, software scene
 graph, no native service access. The stdio transport avoids sandbox bind denial.
-Use --repo-shell to validate the repository material instead of installed files.
+Always use the matching repository shell and translation module.
 """
 import argparse
 import json
@@ -28,7 +28,7 @@ SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'net
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / '.cache/evidence/installer-render')
-    parser.add_argument('--repo-shell', action='store_true')
+    parser.add_argument('--repo-shell', action='store_true', help='compatibility option; repository shell is always used')
     parser.add_argument('--iso-fonts', action='store_true', help='restrict Fontconfig to Noto Sans/Mono')
     parser.add_argument('--scroll-bottom', action='store_true', help='capture the end of the step body')
     parser.add_argument('--width', type=int, default=1024)
@@ -45,9 +45,8 @@ def main():
         shutil.copytree(UI, root / 'ui', ignore=shutil.ignore_patterns('__pycache__', 'artifacts'))
         entry = (root / 'ui/tests/TestWindow.qml').read_text().replace('".." as UI', '"." as UI').replace('"mock-worker.py"', '"tests/mock-worker.py"').replace('"FakeNiri.js"', '"tests/FakeNiri.js"').replace('"real-worker.py"', '"tests/real-worker.py"')
         (root / 'ui/shell-test.qml').write_text(entry)
-        if args.repo_shell or not Path('/usr/share/emaki/shell/qmldir').exists():
-            for filename in (root / 'ui').glob('*.qml'):
-                filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
+        for filename in (root / 'ui').glob('*.qml'):
+            filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
         for name in ['cache', 'config', 'state', 'data']:
             (root / name).mkdir(mode=0o700)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QUICK_CONTROLS_STYLE='Basic',
@@ -55,6 +54,9 @@ def main():
                    XDG_CACHE_HOME=str(root / 'cache'), XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), EMAKI_INSTALLER_WIDTH=str(args.width), EMAKI_INSTALLER_HEIGHT=str(args.height),
                    EMAKI_INSTALLER_CHECKOUT=str(ROOT), TMPDIR=str(root))
+        env.update(EMAKI_LANGUAGE='en', EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
+                   QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
+                   QML2_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'))
         # Qt may terminate the real worker before its context manager runs.
         # Keep child scratch directories inside the renderer's cleanup scope.
         env['EMAKI_INSTALLER_SCROLL_BOTTOM'] = '1' if args.scroll_bottom else '0'

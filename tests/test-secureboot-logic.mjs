@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 const source = fs.readFileSync(new URL('../shell/SecureBoot.js', import.meta.url), 'utf8');
 const logic = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), logic);
 vm.runInContext(source.replace(/^\.pragma library\s*$/m, ''), logic);
 
 const status = (secure_boot, key, enrollment) => ({schema_version: 1, secure_boot, key, enrollment, signed: {}});
@@ -87,7 +88,7 @@ for (const value of [status(false, true, 'missing'), status(false, false, null),
     {schema_version: 1, secure_boot: false, key: null, enrollment: null}])
     assert.equal(logic.unpublished(value), false, JSON.stringify(value));
 // The steps name what MokManager shows, in its order.
-const steps = logic.steps;
+const steps = logic.steps();
 const order = ['blue screen', 'press any key', 'Enroll MOK', 'Continue', 'Yes', 'password', 'Reboot'].map(word => steps.indexOf(word));
 assert.deepEqual([...order].sort((a, b) => a - b), order);
 assert.equal(order.includes(-1), false);

@@ -42,9 +42,10 @@ class Paths(unittest.TestCase):
         shutil.copy2(ROOT / 'Makefile', source / 'Makefile')
         shutil.copy2(ROOT / 'scripts/render-paths', source / 'scripts/render-paths')
         # Replace the expensive UI suite with its generated-module precondition;
-        # keep the real target dependencies and path renderer.
+        # keep the real target dependencies and path renderer. The translation plugin
+        # build (0.11) has its own checks; this tree has no i18n/ sources.
         probe = source / 'probe.mk'
-        probe.write_text('check-installer:\n\t@test -f shell/Platform.qml\n')
+        probe.write_text('check-installer:\n\t@test -f shell/Platform.qml\nbuild-i18n:\n\t@true\n')
         self.assertFalse((source / 'shell/Platform.qml').exists())
         self.command(['make', '--no-print-directory', '-j2', '-f', 'Makefile',
                       '-f', 'probe.mk', 'check-installer'], cwd=source)
@@ -277,6 +278,7 @@ class Paths(unittest.TestCase):
         self.check_qml(self.base / 'shell/Platform.qml', self.values)
         helper = self.base / 'shell/helpers/shortcuts.py'
         shutil.copyfile(ROOT / 'shell/helpers/shortcuts.py', helper)
+        shutil.copyfile(ROOT / 'scripts/emaki_i18n.py', helper.parent / 'emaki_i18n.py')
         config = self.base / 'shortcuts.kdl'
         config.write_text('binds { Mod+Return { spawn "terminal"; }; }\n')
         output = self.command([sys.executable, '-IB', str(helper), '--config', str(config)], cwd='/')
@@ -303,7 +305,8 @@ class Paths(unittest.TestCase):
                 args = ['make', '--no-print-directory', 'install', 'install-niri-emaki',
                         'PREFIX=/tmp/x', 'DESTDIR=' + str(stage),
                         'CORE_BIN=' + str(core), 'SHADERS=',
-                        'SUDO_BUILD=' + str(self.base / 'sudo-build')]
+                        'SUDO_BUILD=' + str(self.base / 'sudo-build'),
+                        'I18N_BUILD=' + str(self.base / 'i18n-build')]
                 if custom:
                     args += ['DATADIR=' + values['DATADIR'], 'LIBEXECDIR=' + values['LIBEXECDIR']]
                 # Each relocated install can rebuild all native sudo artifacts.

@@ -169,8 +169,10 @@ window-rule {
 }
 
 // The Welcome window floats at its own size instead of opening as a full-width column.
-// Every Quickshell window has the app id org.quickshell; the title tells this one apart.
+// A stable app id keeps this rule independent of the displayed language.
 window-rule {
+    match app-id=r#"^org\.emaki\.welcome$"#
+    // Older clients without per-window identity still use the English title.
     match app-id=r#"^org\.quickshell$"# title="^Welcome to Emaki$"
     open-floating true
 }

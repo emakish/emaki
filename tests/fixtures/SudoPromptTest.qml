@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import Emaki.I18n
 import QtQuick.Window
 import QtTest
 import Quickshell
@@ -110,8 +111,8 @@ ShellRoot {
         input.wait(1050);
     }
     function run(): void {
-        check(Copy.keyTimestampPolicy === "After a key ends, sudo's usual five minutes still apply.", "approved sudo timestamp warning");
-        check(Copy.keyMinutesError === "At least 5 minutes", "approved typed minutes error");
+        check(Copy.keyTimestampPolicy() === "After a key ends, sudo's usual five minutes still apply.", "approved sudo timestamp warning");
+        check(Copy.keyMinutesError() === "At least 5 minutes", "approved typed minutes error");
         check(Copy.keyTurns(1) === "1 turn" && Copy.keyTurns(7) === "7 turns", "approved singular and plural turn counts");
         SudoKeySupport.backend = client;
         SudoKeySupport.installed = false;
@@ -131,7 +132,7 @@ ShellRoot {
         SudoKeySupport.installed = false;
         begin(false);
         check(controller.opened && !card.agentRequest, "unknown requester uses generic card");
-        check(adapter.requestLine === Copy.requestUnavailable, "unknown requester uses generic request text");
+        check(adapter.requestLine === Copy.requestUnavailable(), "unknown requester uses generic request text");
         check(adapter.detailRows[1].value === "fixture-program", "command basename shown for generic request");
         check(JSON.stringify(adapter.detailRows).indexOf("PRIVATE_ARGUMENT_83") < 0, "command arguments stay hidden");
         client.request = Object.assign({}, client.request, {
@@ -145,7 +146,7 @@ ShellRoot {
         client.request = Object.assign({}, client.request, {
             command: ""
         });
-        check(adapter.detailRows[1].value === Copy.unavailable, "missing program uses unavailable placeholder");
+        check(adapter.detailRows[1].value === Copy.unavailable(), "missing program uses unavailable placeholder");
         begin(true);
         check(adapter.requestLine === "Fixture Product wants to run a command as administrator", "known requester uses product label");
         check(adapter.detailRows[1].value === "fixture-program", "known requester shows command basename");
@@ -237,7 +238,7 @@ ShellRoot {
             const submitted = client.submissions;
             password.text = "PRIVATE_SUDO_FIXTURE_71";
             card.submit();
-            check(!choices.amountValid && amountError.visible && amountError.text === Copy.keyMinutesError, "invalid minutes show inline range message");
+            check(!choices.amountValid && amountError.visible && amountError.text === Copy.keyMinutesError(), "invalid minutes show inline range message");
             check(client.submissions === submitted && password.text === "PRIVATE_SUDO_FIXTURE_71", "invalid minutes do not submit or clear password");
         }
         for (const minutes of [5, 23, 137, 1440]) {
@@ -267,7 +268,7 @@ ShellRoot {
             const submitted = client.submissions;
             password.text = "PRIVATE_SUDO_FIXTURE_71";
             card.submit();
-            check(!choices.amountValid && amountError.visible && amountError.text === Copy.keyTurnsError, "invalid turns show inline range message");
+            check(!choices.amountValid && amountError.visible && amountError.text === Copy.keyTurnsError(), "invalid turns show inline range message");
             check(client.submissions === submitted && password.text === "PRIVATE_SUDO_FIXTURE_71", "invalid turns do not submit or clear password");
         }
         for (const turns of [1, 7, 43, 1000]) {
@@ -323,7 +324,7 @@ ShellRoot {
         check(indicator.visible, "live key indicator visible");
         const revoke = input.findChild(indicator, "sudo-key-revoke-key1");
         check(revoke !== null && revoke.text.indexOf("23 min") >= 0, "indicator includes remaining time");
-        check(revoke.text.indexOf(Copy.requesterUnavailable) >= 0, "unknown key owner uses generic label");
+        check(revoke.text.indexOf(Copy.requesterUnavailable()) >= 0, "unknown key owner uses generic label");
         revoke.clicked();
         check(client.revoked === "key1" && !indicator.visible, "one click revokes indicated key");
         client.keys = [

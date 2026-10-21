@@ -65,8 +65,8 @@ Item {
             web: "web-browser-symbolic",
             clip: "edit-paste-symbolic"
         })[kind] ?? ""
-    readonly property string trailing: kind === "window" ? String(row.tag ?? "") : kind === "calculator" ? "Copy" : kind === "web" ? "Open" : kind === "clip" ? "Delete" : kind === "app" ? (row.detail ?? "") : ""
-    readonly property bool quietTrailing: kind === "app" || kind === "window" || kind === "clip" || ["In use", "Off", "Only one installed", "None installed"].includes(trailing)
+    readonly property string trailing: kind === "window" ? String(row.tag ?? "") : kind === "calculator" ? qsTranslate("LauncherItem", "Copy") : kind === "web" ? qsTranslate("LauncherItem", "Open") : kind === "clip" ? qsTranslate("LauncherItem", "Delete") : kind === "app" ? (row.detail ?? "") : ""
+    readonly property bool quietTrailing: kind === "app" || kind === "window" || kind === "clip" || [qsTranslate("LauncherItem", "In use"), qsTranslate("LauncherItem", "Off"), qsTranslate("LauncherItem", "Only one installed"), qsTranslate("LauncherItem", "None installed")].includes(trailing)
     readonly property bool twoLines: shape === "row" && kind !== "app" && kind !== "window" && kind !== "clip" && kind !== "calculator" && (row?.detail ?? "") !== ""
     function escaped(text: string): string {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");

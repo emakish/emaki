@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Find live packages and freeze online recovery before any disk writes."""
+from .i18n import _
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,9 +12,7 @@ from urllib.parse import unquote, urlsplit
 from .constants import OFFLINE_CONF, OFFLINE_REPO, WORK
 from .errors import Code, InstallError, require
 
-MISSING_NOTICE = ('The installation files were not found on the live medium. '
-                  'Packages will be downloaded and checked before your disk is changed. '
-                  'Keep the internet connection active (Ventoy or copytoram).')
+MISSING_NOTICE = (_('The installation files were not found on the live medium. Packages will be downloaded and checked before your disk is changed. Keep the internet connection active (Ventoy or copytoram).'))
 
 
 def mounted_roots(root=Path('/')):
@@ -62,7 +61,7 @@ class PackageSource:
                 and not any(char.isspace() for char in str(self.hookdir))
                 and self.hookdir.is_dir()
                 and not self.hookdir.is_symlink() and not any(self.hookdir.iterdir()),
-                Code.OFFLINE_REPO, 'The package hook directory is not empty or is unavailable [pacman].')
+                Code.OFFLINE_REPO, _('The package hook directory is not empty or is unavailable [pacman].'))
         return offline_config(self.config, repo=self.repo.as_uri(), hookdir=self.hookdir)
 
 
@@ -96,7 +95,7 @@ def _download(runner, work, packages, root, hookdir):
     output = runner.run(['pacman', '-Sp', '--print-format', '%l', *options, *packages])
     urls = [line.strip() for line in output.splitlines() if '://' in line]
     require(urls, Code.OFFLINE_REPO_INCOMPLETE,
-            'No installation packages could be found online; your disk has not been changed.')
+            _('No installation packages could be found online; your disk has not been changed.'))
     archives, names = [], set()
     for url in urls:
         parsed = urlsplit(url)
@@ -105,7 +104,7 @@ def _download(runner, work, packages, root, hookdir):
                 and not parsed.query and not parsed.fragment and '/' not in name
                 and re.fullmatch(r'[A-Za-z0-9@_+.:~-]+\.pkg\.tar\.(?:zst|xz|gz)', name)
                 and name not in names, Code.OFFLINE_REPO_INCOMPLETE,
-                'The package download address is unsafe; your disk has not been changed.')
+                _('The package download address is unsafe; your disk has not been changed.'))
         names.add(name)
         archive = cache / name
         for suffix in ('', '.sig'):
@@ -116,13 +115,13 @@ def _download(runner, work, packages, root, hookdir):
                         '--output', str(destination), url + suffix])
             require(destination.is_file() and destination.stat().st_size > 0,
                     Code.OFFLINE_REPO_INCOMPLETE,
-                    'A package download is incomplete; your disk has not been changed.')
+                    _('A package download is incomplete; your disk has not been changed.'))
         # Verify before repo-add reads any downloaded archive metadata.
         runner.run(['pacman-key', '--verify', str(archive) + '.sig', str(archive)])
         archives.append(archive)
     runner.run(['repo-add', str(cache / 'emaki-offline.db.tar.gz'), *map(str, archives)])
     require((cache / 'emaki-offline.db').is_file(), Code.OFFLINE_REPO_INCOMPLETE,
-            'The downloaded package repository could not be prepared; your disk has not been changed.')
+            _('The downloaded package repository could not be prepared; your disk has not been changed.'))
     return cache, archives
 
 
@@ -158,8 +157,7 @@ def package_source(runner, packages, *, online, root=Path('/'), mount_roots=None
     if repo is None:
         notice(MISSING_NOTICE)
         require(online, Code.OFFLINE_REPO_INCOMPLETE,
-                'The installation files are missing. Connect to the internet and try again '
-                '(Ventoy or copytoram). Your disk has not been changed.')
+                _('The installation files are missing. Connect to the internet and try again (Ventoy or copytoram). Your disk has not been changed.'))
     Path(work_parent).mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='packages-', dir=work_parent) as temporary:
         work = Path(temporary)
@@ -171,8 +169,7 @@ def package_source(runner, packages, *, online, root=Path('/'), mount_roots=None
                 repo, archives = _download(runner, work, packages, root, hooks)
             except (OSError, InstallError) as exc:
                 raise InstallError(Code.OFFLINE_REPO_INCOMPLETE,
-                                   'The installation files could not be downloaded and checked. '
-                                   'Check the internet connection and free space in the live session, then try again; your disk has not been changed. '
+                                   _('The installation files could not be downloaded and checked. Check the internet connection and free space in the live session, then try again; your disk has not been changed. ')
                                    + str(exc)) from exc
         source = PackageSource(_config(work / 'offline.conf', repo, hooks), repo, archives, hooks)
         source.validate()

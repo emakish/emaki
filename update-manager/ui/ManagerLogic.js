@@ -68,6 +68,13 @@ function filter(rows, query, category) {
     return rows.filter(row => (!category || (row.categories || []).includes(category)) && terms.every(term =>
         [row.name, row.summary, row.description, row.package, row.id].join(' ').toLowerCase().includes(term)));
 }
+function categoryLabel(category) {
+    const labels = {Network: qsTranslate("ManagerLogic", "Internet"), Office: qsTranslate("ManagerLogic", "Office"), Graphics: qsTranslate("ManagerLogic", "Graphics"),
+        AudioVideo: qsTranslate("ManagerLogic", "Audio & Video"), Audio: qsTranslate("ManagerLogic", "Audio"), Video: qsTranslate("ManagerLogic", "Video"), Game: qsTranslate("ManagerLogic", "Games"),
+        Development: qsTranslate("ManagerLogic", "Development"), Education: qsTranslate("ManagerLogic", "Education"), Science: qsTranslate("ManagerLogic", "Science"),
+        Settings: qsTranslate("ManagerLogic", "Settings"), System: qsTranslate("ManagerLogic", "System"), Utility: qsTranslate("ManagerLogic", "Utilities")};
+    return labels[category] || category;
+}
 function categoryCounts(rows) {
     const counts = {};
     for (const row of rows) for (const category of new Set(row.categories || [])) counts[category] = (counts[category] || 0) + 1;
@@ -117,8 +124,8 @@ function installedRows(rows, legacy) {
             Object.assign(entry, {version: metadata.version || row.version, installedVersion: row.version,
                                   name: (row.names || [])[0] || metadata.name});
         entry.sourceLabel = foreign ? 'AUR' : metadata?.kind === 'arch' ? 'Arch'
-            : row.foreign === true ? 'Installed outside the store'
-            : metadata ? 'Arch' : 'Installed';
+            : row.foreign === true ? qsTranslate("ManagerLogic", 'Installed outside the store')
+            : metadata ? 'Arch' : qsTranslate("ManagerLogic", 'Installed');
         // AUR discovery never executes a package action; removal retains its
         // existing native preview and exact confirmed-package path.
         if (foreign) entry.key = 'legacy:' + row.package;
@@ -129,8 +136,8 @@ function installedRows(rows, legacy) {
     return installed.sort((a, b) => a.name.localeCompare(b.name));
 }
 function removalStatus(row) {
-    return row.protected ? 'Part of Emaki'
-        : (row.requiredBy || []).length ? 'Needed by other software' : '';
+    return row.protected ? qsTranslate("ManagerLogic", 'Part of Emaki')
+        : (row.requiredBy || []).length ? qsTranslate("ManagerLogic", 'Needed by other software') : '';
 }
 function aurBuilds(plan) {
     const transaction = plan && plan.transaction || {};
@@ -139,8 +146,9 @@ function aurBuilds(plan) {
         name: build.packageBase, version: build.version || '',
         packages: (build.packages || []).map(row => row.package).join(', '),
         commit: String(build.commit || '').slice(0, 10),
-        maintainer: build.orphan ? 'nobody maintains it' : build.maintainer ? 'by ' + build.maintainer : '',
-        outOfDate: build.outOfDate ? 'marked out of date' : '',
+        orphan: build.orphan === true,
+        maintainer: build.orphan ? qsTranslate("ManagerLogic", 'nobody maintains it') : build.maintainer ? qsTranslate("ManagerLogic", "by %1").arg(build.maintainer) : '',
+        outOfDate: build.outOfDate ? qsTranslate("ManagerLogic", 'marked out of date') : '',
         recipe: /^https:\/\/aur\.archlinux\.org\//.test(build.recipe || '') ? build.recipe : '',
         target: (build.packages || []).some(row => row.package === transaction.target)}));
 }
@@ -152,29 +160,39 @@ function aurPulls(plan, purpose) {
 }
 function undoRows(plan) {
     const transaction = plan && plan.transaction || {};
-    const reasons = {system: 'part of the system', emaki: 'part of Emaki', explicit: 'you installed it yourself',
-                     'in-use': 'other programs use it'};
-    return Object.keys(transaction.keep || {}).sort().map(name => ({name: name, detail: reasons[transaction.keep[name]] || 'stays'}));
+    const reasons = {system: qsTranslate("ManagerLogic", 'part of the system'), emaki: qsTranslate("ManagerLogic", 'part of Emaki'), explicit: qsTranslate("ManagerLogic", 'you installed it yourself'),
+                     'in-use': qsTranslate("ManagerLogic", 'other programs use it')};
+    return Object.keys(transaction.keep || {}).sort().map(name => ({name: name, detail: reasons[transaction.keep[name]] || qsTranslate("ManagerLogic", 'stays')}));
 }
 function undoRefusal(event) {
     // Why an undo was refused, in the words of its preview.
     if (!event || event.code !== 'cannot-undo') return '';
     const blockers = event.requiredBy || [];
-    if (blockers.length) return ' ' + blockers.join(', ') + (blockers.length === 1 ? ' needs' : ' need') + ' what it added.';
-    const reasons = {system: 'It is now part of the system.', emaki: 'It is now part of Emaki.',
-                     explicit: 'You installed it yourself since.', 'not-installed': 'It is no longer installed.'};
+    if (blockers.length) return " " + qsTranslate("ManagerLogic", "%1 need(s) what it added.", "", blockers.length).replace("need(s)", blockers.length === 1 ? "needs" : "need").arg(blockers.join(", "));
+    const reasons = {system: qsTranslate("ManagerLogic", 'It is now part of the system.'), emaki: qsTranslate("ManagerLogic", 'It is now part of Emaki.'),
+                     explicit: qsTranslate("ManagerLogic", 'You installed it yourself since.'), 'not-installed': qsTranslate("ManagerLogic", 'It is no longer installed.')};
     return reasons[event.reason] ? ' ' + reasons[event.reason] : '';
+}
+function groupedCount(value) {
+    return Number(value).toLocaleString(Qt.locale("en_US"), "f", 0);
 }
 function day(value) {
     const parsed = new Date(value);
-    return isNaN(parsed.getTime()) ? '' : Qt.formatDateTime(parsed, 'd MMM yyyy, HH:mm');
+    return isNaN(parsed.getTime()) ? '' : parsed.toLocaleString(Qt.locale(), 'd MMM yyyy, HH:mm');
+}
+function downloadText(value) {
+    // pacman reports 0 for a package already in its cache; a few kilobytes must not read as zero.
+    if (value === null || value === undefined) return '—';
+    if (value === 0) return qsTranslate("ManagerLogic", "0 MB");
+    if (value < 50000) return qsTranslate("ManagerLogic", "< 0.1 MB");
+    return value >= 1000000000 ? qsTranslate("ManagerLogic", "%1 GB").arg((value / 1000000000).toFixed(1)) : qsTranslate("ManagerLogic", "%1 MB").arg((value / 1000000).toFixed(1));
 }
 function launchIds(row) {
     return Array.from(new Set((row.ids || []).concat([row.id || ''])
         .filter(Boolean).map(id => String(id).replace(/\.desktop$/, ''))));
 }
 function progressStart() {
-    return {step: 0, steps: 4, label: 'Getting ready', done: 0, total: 0, planned: 0,
+    return {step: 0, steps: 4, label: qsTranslate("ManagerLogic", 'Getting ready'), done: 0, total: 0, planned: 0,
             restorePoint: false, preSnapshots: false};
 }
 function progressLine(state, raw) {
@@ -184,7 +202,7 @@ function progressLine(state, raw) {
     // Returns the same object when the line changes nothing, a new one otherwise.
     const line = String(raw || '').trim();
     if (!line) return state;
-    const steps = ['Getting ready', 'Downloading', 'Making a restore point', 'Installing', 'Finishing'];
+    const steps = [qsTranslate("ManagerLogic", 'Getting ready'), qsTranslate("ManagerLogic", 'Downloading'), qsTranslate("ManagerLogic", 'Making a restore point'), qsTranslate("ManagerLogic", 'Installing'), qsTranslate("ManagerLogic", 'Finishing')];
     const next = Object.assign({}, state);
     const go = step => Object.assign(next, {step: step, label: steps[step], done: 0, total: 0});
     // A terminal shows "(2/5) upgrading foo". The update service pipes pacman, which then has
@@ -216,13 +234,16 @@ function progressLine(state, raw) {
     } else if (/^:: Processing package changes/.test(text)) {
         next.preSnapshots = false;
         go(3);
-    } else if (/^:: Running post-transaction hooks/.test(text) || /^Updating Flatpak applications/.test(text)) {
+    } else if (/^:: Running post-transaction hooks/.test(text)) {
         next.preSnapshots = false;
         go(4);
     } else {
         return state;
     }
     return next;
+}
+function progressEvent(state, event) {
+    return event.phase === "flatpak" ? Object.assign({}, state, {step: 4, label: qsTranslate("ManagerLogic", "Finishing"), done: 0, total: 0, preSnapshots: false}) : state;
 }
 function updateProgress(output) {
     return String(output || '').split('\n').reduce(progressLine, progressStart());

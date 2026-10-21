@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Check the live clock before asking the package manager to verify signatures."""
+from .i18n import _
 from email.utils import parsedate_to_datetime
 from functools import partial
 from http.client import HTTPException
@@ -47,10 +48,10 @@ def http_date(url):
     request = Request(url, method='HEAD', headers={'Cache-Control': 'no-cache'})
     with urlopen(request, timeout=HTTP_TIMEOUT) as response:
         if not response.url.startswith('https://'):
-            raise ValueError('Time source did not use HTTPS.')
+            raise ValueError(_('Time source did not use HTTPS.'))
         value = parsedate_to_datetime(response.headers['Date'])
         if value.tzinfo is None:
-            raise ValueError('Time source omitted the time zone.')
+            raise ValueError(_('Time source omitted the time zone.'))
         return value.timestamp()
 
 
@@ -120,12 +121,10 @@ def _set_clock(runner, stamp, now):
                 runner.run(['timedatectl', 'set-ntp', 'true'], timeout=10)
     except (InstallError, OSError, ValueError, OverflowError) as exc:
         raise InstallError(Code.CLOCK_SKEW,
-                           'The computer clock could not be corrected. Set the date and time in '
-                           'the live session, then try again. Your disk has not been changed.') from exc
+                           _('The computer clock could not be corrected. Set the date and time in the live session, then try again. Your disk has not been changed.')) from exc
     if not changed:
         raise InstallError(Code.CLOCK_SKEW,
-                           'The computer clock is still incorrect. Set the date and time in '
-                           'the live session, then try again. Your disk has not been changed.')
+                           _('The computer clock is still incorrect. Set the date and time in the live session, then try again. Your disk has not been changed.'))
 
 
 def _sync_clock(runner, now, monotonic, sleep):
@@ -161,9 +160,7 @@ def _sync_clock(runner, now, monotonic, sleep):
                 runner.run(['timedatectl', 'set-ntp', 'false'], timeout=5)
             except (InstallError, OSError) as exc:
                 raise InstallError(Code.CLOCK_SKEW,
-                                   'The automatic clock setting could not be restored '
-                                   '(network time). Check the date and time in the live '
-                                   'session, then try again. Your disk has not been changed.') from exc
+                                   _('The automatic clock setting could not be restored (network time). Check the date and time in the live session, then try again. Your disk has not been changed.')) from exc
     elapsed = monotonic() - start
     return abs(now() - before - elapsed) > CLOCK_TOLERANCE
 
@@ -191,14 +188,12 @@ def ensure_clock(runner, *, online, repo=None, root='/', now=time.time,
             reference, date_error = _reference(sources)
     if online and reference is None and date_error:
         corrected = _sync_clock(runner, now, monotonic, sleep) or corrected
-        reference, _ = _reference(sources)
+        reference, ignored = _reference(sources)
     if reference is not None and abs(now() - reference) > CLOCK_TOLERANCE:
         _set_clock(runner, reference, now)
         corrected = True
     if corrected:
-        notice('The computer clock was corrected for this live session so package signatures '
-               'can be checked.')
+        notice(_('The computer clock was corrected for this live session so package signatures can be checked.'))
     elif online and reference is None and date_error:
-        notice('The current time could not be checked online. If package signatures fail, '
-               'check the date and time in the live session.')
+        notice(_('The current time could not be checked online. If package signatures fail, check the date and time in the live session.'))
     return corrected

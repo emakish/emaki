@@ -10,6 +10,7 @@ import Quickshell.Wayland
 // greetd owns authentication and session lifetime; these surfaces only present it.
 Scope {
     id: root
+    readonly property bool translationsReady: Translation.initialize()
     property bool launching: false
     property bool selectionLoaded: false
     property string picturePath: ""

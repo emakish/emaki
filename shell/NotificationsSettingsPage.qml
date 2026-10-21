@@ -33,7 +33,7 @@ Column {
     }
     function saveSchedule(field, next) {
         if ((field === "start" || field === "end") && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(next)) {
-            validationError = "Enter a time from 00:00 to 23:59.";
+            validationError = qsTranslate("NotificationsSettingsPage", "Enter a time from 00:00 to 23:59.");
             return false;
         }
         validationError = "";
@@ -108,12 +108,12 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Do not disturb"
+        title: qsTranslate("NotificationsSettingsPage", "Do not disturb")
         SettingsToggleRow {
             objectName: "setting-notifications.dnd"
             width: parent.width
-            title: "Do not disturb now"
-            explanation: "Keep notifications in history without showing popups."
+            title: qsTranslate("NotificationsSettingsPage", "Do not disturb now")
+            explanation: qsTranslate("NotificationsSettingsPage", "Keep notifications in history without showing popups.")
             value: page.store ? page.store.effectiveDnd : page.value("notifications.dnd", false)
             defaultValue: false
             busy: page.catalog.writing
@@ -124,30 +124,30 @@ Column {
         SettingsChoiceRow {
             objectName: "setting-notifications.until"
             width: parent.width
-            title: "Pause notifications until"
-            explanation: page.until > page.now ? "Paused until " + Qt.formatDateTime(new Date(page.until), "ddd HH:mm") + "." : "Pause popups for a limited time."
+            title: qsTranslate("NotificationsSettingsPage", "Pause notifications until")
+            explanation: page.until > page.now ? qsTranslate("NotificationsSettingsPage", "Paused until %1.").arg(new Date(page.until).toLocaleString(Qt.locale(), "ddd HH:mm")) : qsTranslate("NotificationsSettingsPage", "Pause popups for a limited time.")
             value: page.until > page.now ? "active" : "off"
             defaultValue: "off"
             options: [
                 {
-                    label: "Off",
+                    label: qsTranslate("NotificationsSettingsPage", "Off"),
                     value: "off"
                 },
                 {
-                    label: "30 minutes",
+                    label: qsTranslate("NotificationsSettingsPage", "30 minutes"),
                     value: "30"
                 },
                 {
-                    label: "1 hour",
+                    label: qsTranslate("NotificationsSettingsPage", "1 hour"),
                     value: "60"
                 },
                 {
-                    label: "2 hours",
+                    label: qsTranslate("NotificationsSettingsPage", "2 hours"),
                     value: "120"
                 }
             ].concat(page.until > page.now ? [
                 {
-                    label: Qt.formatDateTime(new Date(page.until), "ddd HH:mm"),
+                    label: new Date(page.until).toLocaleString(Qt.locale(), "ddd HH:mm"),
                     value: "active"
                 }
             ] : [])
@@ -162,8 +162,8 @@ Column {
         SettingsToggleRow {
             objectName: "setting-notifications.schedule"
             width: parent.width
-            title: "Use a daily schedule"
-            explanation: "Pause popups between these local times; matching times pause all day."
+            title: qsTranslate("NotificationsSettingsPage", "Use a daily schedule")
+            explanation: qsTranslate("NotificationsSettingsPage", "Pause popups between these local times; matching times pause all day.")
             value: page.schedule.enabled
             defaultValue: false
             busy: page.catalog.writing
@@ -175,15 +175,15 @@ Column {
             objectName: "settings-notifications-start"
             width: parent.width
             field: "start"
-            title: "Start time"
-            explanation: "Begin the daily pause at this time (HH:MM)."
+            title: qsTranslate("NotificationsSettingsPage", "Start time")
+            explanation: qsTranslate("NotificationsSettingsPage", "Begin the daily pause at this time (HH:MM).")
         }
         TimeRow {
             objectName: "settings-notifications-end"
             width: parent.width
             field: "end"
-            title: "End time"
-            explanation: "End the daily pause at this time (HH:MM)."
+            title: qsTranslate("NotificationsSettingsPage", "End time")
+            explanation: qsTranslate("NotificationsSettingsPage", "End the daily pause at this time (HH:MM).")
         }
     }
     Text {
@@ -200,7 +200,7 @@ Column {
     Text {
         width: parent.width
         objectName: "settings-notifications-status"
-        text: page.store && page.store.effectiveDnd ? "Do not disturb is active." : "Do not disturb is off." + (page.store && page.store.scheduleResumeNote ? " " + page.store.scheduleResumeNote : "")
+        text: page.store && page.store.effectiveDnd ? qsTranslate("NotificationsSettingsPage", "Do not disturb is active.") : qsTranslate("NotificationsSettingsPage", "Do not disturb is off.") + (page.store && page.store.scheduleResumeNote ? " " + page.store.scheduleResumeNote : "")
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         font.family: SettingsTheme.fontFamily
@@ -210,28 +210,28 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "setting-notifications.rules"
-        title: "Applications"
+        title: qsTranslate("NotificationsSettingsPage", "Applications")
         Repeater {
             model: page.store ? page.store.applications : []
             SettingsChoiceRow {
                 required property var modelData
                 objectName: "settings-notifications-app-" + modelData.id
                 width: parent.width
-                title: modelData.name
-                explanation: "Allow popups, keep only in history, or block notifications."
+                title: page.store.displayApp(modelData.name)
+                explanation: qsTranslate("NotificationsSettingsPage", "Allow popups, keep only in history, or block notifications.")
                 value: page.rules[modelData.id] || "allow"
                 defaultValue: "allow"
                 options: [
                     {
-                        label: "Allow",
+                        label: qsTranslate("NotificationsSettingsPage", "Allow"),
                         value: "allow"
                     },
                     {
-                        label: "Silent",
+                        label: qsTranslate("NotificationsSettingsPage", "Silent"),
                         value: "silent"
                     },
                     {
-                        label: "Off",
+                        label: qsTranslate("NotificationsSettingsPage", "Off"),
                         value: "off"
                     }
                 ]
@@ -244,7 +244,7 @@ Column {
         Text {
             width: parent.width
             visible: !page.store || page.store.applications.length === 0
-            text: "Applications appear here after sending a notification."
+            text: qsTranslate("NotificationsSettingsPage", "Applications appear here after sending a notification.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             font.family: SettingsTheme.fontFamily

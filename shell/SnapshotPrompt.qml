@@ -58,7 +58,7 @@ FocusScope {
             spacing: 16
             Text {
                 width: parent.width
-                text: prompt.succeeded ? "This state is ready" : "You are using a recovery snapshot"
+                text: prompt.succeeded ? qsTranslate("SnapshotPrompt", "This state is ready") : qsTranslate("SnapshotPrompt", "You are using a recovery snapshot")
                 wrapMode: Text.WordWrap
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 20
@@ -67,7 +67,7 @@ FocusScope {
             }
             Text {
                 width: parent.width
-                text: prompt.succeeded ? "Restart to use the restored system. Your previous system has been kept for undo." : (prompt.automaticMessage ? prompt.automaticMessage + "\n\n" : "") + "Snapshot " + prompt.snapshot + " is temporary until you keep it. Keeping it restores the original snapshot, including apps and system settings. Changes made during this recovery session are discarded. Your home files stay as they are."
+                text: prompt.succeeded ? qsTranslate("SnapshotPrompt", "Restart to use the restored system. Your previous system has been kept for undo.") : (prompt.automaticMessage ? prompt.automaticMessage + "\n\n" : "") + qsTranslate("SnapshotPrompt", "Snapshot %1 is temporary until you keep it. Keeping it restores the original snapshot, including apps and system settings. Changes made during this recovery session are discarded. Your home files stay as they are.").arg(prompt.snapshot)
                 wrapMode: Text.WordWrap
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 14
@@ -76,7 +76,7 @@ FocusScope {
             Text {
                 width: parent.width
                 visible: prompt.busy || prompt.error !== ""
-                text: prompt.busy ? "Keeping this state…" : prompt.error
+                text: prompt.busy ? qsTranslate("SnapshotPrompt", "Keeping this state…") : prompt.error
                 wrapMode: Text.WrapAnywhere
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 14
@@ -96,7 +96,7 @@ FocusScope {
         PromptAction {
             id: later
             objectName: "snapshotLater"
-            label: prompt.succeeded ? "Done" : "Not now"
+            label: prompt.succeeded ? qsTranslate("SnapshotPrompt", "Done") : qsTranslate("SnapshotPrompt", "Not now")
             enabled: !prompt.busy
             KeyNavigation.tab: keep.visible ? keep : later
             KeyNavigation.backtab: keep.visible ? keep : later
@@ -105,7 +105,7 @@ FocusScope {
         PromptAction {
             id: keep
             objectName: "snapshotKeep"
-            label: "Keep this state"
+            label: qsTranslate("SnapshotPrompt", "Keep this state")
             visible: !prompt.succeeded
             enabled: !prompt.busy
             accent: true

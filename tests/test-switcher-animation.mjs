@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 const root = process.env.EMAKI_TEST_ROOT || new URL('../', import.meta.url).pathname;
 const read = path => fs.readFileSync(`${root}/${path}`, 'utf8');
 const logic = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), logic);
 vm.runInContext(read('shell/Switcher.js').replace(/^\.pragma library\s*$/m, ''), logic);
 const labels = read('shell/WindowLabels.qml');
 const place = labels.match(/function place\([^]*?\n    }/)[0].replaceAll(': var', '').replace(': void', '');

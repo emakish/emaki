@@ -59,14 +59,19 @@ check(20); check(10); check(5);
 assert.deepEqual(readings, [10, 5, 10, 5, 10, 5], '20% battery recovery re-arms both warnings');
 
 // The battery marker is assigned before arrival, and cannot be supplied by a client name.
-const local = vm.createContext({systemId: -1, entries: [], Date, arrived(id) {
+const local = vm.createContext({systemId: -1, entries: [], Date, qsTranslate: (context, text) => text, arrived(id) {
     assert.equal(local.entries[0].id, id);
     assert.equal(local.entries[0].batteryWarning, true);
 }});
+// QML's String.arg(): replace the lowest-numbered %N.
+vm.runInContext(`String.prototype.arg = function (value) {
+    const numbers = (this.match(/%(\\d+)/g) || []).map(found => Number(found.slice(1)));
+    return numbers.length ? this.split('%' + Math.min(...numbers)).join(String(value)) : String(this);
+};`, local);
 local.applications = []; local.rules = {};
 for (const [name, args] of [['rememberApplication', 'id,name'], ['ruleFor', 'id'], ['peekAllowed', 'entry']])
     local[name] = vm.runInContext('(function(' + args + '){' + body('NotificationStore.qml', name) + '})', local);
-local.addLocal = vm.runInContext('(function(app,summary,body,batteryWarning,sessionUpdate,actions){' + body('NotificationStore.qml', 'addLocal') + '})', local);
+local.addLocal = vm.runInContext('(function(app,summary,body,batteryWarning,sessionUpdate,actions,options){' + body('NotificationStore.qml', 'addLocal') + '})', local);
 local.localNotice = vm.runInContext('(function(app,summary,body,batteryWarning,sessionUpdate){' + body('NotificationStore.qml', 'localNotice') + '})', local);
 const systemBattery = vm.runInContext('(function(percent){' + body('NotificationStore.qml', 'systemBattery') + '})', local);
 systemBattery(10); systemBattery(5);
@@ -121,6 +126,7 @@ const store = vm.createContext({n: {id: 3, appName: 'blueman', appIcon: 'blueman
     summary: 'Bluetooth', body: '123456', expireTimeout: 0,
     actions: [{identifier: 'confirm', text: 'Confirm'}, {identifier: 'deny', text: 'Deny'}]}, time: 1000});
 store.plainBody = value => vm.runInContext('(function(value){' + body('NotificationStore.qml', 'plainBody') + '})', store)(value);
+store.applicationId = vm.runInContext('(function(n){' + body('NotificationStore.qml', 'applicationId') + '})', store);
 function snapshot() {
     return vm.runInContext('(function(){' + body('NotificationStore.qml', 'snapshot') + '})()', store);
 }

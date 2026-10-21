@@ -110,7 +110,7 @@ Item {
             input.takeFocus();
         }
         Accessible.role: Accessible.EditableText
-        Accessible.name: input.auth.prompt || "Password"
+        Accessible.name: input.auth.prompt || qsTranslate("LockInput", "Password")
         Accessible.description: input.auth.displayMessage
         Accessible.onPressAction: input.takeFocus()
     }

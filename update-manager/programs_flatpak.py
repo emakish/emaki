@@ -7,6 +7,18 @@ cleanup happens only in an undo, and only for runtimes that install recorded.
 New programs use the default system installation through a fixed authenticated
 helper. Existing user programs can be removed without root.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import hashlib
 import hmac
 import json
@@ -21,9 +33,9 @@ FLATHUB_URLS = frozenset(('https://dl.flathub.org/repo', 'https://flathub.org/re
 REF = re.compile(r'app/[A-Za-z0-9_][A-Za-z0-9_.-]*/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z')
 LABEL = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z')
 TOKEN = re.compile(r'[0-9a-f]{64}\Z')
-USER_NOTICE = 'This existing Flatpak program can be removed from your account without administrator authentication.'
-SYSTEM_NOTICE = 'Flatpak changes apply to all users and require administrator authentication.'
-READ_ONLY_NOTICE = 'This additional Flatpak installation is read-only in this program manager.'
+USER_NOTICE = _('This existing Flatpak program can be removed from your account without administrator authentication.')
+SYSTEM_NOTICE = _('Flatpak changes apply to all users and require administrator authentication.')
+READ_ONLY_NOTICE = _('This additional Flatpak installation is read-only in this program manager.')
 
 
 def _library():
@@ -43,12 +55,12 @@ def _installations(library, warnings):
         try:
             installations.append(constructor(None))
         except Exception:
-            warnings.append('Flatpak installation could not be read: ' + scope)
+            warnings.append(_('Flatpak installation could not be read: {scope}').format(scope=scope))
     try:
         installations.extend(installation for installation in library.get_system_installations(None)
                              if _scope(installation) != 'system')
     except Exception:
-        warnings.append('Additional Flatpak installations could not be read.')
+        warnings.append(_('Additional Flatpak installations could not be read.'))
     return installations
 
 
@@ -78,12 +90,12 @@ def _metadata(remote, arch, cache, warnings):
     if key not in cache:
         records = []
         if path is None:
-            warnings.append('Flathub AppStream metadata is not cached: ' + remote.get_name())
+            warnings.append(_('Flathub AppStream metadata is not cached: {remote}').format(remote=remote.get_name()))
         else:
             try:
                 records = programs_appstream.read_file(path, origin=remote.get_name())
             except Exception:
-                warnings.append('Flathub AppStream metadata could not be read: ' + remote.get_name())
+                warnings.append(_('Flathub AppStream metadata could not be read: {remote}').format(remote=remote.get_name()))
         by_ref = {}
         by_id = {}
         for record in records:
@@ -109,7 +121,7 @@ def discover(refresh=False):
     try:
         library = _library()
     except Exception:
-        return [], ['Flatpak installations could not be read.']
+        return [], [_('Flatpak installations could not be read.')]
     installations = _installations(library, warnings)
     found = False
     for installation in installations:
@@ -119,7 +131,7 @@ def discover(refresh=False):
             installed = {ref.format_ref(): ref for ref in installation.list_installed_refs(None)}
             remotes = [remote for remote in installation.list_remotes(None) if _flathub(remote)]
         except Exception:
-            warnings.append('Flatpak installation could not be read: ' + scope)
+            warnings.append(_('Flatpak installation could not be read: {scope}').format(scope=scope))
             continue
         for remote in remotes:
             found = True
@@ -133,7 +145,7 @@ def discover(refresh=False):
                     else:
                         refs = installation.list_remote_refs_sync_full(origin, library.QueryFlags.ONLY_CACHED, None)
                 except Exception:
-                    warnings.append('Flathub catalog could not be read: ' + scope + '/' + origin)
+                    warnings.append(_('Flathub catalog could not be read: {source}').format(source=scope + '/' + origin))
                     refs = []
                 # A missing summary or an app withdrawn upstream must not hide
                 # an existing deployment that the person can still remove.
@@ -144,7 +156,7 @@ def discover(refresh=False):
                 refs = [ref for ref in refs if ref.get_kind() == library.RefKind.APP
                         and (ref.get_arch() in supported or ref.format_ref() in installed)]
                 if not refs:
-                    warnings.append('No Flathub programs are available in the cached catalog: ' + scope)
+                    warnings.append(_('No Flathub programs are available in the cached catalog: {scope}').format(scope=scope))
                 for ref in refs:
                     full = ref.format_ref()
                     local = installed.get(full)
@@ -177,9 +189,9 @@ def discover(refresh=False):
                     row.setdefault('name', '')
                     rows.append(row)
             except Exception:
-                warnings.append('Flathub catalog could not be read: ' + scope + '/' + origin)
+                warnings.append(_('Flathub catalog could not be read: {source}').format(source=scope + '/' + origin))
     if not found and not warnings:
-        warnings.append('No enabled, verified Flathub remote is configured.')
+        warnings.append(_('No enabled, verified Flathub remote is configured.'))
     # One row per ref even when old user and system remotes both exist. Prefer
     # an existing user deployment so it can be removed before a system install;
     # disclose all installed copies on that row instead of duplicating it.
@@ -385,7 +397,7 @@ def _transaction(action, row, token=None, emit=None, recorded=()):
             def new_operation(tx, operation, progress):
                 def changed(value):
                     emit('progress', kind='flatpak', ref=operation.get_ref(),
-                         percent=value.get_progress(), message='Applying Flatpak transaction.')
+                         percent=value.get_progress(), message=_('Applying Flatpak transaction.'))
                 progress.connect('changed', changed)
                 changed(progress)
             transaction.connect('new-operation', new_operation)

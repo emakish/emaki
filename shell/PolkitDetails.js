@@ -36,19 +36,19 @@ function redact(value) {
     return clean(value)
         .replace(new RegExp(field + 'authorization' + assignment
             + '(?:[a-z][a-z0-9_-]*\\s+)?(?:' + pair + '|' + headerValue + ')'
-            + '(?:\\s*,\\s*' + pair + ')*', 'gi'), '$1' + Copy.redacted)
+            + '(?:\\s*,\\s*' + pair + ')*', 'gi'), '$1' + Copy.redacted())
         .replace(new RegExp(field + 'cookie' + assignment
             + '(?:' + pair + '|' + headerValue + ')'
-            + '(?:\\s*;\\s*(?:' + pair + '|' + headerValue + '))*', 'gi'), '$1' + Copy.redacted)
-        .replace(new RegExp('(\\b(?:Bearer|Basic)\\s+)' + secret, 'gi'), '$1' + Copy.redacted)
-        .replace(new RegExp(field + keyword + assignment + secret, 'gi'), '$1' + Copy.redacted)
+            + '(?:\\s*;\\s*(?:' + pair + '|' + headerValue + '))*', 'gi'), '$1' + Copy.redacted())
+        .replace(new RegExp('(\\b(?:Bearer|Basic)\\s+)' + secret, 'gi'), '$1' + Copy.redacted())
+        .replace(new RegExp(field + keyword + assignment + secret, 'gi'), '$1' + Copy.redacted())
         .replace(new RegExp('((?:^|[\\s`\'"])--?(?:[a-z0-9]+[-_])*' + keyword
-            + '\\s+)' + secret, 'gi'), '$1' + Copy.redacted)
+            + '\\s+)' + secret, 'gi'), '$1' + Copy.redacted())
         .replace(new RegExp('(\\b(?:password|passwd|passphrase|pwd|token|secret)\\s+)'
             + '(?![:=])(' + secret + ')', 'gi'), function(match, prefix, token) {
-                return /^[a-z]+$/.test(token) ? match : prefix + Copy.redacted;
+                return /^[a-z]+$/.test(token) ? match : prefix + Copy.redacted();
             })
-        .replace(/(https?:\/\/)[^\s/@]+@/gi, "$1" + Copy.redacted + "@");
+        .replace(/(https?:\/\/)[^\s/@]+@/gi, "$1" + Copy.redacted() + "@");
 }
 
 // Only fixed installed helpers named by our policy actions may expose argv.
@@ -137,10 +137,10 @@ function programRequest(action, details, libexecDir) {
             return null;
         target = words[1];
     }
-    const wording = operation === "remove" ? "Remove program"
-                   : operation === "undo" ? "Undo the install of this program"
-                   : operation === "aur" ? "Build and install program and update repository packages"
-                   : flatpak ? "Install program" : "Install program and update repository packages";
+    const wording = operation === "remove" ? qsTranslate("Shell", "Remove program")
+                   : operation === "undo" ? qsTranslate("Shell", "Undo the install of this program")
+                   : operation === "aur" ? qsTranslate("Shell", "Build and install program and update repository packages")
+                   : flatpak ? qsTranslate("Shell", "Install program") : qsTranslate("Shell", "Install program and update repository packages");
     return {headline: target + " — " + wording, command: command};
 }
 
@@ -186,19 +186,19 @@ function requestText(action, message, details, request, fallback) {
 }
 
 function headline(action, message, details, libexecDir) {
-    return requestText(action, message, details, programRequest(action, details, libexecDir), Copy.requestUnavailable);
+    return requestText(action, message, details, programRequest(action, details, libexecDir), Copy.requestUnavailable());
 }
 
 function rows(action, message, details, requester, paths) {
     const libexecDir = typeof paths === "string" ? paths : paths && paths.libexecDir;
     const request = programRequest(action, details, libexecDir);
     const result = [
-        {label: "Asked by", value: requester ? redact(requester) : Copy.requesterUnavailable},
-        {label: "Action", value: redact(action) || Copy.unavailable},
-        {label: Copy.messageLabel, value: requestText(action, message, details, request, Copy.unavailable)}
+        {label: qsTranslate("Shell", "Asked by"), value: requester ? redact(requester) : Copy.requesterUnavailable()},
+        {label: qsTranslate("Shell", "Action"), value: redact(action) || Copy.unavailable()},
+        {label: Copy.messageLabel(), value: requestText(action, message, details, request, Copy.unavailable())}
     ];
     if (!details || typeof details !== "object" || Array.isArray(details) || !Object.keys(details).length) {
-        result.push({label: Copy.detailsLabel, value: Copy.unavailable});
+        result.push({label: Copy.detailsLabel(), value: Copy.unavailable()});
         return result;
     }
     const showArguments = emakiHelper(action, details, paths);
@@ -218,8 +218,8 @@ function rows(action, message, details, requester, paths) {
                 && value.startsWith(details.program + " "))
             value = clean(details.program) + " " + redact(value.slice(details.program.length + 1));
         else
-            value = sensitive ? Copy.redacted : redact(value);
-        result.push({label: clean(key).slice(0, 128), value: value.slice(0, 2048) || Copy.unavailable});
+            value = sensitive ? Copy.redacted() : redact(value);
+        result.push({label: clean(key).slice(0, 128), value: value.slice(0, 2048) || Copy.unavailable()});
     }
     return result;
 }

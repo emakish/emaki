@@ -452,6 +452,31 @@ class StrapRunner(RecordingRunner):
 
 
 class ConsoleFileTests(unittest.TestCase):
+    def test_minimal_install_generates_every_supported_locale_and_selects_one(self):
+        from emaki_installer.arch_backend import Backend
+        from emaki_installer.i18n import LOCALES
+        expected = ''.join(language + ' UTF-8\n' for language in LOCALES)
+        for language in LOCALES:
+            with self.subTest(language=language), tempfile.TemporaryDirectory() as temporary:
+                settings = dict(config(), language=language)
+                target = Path(temporary)
+                plan = make_plan(settings, inventory())
+                runner = StrapRunner(target)
+                api = SimpleNamespace(
+                    filesystem=SimpleNamespace(device_handler=None, udev_sync=None,
+                        FilesystemHandler=lambda disk_config: SimpleNamespace(perform_filesystem_operations=lambda: None)),
+                    installer=SimpleNamespace(Installer=Installer45, PacmanConfig=None,
+                        accessibility_tools_in_use=None))
+                with patch('emaki_installer.arch_backend.console_font', return_value=None), \
+                        patch('emaki_installer.arch_backend.build_disk_config'), \
+                        patch('emaki_installer.arch_backend.offline_config', return_value=Path('/offline.conf')):
+                    backend = Backend(api, plan, runner, target)
+                    backend.prepare()
+                    backend.minimal(SimpleNamespace(kb_layout='us'))
+                self.assertEqual((target / 'etc/locale.gen').read_text(), expected)
+                self.assertEqual((target / 'etc/locale.conf').read_text(), 'LANG=' + language + '\n')
+                self.assertTrue(any('locale-gen' in command for command, options in runner.commands))
+
     def test_minimal_install_writes_the_whole_console_file_before_the_strap(self):
         # render.vconsole_conf is the one producer of /etc/vconsole.conf; the minimal install
         # must not leave a KEYMAP-only file for the kernels' image build in its strap.

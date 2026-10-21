@@ -7,6 +7,7 @@ import Quickshell.Io
 
 ShellRoot {
     id: root
+    readonly property bool translationsReady: Translation.initialize()
     property string borderMode: Quickshell.env("EMAKI_SHELL_BORDER")
     readonly property string requestedOutput: Quickshell.env("EMAKI_SHELL_OUTPUT")
     readonly property bool headless: Quickshell.env("EMAKI_SHELL_HEADLESS") === "1"
@@ -76,6 +77,7 @@ ShellRoot {
         ready: !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
         onOpening: outputs.closeAll()
         openShortcutList: () => root.scene?.openKeyboard("shortcuts") ?? false
+        onLanguageRequested: outputs.shared.settingsController.open("region")
     }
     ShellRecoveryNotice {
         store: outputs.shared.notifications
@@ -96,6 +98,12 @@ ShellRoot {
         store: outputs.shared.notifications
         ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
         onSettingsRequested: outputs.shared.settingsController.open("privacy")
+    }
+    UpdatesNotice {
+        store: outputs.shared.notifications
+        pending: UpdateService.pending
+        ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        onOpenRequested: UpdateService.open()
     }
     IpcHandler {
         target: "workspaces"

@@ -40,14 +40,14 @@ REOPEN_PROBE = '''
             return JSON.stringify({
                 loaded: windowLoader.active,
                 shown: !!window && window.backingWindowVisible,
-                step: controller.step,
-                name: controller.fullName,
+                step: backend.step,
+                name: backend.fullName,
                 clears: reopenProbe.clears
             });
         }
         function prepare(): void {
-            controller.fullName = "Alex Morgan";
-            controller.step = "you";
+            backend.fullName = "Alex Morgan";
+            backend.step = "you";
         }
         function close(): void {
             const window = windowLoader.item as FloatingWindow;
@@ -59,7 +59,7 @@ REOPEN_PROBE = '''
         }
     }
     Connections {
-        target: controller
+        target: backend
         function onClearPasswords(): void {
             reopenProbe.clears++;
         }
@@ -562,9 +562,9 @@ class Helpers(unittest.TestCase):
             worker.listen(4)
             ui = root / 'ui'
             shutil.copytree(UI, ui, ignore=shutil.ignore_patterns('__pycache__', 'tests'))
-            if not Path('/usr/share/emaki/shell/qmldir').exists():
-                for filename in ui.glob('*.qml'):
-                    filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
+            # Always the candidate's own shell: an installed older one lacks what this window imports (0.11: Translation).
+            for filename in ui.glob('*.qml'):
+                filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
             shell = ui / 'shell.qml'
             text = shell.read_text().rstrip()
             self.assertTrue(text.endswith('}'))

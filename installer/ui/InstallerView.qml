@@ -11,6 +11,7 @@ import "Timezones.js" as Timezones
 
 Item {
     id: view
+    readonly property bool translationsReady: Shell.Translation.initialize()
     // The installer keeps its light look: its text uses the light inks, while the panels come
     // from the shell palette, whose theme is dark when nothing is saved (the live system).
     Component.onCompleted: Shell.SettingsBridge.values = [
@@ -31,32 +32,32 @@ Item {
     readonly property color accentInk: Shell.LiquidPalette.accentOnLight
     readonly property color danger: Shell.LiquidPalette.dangerOnLight
     readonly property var titles: ({
-            welcome: "Welcome",
-            keyboard: "Keyboard",
-            network: "Network",
-            timezone: "Time zone",
-            disk: "Disk",
-            filesystem: "File system",
-            encryption: "Encryption",
-            you: "You",
-            software: "Software",
-            review: "Review",
-            install: "Install",
-            done: "Done",
-            error: "Error"
+            welcome: qsTranslate("InstallerView", "Welcome"),
+            keyboard: qsTranslate("InstallerView", "Keyboard"),
+            network: qsTranslate("InstallerView", "Network"),
+            timezone: qsTranslate("InstallerView", "Time zone"),
+            disk: qsTranslate("InstallerView", "Disk"),
+            filesystem: qsTranslate("InstallerView", "File system"),
+            encryption: qsTranslate("InstallerView", "Encryption"),
+            you: qsTranslate("InstallerView", "You"),
+            software: qsTranslate("InstallerView", "Software"),
+            review: qsTranslate("InstallerView", "Review"),
+            install: qsTranslate("InstallerView", "Install"),
+            done: qsTranslate("InstallerView", "Done"),
+            error: qsTranslate("InstallerView", "Error")
         })
     readonly property var phaseKeys: ["prepare_disk", "copy_packages", "bootloader", "account", "settings", "snapshot", "update", "finish"]
-    readonly property var phaseNames: ["Prepare the disk", "Copy Emaki from the USB", "Set up the boot menu", "Create your account", "Apply your settings", "Create the first snapshot", "Check for updates", "Finish installation"]
-    readonly property var tips: ["Super+D opens the app launcher.", "Super+Left / Right moves between columns.", "Super+Up / Down moves between windows and workspaces.", "Super+Shift+Left / Right moves a column.", "Super+Space switches keyboard layouts.", "Super+O opens the overview.", "Super+R changes the column width.", "Super+Shift+Slash shows all keyboard shortcuts."]
+    readonly property var phaseNames: [qsTranslate("InstallerView", "Prepare the disk"), qsTranslate("InstallerView", "Copy Emaki from the USB"), qsTranslate("InstallerView", "Set up the boot menu"), qsTranslate("InstallerView", "Create your account"), qsTranslate("InstallerView", "Apply your settings"), qsTranslate("InstallerView", "Create the first snapshot"), qsTranslate("InstallerView", "Check for updates"), qsTranslate("InstallerView", "Finish installation")]
+    readonly property var tips: [qsTranslate("InstallerView", "Super+D opens the app launcher."), qsTranslate("InstallerView", "Super+Left / Right moves between columns."), qsTranslate("InstallerView", "Super+Up / Down moves between windows and workspaces."), qsTranslate("InstallerView", "Super+Shift+Left / Right moves a column."), qsTranslate("InstallerView", "Super+Space switches keyboard layouts."), qsTranslate("InstallerView", "Super+O opens the overview."), qsTranslate("InstallerView", "Super+R changes the column width."), qsTranslate("InstallerView", "Super+Shift+Slash shows all keyboard shortcuts.")]
     property string wallpaperTexture: ""
     function size(bytes: real): string {
-        return (bytes / 1073741824).toFixed(1) + " GiB";
+        return qsTranslate("InstallerView", "%1 GiB").arg((bytes / 1073741824).toFixed(1));
     }
     function duration(seconds: int): string {
         return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
     }
     function diskLabel(): string {
-        return controller.selectedDisk ? controller.selectedDisk.model + ", " + size(controller.selectedDisk.size_bytes) : "the selected disk";
+        return controller.selectedDisk ? controller.selectedDisk.model + ", " + size(controller.selectedDisk.size_bytes) : qsTranslate("InstallerView", "the selected disk");
     }
     function diskReason(disk: var): string {
         return controller.diskReasons[disk.id] || Protocol.diskReason(disk);
@@ -73,10 +74,10 @@ Item {
     // Secure Boot on is fine when the firmware trusts a Microsoft third-party CA (the planner's check).
     readonly property bool secureBootReady: hardware.secure_boot === true && ["both", "2011", "2023"].indexOf(hardware.secure_boot_cas) >= 0
     readonly property bool secureBootRefused: (hardware.secure_boot === true && !secureBootReady) || hardware.secure_boot === null
-    readonly property string secureBootRefusal: hardware.secure_boot === true && hardware.secure_boot_cas === "none" ? "Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often \"Allow Microsoft 3rd Party UEFI CA\") or turn Secure Boot off, then start the USB again." : "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again."
-    readonly property string secureBootNotice: secureBootReady ? "Secure Boot is on. After the restart, a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation. You do this only once." : ""
+    readonly property string secureBootRefusal: hardware.secure_boot === true && hardware.secure_boot_cas === "none" ? qsTranslate("InstallerView", "Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often \"Allow Microsoft 3rd Party UEFI CA\") or turn Secure Boot off, then start the USB again.") : qsTranslate("InstallerView", "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again.")
+    readonly property string secureBootNotice: secureBootReady ? qsTranslate("InstallerView", "Secure Boot is on. After the restart, a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation. You do this only once.") : ""
     readonly property bool uefiRefused: !!controller.session.inventory && !controller.session.inventory.uefi
-    readonly property string uefiRefusal: controller.session.inventory?.uefi_bits === 32 ? "64-bit UEFI is required." : "Emaki installs only on computers with UEFI. If the boot menu offers a UEFI entry for the USB stick, choose it; otherwise this computer is not supported."
+    readonly property string uefiRefusal: controller.session.inventory?.uefi_bits === 32 ? qsTranslate("InstallerView", "64-bit UEFI is required.") : qsTranslate("InstallerView", "Emaki installs only on computers with UEFI. If the boot menu offers a UEFI entry for the USB stick, choose it; otherwise this computer is not supported.")
     function capture(path: string): void {
         view.grabToImage(result => result.saveToFile(path));
     }
@@ -91,15 +92,15 @@ Item {
         if (c.locked)
             return "";
         if (c.step === "timezone")
-            return !c.timezoneChosen ? "Choose your time zone or select Use UTC." : c.applyingTimezone ? "Setting the live clock…" : c.timezoneInfo?.timezone === c.timezone ? "" : c.timezoneMessage;
+            return !c.timezoneChosen ? qsTranslate("InstallerView", "Choose your time zone or select Use UTC.") : c.applyingTimezone ? qsTranslate("InstallerView", "Setting the live clock…") : c.timezoneInfo?.timezone === c.timezone ? "" : c.timezoneMessage;
         if (c.step === "encryption") {
             if (c.encryptionReady)
                 return "";
             if (c.encryption !== "encrypted")
-                return "Choose whether to encrypt the disk.";
+                return qsTranslate("InstallerView", "Choose whether to encrypt the disk.");
             if (c.encryptionPassword === "account")
                 return accountChoiceRefusal();
-            return Protocol.diskPasswordError(c.diskPassword) || (c.diskPassword !== c.diskConfirmation ? "The disk passwords do not match." : "");
+            return Protocol.diskPasswordError(c.diskPassword) || (c.diskPassword !== c.diskConfirmation ? qsTranslate("InstallerView", "The disk passwords do not match.") : "");
         }
         if (c.step === "you")
             return c.session.ready ? accountHint : "";
@@ -108,23 +109,23 @@ Item {
         if (!c.session.inventory.uefi)
             return uefiRefusal;
         if (!c.selectedDisk)
-            return "Choose a disk.";
+            return qsTranslate("InstallerView", "Choose a disk.");
         if (diskReason(c.selectedDisk))
             return diskReason(c.selectedDisk);
         if (!c.mode)
-            return "Choose how to install on this disk.";
+            return qsTranslate("InstallerView", "Choose how to install on this disk.");
         if (c.encryptedRefusal)
             return c.encryptedRefusal;
         if (!c.encryptedConfirmed)
-            return "Type ERASE to confirm erasing the listed volumes.";
+            return qsTranslate("InstallerView", "Type %1 to confirm erasing the listed volumes.").arg("ERASE");
         if (c.mode === "alongside" && !c.alongsideSizeValid)
-            return "Windows shrink is unavailable. Refresh the disk list.";
+            return qsTranslate("InstallerView", "Windows shrink is unavailable. Refresh the disk list.");
         if (c.mode === "manual")
-            return Protocol.manualReason(c.selectedDisk) || (c.manualAssignments && c.unusedNew ? "Every new partition needs a use: choose its mount point or remove it." : c.manualAssignments && !c.manualReady ? "Exactly one / and one /efi are required." : "");
+            return Protocol.manualReason(c.selectedDisk) || (c.manualAssignments && c.unusedNew ? qsTranslate("InstallerView", "Every new partition needs a use: choose its mount point or remove it.") : c.manualAssignments && !c.manualReady ? qsTranslate("InstallerView", "Exactly one / and one /efi are required.") : "");
         return "";
     }
     function accountChoiceRefusal(): string {
-        return "Not available: the login screen starts in " + controller.layoutLabel(controller.layouts[0].toUpperCase()) + ", but the disk is unlocked at startup in " + controller.layoutLabel(controller.unlockLayout.toUpperCase()) + ".";
+        return qsTranslate("InstallerView", "Not available: the login screen starts in %1, but the disk is unlocked at startup in %2.").arg(controller.layoutLabel(controller.layouts[0].toUpperCase())).arg(controller.layoutLabel(controller.unlockLayout.toUpperCase()));
     }
     // The password field (or its eye) that has focus; the controller switches the live layouts for it.
     property var focusedSecret: null
@@ -139,7 +140,7 @@ Item {
     readonly property bool capsLockShown: controller.capsLock && !!focusedSecret && focusedSecret.checksLayout === true
     // The same for Num Lock: niri starts every session with it off, where keypad keys move the cursor.
     readonly property bool numLockShown: controller.numLock && !!focusedSecret && focusedSecret.checksLayout === true
-    readonly property string numLockLine: "Num Lock is on — the login screen starts with Num Lock off; type digits on the main row."
+    readonly property string numLockLine: qsTranslate("InstallerView", "Num Lock is on — the login screen starts with Num Lock off; type digits on the main row.")
     Binding {
         target: view.controller
         property: "secretFocus"
@@ -222,7 +223,7 @@ Item {
     component PasswordField: Field {
         id: secretField
         property bool revealed: false
-        property string passwordLabel: "Password"
+        property string passwordLabel: qsTranslate("InstallerView", "Password")
         // A disk passphrase: typed in the startup layout, which the live session runs while it has focus.
         property bool unlock: false
         // Typed again later at the login screen or at startup, so only in the layout used there.
@@ -255,7 +256,7 @@ Item {
         C.Menu {
             id: pasteMenu
             C.Action {
-                text: "Paste"
+                text: qsTranslate("InstallerView", "Paste")
                 enabled: secretField.canPaste
                 onTriggered: secretField.paste()
             }
@@ -307,11 +308,11 @@ Item {
             text: {
                 const keyboard = view.controller;
                 if (keyboard.keyboardSwitching)
-                    return "Applying keyboard…";
+                    return qsTranslate("InstallerView", "Applying keyboard…");
                 if (secretField.unlock && view.focusedSecret !== secretField)
                     return keyboard.layoutLabel(keyboard.unlockLayout.toUpperCase());
                 if (!keyboard.liveCode)
-                    return "Layout unknown";
+                    return qsTranslate("InstallerView", "Layout unknown");
                 return secretField.unlock ? keyboard.layoutLabel(keyboard.liveCode) : keyboard.liveCode;
             }
         }
@@ -364,7 +365,7 @@ Item {
             height: 42
             checkable: true
             checked: secretField.revealed
-            Accessible.name: (checked ? "Hide " : "Show ") + secretField.passwordLabel.toLowerCase()
+            Accessible.name: (checked ? qsTranslate("InstallerView", "Hide %1") : qsTranslate("InstallerView", "Show %1")).arg(secretField.passwordLabel)
             Accessible.role: Accessible.CheckBox
             onClicked: secretField.revealed = !secretField.revealed
             Keys.onReturnPressed: clicked()
@@ -493,8 +494,19 @@ Item {
         implicitHeight: 44
         font.family: Shell.ShellPalette.uiFont
         font.pixelSize: 16
+        // Mount and filesystem tokens remain unchanged in the model and currentText.
+        function displayLabel(value: string): string {
+            return value === "none" ? qsTranslate("InstallerView", "none") : value;
+        }
+        delegate: C.ItemDelegate {
+            required property int index
+            width: select.width
+            text: select.displayLabel(select.textAt(index))
+            highlighted: select.highlightedIndex === index
+            font: select.font
+        }
         contentItem: Copy {
-            text: select.displayText
+            text: select.displayLabel(select.displayText)
             leftPadding: 12
             rightPadding: 25
             verticalAlignment: Text.AlignVCenter
@@ -540,7 +552,7 @@ Item {
             spacing: 14
             Copy {
                 Layout.fillWidth: true
-                text: "Map sources and licence"
+                text: qsTranslate("InstallerView", "Map sources and licence")
                 font.pixelSize: 20
                 font.weight: Font.DemiBold
             }
@@ -562,7 +574,7 @@ Item {
                     selectedTextColor: view.ink
                     font.family: Shell.ShellPalette.uiFont
                     font.pixelSize: 14
-                    Accessible.name: "Map sources and licence"
+                    Accessible.name: qsTranslate("InstallerView", "Map sources and licence")
                     background: Rectangle {
                         color: "#60ffffff"
                         border.color: mapLegalText.activeFocus ? view.accentInk : Shell.LiquidPalette.flatDropRim
@@ -572,7 +584,7 @@ Item {
             Action {
                 objectName: "closeMapLegal"
                 Layout.alignment: Qt.AlignRight
-                text: "Close"
+                text: qsTranslate("InstallerView", "Close")
                 onClicked: mapLegal.close()
             }
         }
@@ -609,7 +621,7 @@ Item {
             Action {
                 objectName: "restartPrepared"
                 Layout.alignment: Qt.AlignRight
-                text: "Restart now"
+                text: qsTranslate("InstallerView", "Restart now")
                 primary: true
                 enabled: view.controller.session.ready && !Object.values(view.controller.session.pending).includes("reboot")
                 onClicked: view.controller.reboot()
@@ -639,9 +651,15 @@ Item {
         spacing: 30
         ColumnLayout {
             visible: view.height >= 600
-            Layout.preferredWidth: 192
+            Layout.preferredWidth: Math.max(192, view.controller.steps.reduce((width, step) =>
+                Math.max(width, stepFont.advanceWidth(view.titles[step] || "") + 60), 0))
             Layout.fillHeight: true
             spacing: 4
+            FontMetrics {
+                id: stepFont
+                font.family: Shell.ShellPalette.uiFont
+                font.pixelSize: 18
+            }
             Copy {
                 text: "Emaki"
                 font.pixelSize: 32
@@ -649,7 +667,7 @@ Item {
                 Layout.bottomMargin: 2
             }
             Hint {
-                text: view.controller.session.version ? "Install · " + view.controller.session.version + (view.controller.session.label ? " " + view.controller.session.label : "") : "Installer"
+                text: view.controller.session.version ? qsTranslate("InstallerView", "Install · %1").arg(view.controller.session.version + (view.controller.session.label ? " " + view.controller.session.label : "")) : qsTranslate("InstallerView", "Installer")
                 Layout.bottomMargin: 22
             }
             Repeater {
@@ -659,7 +677,12 @@ Item {
                     required property string modelData
                     required property int index
                     Layout.fillWidth: true
-                    implicitHeight: view.height < 680 ? 30 : view.height < 740 ? 36 : 44
+                    implicitHeight: Math.max(view.height < 680 ? 30 : view.height < 740 ? 36 : 44,
+                                             stepLabel.lineCount > 1 ? stepLabel.implicitHeight + 4 : 0)
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 30
+                    Layout.preferredHeight: implicitHeight
+                    Layout.maximumHeight: implicitHeight
                     enabled: index < view.controller.steps.indexOf(view.controller.step) && index < view.controller.steps.indexOf("review") && !view.controller.locked && !view.controller.session.outcome
                     onClicked: view.controller.edit(modelData)
                     background: Rectangle {
@@ -681,6 +704,7 @@ Item {
                             }
                         }
                         Copy {
+                            id: stepLabel
                             Layout.fillWidth: true
                             text: view.titles[stepButton.modelData]
                             color: view.controller.step === stepButton.modelData ? view.ink : view.dim
@@ -694,7 +718,7 @@ Item {
             }
             Hint {
                 Layout.fillWidth: true
-                text: view.controller.step === "install" ? "Keep this computer on and the USB connected." : "Running from the live USB."
+                text: view.controller.step === "install" ? qsTranslate("InstallerView", "Keep this computer on and the USB connected.") : qsTranslate("InstallerView", "Running from the live USB.")
                 lineHeight: 1.35
             }
         }
@@ -712,13 +736,13 @@ Item {
                 Layout.fillWidth: true
                 Hint {
                     Layout.fillWidth: true
-                    text: "EMAKI SETUP"
+                    text: qsTranslate("InstallerView", "EMAKI SETUP")
                     font.letterSpacing: 1.5
                 }
                 Action {
                     implicitHeight: 34
                     implicitWidth: 78
-                    text: "Hide"
+                    text: qsTranslate("InstallerView", "Hide")
                     onClicked: view.hideRequested()
                 }
             }
@@ -812,7 +836,7 @@ Item {
                 objectName: "agreementCheck"
                 Layout.fillWidth: true
                 visible: view.controller.step === "review" && !!view.controller.session.plan?.token && view.controller.needsAgreement
-                text: view.controller.mode === "alongside" ? "I have backed up my files and understand Windows will be resized" : view.controller.mode === "manual" ? "I understand the deleted partitions lose all their files" : "I understand " + view.diskLabel() + " will be erased"
+                text: view.controller.mode === "alongside" ? qsTranslate("InstallerView", "I have backed up my files and understand Windows will be resized") : view.controller.mode === "manual" ? qsTranslate("InstallerView", "I understand the deleted partitions lose all their files") : qsTranslate("InstallerView", "I understand %1 will be erased").arg(view.diskLabel())
                 checked: view.controller.agreed
                 onToggled: view.controller.agreed = checked
             }
@@ -836,7 +860,7 @@ Item {
                 }
                 Action {
                     objectName: "keyboardRetry"
-                    text: "Try again"
+                    text: qsTranslate("InstallerView", "Try again")
                     implicitHeight: 40
                     visible: view.controller.keyboardFailed && !view.controller.keyboardUnavailable
                     // A click leaves the focus in the password field: the retry writes the layouts that field needs.
@@ -849,7 +873,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 12
                 Action {
-                    text: "Back"
+                    text: qsTranslate("InstallerView", "Back")
                     visible: ["keyboard", "network", "timezone", "disk", "filesystem", "encryption", "you", "software", "review"].indexOf(view.controller.step) >= 0
                     enabled: !view.controller.locked
                     onClicked: view.controller.back()
@@ -858,7 +882,7 @@ Item {
                     Layout.fillWidth: true
                 }
                 Action {
-                    text: "Skip"
+                    text: qsTranslate("InstallerView", "Skip")
                     visible: view.controller.step === "network"
                     enabled: !view.controller.locked
                     onClicked: {
@@ -870,7 +894,7 @@ Item {
                     id: continueAction
                     objectName: "continueButton"
                     visible: ["keyboard", "network", "timezone", "disk", "filesystem", "encryption"].indexOf(view.controller.step) >= 0
-                    text: "Continue"
+                    text: qsTranslate("InstallerView", "Continue")
                     primary: true
                     enabled: !view.controller.locked && (view.controller.step !== "encryption" || (view.controller.encryptionReady && view.controller.secretsChecked)) && (view.controller.step !== "timezone" || (view.controller.timezoneChosen && view.controller.timezoneInfo?.timezone === view.controller.timezone && !view.controller.applyingTimezone)) && (view.controller.step !== "disk" || (!view.secureBootRefused && view.controller.session.inventory?.uefi && !!view.controller.selectedDisk && !!view.controller.mode && view.controller.encryptedConfirmed && !view.diskReason(view.controller.selectedDisk) && (view.controller.mode !== "alongside" || view.controller.alongsideSizeValid) && (view.controller.mode !== "manual" || (!Protocol.manualReason(view.controller.selectedDisk) && (!view.controller.manualAssignments || view.controller.manualReady)))))
                     onClicked: view.controller.next()
@@ -879,7 +903,7 @@ Item {
                     id: accountAction
                     objectName: "accountContinue"
                     visible: view.controller.step === "you"
-                    text: "Continue"
+                    text: qsTranslate("InstallerView", "Continue")
                     primary: true
                     // The same rule as the other steps: only a form the review would accept continues.
                     enabled: view.controller.session.ready && !view.controller.locked && view.accountBlocked === "" && view.controller.secretsChecked
@@ -887,14 +911,14 @@ Item {
                 }
                 Action {
                     visible: view.controller.step === "software"
-                    text: view.controller.session.planning ? "Checking…" : "Review installation"
+                    text: view.controller.session.planning ? qsTranslate("InstallerView", "Checking…") : qsTranslate("InstallerView", "Review installation")
                     primary: true
                     enabled: view.controller.session.ready && !view.controller.locked
                     onClicked: view.controller.reviewSoftware()
                 }
                 Action {
                     visible: view.controller.step === "review"
-                    text: view.controller.mode === "erase" ? "Erase disk and install" : "Install"
+                    text: view.controller.mode === "erase" ? qsTranslate("InstallerView", "Erase disk and install") : qsTranslate("InstallerView", "Install")
                     destructive: view.controller.needsAgreement
                     primary: true
                     enabled: view.controller.session.ready && !view.controller.locked && !Object.values(view.controller.session.pending).includes("renew") && view.controller.encryptedConfirmed && !!view.controller.session.plan?.token && (!view.controller.needsAgreement || view.controller.agreed)
@@ -903,27 +927,27 @@ Item {
                 Action {
                     objectName: "skipUpdate"
                     visible: view.controller.step === "install" && view.controller.session.phase === "update" && view.controller.session.activity?.name === "downloads"
-                    text: "Skip the update"
+                    text: qsTranslate("InstallerView", "Skip the update")
                     enabled: view.controller.session.ready && !Object.values(view.controller.session.pending).includes("skip_update")
                     onClicked: view.controller.send("skip_update", {})
                 }
                 Action {
                     visible: view.controller.step === "install"
-                    text: view.controller.session.cancelPending ? "Cancellation requested…" : "Cancel after this phase"
+                    text: view.controller.session.cancelPending ? qsTranslate("InstallerView", "Cancellation requested…") : qsTranslate("InstallerView", "Cancel after this phase")
                     enabled: view.controller.session.ready && view.controller.session.running && !view.controller.session.cancelPending && view.controller.session.phase !== "finish"
                     onClicked: view.controller.send("cancel", {})
                 }
                 Action {
                     visible: view.controller.step === "error" && !!view.controller.session.error?.retryable
                     objectName: "retryInstallation"
-                    text: "Try again"
+                    text: qsTranslate("InstallerView", "Try again")
                     primary: true
                     enabled: view.controller.session.ready
                     onClicked: view.controller.retry()
                 }
                 Action {
                     visible: view.controller.step === "done"
-                    text: "Restart now"
+                    text: qsTranslate("InstallerView", "Restart now")
                     primary: true
                     enabled: view.controller.session.ready
                     onClicked: view.controller.requestReboot()
@@ -946,12 +970,12 @@ Item {
             spacing: 24
             Heading {
                 width: parent.width
-                text: "Welcome to Emaki"
+                text: qsTranslate("InstallerView", "Welcome to Emaki")
                 font.pixelSize: 50
             }
             Lead {
                 width: parent.width
-                text: "Your desktop, ready to explore. Emaki is running from the USB stick. Install it when you’re ready."
+                text: qsTranslate("InstallerView", "Your desktop, ready to explore. Emaki is running from the USB stick. Install it when you’re ready.")
             }
             Copy {
                 objectName: "welcomeUefiRefusal"
@@ -964,8 +988,8 @@ Item {
                 objectName: "installChoice"
                 Component.onCompleted: forceActiveFocus()
                 width: parent.width
-                text: "Install Emaki"
-                detail: "Choose your disk and settings, then review before installing."
+                text: qsTranslate("InstallerView", "Install Emaki")
+                detail: qsTranslate("InstallerView", "Choose your disk and settings, then review before installing.")
                 // Without installable UEFI only the live session is offered.
                 enabled: !view.uefiRefused
                 chosen: enabled
@@ -974,13 +998,25 @@ Item {
             Choice {
                 objectName: "tryChoice"
                 width: parent.width
-                text: "Try Emaki first"
-                detail: "The window steps aside. Open “Install Emaki” from the launcher to return."
+                text: qsTranslate("InstallerView", "Try Emaki first")
+                detail: qsTranslate("InstallerView", "The window steps aside. Open “Install Emaki” from the launcher to return.")
                 onClicked: view.hideRequested()
             }
             Hint {
                 width: parent.width
-                text: "English · Live session"
+                text: qsTranslate("InstallerView", "Live session")
+            }
+            Copy {
+                text: qsTranslate("InstallerView", "Language for the installed system")
+            }
+            C.ComboBox {
+                id: languageChoice
+                objectName: "languageChoice"
+                implicitContentWidthPolicy: C.ComboBox.WidestText
+                model: view.controller.languageChoices
+                textRole: "label"
+                currentIndex: view.controller.languageChoices.findIndex(choice => choice.locale === view.controller.language)
+                onActivated: view.controller.language = view.controller.languageChoices[currentIndex].locale
             }
         }
     }
@@ -1002,12 +1038,12 @@ Item {
                 return total + Math.max(0, shown - 1) * spacing;
             }
             Heading {
-                text: "Make yourself at home"
+                text: qsTranslate("InstallerView", "Make yourself at home")
                 width: parent.width
             }
             Lead {
                 width: parent.width
-                text: "Choose up to four keyboard layouts. The first is your default; Super+Space switches between them."
+                text: qsTranslate("InstallerView", "Choose up to four keyboard layouts. The first is your default; Super+Space switches between them.")
             }
             Flow {
                 width: parent.width
@@ -1017,7 +1053,7 @@ Item {
                     delegate: Action {
                         required property string modelData
                         required property int index
-                        text: modelData + (index === 0 ? " · default" : " · make default")
+                        text: (index === 0 ? qsTranslate("InstallerView", "%1 · default") : qsTranslate("InstallerView", "%1 · make default")).arg(modelData)
                         implicitHeight: 40
                         primary: index === 0
                         onClicked: view.controller.defaultLayout(modelData)
@@ -1029,7 +1065,7 @@ Item {
                 objectName: "layoutSearch"
                 Component.onCompleted: forceActiveFocus()
                 width: parent.width
-                placeholderText: "Search layouts"
+                placeholderText: qsTranslate("InstallerView", "Search layouts")
             }
             ListView {
                 id: layoutList
@@ -1053,18 +1089,18 @@ Item {
             }
             Hint {
                 width: parent.width
-                text: "This version installs base layouts."
+                text: qsTranslate("InstallerView", "This version installs base layouts.")
             }
             Action {
                 visible: view.controller.catalog.trial
-                text: "Apply layouts for testing"
+                text: qsTranslate("InstallerView", "Apply layouts for testing")
                 enabled: !view.controller.keyboardSwitching
                 onClicked: view.controller.applyLayouts()
             }
             Field {
                 width: parent.width
                 visible: view.controller.catalog.trial
-                placeholderText: "Type to test · Super+Space to switch"
+                placeholderText: qsTranslate("InstallerView", "Type to test · Super+Space to switch")
             }
         }
     }
@@ -1113,26 +1149,26 @@ Item {
                 value: netPage.inlineJoinMessage
             }
             Heading {
-                text: "Get connected"
+                text: qsTranslate("InstallerView", "Get connected")
                 width: parent.width
             }
             Lead {
                 width: parent.width
-                text: "Offline installation is fully supported: packages come from the USB; being online only adds a final update."
+                text: qsTranslate("InstallerView", "Offline installation is fully supported: packages come from the USB; being online only adds a final update.")
             }
             Copy {
                 visible: view.controller.network.wired
-                text: "Wired · Connected"
+                text: qsTranslate("InstallerView", "Wired · Connected")
                 font.weight: Font.DemiBold
             }
             RowLayout {
                 width: parent.width
                 Hint {
                     Layout.fillWidth: true
-                    text: view.controller.helperBusy ? "Checking the network…" : "Wi-Fi networks"
+                    text: view.controller.helperBusy ? qsTranslate("InstallerView", "Checking the network…") : qsTranslate("InstallerView", "Wi-Fi networks")
                 }
                 Action {
-                    text: "Refresh"
+                    text: qsTranslate("InstallerView", "Refresh")
                     implicitHeight: 40
                     enabled: !view.controller.helperBusy
                     onClicked: view.controller.callHelper("network", {})
@@ -1164,7 +1200,7 @@ Item {
                         objectName: "wifiNetwork"
                         width: parent.width
                         text: networkRow.modelData.ssid
-                        detail: networkRow.modelData.connected ? "Connected" : networkRow.modelData.enterprise ? "Enterprise network · connect through the desktop network settings" : networkRow.modelData.strength + "% signal · " + (networkRow.modelData.security || "Open network")
+                        detail: networkRow.modelData.connected ? qsTranslate("InstallerView", "Connected") : networkRow.modelData.enterprise ? qsTranslate("InstallerView", "Enterprise network · connect through the desktop network settings") : qsTranslate("InstallerView", "%1% signal · %2").arg(networkRow.modelData.strength).arg(networkRow.modelData.security || qsTranslate("InstallerView", "Open network"))
                         enabled: !networkRow.modelData.enterprise && !view.controller.helperBusy
                         chosen: networkRow.modelData.connected || netPage.selected === netPage.networkKey(networkRow.modelData)
                         onClicked: {
@@ -1245,10 +1281,10 @@ Item {
                         PasswordField {
                             id: wifiPassword
                             objectName: "wifiPassword"
-                            passwordLabel: "Wi-Fi password"
+                            passwordLabel: qsTranslate("InstallerView", "Wi-Fi password")
                             checksLayout: false
                             width: parent.width
-                            placeholderText: "Wi-Fi password"
+                            placeholderText: qsTranslate("InstallerView", "Wi-Fi password")
                             visible: !["", "--", "OWE", "OWE-TM"].includes(networkRow.modelData.security || "")
                             text: joinForm.visible ? netPage.passwordDraft : ""
                             onTextEdited: netPage.passwordDraft = text
@@ -1264,7 +1300,7 @@ Item {
                         Action {
                             id: connect
                             objectName: "wifiConnect"
-                            text: "Connect"
+                            text: qsTranslate("InstallerView", "Connect")
                             primary: true
                             enabled: !view.controller.helperBusy && (!wifiPassword.visible || !!netPage.passwordDraft)
                             onClicked: joinForm.join()
@@ -1282,11 +1318,11 @@ Item {
             Hint {
                 visible: !(view.controller.network.networks || []).length && !view.controller.network.wired
                 width: parent.width
-                text: "No Wi-Fi networks found. You can continue offline."
+                text: qsTranslate("InstallerView", "No Wi-Fi networks found. You can continue offline.")
             }
             Check {
                 width: parent.width
-                text: "Update Emaki at the end when connected"
+                text: qsTranslate("InstallerView", "Update Emaki at the end when connected")
                 checked: view.controller.onlineUpdate
                 onToggled: view.controller.onlineUpdate = checked
             }
@@ -1341,7 +1377,7 @@ Item {
                 width: parent.width
                 Heading {
                     Layout.fillWidth: true
-                    text: "Time zone"
+                    text: qsTranslate("InstallerView", "Time zone")
                 }
                 Column {
                     Copy {
@@ -1351,7 +1387,7 @@ Item {
                         font.weight: Font.DemiBold
                     }
                     Hint {
-                        text: view.controller.applyingTimezone ? "Setting the live clock…" : "Current local time"
+                        text: view.controller.applyingTimezone ? qsTranslate("InstallerView", "Setting the live clock…") : qsTranslate("InstallerView", "Current local time")
                     }
                 }
             }
@@ -1359,12 +1395,12 @@ Item {
                 objectName: "timezoneChoiceNotice"
                 width: parent.width
                 visible: !view.controller.timezoneChosen
-                text: "Choose your time zone. We could not find it automatically."
+                text: qsTranslate("InstallerView", "Choose your time zone. We could not find it automatically.")
             }
             Action {
                 objectName: "useUtc"
                 visible: !view.controller.timezoneChosen
-                text: "Use UTC"
+                text: qsTranslate("InstallerView", "Use UTC")
                 onClicked: view.controller.chooseTimezone("UTC")
             }
             TimezoneMap {
@@ -1401,8 +1437,8 @@ Item {
                 objectName: "zoneSearch"
                 width: parent.width
                 implicitHeight: 44
-                placeholderText: "Search a city, region or time zone"
-                Accessible.name: "Search a city, region or time zone"
+                placeholderText: qsTranslate("InstallerView", "Search a city, region or time zone")
+                Accessible.name: qsTranslate("InstallerView", "Search a city, region or time zone")
                 onAccepted: zonePage.chooseCurrent()
                 Keys.onDownPressed: {
                     zoneList.currentIndex = Math.min(zonePage.filtered.length - 1, Math.max(0, zoneList.currentIndex + 1));
@@ -1454,7 +1490,7 @@ Item {
                 Hint {
                     anchors.centerIn: parent
                     visible: zonePage.filtered.length === 0
-                    text: "No matching zones. Try a nearby city or region."
+                    text: qsTranslate("InstallerView", "No matching zones. Try a nearby city or region.")
                 }
             }
             Action {
@@ -1462,8 +1498,8 @@ Item {
                 objectName: "mapAttribution"
                 width: parent.width
                 implicitHeight: contentItem.implicitHeight + 8
-                text: "Map: Timezone Boundary Builder / © OpenStreetMap contributors · ODbL 1.0 · Natural Earth"
-                Accessible.description: "Open map sources and licence"
+                text: qsTranslate("InstallerView", "Map: Timezone Boundary Builder / © OpenStreetMap contributors · ODbL 1.0 · Natural Earth")
+                Accessible.description: qsTranslate("InstallerView", "Open map sources and licence")
                 contentItem: Hint {
                     text: mapAttribution.text
                     font.pixelSize: 12
@@ -1489,7 +1525,7 @@ Item {
                     color: view.danger
                 }
                 Action {
-                    text: "Try again"
+                    text: qsTranslate("InstallerView", "Try again")
                     implicitHeight: 40
                     enabled: view.controller.session.ready && !view.controller.applyingTimezone
                     onClicked: view.controller.applyTimezone()
@@ -1503,11 +1539,11 @@ Item {
             spacing: (view.height < 550 || view.width < 900) ? 6 : 14
             Heading {
                 width: parent.width
-                text: view.controller.manualAssignments && view.controller.mode === "manual" ? "Partitions" : "Where should Emaki go?"
+                text: view.controller.manualAssignments && view.controller.mode === "manual" ? qsTranslate("InstallerView", "Partitions") : qsTranslate("InstallerView", "Where should Emaki go?")
             }
             Lead {
                 width: parent.width
-                text: view.controller.manualAssignments && view.controller.mode === "manual" ? view.diskLabel() : "Choose a disk. The live USB and unavailable disks cannot be selected."
+                text: view.controller.manualAssignments && view.controller.mode === "manual" ? view.diskLabel() : qsTranslate("InstallerView", "Choose a disk. The live USB and unavailable disks cannot be selected.")
             }
             Copy {
                 objectName: "uefiRefusal"
@@ -1534,7 +1570,7 @@ Item {
                 }
                 Hint {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Scanning disks…"
+                    text: qsTranslate("InstallerView", "Scanning disks…")
                 }
             }
             Repeater {
@@ -1545,7 +1581,7 @@ Item {
                     objectName: "disk-" + modelData.id
                     width: parent.width
                     text: modelData.model + " · " + view.size(modelData.size_bytes)
-                    detail: (view.diskReason(modelData) || modelData.path + " · " + modelData.bus + " · " + modelData.partitions.length + " partitions" + Protocol.diskContents(modelData)) + Protocol.alongsideRefusal(modelData)
+                    detail: (view.diskReason(modelData) || modelData.path + " · " + modelData.bus + " · " + Shell.Translation.englishPlural(qsTranslate("InstallerView", "%n partition(s)", "", modelData.partitions.length), modelData.partitions.length) + Protocol.diskContents(modelData)) + Protocol.alongsideRefusal(modelData)
                     chosen: view.controller.diskId === modelData.id
                     enabled: !view.diskReason(modelData) && !view.controller.locked
                     onClicked: view.controller.chooseDisk(modelData.id)
@@ -1555,15 +1591,15 @@ Item {
                 objectName: "windowsEraseWarning"
                 width: parent.width
                 visible: view.controller.mode === "erase" && !!view.controller.selectedDisk?.partitions?.some(p => p.os_hint === "windows")
-                text: "This disk holds Windows. Erasing it deletes Windows and all files on the disk."
+                text: qsTranslate("InstallerView", "This disk holds Windows. Erasing it deletes Windows and all files on the disk.")
                 color: view.danger
             }
             Choice {
                 width: parent.width
                 visible: view.controller.canAlongside
                 objectName: "alongsideChoice"
-                text: "Install alongside Windows"
-                detail: "Keep Windows and use part of its free space for Emaki."
+                text: qsTranslate("InstallerView", "Install alongside Windows")
+                detail: qsTranslate("InstallerView", "Keep Windows and use part of its free space for Emaki.")
                 chosen: view.controller.mode === "alongside"
                 enabled: !view.controller.locked
                 onClicked: view.controller.mode = "alongside"
@@ -1573,8 +1609,8 @@ Item {
                 visible: !(view.controller.manualAssignments && view.controller.mode === "manual")
                 compact: (view.height < 550 || view.width < 900)
                 objectName: "eraseChoice"
-                text: "Erase disk"
-                detail: "Delete everything on the selected disk and install Emaki. Root needs at least " + view.size(view.controller.rootMinimum) + "."
+                text: qsTranslate("InstallerView", "Erase disk")
+                detail: qsTranslate("InstallerView", "Delete everything on the selected disk and install Emaki. Root needs at least %1.").arg(view.size(view.controller.rootMinimum))
                 chosen: view.controller.mode === "erase"
                 enabled: !view.controller.locked
                 onClicked: view.controller.mode = "erase"
@@ -1584,14 +1620,14 @@ Item {
                 visible: !view.controller.manualAssignments
                 compact: (view.height < 550 || view.width < 900)
                 objectName: "manualChoice"
-                text: "Manual"
-                detail: Protocol.manualReason(view.controller.selectedDisk) || "Create, delete and format partitions here, then choose where Emaki goes."
+                text: qsTranslate("InstallerView", "Manual")
+                detail: Protocol.manualReason(view.controller.selectedDisk) || qsTranslate("InstallerView", "Create, delete and format partitions here, then choose where Emaki goes.")
                 chosen: view.controller.mode === "manual"
                 enabled: !view.controller.locked && !Protocol.manualReason(view.controller.selectedDisk)
                 onClicked: view.controller.mode = "manual"
             }
             Action {
-                text: view.controller.manualAssignments && view.controller.mode === "manual" ? "Change disk" : "Refresh disks"
+                text: view.controller.manualAssignments && view.controller.mode === "manual" ? qsTranslate("InstallerView", "Change disk") : qsTranslate("InstallerView", "Refresh disks")
                 implicitHeight: 40
                 enabled: !view.controller.locked
                 onClicked: {
@@ -1631,11 +1667,11 @@ Item {
                     objectName: "encryptedEraseConfirmation"
                     width: parent.width
                     visible: !view.controller.encryptedRefusal
-                    placeholderText: "Type ERASE"
+                    placeholderText: qsTranslate("InstallerView", "Type %1").arg("ERASE")
                     text: view.controller.encryptedEraseText
                     enabled: !view.controller.locked
                     onTextEdited: view.controller.encryptedEraseText = text
-                    Accessible.name: "Confirm erasing the listed volumes"
+                    Accessible.name: qsTranslate("InstallerView", "Confirm erasing the listed volumes")
                 }
             }
             Copy {
@@ -1664,13 +1700,13 @@ Item {
                 }
                 Hint {
                     width: parent.width
-                    text: "At least " + (view.controller.alongsideMinimum / 1073741824).toFixed(2) + " GiB for Emaki. Windows retains its verified minimum plus 2 GiB. Windows will run chkdsk on its first boot; let it finish."
+                    text: qsTranslate("InstallerView", "At least %1 GiB for Emaki. Windows retains its verified minimum plus 2 GiB. Windows will run chkdsk on its first boot; let it finish.").arg((view.controller.alongsideMinimum / 1073741824).toFixed(2))
                 }
             }
             Copy {
                 width: parent.width
                 visible: view.controller.mode === "alongside" && !view.controller.alongsideSizeValid
-                text: "Windows shrink is unavailable. Refresh the disk list."
+                text: qsTranslate("InstallerView", "Windows shrink is unavailable. Refresh the disk list.")
                 color: view.danger
             }
             // The partition editor (manual mode, after Continue): the chosen disk as a bar and a list.
@@ -1690,7 +1726,7 @@ Item {
                     openFree = ""
                 Hint {
                     width: parent.width
-                    text: "Nothing on the disk changes until you press Install. The Review step lists every change."
+                    text: qsTranslate("InstallerView", "Nothing on the disk changes until you press Install. The Review step lists every change.")
                 }
                 Column {
                     objectName: "newTable"
@@ -1700,12 +1736,12 @@ Item {
                     Copy {
                         objectName: "noPartitions"
                         width: parent.width
-                        text: view.controller.partitionEdits.new_table ? "A new GPT partition table will be created. Add the partitions Emaki needs in its free space." : (editor.disk?.closed_encrypted || []).length ? "This disk has no partitions; it holds a locked volume. Go back and choose Erase disk to clear it." : Protocol.canNewTable(editor.disk) ? "This disk has no partitions yet. Create a GPT partition table, then add partitions in its free space." : "This disk has no partitions yet. Add the partitions Emaki needs in its free space."
+                        text: view.controller.partitionEdits.new_table ? qsTranslate("InstallerView", "A new GPT partition table will be created. Add the partitions Emaki needs in its free space.") : (editor.disk?.closed_encrypted || []).length ? qsTranslate("InstallerView", "This disk has no partitions; it holds a locked volume. Go back and choose Erase disk to clear it.") : Protocol.canNewTable(editor.disk) ? qsTranslate("InstallerView", "This disk has no partitions yet. Create a GPT partition table, then add partitions in its free space.") : qsTranslate("InstallerView", "This disk has no partitions yet. Add the partitions Emaki needs in its free space.")
                     }
                     Action {
                         objectName: "newTableAction"
                         visible: Protocol.canNewTable(editor.disk) || view.controller.partitionEdits.new_table
-                        text: view.controller.partitionEdits.new_table ? "Undo the new partition table" : "Create a GPT partition table"
+                        text: view.controller.partitionEdits.new_table ? qsTranslate("InstallerView", "Undo the new partition table") : qsTranslate("InstallerView", "Create a GPT partition table")
                         enabled: !view.controller.locked
                         onClicked: view.controller.newPartitionTable(!view.controller.partitionEdits.new_table)
                     }
@@ -1753,7 +1789,7 @@ Item {
                     spacing: 18
                     visible: bar.visible
                     Repeater {
-                        model: [["Partition", "#38241018", 0], ["Other system", "#735b7aa6", 0], ["New", Qt.alpha(view.accent, .75), 0], ["Deleted", Qt.alpha(view.danger, .28), 0], ["Free", "transparent", 1]]
+                        model: [[qsTranslate("InstallerView", "Partition"), "#38241018", 0], [qsTranslate("InstallerView", "Other system"), "#735b7aa6", 0], [qsTranslate("InstallerView", "New"), Qt.alpha(view.accent, .75), 0], [qsTranslate("InstallerView", "Deleted"), Qt.alpha(view.danger, .28), 0], [qsTranslate("InstallerView", "Free"), "transparent", 1]]
                         delegate: Row {
                             required property var modelData
                             spacing: 6
@@ -1774,7 +1810,7 @@ Item {
                 }
                 Hint {
                     width: parent.width
-                    text: "Choose / for the system and /efi for the EFI system partition; /home and swap are optional. Format and Delete erase a partition's files when you press Install. Partitions of other systems are kept unless you delete them."
+                    text: qsTranslate("InstallerView", "Choose / for the system and /efi for the EFI system partition; /home and swap are optional. Format and Delete erase a partition's files when you press Install. Partitions of other systems are kept unless you delete them.")
                 }
                 Repeater {
                     model: bar.visible ? editor.rows : []
@@ -1798,7 +1834,7 @@ Item {
                         Copy {
                             width: parent.width
                             visible: partitionRow.modelData.kind === "partition"
-                            text: partitionRow.part ? "Partition " + partitionRow.part.number + " · " + Protocol.partitionText(partitionRow.part) : ""
+                            text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 · %2").arg(partitionRow.part.number).arg(Protocol.partitionText(partitionRow.part)) : ""
                         }
                         RowLayout {
                             width: parent.width
@@ -1813,7 +1849,7 @@ Item {
                                 enabled: !view.controller.locked && model.length > 1
                                 currentIndex: partitionRow.assignment ? Math.max(0, model.indexOf(partitionRow.assignment.mountpoint)) : 0
                                 onActivated: partitionRow.apply()
-                                Accessible.name: "Use of partition " + (partitionRow.part?.number || "")
+                                Accessible.name: qsTranslate("InstallerView", "Use of partition %1").arg(partitionRow.part?.number || "")
                             }
                             Select {
                                 id: fsSelect
@@ -1823,12 +1859,12 @@ Item {
                                 enabled: !view.controller.locked && model.length > 1
                                 currentIndex: Math.max(0, model.indexOf(partitionRow.assignment?.fs || partitionRow.part?.fs))
                                 onActivated: partitionRow.apply()
-                                Accessible.name: "File system of partition " + (partitionRow.part?.number || "")
+                                Accessible.name: qsTranslate("InstallerView", "File system of partition %1").arg(partitionRow.part?.number || "")
                             }
                             Check {
                                 id: formatCheck
                                 objectName: "formatCheck-" + partitionRow.modelData.id
-                                text: "Format"
+                                text: qsTranslate("InstallerView", "Format")
                                 enabled: !view.controller.locked && !partitionRow.system && mountSelect.currentText !== "none"
                                 checked: partitionRow.assignment?.format || false
                                 onToggled: partitionRow.apply()
@@ -1836,7 +1872,7 @@ Item {
                             Check {
                                 id: encryptCheck
                                 objectName: "encryptCheck-" + partitionRow.modelData.id
-                                text: "Encrypt"
+                                text: qsTranslate("InstallerView", "Encrypt")
                                 visible: ["/home", "swap"].indexOf(mountSelect.currentText) >= 0
                                 enabled: !view.controller.locked && formatCheck.checked && view.controller.encryption === "encrypted"
                                 checked: partitionRow.assignment?.encrypt === true
@@ -1844,11 +1880,11 @@ Item {
                             }
                             Action {
                                 objectName: "deletePartition-" + partitionRow.modelData.id
-                                text: "Delete"
+                                text: qsTranslate("InstallerView", "Delete")
                                 implicitHeight: 44
                                 enabled: !view.controller.locked && view.controller.selectedDisk?.partition_table === "gpt"
                                 onClicked: view.controller.deletePartition(partitionRow.part)
-                                Accessible.name: "Delete partition " + (partitionRow.part?.number || "")
+                                Accessible.name: qsTranslate("InstallerView", "Delete partition %1").arg(partitionRow.part?.number || "")
                             }
                         }
                         Hint {
@@ -1856,13 +1892,13 @@ Item {
                             width: parent.width
                             // A new root's size was checked when it was added.
                             visible: partitionRow.modelData.kind === "partition" && partitionRow.assignment?.mountpoint === "/"
-                            text: "Root needs at least " + view.size(view.controller.rootMinimum) + "."
+                            text: qsTranslate("InstallerView", "Root needs at least %1.").arg(view.size(view.controller.rootMinimum))
                             color: (partitionRow.part?.size_bytes || 0) < view.controller.rootMinimum ? view.danger : view.dim
                         }
                         Hint {
                             width: parent.width
                             visible: encryptCheck.visible && view.controller.encryption !== "encrypted"
-                            text: "Encrypting this partition needs an encrypted root, which keeps its key."
+                            text: qsTranslate("InstallerView", "Encrypting this partition needs an encrypted root, which keeps its key.")
                         }
                         // Another system's partition: deleting it needs its typed DELETE.
                         Rectangle {
@@ -1884,25 +1920,25 @@ Item {
                                 Copy {
                                     width: parent.width
                                     color: view.danger
-                                    text: partitionRow.part ? "Partition " + partitionRow.part.number + " holds " + partitionRow.part.other_system + ". Deleting it removes the partition and all its files when you press Install. Type DELETE to confirm." : ""
+                                    text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 holds %2. Deleting it removes the partition and all its files when you press Install. Type %3 to confirm.").arg(partitionRow.part.number).arg(partitionRow.part.other_system).arg("DELETE") : ""
                                 }
                                 Field {
                                     id: confirmField
                                     objectName: "deleteConfirmField-" + partitionRow.modelData.id
                                     width: parent.width
-                                    placeholderText: "Type DELETE"
-                                    Accessible.name: "Confirm deleting partition " + (partitionRow.part?.number || "")
+                                    placeholderText: qsTranslate("InstallerView", "Type %1").arg("DELETE")
+                                    Accessible.name: qsTranslate("InstallerView", "Confirm deleting partition %1").arg(partitionRow.part?.number || "")
                                     onVisibleChanged: text = ""
                                 }
                                 Row {
                                     spacing: 12
                                     Action {
-                                        text: "Keep it"
+                                        text: qsTranslate("InstallerView", "Keep it")
                                         onClicked: view.controller.deleteRequest = null
                                     }
                                     Action {
                                         objectName: "deleteConfirmAction-" + partitionRow.modelData.id
-                                        text: "Delete partition"
+                                        text: qsTranslate("InstallerView", "Delete partition")
                                         destructive: true
                                         enabled: confirmField.text === "DELETE"
                                         onClicked: view.controller.confirmDelete(confirmField.text)
@@ -1918,11 +1954,11 @@ Item {
                             Copy {
                                 Layout.fillWidth: true
                                 color: view.danger
-                                text: partitionRow.part ? "Partition " + partitionRow.part.number + " · " + Protocol.partitionText(partitionRow.part) + " will be deleted." : ""
+                                text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 · %2 will be deleted.").arg(partitionRow.part.number).arg(Protocol.partitionText(partitionRow.part)) : ""
                             }
                             Action {
                                 objectName: "keepPartition-" + partitionRow.modelData.id
-                                text: "Keep it"
+                                text: qsTranslate("InstallerView", "Keep it")
                                 implicitHeight: 44
                                 enabled: !view.controller.locked
                                 onClicked: view.controller.keepPartition(partitionRow.modelData.id)
@@ -1935,11 +1971,11 @@ Item {
                             visible: partitionRow.modelData.kind === "new"
                             Copy {
                                 Layout.fillWidth: true
-                                text: partitionRow.modelData.kind === "new" ? "New partition " + partitionRow.modelData.number + " · " + view.size(partitionRow.modelData.size) + " · " + (partitionRow.assignment ? (partitionRow.assignment.mountpoint === "swap" ? "swap" : partitionRow.assignment.mountpoint + " · " + (partitionRow.assignment.fs === "vfat" ? "FAT32" : partitionRow.assignment.fs)) : "") + (partitionRow.assignment?.encrypt || (partitionRow.assignment?.mountpoint === "/" && view.controller.encryption === "encrypted") ? " · encrypted" : "") : ""
+                                text: partitionRow.modelData.kind === "new" ? qsTranslate("InstallerView", "New partition %1 · %2 · %3%4").arg(partitionRow.modelData.number).arg(view.size(partitionRow.modelData.size)).arg((partitionRow.assignment ? (partitionRow.assignment.mountpoint === "swap" ? "swap" : partitionRow.assignment.mountpoint + " · " + (partitionRow.assignment.fs === "vfat" ? "FAT32" : partitionRow.assignment.fs)) : "")).arg(partitionRow.assignment?.encrypt || (partitionRow.assignment?.mountpoint === "/" && view.controller.encryption === "encrypted") ? qsTranslate("InstallerView", " · encrypted") : "") : ""
                             }
                             Action {
                                 objectName: "removeNew-" + partitionRow.modelData.id
-                                text: "Remove"
+                                text: qsTranslate("InstallerView", "Remove")
                                 implicitHeight: 44
                                 enabled: !view.controller.locked
                                 onClicked: view.controller.removeNew(partitionRow.modelData.id)
@@ -1952,11 +1988,11 @@ Item {
                             visible: partitionRow.modelData.kind === "free"
                             Hint {
                                 Layout.fillWidth: true
-                                text: "Free space · " + view.size(partitionRow.modelData.size)
+                                text: qsTranslate("InstallerView", "Free space · %1").arg(view.size(partitionRow.modelData.size))
                             }
                             Action {
                                 objectName: "newPartition-" + partitionRow.modelData.id
-                                text: "New partition"
+                                text: qsTranslate("InstallerView", "New partition")
                                 implicitHeight: 44
                                 enabled: !view.controller.locked && (view.controller.selectedDisk?.partition_table === "gpt" || view.controller.partitionEdits.new_table)
                                 onClicked: {
@@ -2002,7 +2038,7 @@ Item {
                                 y: 16
                                 spacing: 10
                                 Copy {
-                                    text: "New partition"
+                                    text: qsTranslate("InstallerView", "New partition")
                                     font.weight: Font.DemiBold
                                 }
                                 RowLayout {
@@ -2017,22 +2053,22 @@ Item {
                                         model: [
                                             {
                                                 value: "/",
-                                                text: "/ (the system)"
+                                                text: qsTranslate("InstallerView", "/ (the system)")
                                             },
                                             {
                                                 value: "/home",
-                                                text: "/home (your files)"
+                                                text: qsTranslate("InstallerView", "/home (your files)")
                                             },
                                             {
                                                 value: "/efi",
-                                                text: "/efi (EFI system partition, FAT32)"
+                                                text: qsTranslate("InstallerView", "/efi (EFI system partition, FAT32)")
                                             },
                                             {
                                                 value: "swap",
                                                 text: "swap"
                                             }
                                         ]
-                                        Accessible.name: "Use of the new partition"
+                                        Accessible.name: qsTranslate("InstallerView", "Use of the new partition")
                                     }
                                     Select {
                                         id: createFs
@@ -2040,7 +2076,7 @@ Item {
                                         Layout.preferredWidth: 130
                                         visible: createForm.use === "/" || createForm.use === "/home"
                                         model: ["btrfs", "ext4"]
-                                        Accessible.name: "File system of the new partition"
+                                        Accessible.name: qsTranslate("InstallerView", "File system of the new partition")
                                     }
                                 }
                                 RowLayout {
@@ -2051,12 +2087,12 @@ Item {
                                         objectName: "createSize-" + partitionRow.modelData.id
                                         Layout.preferredWidth: 180
                                         inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                        Accessible.name: "Size of the new partition in GiB"
+                                        Accessible.name: qsTranslate("InstallerView", "Size of the new partition in GiB")
                                         onTextEdited: createForm.error = ""
                                         onAccepted: createAction.clicked()
                                     }
                                     Copy {
-                                        text: "GiB of " + view.size(partitionRow.modelData.size)
+                                        text: qsTranslate("InstallerView", "GiB of %1").arg(view.size(partitionRow.modelData.size))
                                     }
                                     Item {
                                         Layout.fillWidth: true
@@ -2064,7 +2100,7 @@ Item {
                                     Check {
                                         id: createEncrypt
                                         objectName: "createEncrypt-" + partitionRow.modelData.id
-                                        text: "Encrypt (LUKS2)"
+                                        text: qsTranslate("InstallerView", "Encrypt (LUKS2)")
                                         visible: createForm.use !== "/efi"
                                         // Root's choice is the Encryption step's; the others need an encrypted root.
                                         enabled: createForm.use === "/" || view.controller.encryption === "encrypted"
@@ -2074,7 +2110,7 @@ Item {
                                 Hint {
                                     width: parent.width
                                     visible: createForm.use !== "/" && createForm.use !== "/efi" && view.controller.encryption !== "encrypted"
-                                    text: "To encrypt /home or swap, encrypt root first; it keeps their keys."
+                                    text: qsTranslate("InstallerView", "To encrypt /home or swap, encrypt root first; it keeps their keys.")
                                 }
                                 Hint {
                                     objectName: "createError-" + partitionRow.modelData.id
@@ -2086,13 +2122,13 @@ Item {
                                 Row {
                                     spacing: 12
                                     Action {
-                                        text: "Cancel"
+                                        text: qsTranslate("InstallerView", "Cancel")
                                         onClicked: editor.openFree = ""
                                     }
                                     Action {
                                         id: createAction
                                         objectName: "createAction-" + partitionRow.modelData.id
-                                        text: "Add partition"
+                                        text: qsTranslate("InstallerView", "Add partition")
                                         primary: true
                                         enabled: !view.controller.locked
                                         onClicked: {
@@ -2117,11 +2153,11 @@ Item {
             spacing: 20
             Heading {
                 width: parent.width
-                text: "A home for your files"
+                text: qsTranslate("InstallerView", "A home for your files")
             }
             Lead {
                 width: parent.width
-                text: "Choose how Emaki stores your system and files."
+                text: qsTranslate("InstallerView", "Choose how Emaki stores your system and files.")
             }
             Choice {
                 objectName: "filesystemBtrfs"
@@ -2129,8 +2165,8 @@ Item {
                 Component.onCompleted: if (view.controller.filesystem !== "ext4")
                     forceActiveFocus()
                 width: parent.width
-                text: "btrfs · Recommended"
-                detail: "Snapshots: roll back from the boot menu"
+                text: qsTranslate("InstallerView", "btrfs · Recommended")
+                detail: qsTranslate("InstallerView", "Snapshots: roll back from the boot menu")
                 chosen: view.controller.filesystem === "btrfs"
                 onClicked: view.controller.filesystem = "btrfs"
             }
@@ -2140,7 +2176,7 @@ Item {
                     forceActiveFocus()
                 width: parent.width
                 text: "ext4"
-                detail: "A simple, established file system. No system snapshots."
+                detail: qsTranslate("InstallerView", "A simple, established file system. No system snapshots.")
                 chosen: view.controller.filesystem === "ext4"
                 onClicked: view.controller.filesystem = "ext4"
             }
@@ -2152,21 +2188,21 @@ Item {
             spacing: 14
             Heading {
                 width: parent.width
-                text: "Protect your files"
+                text: qsTranslate("InstallerView", "Protect your files")
             }
             Lead {
                 width: parent.width
-                text: "Encryption protects files if this computer is lost or stolen. Unlock the disk each time you start it."
+                text: qsTranslate("InstallerView", "Encryption protects files if this computer is lost or stolen. Unlock the disk each time you start it.")
             }
             Hint {
                 width: parent.width
                 visible: view.controller.encryption === "encrypted"
-                text: "If you forget the disk password, your files cannot be recovered."
+                text: qsTranslate("InstallerView", "If you forget the disk password, your files cannot be recovered.")
             }
             Copy {
                 width: parent.width
                 visible: view.controller.encryption === "encrypted"
-                text: "At startup, the password screen uses an English (US) keyboard, shows no letters as you type, and takes a few seconds after Enter."
+                text: qsTranslate("InstallerView", "At startup, the password screen uses an English (US) keyboard, shows no letters as you type, and takes a few seconds after Enter.")
             }
             Row {
                 width: parent.width
@@ -2174,7 +2210,7 @@ Item {
                 Choice {
                     objectName: "encryptYes"
                     width: (parent.width - 12) / 2
-                    text: "Encrypt the disk"
+                    text: qsTranslate("InstallerView", "Encrypt the disk")
                     chosen: view.controller.encryption === "encrypted"
                     onClicked: {
                         view.controller.encryption = "encrypted";
@@ -2185,7 +2221,7 @@ Item {
                 Choice {
                     objectName: "encryptNo"
                     width: (parent.width - 12) / 2
-                    text: "Leave it unencrypted"
+                    text: qsTranslate("InstallerView", "Leave it unencrypted")
                     chosen: view.controller.encryption === "none"
                     onClicked: {
                         view.controller.encryption = "none";
@@ -2201,8 +2237,8 @@ Item {
                 Choice {
                     objectName: "encryptAccount"
                     width: parent.width
-                    text: "One password for everything · Recommended"
-                    detail: view.controller.accountUnlocks ? "Use your account password: less to remember. Anyone who knows it can also unlock your files. Changing it later does not change the disk password." : view.accountChoiceRefusal()
+                    text: qsTranslate("InstallerView", "One password for everything · Recommended")
+                    detail: view.controller.accountUnlocks ? qsTranslate("InstallerView", "Use your account password: less to remember. Anyone who knows it can also unlock your files. Changing it later does not change the disk password.") : view.accountChoiceRefusal()
                     enabled: view.controller.accountUnlocks
                     chosen: view.controller.encryptionPassword === "account"
                     onClicked: {
@@ -2214,8 +2250,8 @@ Item {
                 Choice {
                     objectName: "encryptSeparate"
                     width: parent.width
-                    text: "A separate disk password"
-                    detail: "Keep disk access separate from your account. You must remember two passwords and use the disk password at startup."
+                    text: qsTranslate("InstallerView", "A separate disk password")
+                    detail: qsTranslate("InstallerView", "Keep disk access separate from your account. You must remember two passwords and use the disk password at startup.")
                     chosen: view.controller.encryptionPassword === "separate"
                     onClicked: {
                         view.controller.encryptionPassword = "separate";
@@ -2232,9 +2268,9 @@ Item {
                         KeyNavigation.tab: diskConfirmationField
                         nextEye: diskConfirmationField.eyeButton
                         unlock: true
-                        passwordLabel: "Disk password"
+                        passwordLabel: qsTranslate("InstallerView", "Disk password")
                         width: (parent.width - 12) / 2
-                        placeholderText: "Disk password"
+                        placeholderText: qsTranslate("InstallerView", "Disk password")
                         text: view.controller.diskPassword
                         onTextEdited: view.controller.diskPassword = text
                     }
@@ -2245,8 +2281,8 @@ Item {
                         nextEye: continueAction
                         unlock: true
                         width: (parent.width - 12) / 2
-                        placeholderText: "Confirm disk password"
-                        passwordLabel: "Disk password confirmation"
+                        placeholderText: qsTranslate("InstallerView", "Confirm disk password")
+                        passwordLabel: qsTranslate("InstallerView", "Disk password confirmation")
                         text: view.controller.diskConfirmation
                         onTextEdited: view.controller.diskConfirmation = text
                     }
@@ -2255,7 +2291,7 @@ Item {
                     objectName: "diskCapsLock"
                     width: parent.width
                     visible: view.capsLockShown
-                    text: "Caps Lock is on"
+                    text: qsTranslate("InstallerView", "Caps Lock is on")
                 }
                 Hint {
                     objectName: "diskNumLock"
@@ -2266,7 +2302,7 @@ Item {
                 Hint {
                     width: parent.width
                     visible: view.controller.diskConfirmation.length > 0 && view.controller.diskPassword !== view.controller.diskConfirmation
-                    text: "The disk passwords do not match."
+                    text: qsTranslate("InstallerView", "The disk passwords do not match.")
                     color: view.danger
                 }
                 Hint {
@@ -2278,12 +2314,12 @@ Item {
                 Hint {
                     width: parent.width
                     visible: view.controller.mode === "manual"
-                    text: "Root must be formatted. Only root is encrypted; separate data partitions stay unencrypted."
+                    text: qsTranslate("InstallerView", "Root must be formatted. Only root is encrypted; separate data partitions stay unencrypted.")
                 }
                 Hint {
                     width: parent.width
                     visible: view.controller.mode === "alongside"
-                    text: "Only Emaki is encrypted. Its password is needed before the startup menu appears, including the Windows choice."
+                    text: qsTranslate("InstallerView", "Only Emaki is encrypted. Its password is needed before the startup menu appears, including the Windows choice.")
                 }
             }
         }
@@ -2358,11 +2394,11 @@ Item {
             }
             Heading {
                 width: parent.width
-                text: "About you"
+                text: qsTranslate("InstallerView", "About you")
             }
             Lead {
                 width: parent.width
-                text: "Your account on this computer."
+                text: qsTranslate("InstallerView", "Your account on this computer.")
             }
             GridLayout {
                 width: parent.width
@@ -2373,12 +2409,12 @@ Item {
                 Hint {
                     Layout.row: 0
                     Layout.column: 0
-                    text: "Full name"
+                    text: qsTranslate("InstallerView", "Full name")
                 }
                 Hint {
                     Layout.row: 0
                     Layout.column: 1
-                    text: "Login"
+                    text: qsTranslate("InstallerView", "Login")
                 }
                 Field {
                     id: nameInput
@@ -2432,13 +2468,13 @@ Item {
                 Hint {
                     Layout.row: 3
                     Layout.column: 0
-                    text: "Password"
+                    text: qsTranslate("InstallerView", "Password")
                     Layout.topMargin: 10
                 }
                 Hint {
                     Layout.row: 3
                     Layout.column: 1
-                    text: "Confirm password"
+                    text: qsTranslate("InstallerView", "Confirm password")
                     Layout.topMargin: 10
                 }
                 // With one password for everything the account password also unlocks the disk.
@@ -2460,7 +2496,7 @@ Item {
                     Layout.row: 4
                     Layout.column: 1
                     unlock: password.unlock
-                    passwordLabel: "Confirm password"
+                    passwordLabel: qsTranslate("InstallerView", "Confirm password")
                     Layout.fillWidth: true
                     onAccepted: account.submit()
                 }
@@ -2474,7 +2510,7 @@ Item {
                     visible: text !== ""
                     readonly property string error: account.submitted || password.text ? account.problems.password : ""
                     color: error ? view.danger : view.dim
-                    text: error || "Use only letters, digits and symbols of the English (US) keyboard."
+                    text: error || qsTranslate("InstallerView", "Use only letters, digits and symbols of the English (US) keyboard.")
                 }
                 Hint {
                     id: confirmProblem
@@ -2494,7 +2530,7 @@ Item {
                     Layout.column: 0
                     Layout.fillWidth: true
                     visible: view.capsLockShown
-                    text: "Caps Lock is on"
+                    text: qsTranslate("InstallerView", "Caps Lock is on")
                 }
                 Hint {
                     objectName: "numLock"
@@ -2517,7 +2553,7 @@ Item {
                 Hint {
                     Layout.row: 9
                     Layout.column: 0
-                    text: "Computer name"
+                    text: qsTranslate("InstallerView", "Computer name")
                     Layout.topMargin: 10
                 }
                 Field {
@@ -2553,11 +2589,11 @@ Item {
             spacing: 20
             Heading {
                 width: parent.width
-                text: "Make it your desktop"
+                text: qsTranslate("InstallerView", "Make it your desktop")
             }
             Lead {
                 width: parent.width
-                text: "Choose the apps to have ready when you first sign in. Both choices install from the USB, without internet."
+                text: qsTranslate("InstallerView", "Choose the apps to have ready when you first sign in. Both choices install from the USB, without internet.")
             }
             Choice {
                 objectName: "softwareRich"
@@ -2565,8 +2601,8 @@ Item {
                 Component.onCompleted: if (view.controller.software !== "minimal")
                     forceActiveFocus()
                 width: parent.width
-                text: "Rich · Recommended"
-                detail: "Everyday apps for office work, email, photos, music and video. Includes recording, printing, system utilities and media codecs."
+                text: qsTranslate("InstallerView", "Rich · Recommended")
+                detail: qsTranslate("InstallerView", "Everyday apps for office work, email, photos, music and video. Includes recording, printing, system utilities and media codecs.")
                 chosen: view.controller.software === "rich"
                 onClicked: view.controller.software = "rich"
             }
@@ -2575,14 +2611,14 @@ Item {
                 Component.onCompleted: if (chosen)
                     forceActiveFocus()
                 width: parent.width
-                text: "Minimal"
-                detail: "Dolphin for your files, Firefox for the web and kitty for the terminal. Add more apps whenever you need them."
+                text: qsTranslate("InstallerView", "Minimal")
+                detail: qsTranslate("InstallerView", "Dolphin for your files, Firefox for the web and kitty for the terminal. Add more apps whenever you need them.")
                 chosen: view.controller.software === "minimal"
                 onClicked: view.controller.software = "minimal"
             }
             Hint {
                 width: parent.width
-                text: "You can add or remove apps later."
+                text: qsTranslate("InstallerView", "You can add or remove apps later.")
             }
         }
     }
@@ -2592,11 +2628,11 @@ Item {
             spacing: 16
             Heading {
                 width: parent.width
-                text: "One last look"
+                text: qsTranslate("InstallerView", "One last look")
             }
             Lead {
                 width: parent.width
-                text: "Review the installation plan for " + view.diskLabel() + "."
+                text: qsTranslate("InstallerView", "Review the installation plan for %1.").arg(view.diskLabel())
             }
             // The keyboard line first: it names the layouts the login screen will use, and the
             // planner puts it near the end, below the fold of a 768-pixel screen.
@@ -2604,8 +2640,9 @@ Item {
                 model: view.controller.session.plan?.summary || []
                 delegate: Copy {
                     required property string modelData
-                    objectName: modelData.startsWith("Keyboard: ") ? "reviewKeyboard" : ""
-                    visible: modelData.startsWith("Keyboard: ")
+                    required property int index
+                    objectName: visible ? "reviewKeyboard" : ""
+                    visible: view.controller.session.plan?.summary_keys?.[index] === "keyboard"
                     width: parent.width
                     text: "•  " + modelData
                 }
@@ -2614,7 +2651,8 @@ Item {
                 model: view.controller.session.plan?.summary || []
                 delegate: Copy {
                     required property string modelData
-                    visible: !modelData.startsWith("Keyboard: ")
+                    required property int index
+                    visible: view.controller.session.plan?.summary_keys?.[index] !== "keyboard"
                     width: parent.width
                     text: "•  " + modelData
                 }
@@ -2642,11 +2680,11 @@ Item {
                 visible: (view.controller.session.plan?.errors || []).length > 0
                 spacing: 12
                 Action {
-                    text: "Edit disk settings"
+                    text: qsTranslate("InstallerView", "Edit disk settings")
                     onClicked: view.controller.edit("disk")
                 }
                 Action {
-                    text: "Edit account"
+                    text: qsTranslate("InstallerView", "Edit account")
                     onClicked: view.controller.edit("you")
                 }
             }
@@ -2667,14 +2705,14 @@ Item {
                     Copy {
                         width: parent.width
                         color: view.danger
-                        text: view.controller.mode === "erase" ? "Everything on this disk will be deleted. This cannot be undone." : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes) : "Deleted and formatted partitions lose their files. Emaki writes system and account files to the partitions it uses. Nothing on the disk changes until you press Install."
+                        text: view.controller.mode === "erase" ? qsTranslate("InstallerView", "Everything on this disk will be deleted. This cannot be undone.") : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes) : qsTranslate("InstallerView", "Deleted and formatted partitions lose their files. Emaki writes system and account files to the partitions it uses. Nothing on the disk changes until you press Install.")
                     }
                 }
             }
             Hint {
                 width: parent.width
                 visible: !!view.controller.session.plan?.token
-                text: "This review stays ready while this page is open. Changes require a new review."
+                text: qsTranslate("InstallerView", "This review stays ready while this page is open. Changes require a new review.")
             }
         }
     }
@@ -2684,11 +2722,11 @@ Item {
             spacing: 16
             Heading {
                 width: parent.width
-                text: "Making room for you"
+                text: qsTranslate("InstallerView", "Making room for you")
             }
             Lead {
                 width: parent.width
-                text: view.controller.session.confirming ? "Starting the installation…" : "Emaki is being installed. Keep this computer on."
+                text: view.controller.session.confirming ? qsTranslate("InstallerView", "Starting the installation…") : qsTranslate("InstallerView", "Emaki is being installed. Keep this computer on.")
             }
             C.ProgressBar {
                 id: progress
@@ -2714,10 +2752,10 @@ Item {
                 width: parent.width
                 Copy {
                     Layout.fillWidth: true
-                    text: Math.round(view.controller.session.totalPct) + "% complete"
+                    text: qsTranslate("InstallerView", "%1% complete").arg(Math.round(view.controller.session.totalPct).toFixed(0))
                 }
                 Hint {
-                    text: "Elapsed " + view.duration(view.controller.elapsed)
+                    text: qsTranslate("InstallerView", "Elapsed %1").arg(view.duration(view.controller.elapsed))
                 }
             }
             Copy {
@@ -2760,7 +2798,7 @@ Item {
                         Hint {
                             objectName: phaseRow.current ? "phaseStatus" : phaseRow.skipped ? "phaseSkipped-" + phaseRow.modelData : ""
                             visible: phaseRow.current || phaseRow.skipped
-                            text: phaseRow.skipped ? Protocol.skippedPhaseText(phaseRow.modelData) : view.controller.session.indeterminate ? Protocol.activityText(view.controller.session.activity) || "Working…" : view.controller.session.phasePct === null ? "Skipped" : Math.round(view.controller.session.phasePct) + "%"
+                            text: phaseRow.skipped ? Protocol.skippedPhaseText(phaseRow.modelData) : view.controller.session.indeterminate ? Protocol.activityText(view.controller.session.activity) || qsTranslate("InstallerView", "Working…") : view.controller.session.phasePct === null ? qsTranslate("InstallerView", "Skipped") : Math.round(view.controller.session.phasePct) + "%"
                         }
                     }
                 }
@@ -2778,7 +2816,7 @@ Item {
                     y: 16
                     spacing: 8
                     Hint {
-                        text: "MAKE YOURSELF AT HOME"
+                        text: qsTranslate("InstallerView", "MAKE YOURSELF AT HOME")
                         color: Shell.LiquidPalette.accentOnLight
                     }
                     Copy {
@@ -2790,7 +2828,7 @@ Item {
             }
             Hint {
                 width: parent.width
-                text: view.controller.session.cancelMessage || (view.controller.session.cancelPending ? "The installer will stop at the next phase boundary and clean up. Disk changes are not undone." : "")
+                text: view.controller.session.cancelMessage || (view.controller.session.cancelPending ? qsTranslate("InstallerView", "The installer will stop at the next phase boundary and clean up. Disk changes are not undone.") : "")
             }
         }
     }
@@ -2798,20 +2836,20 @@ Item {
         spacing: 12
         Hint {
             width: parent.width
-            text: view.controller.media.length ? "Save the installation log to a removable medium:" : "To save the log, plug in a second USB stick and press Refresh."
+            text: view.controller.media.length ? qsTranslate("InstallerView", "Save the installation log to a removable medium:") : qsTranslate("InstallerView", "To save the log, plug in a second USB stick and press Refresh.")
         }
         Repeater {
             model: view.controller.media
             delegate: Action {
                 required property string modelData
                 required property int index
-                text: "Save log · " + modelData.split("/").pop()
+                text: qsTranslate("InstallerView", "Save log · %1").arg(modelData.split("/").pop())
                 enabled: view.controller.logSaveEnabled
                 onClicked: view.controller.saveLog(index)
             }
         }
         Action {
-            text: "Refresh removable media"
+            text: qsTranslate("InstallerView", "Refresh removable media")
             implicitHeight: 42
             enabled: !view.controller.helperBusy
             onClicked: view.controller.callHelper("media", {})
@@ -2823,16 +2861,16 @@ Item {
             spacing: 24
             Heading {
                 width: parent.width
-                text: "Welcome home."
+                text: qsTranslate("InstallerView", "Welcome home.")
                 font.pixelSize: 50
             }
             Lead {
                 width: parent.width
-                text: "Emaki is installed. Restart to begin using your new desktop."
+                text: qsTranslate("InstallerView", "Emaki is installed. Restart to begin using your new desktop.")
             }
             Copy {
                 width: parent.width
-                text: "Press Super+D to open the app launcher. Super is the Windows key, or Command on a Mac keyboard."
+                text: qsTranslate("InstallerView", "Press Super+D to open the app launcher. Super is the Windows key, or Command on a Mac keyboard.")
             }
             // Secure Boot: the machine key waits for MokManager at the next start (done.secure_boot).
             Column {
@@ -2843,11 +2881,11 @@ Item {
                 Copy {
                     width: parent.width
                     font.weight: Font.DemiBold
-                    text: "One more step after the restart"
+                    text: qsTranslate("InstallerView", "One more step after the restart")
                 }
                 Copy {
                     width: parent.width
-                    text: "A blue screen asks to confirm Emaki's key. Press any key within 10 seconds, choose Enroll MOK, then Continue and Yes, type this password and choose Reboot."
+                    text: qsTranslate("InstallerView", "A blue screen asks to confirm Emaki's key. Press any key within 10 seconds, choose Enroll MOK, then Continue and Yes, type this password and choose Reboot.")
                 }
                 Heading {
                     objectName: "secureBootPassword"
@@ -2859,11 +2897,11 @@ Item {
                 Copy {
                     objectName: "secureBootRecovery"
                     width: parent.width
-                    text: "If you miss it, restart the computer: after a short error message the blue screen comes back. Choose Enroll key from disk, then " + (view.controller.session.secureBoot?.espLabel || "the disk entry") + ", EFI, Emaki, a and emaki-machine-key.cer, then Continue, Yes and Reboot."
+                    text: qsTranslate("InstallerView", "If you miss it, restart the computer: after a short error message the blue screen comes back. Choose Enroll key from disk, then %1, EFI, Emaki, a and emaki-machine-key.cer, then Continue, Yes and Reboot.").arg(view.controller.session.secureBoot?.espLabel || qsTranslate("InstallerView", "the disk entry"))
                 }
             }
             Copy {
-                text: "Installed in " + view.duration(Math.round(view.controller.session.seconds)) + "."
+                text: qsTranslate("InstallerView", "Installed in %1.").arg(view.duration(Math.round(view.controller.session.seconds)))
             }
             // What the worker reports as finished with a caveat, such as a partial online update.
             Copy {
@@ -2886,7 +2924,7 @@ Item {
             readonly property var words: Protocol.errorPresentation(view.controller.session.error)
             Heading {
                 width: parent.width
-                text: "Installation stopped"
+                text: qsTranslate("InstallerView", "Installation stopped")
             }
             Lead {
                 objectName: "errorSentence"
@@ -2907,13 +2945,13 @@ Item {
             }
             Hint {
                 width: parent.width
-                text: view.controller.session.error?.retryable ? "You can check your settings and prepare a fresh plan." : "Save the log to help diagnose the problem before starting again."
+                text: view.controller.session.error?.retryable ? qsTranslate("InstallerView", "You can check your settings and prepare a fresh plan.") : qsTranslate("InstallerView", "Save the log to help diagnose the problem before starting again.")
             }
             Hint {
                 objectName: "errorCode"
                 width: parent.width
                 visible: !!view.controller.session.error?.code
-                text: "Error code: " + (view.controller.session.error?.code || "")
+                text: qsTranslate("InstallerView", "Error code: %1").arg(view.controller.session.error?.code || "")
             }
             LogSave {
                 width: parent.width
@@ -2922,7 +2960,7 @@ Item {
                 id: detailsToggle
                 objectName: "errorDetailsToggle"
                 visible: errorColumn.words.details !== "" || view.controller.session.logs.length > 0
-                text: "Show details"
+                text: qsTranslate("InstallerView", "Show details")
                 onCheckedChanged: if (checked)
                     Qt.callLater(errorColumn.revealDetails)
             }

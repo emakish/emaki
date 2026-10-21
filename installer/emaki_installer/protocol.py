@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Frozen v1 NDJSON framing and the single-writer job controller."""
+from .i18n import _, available_locales
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
@@ -20,20 +21,20 @@ from .runtime import Redactor
 
 
 def decode_frame(frame):
-    require(len(frame) <= MAX_FRAME and frame.endswith(b'\n'), Code.BAD_REQUEST, 'Invalid frame length.')
+    require(len(frame) <= MAX_FRAME and frame.endswith(b'\n'), Code.BAD_REQUEST, _('Invalid frame length.'))
     try:
-        value = json.loads(frame.decode('utf-8'), parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+        value = json.loads(frame.decode('utf-8'), parse_constant=lambda ignored: (ignored for ignored in ()).throw(ValueError()))
     except (ValueError, UnicodeError, RecursionError) as exc:
-        raise InstallError(Code.BAD_REQUEST, 'Invalid UTF-8 JSON.') from exc
+        raise InstallError(Code.BAD_REQUEST, _('Invalid UTF-8 JSON.')) from exc
     require(isinstance(value, dict) and isinstance(value.get('type'), str)
             and isinstance(value.get('id'), str) and 0 < len(value['id']) <= 128,
-            Code.BAD_REQUEST, 'Requests need a string type and a nonempty ID (at most 128 characters).')
+            Code.BAD_REQUEST, _('Requests need a string type and a nonempty ID (at most 128 characters).'))
     return value
 
 
 def encode_frame(value):
     result = (json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False) + '\n').encode()
-    require(len(result) <= MAX_FRAME, Code.BAD_REQUEST, 'Outgoing message exceeds 64 KiB.')
+    require(len(result) <= MAX_FRAME, Code.BAD_REQUEST, _('Outgoing message exceeds 64 KiB.'))
     return result
 
 
@@ -172,11 +173,13 @@ class Controller:
             except InstallError as exc:
                 return [self.reply(msg['id'], False, code=exc.code.value,
                                    msg=self.redactor.text(exc.message), log_path=str(LOG),
-                                   **self.restart_reply_fields(msg))]
+                                   **dict(self.restart_reply_fields(msg),
+                                          **({'recovery_included': exc.recovery_included}
+                                             if msg['type'] == 'reboot' else {})))]
             except Exception as exc:
-                self.log('Request failed: ' + type(exc).__name__)
+                self.log(_('Request failed: ') + type(exc).__name__)
                 return [self.reply(msg['id'], False, code=Code.INTERNAL.value,
-                                   msg='The request could not be completed. Check the installation log for details.', log_path=str(LOG),
+                                   msg=_('The request could not be completed. Check the installation log for details.'), log_path=str(LOG),
                                    **self.restart_reply_fields(msg))]
 
     def restart_reply_fields(self, msg):
@@ -189,7 +192,7 @@ class Controller:
         kind, ident = msg['type'], msg['id']
         if kind == 'hello':
             require(type(msg.get('proto')) is int and msg['proto'] == 1,
-                    Code.BAD_REQUEST, 'Only protocol 1 is supported.')
+                    Code.BAD_REQUEST, _('Only protocol 1 is supported.'))
             # reserved_logins: the window refuses these before the password is typed.
             # console_chars: the window names the password characters the text console types
             # differently (planner.console_unsafe_chars), without sending the password.
@@ -200,16 +203,17 @@ class Controller:
                                            'remaining_s': max(0, self.restart_deadline - self.clock())}
                                           if self.restart_state else None),
                                  timezone_guess=hasattr(self.inventory, "timezone_guess"),
+                                 available_locales=available_locales(),
                                  reserved_logins=list(RESERVED_LOGINS),
                                  console_chars={name: list(record) for name, record in CONSOLE_CHARS.items()})]
         if kind == 'get_timezone_guess':
             return [self.reply(ident, **self.inventory.timezone_guess())]
         if kind == 'set_timezone':
             with self.lock:
-                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
+                require(not self.busy and not self.stopping, Code.BUSY, _('The installer is busy or stopping. Wait before trying again.'))
                 self.invalidate_own(client)
             require(self.set_timezone_fn is not None, Code.BAD_REQUEST,
-                    'Live clock changes are unavailable.')
+                    _('Live clock changes are unavailable.'))
             return [self.reply(ident, **self.set_timezone_fn(msg.get('timezone')))]
         if kind in ('plan', 'probe'):
             with self.lock:
@@ -218,7 +222,7 @@ class Controller:
                     self.invalidate()
                 else:
                     self.invalidate_own(client)
-                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
+                require(not self.busy and not self.stopping, Code.BUSY, _('The installer is busy or stopping. Wait before trying again.'))
                 if kind == 'plan' and self.check_installation_fn:
                     self.check_installation_fn()
             if kind == 'probe':
@@ -241,51 +245,51 @@ class Controller:
                                      warnings=[])]
             except (TypeError, ValueError, UnicodeError):
                 return [self.message('plan_ack', ident, plan_id=plan_id, expires_s=600,
-                                     summary=[], errors=[{'code': Code.BAD_CONFIG.value, 'msg': 'Invalid config values.'}],
+                                     summary=[], errors=[{'code': Code.BAD_CONFIG.value, 'msg': _('Invalid config values.')}],
                                      warnings=[])]
             token = secrets.token_urlsafe(32)
             with self.lock:
                 self.pending = {'plan': plan, 'plan_id': plan_id, 'token': token,
                                 'deadline': self.clock() + 600, 'client': client}
             return [self.message('plan_ack', ident, plan_id=plan_id, token=token, expires_s=600,
-                                 summary=plan.summary, errors=[], warnings=plan.warnings)]
+                                 summary=plan.summary, summary_keys=plan.summary_keys, errors=[], warnings=plan.warnings)]
         if kind == 'renew':
             with self.lock:
-                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
+                require(not self.busy and not self.stopping, Code.BUSY, _('The installer is busy or stopping. Wait before trying again.'))
                 pending = self.pending
                 if pending and self.clock() >= pending['deadline']:
                     self.invalidate()
-                    raise InstallError(Code.TOKEN_EXPIRED, 'Plan token expired; review a new plan.')
+                    raise InstallError(Code.TOKEN_EXPIRED, _('Plan token expired; review a new plan.'))
                 require(pending is not None and pending['client'] is client
                         and msg.get('plan_id') == pending['plan_id']
                         and isinstance(msg.get('token'), str)
                         and secrets.compare_digest(msg['token'], pending['token']),
-                        Code.TOKEN_INVALID, 'Invalid plan confirmation.')
+                        Code.TOKEN_INVALID, _('Invalid plan confirmation.'))
                 pending['token'] = secrets.token_urlsafe(32)
                 pending['deadline'] = self.clock() + 600
                 return [self.message('plan_ack', ident, plan_id=pending['plan_id'],
                                      token=pending['token'], expires_s=600,
-                                     summary=pending['plan'].summary, errors=[], warnings=pending['plan'].warnings)]
+                                     summary=pending['plan'].summary, summary_keys=pending['plan'].summary_keys, errors=[], warnings=pending['plan'].warnings)]
         if kind == 'skip_update':
             with self.lock:
-                require(self.busy, Code.BAD_REQUEST, 'No installation is running.')
+                require(self.busy, Code.BAD_REQUEST, _('No installation is running.'))
                 self.job.skip_update.set()
                 return [self.reply(ident)]
         if kind == 'confirm':
             with self.lock:
-                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
+                require(not self.busy and not self.stopping, Code.BUSY, _('The installer is busy or stopping. Wait before trying again.'))
                 if self.check_installation_fn:
                     self.check_installation_fn()
                 pending = self.pending
-                require(pending is not None, Code.TOKEN_INVALID, 'No outstanding installation plan.')
+                require(pending is not None, Code.TOKEN_INVALID, _('No outstanding installation plan.'))
                 if self.clock() >= pending['deadline']:
                     self.invalidate()
-                    raise InstallError(Code.TOKEN_EXPIRED, 'Plan token expired; review a new plan.')
+                    raise InstallError(Code.TOKEN_EXPIRED, _('Plan token expired; review a new plan.'))
                 # Never a plan another connection reviewed, even with its token.
                 require(pending['client'] is client and msg.get('plan_id') == pending['plan_id']
                         and isinstance(msg.get('token'), str)
                         and secrets.compare_digest(msg['token'], pending['token']),
-                        Code.TOKEN_INVALID, 'Invalid plan confirmation.')
+                        Code.TOKEN_INVALID, _('Invalid plan confirmation.'))
                 self.pending = None  # Single use, including failed jobs.
                 if self.job:
                     self.job.history.close()
@@ -304,9 +308,9 @@ class Controller:
             with self.lock:
                 job = self.job
                 require(job is not None and msg.get('job_id') == job.id,
-                        Code.JOB_NOT_FOUND, 'Job is not retained by this daemon.')
+                        Code.JOB_NOT_FOUND, _('Job is not retained by this daemon.'))
                 since = msg.get('since_seq', 0)
-                require(type(since) is int and since >= 0, Code.BAD_REQUEST, 'Invalid resume sequence.')
+                require(type(since) is int and since >= 0, Code.BAD_REQUEST, _('Invalid resume sequence.'))
                 job.history.seek(0)
                 result = [x for line in job.history if (x := json.loads(line))['seq'] > since]
                 if job.state:
@@ -321,22 +325,22 @@ class Controller:
                 return result
         if kind == 'save_log':
             if self.restart_state == 'preparing':
-                unavailable = 'Log export is unavailable during restart preparation.'
+                unavailable = _('Log export is unavailable during restart preparation.')
             elif self.restart_state in ('ready', 'forced'):
-                unavailable = 'Log export is unavailable after restart preparation.'
+                unavailable = _('Log export is unavailable after restart preparation.')
             else:
-                unavailable = 'The installation log cannot be saved while the installer is stopping.'
+                unavailable = _('The installation log cannot be saved while the installer is stopping.')
             require(not self.stopping or self.restart_state == 'failed', Code.BUSY,
                     unavailable)
-            require(self.save_log_fn is not None, Code.BAD_DEST, 'Log export unavailable.')
+            require(self.save_log_fn is not None, Code.BAD_DEST, _('Log export unavailable.'))
             self.save_log_fn(msg.get('dest'))
             return [self.reply(ident)]
         if kind in ('prepare_reboot', 'reboot'):
             require(self.job is not None and self.job.terminal is not None
                     and self.job.terminal['type'] == 'done', Code.BAD_REQUEST,
-                    'Reboot is only available after a completed installation.')
+                    _('Reboot is only available after a completed installation.'))
             if kind == 'prepare_reboot':
-                require(self.prepare_reboot_fn is not None, Code.BAD_REQUEST, 'Reboot is unavailable.')
+                require(self.prepare_reboot_fn is not None, Code.BAD_REQUEST, _('Reboot is unavailable.'))
                 # Once sent, the guardian can restart without another request.
                 # Do not let any client mount or change the target again, even
                 # if the reply is lost. Preparation and reboot retries remain OK.
@@ -354,7 +358,7 @@ class Controller:
                                              else self.clock() + 15)
                 return [self.reply(ident, forced_reboot=forced,
                                    remaining_s=max(0, self.restart_deadline - self.clock()))]
-            require(self.reboot_fn is not None, Code.BAD_REQUEST, 'Reboot is unavailable.')
+            require(self.reboot_fn is not None, Code.BAD_REQUEST, _('Reboot is unavailable.'))
             self.stopping = True
             self.invalidate()
             try:
@@ -367,7 +371,7 @@ class Controller:
                     self.restart_state = 'forced' if self.restart_deadline else 'ready'
                 raise
             return [self.reply(ident)]
-        raise InstallError(Code.BAD_REQUEST, 'Unknown request type.')
+        raise InstallError(Code.BAD_REQUEST, _('Unknown request type.'))
 
     def start(self, plan):
         def run():
@@ -375,11 +379,11 @@ class Controller:
                 self.worker_factory(self).run(plan, self.job.cancelled)
             except Exception as exc:
                 try:
-                    self.log('Worker failed: ' + self.redactor.text(exc))
+                    self.log(_('Worker failed: ') + self.redactor.text(exc))
                 finally:
                     # Without a terminal event the daemon stays busy forever.
                     self.emit('error', code=Code.INTERNAL.value, phase='prepare_disk',
-                              message='Worker failed; inspect the log.', retryable=False, log_path=str(LOG))
+                              message=_('Worker failed; inspect the log.'), retryable=False, log_path=str(LOG))
             finally:
                 plan.config['user']['password'] = ''
                 plan.config['disk_password'] = ''

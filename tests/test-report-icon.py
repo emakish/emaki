@@ -41,7 +41,7 @@ class ReportIcon(unittest.TestCase):
                           source, re.S)
         self.assertIsNotNone(match, 'window-specific desktop entry resolution is missing')
         entry = desktop(ROOT / 'shell/emaki-report.desktop')
-        script = r"""
+        script = (ROOT / 'tests/qml-translation.js').read_text() + '\n' + r"""
 const assert = require('node:assert/strict');
 const Quickshell = {appId: 'org.quickshell'};
 const report = {id: 'emaki-report', icon: ICON};
@@ -51,7 +51,7 @@ const fallback = {entry: {id: 'ordinary'}, source: 'exact'};
 const lookup = appId => ({...fallback, appId});
 const lookupWindow = new Function('Quickshell', 'DesktopEntries', 'lookup',
     'return function(appId, title) {' + BODY + '}')(Quickshell, DesktopEntries, lookup);
-assert.deepEqual(lookupWindow(Quickshell.appId, 'Report a problem'), {entry: report, source: 'exact'});
+assert.deepEqual(lookupWindow('emaki-report', 'Translated title'), {entry: report, source: 'exact'});
 assert.equal(report.icon, 'emaki-report');
 for (const [appId, title] of [
     [Quickshell.appId, 'Welcome to Emaki'], [Quickshell.appId, 'Other window'],
@@ -59,14 +59,14 @@ for (const [appId, title] of [
     [Quickshell.appId, 'Report a problem elsewhere']
 ]) assert.deepEqual(lookupWindow(appId, title), lookup(appId));
 installed = false;
-assert.deepEqual(lookupWindow(Quickshell.appId, 'Report a problem'), lookup(Quickshell.appId));
+assert.deepEqual(lookupWindow('emaki-report', 'Translated title'), lookup('emaki-report'));
 """.replace('ICON', json.dumps(entry['Icon'])).replace('BODY', json.dumps(match[1]))
         result = subprocess.run(['node', '-e', script], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         dock = (ROOT / 'shell/Dock.qml').read_text()
         self.assertIn('identity.lookupWindow(meta?.appId ?? "", meta?.title ?? "")', dock)
         window = (ROOT / 'shell/ReportWindow.qml').read_text()
-        self.assertIn('title: "Report a problem"', window)
+        self.assertIn('title: qsTranslate("ReportWindow", "Report a problem")', window)
 
     def test_icon_is_the_generated_pixel_drawing(self):
         result = subprocess.run([sys.executable, str(ROOT / 'art/icons/emaki-report.py'), '--check'],

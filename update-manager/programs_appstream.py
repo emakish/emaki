@@ -6,6 +6,18 @@ Descriptions are plain text, converted by libappstream. Sizes remain unknown:
 release artifact sizes do not identify the package/bundle being installed.
 Cached icons resolve only within the catalog's own icon tree; image bytes are not read.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import gzip
 import io
 import os
@@ -42,15 +54,15 @@ def _input_bytes(path):
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
-            raise ValueError("AppStream input exceeds the file limit.")
+            raise ValueError(_("AppStream input exceeds the file limit."))
         data = stream.read(MAX_FILE_BYTES + 1)
     if len(data) > MAX_FILE_BYTES:
-        raise ValueError("AppStream input exceeds the file limit.")
+        raise ValueError(_("AppStream input exceeds the file limit."))
     if data.startswith(b"\x1f\x8b"):
         with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
             data = stream.read(MAX_FILE_BYTES + 1)
         if len(data) > MAX_FILE_BYTES:
-            raise ValueError("AppStream expanded input exceeds the file limit.")
+            raise ValueError(_("AppStream expanded input exceeds the file limit."))
     return data
 
 
@@ -61,7 +73,7 @@ def _validate_xml(data):
     root_tag = None
 
     def forbidden(*args):
-        raise ValueError("AppStream DTDs and entities are not supported.")
+        raise ValueError(_("AppStream DTDs and entities are not supported."))
 
     def start(name, attrs):
         nonlocal depth, nodes, component_nodes, component_depth, components, scalar_bytes, root_tag
@@ -78,10 +90,10 @@ def _validate_xml(data):
         scalar_bytes = 0
         if (depth > MAX_DEPTH or nodes > MAX_FILE_NODES or component_nodes > MAX_NODES
                 or components > MAX_COMPONENTS):
-            raise ValueError("AppStream XML exceeds structural limits.")
+            raise ValueError(_("AppStream XML exceeds structural limits."))
         for value in attrs.values():
             if len(value.encode("utf-8")) > MAX_SCALAR_BYTES:
-                raise ValueError("AppStream XML exceeds the scalar limit.")
+                raise ValueError(_("AppStream XML exceeds the scalar limit."))
 
     def end(name):
         nonlocal depth, component_depth, scalar_bytes
@@ -94,7 +106,7 @@ def _validate_xml(data):
         nonlocal scalar_bytes
         scalar_bytes += len(value.encode("utf-8"))
         if scalar_bytes > MAX_SCALAR_BYTES:
-            raise ValueError("AppStream XML exceeds the scalar limit.")
+            raise ValueError(_("AppStream XML exceeds the scalar limit."))
 
     parser.StartElementHandler = start
     parser.EndElementHandler = end
@@ -111,13 +123,13 @@ def _validate_yaml(data):
     try:
         import yaml
     except ImportError as exc:
-        raise ImportError("AppStream YAML parser unavailable.") from exc
+        raise ImportError(_("AppStream YAML parser unavailable.")) from exc
     depth = nodes = component_nodes = documents = 0
     for event in yaml.parse(data, Loader=yaml.SafeLoader):
         nodes += 1
         component_nodes += 1
         if isinstance(event, yaml.events.AliasEvent) or getattr(event, "anchor", None):
-            raise ValueError("AppStream YAML aliases are not supported.")
+            raise ValueError(_("AppStream YAML aliases are not supported."))
         if isinstance(event, (yaml.events.MappingStartEvent, yaml.events.SequenceStartEvent)):
             depth += 1
         elif isinstance(event, (yaml.events.MappingEndEvent, yaml.events.SequenceEndEvent)):
@@ -127,9 +139,9 @@ def _validate_yaml(data):
             component_nodes = 1
         if (depth > MAX_DEPTH or nodes > MAX_FILE_NODES or component_nodes > MAX_NODES
                 or documents > MAX_COMPONENTS + 1):
-            raise ValueError("AppStream YAML exceeds structural limits.")
+            raise ValueError(_("AppStream YAML exceeds structural limits."))
         if isinstance(event, yaml.events.ScalarEvent) and len(event.value.encode("utf-8")) > MAX_SCALAR_BYTES:
-            raise ValueError("AppStream YAML exceeds the scalar limit.")
+            raise ValueError(_("AppStream YAML exceeds the scalar limit."))
 
 
 def _bounded(value, limit=MAX_TEXT_BYTES):
@@ -355,7 +367,7 @@ def read_file(path, origin=""):
     Explicit origin is the caller's repository provenance, overriding the
     file's origin. No package identity or display metadata is synthesized.
     """
-    library, _, glib = _library()
+    library, _unused, glib = _library()
     path = Path(path)
     data = _input_bytes(path)
     is_xml = data.lstrip().startswith(b"<")
@@ -373,14 +385,14 @@ def read_file(path, origin=""):
     source = glib.Bytes.new(data)
     del data
     if not metadata.parse_bytes(source, kind):
-        raise ValueError("AppStream metadata could not be read.")
+        raise ValueError(_("AppStream metadata could not be read."))
     # The native parser owns its metadata now; release the expanded catalog before
     # building records so both copies do not remain live for the whole conversion.
     del source
     records = []
     parsed = metadata.get_components().as_array()
     if len(parsed) > MAX_COMPONENTS:
-        raise ValueError("AppStream catalog exceeds the component limit.")
+        raise ValueError(_("AppStream catalog exceeds the component limit."))
     for component in parsed:
         record = _record(component, library, origin, path)
         if record is not None:
@@ -389,7 +401,7 @@ def read_file(path, origin=""):
 
 
 def _standard_paths():
-    _, _, glib = _library()
+    _unused, _unused, glib = _library()
     data_dirs = [Path(directory) for directory in glib.get_system_data_dirs()]
     # Flatpak exports can occur in XDG_DATA_DIRS; read only native OS metadata.
     data_dirs = [directory for directory in data_dirs if "flatpak" not in directory.parts]
@@ -426,12 +438,12 @@ def components(paths=None):
             except Exception as exc:
                 # GI file errors have their own GLib exception type.
                 if isinstance(exc, OSError) or getattr(exc, "domain", "") == "g-io-error-quark":
-                    reason = "unreadable"
+                    reason = _("unreadable")
                 elif isinstance(exc, ImportError):
-                    reason = "parser unavailable"
+                    reason = _("parser unavailable")
                 else:
-                    reason = "invalid"
-                warnings.append(f"AppStream metadata {reason}: {path}: {exc}")
+                    reason = _("invalid")
+                warnings.append(_('AppStream metadata {reason}: {path}: {error}').format(reason=reason, path=path, error=exc))
     except Exception as exc:
-        warnings.append(f"AppStream discovery unavailable: {exc}")
+        warnings.append(_('AppStream discovery unavailable: {error}').format(error=exc))
     return records, clean_display(warnings)

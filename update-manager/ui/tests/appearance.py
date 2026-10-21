@@ -61,7 +61,10 @@ PROBE = '''
 def accent_base(name):
     palette = (ROOT / 'shell/ShellPalette.qml').read_text()
     # The generator lays the list out over several lines, as qmlformat prints it.
-    accents = json.loads(re.search(r'readonly property var accents: (\[\n.*?\n    \])\n', palette, re.S)[1])
+    listing = re.search(r'readonly property var accents: (\[\n.*?\n    \])\n', palette, re.S)[1]
+    # Accent names are translatable (0.11): read each qsTranslate call as its English source.
+    listing = re.sub(r'qsTranslate\("ShellPalette", ("(?:[^"\\]|\\.)*")\)', r'\1', listing)
+    accents = json.loads(listing)
     return next(entry['base'] for entry in accents if entry['id'] == name)
 
 

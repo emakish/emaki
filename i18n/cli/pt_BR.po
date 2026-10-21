@@ -1,0 +1,190 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: pt_BR\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#, python-brace-format
+msgid "  outputs={outputs_len} workspaces={workspaces_len} windows={windows_len} focused_output={focused_output} links_pending={links_pending} overview_open={overview_open}\n"
+msgstr "  outputs={outputs_len} workspaces={workspaces_len} windows={windows_len} focused_output={focused_output} links_pending={links_pending} overview_open={overview_open}\n"
+
+#, python-brace-format
+msgid "  window id={id} workspace={workspace_id} focused={is_focused} floating={is_floating} urgent={is_urgent}\n"
+msgstr "  window id={id} workspace={workspace_id} focused={is_focused} floating={is_floating} urgent={is_urgent}\n"
+
+#, python-brace-format
+msgid "  workspace id={id} idx={idx} output={output} active={is_active} focused={is_focused} window={active_window_id}\n"
+msgstr "  workspace id={id} idx={idx} output={output} active={is_active} focused={is_focused} window={active_window_id}\n"
+
+msgid "0..64 logical pixels"
+msgstr "0..64 pixels lógicos"
+
+msgid "1..4 distinct XKB layout codes, comma-separated (us,ru); empty unsets"
+msgstr "1..4 códigos distintos de layout XKB, separados por vírgulas (us,ru); vazio remove a definição"
+
+msgid "Arrows/Tab/j/k: select; Enter/e: edit; Esc/q: quit; r: reset; h: history; u: undo. Number + Enter: select."
+msgstr "Setas/Tab/j/k: selecionar; Enter/e: editar; Esc/q: sair; r: redefinir; h: histórico; u: desfazer. Número + Enter: selecionar."
+
+msgid "Cannot read terminal settings"
+msgstr "Não é possível ler as configurações do terminal"
+
+msgid "Cannot set terminal input mode"
+msgstr "Não é possível definir o modo de entrada do terminal"
+
+msgid "Cannot set terminal input timing"
+msgstr "Não é possível definir a temporização de entrada do terminal"
+
+msgid "Change ID to undo (empty cancels)> "
+msgstr "ID da alteração a desfazer (vazio cancela)> "
+
+msgid "Emaki settings — draft keyboard menu"
+msgstr "Configurações do Emaki — menu de teclado preliminar"
+
+#, python-brace-format
+msgid "Emaki {emaki_version} — map format {schema_version} (expected paths, not an installed-file inventory)\n"
+msgstr "Emaki {emaki_version} — formato do mapa {schema_version} (caminhos esperados, não um inventário de arquivos instalados)\n"
+
+#, python-brace-format
+msgid "Emaki {emaki_version} — state format {schema_version}, {timeout_ms} ms per component\n"
+msgstr "Emaki {emaki_version} — formato do estado {schema_version}, {timeout_ms} ms por componente\n"
+
+msgid "Esc: cancel; Enter: save."
+msgstr "Esc: cancelar; Enter: salvar."
+
+msgid "HH:MM local time, distinct from dark_time; empty unsets"
+msgstr "HH:MM no horário local, diferente de dark_time; vazio remove a definição"
+
+msgid "HH:MM local time, distinct from light_time; empty unsets"
+msgstr "HH:MM no horário local, diferente de light_time; vazio remove a definição"
+
+msgid "Mod + optional Ctrl/Alt/Shift + one XKB keysym; <=80 ASCII bytes"
+msgstr "Mod + Ctrl/Alt/Shift opcional + um símbolo de tecla XKB; <=80 bytes ASCII"
+
+msgid "Number: select; j/k: next/previous; e: edit; r: reset; h: history; u: undo; q: quit. Press Enter after each command."
+msgstr "Número: selecionar; j/k: próximo/anterior; e: editar; r: redefinir; h: histórico; u: desfazer; q: sair. Pressione Enter após cada comando."
+
+msgid "Super+Space | Alt+Shift | Caps Lock; empty unsets"
+msgstr "Super+Space | Alt+Shift | Caps Lock; vazio remove a definição"
+
+msgid "Unknown command. Choose a listed number or command."
+msgstr "Comando desconhecido. Escolha um número ou comando da lista."
+
+msgid "Usage: emaki <command> [options]\n\nCommands:\n  version                       Print the Emaki build version\n  map [--json]                  Expected paths and ownership; no filesystem writes\n  state [--json] [--timeout-ms N]\n                                Read session state; default 1000 ms per component\n  niri snapshot [--json] [--timeout-ms N]\n                                Initial window/workspace/output model (niri 26.04)\n  niri watch [--json] [--timeout-ms N]\n                                Observe changes; reconnect with a fresh model\n  niri focus-window --id N       Focus a window by niri ID\n  niri focus-workspace --id N    Focus a workspace by niri ID, never index\n  niri move-window-to-workspace --id N --workspace-id M\n                                Move explicit window; do not follow focus\n  niri close-window --id N       Request closing an explicit window\n\nOptions:\n  -h, --help                    Print help\n  -V, --version                 Print the Emaki build version\n  --timeout-ms N                State/niri: 10..10000 ms; default 1000\n\nExit codes:\n  0  Success; all state components available / all map paths resolved\n  1  Partial observation, unresolved paths or rejected niri command; valid JSON\n  2  Invalid arguments, serialization failure or output error\n  3  Niri command sent/possibly sent, but result not confirmed; never auto-retried\n\nState statuses: available, absent, denied, incomplete, timeout, error.\nAvailable means the documented probe succeeded, not full service health.\nRead-only queries never create directories or activate D-Bus services.\nState omits window titles, app IDs, SSIDs, credentials and personal paths.\nMap intentionally shows resolved paths; planned entries need not exist."
+msgstr "Uso: emaki <command> [options]\n\nComandos:\n  version                       Exibir a versão da compilação do Emaki\n  map [--json]                  Caminhos e responsáveis esperados; não grava no sistema de arquivos\n  state [--json] [--timeout-ms N]\n                                Ler o estado da sessão; padrão de 1000 ms por componente\n  niri snapshot [--json] [--timeout-ms N]\n                                Modelo inicial de janelas/espaços de trabalho/telas (niri 26.04)\n  niri watch [--json] [--timeout-ms N]\n                                Observar alterações; reconectar com um novo modelo\n  niri focus-window --id N       Focar uma janela pelo ID do niri\n  niri focus-workspace --id N    Focar um espaço de trabalho pelo ID do niri, nunca pelo índice\n  niri move-window-to-workspace --id N --workspace-id M\n                                Mover a janela indicada; não seguir o foco\n  niri close-window --id N       Solicitar o fechamento da janela indicada\n\nOpções:\n  -h, --help                    Exibir a ajuda\n  -V, --version                 Exibir a versão da compilação do Emaki\n  --timeout-ms N                State/niri: 10..10000 ms; padrão 1000\n\nCódigos de saída:\n  0  Sucesso; todos os componentes de estado disponíveis / todos os caminhos do mapa resolvidos\n  1  Observação parcial, caminhos não resolvidos ou comando niri rejeitado; JSON válido\n  2  Argumentos inválidos, falha de serialização ou erro de saída\n  3  Comando niri enviado/possivelmente enviado, mas resultado não confirmado; nunca repetido automaticamente\n\nEstados possíveis: available, absent, denied, incomplete, timeout, error.\nAvailable significa que a verificação documentada teve êxito, não que todo o serviço funciona.\nConsultas somente de leitura nunca criam diretórios nem ativam serviços D-Bus.\nState omite títulos de janelas, IDs de aplicativos, SSIDs, credenciais e caminhos pessoais.\nMap mostra intencionalmente os caminhos resolvidos; entradas planejadas podem não existir."
+
+msgid "Usage: emaki [command]\n\nDesktop help:\n  Open apps: press Super + D.\n  Getting started: open Welcome to Emaki from the app list.\n  All shortcuts: press Super + Shift + /.\n  Your own shortcuts override Emaki defaults, including new ones (niri bindings).\n\nCommands:\n  emaki                         Show system information (fastfetch)\n  emaki settings [page]         Open settings, optionally at a page\n  emaki --version               Show the Emaki version\n  emaki help                    Show this help\n  emaki help --internal         Show diagnostic commands\n\nSuper is the Windows key, or Command on a Mac keyboard."
+msgstr "Uso: emaki [command]\n\nAjuda da área de trabalho:\n  Abrir aplicativos: pressione Super + D.\n  Primeiros passos: abra Boas-vindas ao Emaki na lista de aplicativos.\n  Todos os atalhos: pressione Super + Shift + /.\n  Seus atalhos substituem os padrões do Emaki, inclusive os novos (atalhos do niri).\n\nComandos:\n  emaki                         Mostrar informações do sistema (fastfetch)\n  emaki settings [page]         Abrir as configurações, opcionalmente em uma página\n  emaki --version               Mostrar a versão do Emaki\n  emaki help                    Mostrar esta ajuda\n  emaki help --internal         Mostrar comandos de diagnóstico\n\nSuper é a tecla Windows ou Command em um teclado Mac."
+
+msgid "Usage: emaki niri <command> [options]\n  snapshot | watch [--json] [--timeout-ms N]\n  focus-window --id N [--json] [--timeout-ms N]\n  focus-workspace --id N [--json] [--timeout-ms N]\n  move-window-to-workspace --id N --workspace-id M [--json] [--timeout-ms N]\n  close-window --id N [--json] [--timeout-ms N]\n  switch-layout --index N [--json] [--timeout-ms N]\nniri IPC 26.04 only. Separate observation/action JSON schemas, each version 1.\nSnapshot/watch are read-only. Actions require explicit decimal u64 niri IDs.\nSwitch-layout addresses a configured keyboard layout by its decimal index (0..255), never next/prev.\nActions check fresh target state, send once, and confirm a postcondition on the same socket.\nMove uses focus=false. Close is a request to the app, never force-kill.\nAction outcomes: confirmed=0, rejected=1, unconfirmed=3; invalid arguments/output=2.\nAction --json writes one compact JSON object followed by a newline, for every outcome.\nDelivery is not_sent/sent/unknown, independently of Handled acknowledgement.\nAction timeout covers preflight, send, reply and confirmation together; no retry.\nWatch emits complete JSON objects, one per changed model/connection; flushes each line.\nWindows/workspaces come from EventStream; outputs are polled every 1000 ms.\nEach reconnect replaces the entire model and increments generation; old IDs expire.\nDisconnected/incompatible: model=null, explicit reason; watch retries every 500 ms.\nNo titles, app IDs, PIDs, workspace names, monitor serials or socket paths in output.\nSnapshot has exit code 0 connected, 1 unavailable, 2 bad arguments/output error.\nWatch runs until interrupted (Ctrl+C); failures are observations, not silent exit.\n--timeout-ms: 10..10000, bounds startup/requests/partial lines, not idle watch duration."
+msgstr "Uso: emaki niri <command> [options]\n  snapshot | watch [--json] [--timeout-ms N]\n  focus-window --id N [--json] [--timeout-ms N]\n  focus-workspace --id N [--json] [--timeout-ms N]\n  move-window-to-workspace --id N --workspace-id M [--json] [--timeout-ms N]\n  close-window --id N [--json] [--timeout-ms N]\n  switch-layout --index N [--json] [--timeout-ms N]\nSomente IPC do niri 26.04. Esquemas JSON separados para observação/ação, ambos na versão 1.\nSnapshot/watch são somente de leitura. As ações exigem IDs niri u64 decimais explícitos.\nSwitch-layout usa o índice decimal (0..255) de um layout de teclado configurado, nunca next/prev.\nAs ações verificam o estado atual do destino, enviam uma vez e confirmam uma pós-condição no mesmo socket.\nMove usa focus=false. Close é uma solicitação ao aplicativo, nunca um encerramento forçado.\nResultados de ações: confirmed=0, rejected=1, unconfirmed=3; argumentos/saída inválidos=2.\nAção com --json grava um objeto JSON compacto seguido de uma quebra de linha, para qualquer resultado.\nA entrega é not_sent/sent/unknown, independentemente da confirmação Handled.\nO tempo limite da ação inclui verificação prévia, envio, resposta e confirmação; sem nova tentativa.\nWatch emite objetos JSON completos, um por modelo/conexão alterado; envia cada linha imediatamente.\nJanelas/espaços de trabalho vêm de EventStream; as telas são consultadas a cada 1000 ms.\nCada reconexão substitui todo o modelo e incrementa generation; os IDs antigos expiram.\nDesconectado/incompatível: model=null, motivo explícito; watch tenta novamente a cada 500 ms.\nSem títulos, IDs de aplicativos, PIDs, nomes de espaços de trabalho, números de série de monitores ou caminhos de sockets na saída.\nSnapshot retorna código de saída 0 se conectado, 1 se indisponível, 2 se houver argumentos inválidos/erro de saída.\nWatch executa até ser interrompido (Ctrl+C); as falhas são observações, não saídas silenciosas.\n--timeout-ms: 10..10000, limita inicialização/solicitações/linhas parciais, não o tempo de observação ociosa."
+
+msgid "Usage: emaki settings [page | command] [options]\nWithout a command, open settings inside the running shell launcher.\nUse a page name (for example, wifi) to open that page.\n  list                       List settings, current values, defaults and sources\n  get KEY                    Read one setting\n  set KEY VALUE              Validate, save and apply a setting\n  reset KEY                  Restore the package default\n  reset appearance           Restore theme, accent and schedule together\n  history                    List persisted changes\n  undo ID                    Restore changed keys, refusing later-key conflicts\nOptions:\n  --text                     Open the keyboard settings menu instead\n  --json                     Print a command reply as JSON (not for the menu)\n  --profile-root PATH        Use an isolated test profile with matching XDG paths\n  --timeout-ms N             Write/menu validation deadline: 10..10000 ms (default 2000)\nThe default store belongs to the logged-in person in Emaki's managed settings zone.\nPersonal niri configuration is never edited. Application failures are reported by\nthe core; session_applied describes the result, not just whether a value was saved.\nUse list for each key's type, allowed values and application details.\nExit codes: 0 success, 1 rejected/conflict, 2 arguments/output error,\n3 committed with incomplete durability/history; the next call recovers."
+msgstr "Uso: emaki settings [page | command] [options]\nSem um comando, abre as configurações no iniciador do shell em execução.\nUse o nome de uma página (por exemplo, wifi) para abri-la.\n  list                       Listar configurações, valores atuais, padrões e origens\n  get KEY                    Ler uma configuração\n  set KEY VALUE              Validar, salvar e aplicar uma configuração\n  reset KEY                  Restaurar o padrão do pacote\n  reset appearance           Restaurar tema, cor de destaque e agendamento juntos\n  history                    Listar alterações salvas\n  undo ID                    Restaurar chaves alteradas, recusando conflitos com alterações posteriores\nOpções:\n  --text                     Abrir o menu de configurações pelo teclado\n  --json                     Exibir a resposta de um comando em JSON (não se aplica ao menu)\n  --profile-root PATH        Usar um perfil de teste isolado com caminhos XDG correspondentes\n  --timeout-ms N             Prazo de validação de gravação/menu: 10..10000 ms (padrão 2000)\nO armazenamento padrão pertence à pessoa com a sessão iniciada, na zona de configurações gerenciadas do Emaki.\nA configuração pessoal do niri nunca é editada. Falhas ao aplicar são informadas pelo\nnúcleo; session_applied descreve o resultado, não apenas se um valor foi salvo.\nUse list para ver o tipo, os valores permitidos e como cada chave é aplicada.\nCódigos de saída: 0 sucesso, 1 rejeitado/conflito, 2 erro de argumentos/saída,\n3 salvo com durabilidade/histórico incompletos; a próxima chamada recupera."
+
+#, python-brace-format
+msgid "Zones (package, managed, yours) are explained in {page}\n"
+msgstr "As zonas (pacote, gerenciada, sua) são explicadas em {page}\n"
+
+msgid "absolute path to an existing regular image file; <=4096 bytes, no quotes/backslashes/control characters; empty unsets"
+msgstr "caminho absoluto para um arquivo de imagem comum existente; <=4096 bytes, sem aspas/barras invertidas/caracteres de controle; vazio remove a definição"
+
+msgid "always | desktop | fullscreen | never; empty unsets both visibility flags"
+msgstr "always | desktop | fullscreen | never; vazio remove as duas opções de visibilidade"
+
+#, python-brace-format
+msgid "conflict {conflict_key}: last change {conflict_actual_change}, requested {conflict_requested_change}\n"
+msgstr "conflito {conflict_key}: última alteração {conflict_actual_change}, solicitada {conflict_requested_change}\n"
+
+msgid "desktop entry id ending in .desktop; empty unsets"
+msgstr "ID de entrada de aplicativo terminado em .desktop; vazio remove a definição"
+
+msgid "emaki: cannot serialize response"
+msgstr "emaki: não é possível serializar a resposta"
+
+#, python-brace-format
+msgid "emaki: cannot start fastfetch: {error}"
+msgstr "emaki: não é possível iniciar fastfetch: {error}"
+
+msgid "emaki: fastfetch is not installed or is not on PATH."
+msgstr "emaki: fastfetch não está instalado ou não está no PATH."
+
+msgid "emaki: invalid arguments"
+msgstr "emaki: argumentos inválidos"
+
+msgid "full | half | third | twothirds; empty unsets"
+msgstr "full | half | third | twothirds; vazio remove a definição"
+
+msgid "isolated_profile_only, not connected yet"
+msgstr "isolated_profile_only, ainda não conectado"
+
+msgid "light | dark | automatic; empty unsets"
+msgstr "light | dark | automatic; vazio remove a definição"
+
+#, python-brace-format
+msgid "machine {key}: before {before}, after {after}\n"
+msgstr "máquina {key}: antes {before}, depois {after}\n"
+
+#, python-brace-format
+msgid "niri {command}: {outcome} ({reason})\n  delivery={delivery}, acknowledged={acknowledged}, phase={phase}\n  before={before}\n  after={after}\n"
+msgstr "niri {command}: {outcome} ({reason})\n  delivery={delivery}, acknowledged={acknowledged}, phase={phase}\n  before={before}\n  after={after}\n"
+
+#, python-brace-format
+msgid "niri {connection_status}: {connection_reason}; generation={generation}, sequence={sequence}\n"
+msgstr "niri {connection_status}: {connection_reason}; generation={generation}, sequence={sequence}\n"
+
+msgid "orange | coral | rose | amber | green | teal | blue | violet; empty unsets"
+msgstr "orange | coral | rose | amber | green | teal | blue | violet; vazio remove a definição"
+
+#, python-brace-format
+msgid "recovery: {note}\n"
+msgstr "recuperação: {note}\n"
+
+msgid "settings: launcher unavailable; use emaki settings --text for the keyboard menu.\n"
+msgstr "configurações: iniciador indisponível; use emaki settings --text para o menu de teclado.\n"
+
+#, python-brace-format
+msgid "settings: {reason}\n"
+msgstr "configurações: {reason}\n"
+
+#, python-brace-format
+msgid "settings: {status} ({reason}); session_applied={session_applied}; generation={generation_status}\n"
+msgstr "configurações: {status} ({reason}); session_applied={session_applied}; generation={generation_status}\n"
+
+msgid "settings> "
+msgstr "configurações> "
+
+msgid "true | false; empty unsets"
+msgstr "true | false; vazio remove a definição"
+
+msgid "true | false; false or empty restores inherited focus behavior"
+msgstr "true | false; false ou vazio restaura o comportamento de foco herdado"
+
+msgid "unresolved"
+msgstr "não resolvido"
+
+msgid "validated notification or sound policy; empty unsets"
+msgstr "política de notificações ou som validada; vazio remove a definição"
+
+msgid "value> "
+msgstr "valor> "
+
+#, python-brace-format
+msgid "{c_id}: {c_status_as_str} ({c_reason})\n  source: {c_source}\n"
+msgstr "{c_id}: {c_status_as_str} ({c_reason})\n  origem: {c_source}\n"
+
+#, python-brace-format
+msgid "{id}: {path}\n  zone: {zone}; on update: {on_update}; change via: {change_via}; history: {history}\n  owner: {owner}; {lifecycle}; source: {source}\n"
+msgstr "{id}: {path}\n  zona: {zone}; ao atualizar: {on_update}; alterar por: {change_via}; histórico: {history}\n  responsável: {owner}; {lifecycle}; origem: {source}\n"
+
+#, python-brace-format
+msgid "{key} = {value} (source: {source}; default: {default})\n"
+msgstr "{key} = {value} (origem: {source}; padrão: {default})\n"
+
+#, python-brace-format
+msgid "{key}: {allowed}. Enter value; :cancel returns without changing it."
+msgstr "{key}: {allowed}. Digite o valor; :cancel retorna sem alterá-lo."

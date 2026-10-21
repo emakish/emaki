@@ -29,7 +29,7 @@ Rectangle {
             width: parent.width
             spacing: 18
             Repeater {
-                model: [Copy.keyWarningTitle, Copy.keyWarningBody, Copy.keyWarningLifetime, Copy.keyTimestampPolicy, Copy.keyWarningRisk]
+                model: [Copy.keyWarningTitle(), Copy.keyWarningBody(), Copy.keyWarningLifetime(), Copy.keyTimestampPolicy(), Copy.keyWarningRisk()]
                 Text {
                     required property string modelData
                     required property int index
@@ -46,7 +46,7 @@ Rectangle {
             Text {
                 width: parent.width
                 visible: !!warning.backend && warning.backend.btrfs
-                text: warning.backend && warning.backend.snapguardAvailable ? Copy.keySnapguardOffer : Copy.keySnapguardUnavailable
+                text: warning.backend && warning.backend.snapguardAvailable ? Copy.keySnapguardOffer() : Copy.keySnapguardUnavailable()
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 font.family: ShellPalette.uiFont
@@ -58,12 +58,12 @@ Rectangle {
                 spacing: 12
                 SettingsButton {
                     objectName: "sudo-key-warning-dismiss"
-                    text: Copy.keyNotNow
+                    text: Copy.keyNotNow()
                     onClicked: warning.dismissed()
                 }
                 SettingsButton {
                     objectName: "sudo-key-warning-accept"
-                    text: Copy.keyAcknowledge
+                    text: Copy.keyAcknowledge()
                     enabled: !!warning.backend && warning.backend.connected && warning.backend.installed
                     onClicked: {
                         warning.backend.acknowledgeWarning();

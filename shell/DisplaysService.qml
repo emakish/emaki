@@ -102,7 +102,7 @@ QtObject {
                         root.message = reply.message;
                     root.ready = Array.isArray(reply.outputs) || root.ready;
                 } catch (_) {
-                    root.message = "Display settings returned an invalid response.";
+                    root.message = qsTranslate("DisplaysService", "Display settings returned an invalid response.");
                 }
                 root.busy = false;
                 if (root.refreshQueued) {
@@ -118,7 +118,7 @@ QtObject {
             root.busy = false;
             root.ready = false;
             if (!root.closing && !root.message)
-                root.message = "Display settings stopped. Trying to reconnect.";
+                root.message = qsTranslate("DisplaysService", "Display settings stopped. Trying to reconnect.");
         }
     }
     property Timer countdown: Timer {

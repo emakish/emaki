@@ -1,10 +1,16 @@
 [Desktop Entry]
 Type=Application
 Name=Install Emaki
+Name[es]=Instalar Emaki
+Name[pt_BR]=Instalar o Emaki
 Comment=Install Emaki on this computer
+Comment[es]=Instala Emaki en esta computadora
+Comment[pt_BR]=Instale o Emaki neste computador
 Exec=emaki-install
 Icon=emaki-install
 Terminal=false
 Categories=System;
 Keywords=install;installer;Emaki;
+Keywords[es]=instalar;instalador;Emaki;
+Keywords[pt_BR]=instalar;instalador;Emaki;
 StartupWMClass=emaki-install

@@ -79,15 +79,15 @@ Column {
         }
     }
     function deviceDetail(device) {
-        const state = device.pairing ? "Pairing…" : device.connected ? "Connected" : device.paired ? "Not connected" : "Ready to pair";
-        return state + (typeof device.battery === "number" && device.battery >= 0 && device.battery <= 100 ? " · Battery " + device.battery + "%" : "");
+        const state = device.pairing ? qsTranslate("SettingsBluetoothPage", "Pairing…") : device.connected ? qsTranslate("SettingsBluetoothPage", "Connected") : device.paired ? qsTranslate("SettingsBluetoothPage", "Not connected") : qsTranslate("SettingsBluetoothPage", "Ready to pair");
+        return state + (typeof device.battery === "number" && device.battery >= 0 && device.battery <= 100 ? qsTranslate("SettingsBluetoothPage", " · Battery %1%").arg(device.battery.toFixed(0)) : "");
     }
 
     Text {
         objectName: "settings-bluetooth-status"
         width: parent.width
         visible: !["idle", "confirmed", "ready", "applied"].includes(page.actionResult)
-        text: page.awaitingAction ? "Working…" : page.actionResult === "pairing_failed" ? "Couldn’t pair. Make sure it’s in pairing mode." : "Could not confirm the change. The current value is shown below."
+        text: page.awaitingAction ? qsTranslate("SettingsBluetoothPage", "Working…") : page.actionResult === "pairing_failed" ? qsTranslate("SettingsBluetoothPage", "Couldn’t pair. Make sure it’s in pairing mode.") : qsTranslate("SettingsBluetoothPage", "Could not confirm the change. The current value is shown below.")
         textFormat: Text.PlainText
         color: page.awaitingAction ? SettingsTheme.dim : SettingsTheme.error
         font.family: SettingsTheme.fontFamily
@@ -99,8 +99,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-bluetooth-power"
             width: parent.width
-            title: "Bluetooth"
-            explanation: !page.backend?.adapter ? "No Bluetooth adapter" : page.powered ? "On. Paired devices can connect." : "Off. Turn Bluetooth on to connect devices."
+            title: qsTranslate("SettingsBluetoothPage", "Bluetooth")
+            explanation: !page.backend?.adapter ? qsTranslate("SettingsBluetoothPage", "No Bluetooth adapter") : page.powered ? qsTranslate("SettingsBluetoothPage", "On. Paired devices can connect.") : qsTranslate("SettingsBluetoothPage", "Off. Turn Bluetooth on to connect devices.")
             value: page.powered
             defaultValue: value
             unavailable: !page.backend?.adapter
@@ -114,13 +114,13 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-bluetooth-devices"
-        title: "My devices"
+        title: qsTranslate("SettingsBluetoothPage", "My devices")
         visible: !!page.backend?.adapter
         SettingsRow {
             width: parent.width
             visible: page.pairedDevices.length === 0
-            title: "No paired devices"
-            explanation: "Pair a device to keep it in this list."
+            title: qsTranslate("SettingsBluetoothPage", "No paired devices")
+            explanation: qsTranslate("SettingsBluetoothPage", "Pair a device to keep it in this list.")
         }
         Repeater {
             model: page.pairedDevices
@@ -129,7 +129,7 @@ Column {
                 required property var modelData
                 objectName: "settings-bluetooth-device-" + modelData.key
                 width: parent.width
-                title: modelData.name || "Bluetooth device"
+                title: modelData.name || qsTranslate("SettingsBluetoothPage", "Bluetooth device")
                 explanation: page.deviceDetail(modelData)
                 controlWidth: 190
                 busy: page.pending
@@ -139,14 +139,14 @@ Column {
                         spacing: 6
                         SettingsButton {
                             objectName: "connect"
-                            text: pairedRow.modelData.connected ? "Disconnect" : "Connect"
+                            text: pairedRow.modelData.connected ? qsTranslate("SettingsBluetoothPage", "Disconnect") : qsTranslate("SettingsBluetoothPage", "Connect")
                             Accessible.name: text + " " + pairedRow.title
                             onClicked: page.act(pairedRow.modelData.connected ? "bt-disconnect" : "bt-connect", pairedRow.modelData.key)
                         }
                         SettingsButton {
                             objectName: "forget"
-                            text: "Forget"
-                            Accessible.name: "Forget " + pairedRow.title
+                            text: qsTranslate("SettingsBluetoothPage", "Forget")
+                            Accessible.name: qsTranslate("SettingsBluetoothPage", "Forget %1").arg(pairedRow.title)
                             onClicked: page.act("bt-forget", pairedRow.modelData.key)
                         }
                     }
@@ -156,17 +156,17 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Pair a new device"
+        title: qsTranslate("SettingsBluetoothPage", "Pair a new device")
         SettingsRow {
             width: parent.width
-            title: "Nearby devices"
-            explanation: !page.backend?.adapter ? "No Bluetooth adapter" : page.backend.adapter.discovering ? "Searching…" : "Put a device in pairing mode, then press Search."
+            title: qsTranslate("SettingsBluetoothPage", "Nearby devices")
+            explanation: !page.backend?.adapter ? qsTranslate("SettingsBluetoothPage", "No Bluetooth adapter") : page.backend.adapter.discovering ? qsTranslate("SettingsBluetoothPage", "Searching…") : qsTranslate("SettingsBluetoothPage", "Put a device in pairing mode, then press Search.")
             unavailable: !page.powered
             busy: page.pending
             control: Component {
                 SettingsButton {
                     objectName: "settings-bluetooth-search"
-                    text: page.backend?.adapter?.discovering ? "Stop" : "Search"
+                    text: page.backend?.adapter?.discovering ? qsTranslate("SettingsBluetoothPage", "Stop") : qsTranslate("SettingsBluetoothPage", "Search")
                     onClicked: page.act("bt-scan", null)
                 }
             }
@@ -179,13 +179,13 @@ Column {
                 readonly property bool pairing: modelData.pairing || (page.service.pendingKind === "bt-pair" && page.service.pendingValue === modelData.key && page.pending)
                 objectName: "settings-bluetooth-nearby-" + modelData.key
                 width: parent.width
-                title: modelData.name || "Bluetooth device"
-                explanation: pairing ? "Pairing…" : page.deviceDetail(modelData)
+                title: modelData.name || qsTranslate("SettingsBluetoothPage", "Bluetooth device")
+                explanation: pairing ? qsTranslate("SettingsBluetoothPage", "Pairing…") : page.deviceDetail(modelData)
                 busy: page.pending && !pairing
                 control: Component {
                     SettingsButton {
                         objectName: "pair"
-                        text: nearbyRow.pairing ? "Cancel" : "Pair"
+                        text: nearbyRow.pairing ? qsTranslate("SettingsBluetoothPage", "Cancel") : qsTranslate("SettingsBluetoothPage", "Pair")
                         Accessible.name: text + " " + nearbyRow.title
                         onClicked: page.act(nearbyRow.pairing ? "bt-cancel-pair" : "bt-pair", nearbyRow.modelData.key)
                     }
@@ -196,7 +196,7 @@ Column {
     Text {
         width: parent.width
         visible: page.powered
-        text: "Confirm Bluetooth codes in the notification at the top of the screen; enter PINs in the Bluetooth dialog. While sharing your screen, open the notification drawer to read the request."
+        text: qsTranslate("SettingsBluetoothPage", "Confirm Bluetooth codes in the notification at the top of the screen; enter PINs in the Bluetooth dialog. While sharing your screen, open the notification drawer to read the request.")
         textFormat: Text.PlainText
         color: SettingsTheme.dim
         font.family: SettingsTheme.fontFamily

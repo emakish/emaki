@@ -17,6 +17,12 @@ Item {
     property var mounts: []
     property var diskReasons: ({})
     property var layouts: ["us"]
+    property string language: "en_US.UTF-8"
+    readonly property var languageChoices: [
+        {locale: "en_US.UTF-8", label: qsTranslate("InstallerController", "English")},
+        {locale: "es_MX.UTF-8", label: qsTranslate("InstallerController", "Spanish (Latin America)")},
+        {locale: "pt_BR.UTF-8", label: qsTranslate("InstallerController", "Portuguese (Brazil)")}
+    ].filter(choice => session.availableLocales.includes(choice.locale))
     property string fullName: ""
     property string login: ""
     property bool loginEdited: false
@@ -146,20 +152,20 @@ Item {
     // The step shows the account password fields, or the disk password fields.
     readonly property bool passwordPage: step === "you" || (step === "encryption" && encryption === "encrypted" && encryptionPassword === "separate")
     readonly property string keyboardMessage: {
-        const parts = secretPasteRefused ? ["Pasted text cannot be used for this password. Type it key by key."] : [];
+        const parts = secretPasteRefused ? [qsTranslate("InstallerController", "Pasted text cannot be used for this password. Type it key by key.")] : [];
         if (!liveKeyboard)
             return parts.join(" ");
         if (keyboardDiscarded)
-            parts.push("The keyboard layout changed while you typed. Type the password again.");
+            parts.push(qsTranslate("InstallerController", "The keyboard layout changed while you typed. Type the password again."));
         // Only where the account or disk password fields are: the Wi-Fi password takes any layout.
         if (!keyboardSwitching && !keyboardReady && passwordPage) {
             if (keyboardUnavailable)
-                parts.push("This session cannot switch the keyboard to " + layoutNames(wantedLayouts) + ", so passwords cannot be typed here.");
+                parts.push(qsTranslate("InstallerController", "This session cannot switch the keyboard to %1, so passwords cannot be typed here.").arg(layoutNames(wantedLayouts)));
             else if (keyboardFailed)
-                parts.push("The keyboard could not be switched to " + layoutNames(wantedLayouts) + ", so passwords cannot be typed yet.");
+                parts.push(qsTranslate("InstallerController", "The keyboard could not be switched to %1, so passwords cannot be typed yet.").arg(layoutNames(wantedLayouts)));
             else if (secretFocus === "secret" && Protocol.sameLayouts(liveLayouts, wantedLayouts) && liveIndex !== 0) {
                 const first = layoutNames([wantedLayouts[0]]);
-                parts.push("The login screen starts in " + first + ", so type the password in " + first + ". Super+Space switches back.");
+                parts.push(qsTranslate("InstallerController", "The login screen starts in %1, so type the password in %1. Super+Space switches back.").arg(first));
             }
         }
         return parts.join(" ");
@@ -284,7 +290,7 @@ Item {
                 }, message);
                 timezoneMessage = "";
             } else if (!message.ok && applied === timezone) {
-                timezoneMessage = message.msg || "Could not change the live clock. Try again.";
+                timezoneMessage = message.msg || qsTranslate("InstallerController", "Could not change the live clock. Try again.");
             }
             if (applied !== timezone)
                 applyTimezone();
@@ -315,7 +321,7 @@ Item {
                 applyTimezone();
             shrinkBytes = defaultAlongsideSize();
             if (inventoryRefresh) {
-                diskRefreshNotice = "The disk was read again. Check its current partitions and prepare a new review.";
+                diskRefreshNotice = qsTranslate("InstallerController", "The disk was read again. Check its current partitions and prepare a new review.");
                 session.notice = diskRefreshNotice;
                 inventoryRefresh = false;
             }
@@ -373,7 +379,7 @@ Item {
             resetEdits();
         }
         inventoryRefresh = true;
-        session.notice = "Reading the disk again…";
+        session.notice = qsTranslate("InstallerController", "Reading the disk again…");
         send("probe", {});
     }
     function edit(target: string): void {
@@ -673,11 +679,11 @@ Item {
     function createPartition(free: var, use: string, fs: string, size: real, encrypt: bool): string {
         // Until encryption is chosen the LUKS2 header is counted, as rootMinimum does: the root never
         // becomes too small later, on the Encryption step.
-        const error = locked ? "Wait until the installer is ready." : Protocol.newPartitionError(free, use, size, Protocol.rootMinimum(session.inventory?.memory_bytes || 0, false, use === "/" && (encrypt || encryption !== "none")));
+        const error = locked ? qsTranslate("InstallerController", "Wait until the installer is ready.") : Protocol.newPartitionError(free, use, size, Protocol.rootMinimum(session.inventory?.memory_bytes || 0, false, use === "/" && (encrypt || encryption !== "none")));
         if (error)
             return error;
         if (selectedDisk.partition_table !== "gpt" && !partitionEdits.new_table)
-            return "Create a GPT partition table first.";
+            return qsTranslate("InstallerController", "Create a GPT partition table first.");
         let n = 1;
         while (partitionEdits.create.some(row => row.id === "new-" + n))
             ++n;
@@ -837,7 +843,7 @@ Item {
     function reviewSoftware(): void {
         if (!accountPassword) {
             step = "you";
-            helperMessage = "Enter your password again to prepare the review.";
+            helperMessage = qsTranslate("InstallerController", "Enter your password again to prepare the review.");
             return;
         }
         plan(accountPassword, accountPassword);
@@ -874,6 +880,7 @@ Item {
             },
             hostname: hostname,
             timezone: timezone,
+            language: language,
             software: software,
             encryption: encryption === "none" ? "none" : encryptionPassword,
             hibernation: false,
@@ -892,7 +899,7 @@ Item {
         }
         if (mode === "alongside") {
             if (!alongsideSizeValid) {
-                helperMessage = "Windows shrink is unavailable. Refresh the disk list.";
+                helperMessage = qsTranslate("InstallerController", "Windows shrink is unavailable. Refresh the disk list.");
                 helperFailed = true;
                 return;
             }
@@ -949,7 +956,7 @@ Item {
         session.error = null;
         session.jobId = "";
         session.cancelMessage = "";
-        session.notice = accountError ? "Check your account settings and enter your password again for a new review." : "Check the disk and enter your password again for a new review.";
+        session.notice = accountError ? qsTranslate("InstallerController", "Check your account settings and enter your password again for a new review.") : qsTranslate("InstallerController", "Check the disk and enter your password again for a new review.");
         publish();
         step = accountError ? "you" : "disk";
         if (!accountError) {
@@ -1002,7 +1009,7 @@ Item {
             helperMessage = "";
     }
     readonly property bool logSaveEnabled: session.ready && session.restartState !== "preparing"
-    readonly property string preparedRestartPrompt: catalog.boot_removable === true ? "Remove the USB stick, then press Enter to restart." : "Press Enter to restart."
+    readonly property string preparedRestartPrompt: catalog.boot_removable === true ? qsTranslate("InstallerController", "Remove the USB stick, then press Enter to restart.") : qsTranslate("InstallerController", "Press Enter to restart.")
     function saveLog(index: int): void {
         if (index < 0 || index >= media.length)
             return;
@@ -1030,6 +1037,11 @@ Item {
             callHelper("network", {});
         if (step === "done" || step === "error")
             callHelper("media", {});
+    }
+    onLanguageChanged: {
+        Protocol.invalidate(session);
+        agreed = false;
+        publish();
     }
     onModeChanged: {
         Protocol.invalidate(session);
@@ -1117,7 +1129,7 @@ Item {
     }
     Timer {
         interval: 20000
-        running: root.session.rebootMessage === "Restarting…"
+        running: root.session.restarting
         onTriggered: {
             Protocol.rebootTimedOut(root.session);
             root.publish();
@@ -1162,7 +1174,7 @@ Item {
                         try {
                             root.receive(JSON.parse(data));
                         } catch (_) {
-                            root.session.notice = "The installer sent an unreadable message.";
+                            root.session.notice = qsTranslate("InstallerController", "The installer sent an unreadable message.");
                             root.lost();
                         }
                     }
@@ -1183,7 +1195,7 @@ Item {
                 try {
                     root.helperResult(JSON.parse(text));
                 } catch (_) {
-                    root.helperMessage = "This operation is unavailable. Please try again.";
+                    root.helperMessage = qsTranslate("InstallerController", "This operation is unavailable. Please try again.");
                     root.helperFailed = true;
                     if (root.helperOp === "join") {
                         root.joinFailed = true;

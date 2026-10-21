@@ -75,7 +75,7 @@ Column {
                 id: restartButton
                 objectName: "settings-wifi-restart"
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Restart Wi-Fi"
+                text: qsTranslate("SettingsWifiPage", "Restart Wi-Fi")
                 enabled: root.hasAdapter && !root.busy && (root.backend?.wifiRestartAvailable ?? false)
                 onClicked: root.request("wifi-restart", null)
             }
@@ -84,7 +84,7 @@ Column {
                 x: restartButton.width + parent.spacing
                 width: Math.max(80, parent.width - restartButton.width - parent.spacing)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Turns Wi-Fi off and on again. Try it when networks stop showing up or a connection hangs."
+                text: qsTranslate("SettingsWifiPage", "Turns Wi-Fi off and on again. Try it when networks stop showing up or a connection hangs.")
                 font.family: SettingsTheme.fontFamily
                 font.pixelSize: 12
                 color: SettingsTheme.dim
@@ -143,10 +143,10 @@ Column {
     }
     function signalText(row) {
         const value = Number(row?.signal ?? 0);
-        return Math.round(value <= 1 ? value * 100 : value) + "% signal";
+        return qsTranslate("SettingsWifiPage", "%1% signal").arg(Math.round(value <= 1 ? value * 100 : value).toFixed(0));
     }
     function securityText(row) {
-        return row?.open ? "Open" : row?.psk ? "Password protected" : "Secured";
+        return row?.open ? qsTranslate("SettingsWifiPage", "Open") : row?.psk ? qsTranslate("SettingsWifiPage", "Password protected") : qsTranslate("SettingsWifiPage", "Secured");
     }
     function profileFor(row) {
         const matches = saved.filter(profile => profile.ssid === row?.name && (!profile.device || profile.device === row.device));
@@ -154,7 +154,7 @@ Column {
     }
     function connectionText(row) {
         const profile = profileFor(row);
-        return "Connected · " + signalText(row) + " · " + securityText(row) + (profile?.addresses?.length ? " · " + profile.addresses.join(", ") : "") + (row?.device ? " · " + row.device : "");
+        return qsTranslate("SettingsWifiPage", "Connected · %1 · %2").arg(signalText(row)).arg(securityText(row)) + (profile?.addresses?.length ? " · " + profile.addresses.join(", ") : "") + (row?.device ? " · " + row.device : "");
     }
     function beginJoin(row) {
         if (!hasAdapter)
@@ -264,7 +264,7 @@ Column {
         objectName: "settings-wifi-action-status"
         width: parent.width
         visible: !["idle", "confirmed", "ready", "requested"].includes(root.actionResult)
-        text: root.actionResult === "wifi_restart_failed" ? "Wi-Fi could not restart. Try again later." : root.awaitingAction ? "Working…" : root.actionResult === "wrong_password" ? "The password was not accepted. Enter it again." : "The change could not be confirmed. Check the current value and try again."
+        text: root.actionResult === "wifi_restart_failed" ? qsTranslate("SettingsWifiPage", "Wi-Fi could not restart. Try again later.") : root.awaitingAction ? qsTranslate("SettingsWifiPage", "Working…") : root.actionResult === "wrong_password" ? qsTranslate("SettingsWifiPage", "The password was not accepted. Enter it again.") : qsTranslate("SettingsWifiPage", "The change could not be confirmed. Check the current value and try again.")
         color: root.awaitingAction ? SettingsTheme.dim : SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13
@@ -276,8 +276,8 @@ Column {
         SettingsToggleRow {
             objectName: "settings-wifi-power"
             width: parent.width
-            title: "Wi-Fi"
-            explanation: !root.backend?.networkReady ? "Network status is unavailable." : !root.hasAdapter ? "No Wi-Fi adapter" : !root.backend.wifiHardwareEnabled ? "The wireless radio is blocked by the system." : root.backend.wifiEnabled ? "On. Emaki joins saved networks by itself." : "Off. Turn Wi-Fi on to see nearby networks."
+            title: qsTranslate("SettingsWifiPage", "Wi-Fi")
+            explanation: !root.backend?.networkReady ? qsTranslate("SettingsWifiPage", "Network status is unavailable.") : !root.hasAdapter ? qsTranslate("SettingsWifiPage", "No Wi-Fi adapter") : !root.backend.wifiHardwareEnabled ? qsTranslate("SettingsWifiPage", "The wireless radio is blocked by the system.") : root.backend.wifiEnabled ? qsTranslate("SettingsWifiPage", "On. Emaki joins saved networks by itself.") : qsTranslate("SettingsWifiPage", "Off. Turn Wi-Fi on to see nearby networks.")
             value: root.hasAdapter && (root.backend?.wifiEnabled ?? false)
             defaultValue: value
             busy: root.busy
@@ -287,7 +287,7 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "Connected"
+        title: qsTranslate("SettingsWifiPage", "Connected")
         objectName: "settings-wifi-connected"
         visible: root.hasAdapter && (root.backend?.wifiEnabled ?? false)
         Repeater {
@@ -297,7 +297,7 @@ Column {
                 required property string rowKey
                 readonly property var network: root.networks.find(row => row.key === rowKey)
                 width: parent.width
-                title: network?.name ?? "Wireless network"
+                title: network?.name ?? qsTranslate("SettingsWifiPage", "Wireless network")
                 explanation: root.connectionText(network)
                 busy: root.busy
                 controlWidth: 180
@@ -308,7 +308,7 @@ Column {
                             network: connectedRow.network
                         }
                         SettingsButton {
-                            text: "Disconnect"
+                            text: qsTranslate("SettingsWifiPage", "Disconnect")
                             onClicked: root.request("wifi-disconnect", {
                                 key: connectedRow.rowKey
                             })
@@ -320,15 +320,15 @@ Column {
         SettingsRow {
             width: parent.width
             visible: connectedModel.count === 0
-            title: "No wireless connection is active."
-            explanation: "Choose a network below to connect."
+            title: qsTranslate("SettingsWifiPage", "No wireless connection is active.")
+            explanation: qsTranslate("SettingsWifiPage", "Choose a network below to connect.")
             controlWidth: 0
         }
     }
     SettingsCard {
         objectName: "settings-wifi-networks"
         width: parent.width
-        title: "Other networks"
+        title: qsTranslate("SettingsWifiPage", "Other networks")
         visible: root.hasAdapter && (root.backend?.wifiEnabled ?? false)
         Repeater {
             model: nearbyModel
@@ -337,8 +337,8 @@ Column {
                 required property string rowKey
                 readonly property var network: root.networks.find(row => row.key === rowKey)
                 width: parent.width
-                title: network?.name ?? "Wireless network"
-                explanation: root.signalText(network) + " · " + root.securityText(network) + (network?.known ? " · Saved" : "")
+                title: network?.name ?? qsTranslate("SettingsWifiPage", "Wireless network")
+                explanation: root.signalText(network) + " · " + root.securityText(network) + (network?.known ? qsTranslate("SettingsWifiPage", " · Saved") : "")
                 controlWidth: 160
                 busy: root.busy || !!network?.busy
                 control: Component {
@@ -348,7 +348,7 @@ Column {
                             network: nearbyRow.network
                         }
                         SettingsButton {
-                            text: "Join"
+                            text: qsTranslate("SettingsWifiPage", "Join")
                             onClicked: root.beginJoin(nearbyRow.network)
                         }
                     }
@@ -358,19 +358,19 @@ Column {
         SettingsRow {
             width: parent.width
             visible: nearbyModel.count === 0
-            title: "Looking for networks…"
-            explanation: "Nearby wireless networks appear here."
+            title: qsTranslate("SettingsWifiPage", "Looking for networks…")
+            explanation: qsTranslate("SettingsWifiPage", "Nearby wireless networks appear here.")
             controlWidth: 0
         }
         SettingsRow {
             width: parent.width
-            title: "Join a hidden network…"
-            explanation: "For a network that does not show its name."
+            title: qsTranslate("SettingsWifiPage", "Join a hidden network…")
+            explanation: qsTranslate("SettingsWifiPage", "For a network that does not show its name.")
             controlWidth: 90
             busy: root.busy
             control: Component {
                 SettingsButton {
-                    text: "Join"
+                    text: qsTranslate("SettingsWifiPage", "Join")
                     onClicked: {
                         root.closeJoin();
                         root.hiddenJoin = true;
@@ -383,7 +383,7 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.hiddenJoin || root.selected !== null
-        title: root.hiddenJoin ? "Hidden network" : root.selected?.name ?? "Join network"
+        title: root.hiddenJoin ? qsTranslate("SettingsWifiPage", "Hidden network") : root.selected?.name ?? qsTranslate("SettingsWifiPage", "Join network")
         Column {
             width: parent.width
             spacing: 10
@@ -392,8 +392,8 @@ Column {
                 objectName: "settings-wifi-hidden-name"
                 visible: root.hiddenJoin
                 width: parent.width
-                placeholderText: "Network name"
-                Accessible.name: "Network name"
+                placeholderText: qsTranslate("SettingsWifiPage", "Network name")
+                Accessible.name: qsTranslate("SettingsWifiPage", "Network name")
                 maximumLength: 32
                 font.family: SettingsTheme.fontFamily
             }
@@ -401,7 +401,7 @@ Column {
                 id: hiddenSecured
                 visible: root.hiddenJoin
                 checked: true
-                text: "Password protected"
+                text: qsTranslate("SettingsWifiPage", "Password protected")
                 font.family: SettingsTheme.fontFamily
             }
             NetworkField {
@@ -409,8 +409,8 @@ Column {
                 objectName: "settings-wifi-password"
                 width: parent.width
                 visible: !root.hiddenJoin || hiddenSecured.checked
-                placeholderText: "Password"
-                Accessible.name: "Password"
+                placeholderText: qsTranslate("SettingsWifiPage", "Password")
+                Accessible.name: qsTranslate("SettingsWifiPage", "Password")
                 echoMode: TextInput.Password
                 maximumLength: 63
                 enabled: !root.busy
@@ -421,7 +421,7 @@ Column {
             Text {
                 width: parent.width
                 visible: !!root.selected && !root.selected.psk
-                text: "This network requires credentials that cannot be entered here."
+                text: qsTranslate("SettingsWifiPage", "This network requires credentials that cannot be entered here.")
                 color: SettingsTheme.dim
                 font.family: SettingsTheme.fontFamily
                 font.pixelSize: 13
@@ -433,12 +433,12 @@ Column {
                 SettingsButton {
                     id: joinButton
                     objectName: "settings-wifi-join"
-                    text: "Join"
+                    text: qsTranslate("SettingsWifiPage", "Join")
                     enabled: !root.busy && (root.hiddenJoin ? hiddenName.text.trim().length > 0 && (!hiddenSecured.checked || password.text.length >= 8) : !!root.selected?.psk && password.text.length >= 8)
                     onClicked: root.join()
                 }
                 SettingsButton {
-                    text: "Cancel"
+                    text: qsTranslate("SettingsWifiPage", "Cancel")
                     onClicked: root.closeJoin()
                 }
             }
@@ -447,7 +447,7 @@ Column {
     SettingsCard {
         objectName: "settings-wifi-saved"
         width: parent.width
-        title: "Saved networks"
+        title: qsTranslate("SettingsWifiPage", "Saved networks")
         Repeater {
             model: savedModel
             SettingsRow {
@@ -455,15 +455,15 @@ Column {
                 required property string rowKey
                 readonly property var profile: root.saved.find(row => row.uuid === rowKey)
                 width: parent.width
-                title: profile?.name ?? "Wireless network"
-                explanation: root.service.wifiPasswordUuid === rowKey && root.service.wifiPasswordState === "ready" ? root.service.wifiPassword : "Forget the network or show its saved password."
+                title: profile?.name ?? qsTranslate("SettingsWifiPage", "Wireless network")
+                explanation: root.service.wifiPasswordUuid === rowKey && root.service.wifiPasswordState === "ready" ? root.service.wifiPassword : qsTranslate("SettingsWifiPage", "Forget the network or show its saved password.")
                 controlWidth: 206
                 busy: root.busy
                 control: Component {
                     Row {
                         spacing: 8
                         SettingsButton {
-                            text: root.service.wifiPasswordUuid === savedRow.rowKey && root.service.wifiPasswordState === "ready" ? "Hide" : "Show password"
+                            text: root.service.wifiPasswordUuid === savedRow.rowKey && root.service.wifiPasswordState === "ready" ? qsTranslate("SettingsWifiPage", "Hide") : qsTranslate("SettingsWifiPage", "Show password")
                             enabled: root.service.wifiPasswordState !== "pending" && savedRow.profile?.security !== "open"
                             onClicked: {
                                 if (root.service.wifiPasswordUuid === savedRow.rowKey && root.service.wifiPasswordState === "ready")
@@ -474,7 +474,7 @@ Column {
                         }
                         SettingsButton {
                             objectName: "settings-wifi-forget-" + savedRow.rowKey
-                            text: "Forget"
+                            text: qsTranslate("SettingsWifiPage", "Forget")
                             onClicked: {
                                 root.service.clearWifiPassword();
                                 root.request("wifi-forget-saved", savedRow.rowKey);
@@ -487,15 +487,15 @@ Column {
         SettingsRow {
             visible: savedModel.count === 0
             width: parent.width
-            title: "No saved networks"
-            explanation: "Networks are remembered after you join them."
+            title: qsTranslate("SettingsWifiPage", "No saved networks")
+            explanation: qsTranslate("SettingsWifiPage", "Networks are remembered after you join them.")
             controlWidth: 0
         }
     }
     Text {
         width: parent.width
         visible: root.networkSettings.error !== "" || ["pending", "failed", "unavailable"].includes(root.service.wifiPasswordState)
-        text: root.service.wifiPasswordState === "pending" ? "Waiting for authentication…" : root.service.wifiPasswordState === "failed" || root.service.wifiPasswordState === "unavailable" ? "The password could not be shown. Try again later." : "Saved network details could not be loaded. Try again later."
+        text: root.service.wifiPasswordState === "pending" ? qsTranslate("SettingsWifiPage", "Waiting for authentication…") : root.service.wifiPasswordState === "failed" || root.service.wifiPasswordState === "unavailable" ? qsTranslate("SettingsWifiPage", "The password could not be shown. Try again later.") : qsTranslate("SettingsWifiPage", "Saved network details could not be loaded. Try again later.")
         color: SettingsTheme.dim
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13

@@ -1,0 +1,2069 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: es\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " (Rich software requires emaki-apps)"
+msgstr " (La selección completa de software requiere emaki-apps)"
+
+msgid " Emaki could not check its files; its fallback loader will not be changed."
+msgstr " Emaki no pudo comprobar sus archivos; no se cambiará su cargador de respaldo."
+
+msgid " It holds another system's startup files; its fallback loader will not be changed."
+msgstr " Contiene archivos de arranque de otro sistema; no se cambiará su cargador de respaldo."
+
+msgid " The Windows data partition passed post-shrink verification before loader installation. Disk changes have already been made. Do not retry installation. Save the installation log to another device and seek recovery help before changing this disk."
+msgstr " La partición de datos de Windows pasó la verificación posterior a la reducción antes de instalar el cargador. Ya se hicieron cambios en el disco. No vuelvas a intentar la instalación. Guarda el registro de instalación en otro dispositivo y busca ayuda para la recuperación antes de modificar este disco."
+
+msgid " has no country."
+msgstr " no tiene país."
+
+msgid "(no reply)"
+msgstr "(sin respuesta)"
+
+msgid ", encrypted (LUKS2)"
+msgstr ", cifrada (LUKS2)"
+
+msgid "--follow combines only with --plan --yes"
+msgstr "--follow solo se combina con --plan --yes"
+
+msgid "--plan with --follow requires --yes"
+msgstr "--plan con --follow requiere --yes"
+
+msgid "--yes requires --plan"
+msgstr "--yes requiere --plan"
+
+msgid "/efi must be an existing GPT EFI system partition with FAT32."
+msgstr "/efi debe ser una partición del sistema EFI existente en GPT con FAT32."
+
+msgid "/home cannot be FAT; choose ext4 or btrfs."
+msgstr "/home no puede ser FAT; elige ext4 o btrfs."
+
+msgid "/swap is reserved for hibernation."
+msgstr "/swap está reservado para la hibernación."
+
+msgid "64-bit UEFI is required."
+msgstr "Se requiere UEFI de 64 bits."
+
+msgid "; could not complete request."
+msgstr "; no se pudo completar la solicitud."
+
+msgid "; disk untouched: "
+msgstr "; disco sin cambios: "
+
+msgid "@swap is reserved for hibernation."
+msgstr "@swap está reservado para la hibernación."
+
+msgid "A deleted partition cannot be used."
+msgstr "No se puede usar una partición eliminada."
+
+msgid "A disk ID is required."
+msgstr "Se requiere un ID de disco."
+
+msgid "A kept partition changed its name. Nothing was formatted."
+msgstr "Una partición conservada cambió de nombre. No se formateó nada."
+
+msgid "A new partition lies outside the space this disk's partition table lets partitions use. The disk was not changed."
+msgstr "Una partición nueva está fuera del espacio que la tabla de particiones de este disco permite usar. No se hicieron cambios en el disco."
+
+msgid "A new partition must start and end on whole MiB inside the free space."
+msgstr "Una partición nueva debe comenzar y terminar en límites de MiB enteros dentro del espacio libre."
+
+msgid "A new partition overlaps another partition."
+msgstr "Una partición nueva se superpone con otra partición."
+
+msgid "A new partition table is made only on an empty disk; this disk holds data."
+msgstr "Solo se crea una tabla de particiones nueva en un disco vacío; este disco contiene datos."
+
+msgid "A new swap partition can only be used as swap."
+msgstr "Una partición swap nueva solo se puede usar como swap."
+
+msgid "A package download is incomplete; your disk has not been changed."
+msgstr "La descarga de un paquete está incompleta; no se hicieron cambios en tu disco."
+
+msgid "A partition is deleted twice."
+msgstr "Una partición se elimina dos veces."
+
+msgid "A partition to delete is not on the selected disk."
+msgstr "Una partición que se va a eliminar no está en el disco seleccionado."
+
+msgid "A repository override requires a test build in test mode."
+msgstr "La sustitución del repositorio requiere una compilación de prueba en modo de prueba."
+
+msgid "A safety check stopped the update. Resolve the reported problem before trying again."
+msgstr "Una comprobación de seguridad detuvo la actualización. Resuelve el problema indicado antes de volver a intentarlo."
+
+msgid "A selected XKB layout is not available on this ISO."
+msgstr "Una distribución XKB seleccionada no está disponible en esta ISO."
+
+msgid "A separate disk password is only used with that password choice."
+msgstr "Una contraseña de disco independiente solo se usa con esa opción de contraseña."
+
+msgid "A startup partition may only be mounted at /efi."
+msgstr "Una partición de arranque solo se puede montar en /efi."
+
+msgid "A swap partition cannot have other uses."
+msgstr "Una partición swap no puede tener otros usos."
+
+msgid "A swap partition needs at least 256 MiB."
+msgstr "Una partición swap necesita al menos 256 MiB."
+
+msgid "A swap partition takes the swap format."
+msgstr "Una partición swap usa el formato swap."
+
+msgid "A swapfile already exists at /swap/swapfile; move it before installing."
+msgstr "Ya existe un archivo de intercambio en /swap/swapfile; muévelo antes de instalar."
+
+#, python-brace-format
+msgid "Account: {value1}; hostname: {value2}; timezone: {value3}."
+msgstr "Cuenta: {value1}; nombre de la computadora: {value2}; zona horaria: {value3}."
+
+msgid "Adding trusted package keys (pacman-key --populate)."
+msgstr "Agregando claves de paquetes de confianza (pacman-key --populate)."
+
+msgid "After the restart a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation; you do this only once."
+msgstr "Después de reiniciar, una pantalla azul te pedirá confirmar la clave de Emaki con una contraseña que se muestra al finalizar la instalación; solo debes hacerlo una vez."
+
+msgid "Alongside can format only Emaki's newly created startup partition and root."
+msgstr "La instalación junto a Windows solo puede formatear la partición de arranque y la raíz recién creadas de Emaki."
+
+#, python-brace-format
+msgid "Alongside installation on {path} ({model})."
+msgstr "Instalación junto a Windows en {path} ({model})."
+
+msgid "Alongside requires GPT."
+msgstr "La instalación junto a Windows requiere GPT."
+
+msgid "Alongside requires partition_id and integer shrink_bytes (bytes freed for Emaki)."
+msgstr "La instalación junto a Windows requiere partition_id y un valor entero de shrink_bytes (bytes liberados para Emaki)."
+
+msgid "Alongside: create Emaki's own EFI system partition and root only inside the freed Windows extent."
+msgstr "Instalación junto a Windows: crear la partición del sistema EFI propia de Emaki y su raíz únicamente dentro del espacio liberado de Windows."
+
+msgid "Alongside: dry-run the exact NTFS size; no disk writes yet."
+msgstr "Instalación junto a Windows: simular el tamaño NTFS exacto; todavía no se escribe en el disco."
+
+msgid "Alongside: shrink only the Windows GPT entry, preserving its start, GUID, type, name and attributes."
+msgstr "Instalación junto a Windows: reducir solo la entrada GPT de Windows, conservando su inicio, GUID, tipo, nombre y atributos."
+
+msgid "Alongside: shrink the Windows filesystem; answering y after the successful dry run."
+msgstr "Instalación junto a Windows: reducir el sistema de archivos de Windows; responder «y» después de la simulación exitosa."
+
+msgid "Alongside: verify resized NTFS geometry and read-only metadata. Windows chkdsk on first boot is expected; the dirty flag is preserved."
+msgstr "Instalación junto a Windows: verificar la geometría NTFS redimensionada y los metadatos de solo lectura. Se espera que Windows ejecute chkdsk en el primer arranque; se conserva la marca de estado sucio."
+
+msgid "An EFI system partition needs at least 512 MiB."
+msgstr "Una partición del sistema EFI necesita al menos 512 MiB."
+
+msgid "An encrypted swap partition needs formatting and an encrypted root, which keeps its key."
+msgstr "Una partición swap cifrada debe formatearse y requiere una raíz cifrada que guarde su clave."
+
+msgid "An installed file is in the way of this update. Resolve the file conflict before trying again."
+msgstr "Un archivo instalado impide esta actualización. Resuelve el conflicto de archivos antes de volver a intentarlo."
+
+msgid "An update step failed. Some packages may already have changed. Resolve the reported problem before updating again."
+msgstr "Falló un paso de la actualización. Es posible que algunos paquetes ya hayan cambiado. Resuelve el problema indicado antes de volver a actualizar."
+
+msgid "Another package operation may be running. Wait for it to finish before trying again."
+msgstr "Es posible que haya otra operación de paquetes en curso. Espera a que termine antes de volver a intentarlo."
+
+msgid "Assign exactly one root and one startup partition, plus optional data mounts."
+msgstr "Asigna exactamente una raíz y una partición de arranque, además de los puntos de montaje de datos opcionales."
+
+msgid "At least 32 GiB must be freed from Windows for Emaki."
+msgstr "Se deben liberar al menos 32 GiB de Windows para Emaki."
+
+msgid "Automatic restart is unavailable. "
+msgstr "El reinicio automático no está disponible. "
+
+msgid "Bounded termination requires a timeout, a positive budget and no stdin."
+msgstr "La terminación acotada requiere un tiempo límite, un presupuesto positivo y ninguna entrada stdin."
+
+#, python-brace-format
+msgid "Btrfs mount options missing at {value1}."
+msgstr "Faltan opciones de montaje de Btrfs en {value1}."
+
+msgid "Btrfs needs separate /home, /var/log, package cache and /.snapshots mounts."
+msgstr "Btrfs necesita montajes separados para /home, /var/log, la caché de paquetes y /.snapshots."
+
+msgid "Btrfs root requires a separate snapshot subvolume on the root filesystem."
+msgstr "La raíz Btrfs requiere un subvolumen de instantáneas separado en el sistema de archivos raíz."
+
+#, python-brace-format
+msgid "Building the startup image (mkinitcpio: {value1})."
+msgstr "Creando la imagen de arranque (mkinitcpio: {value1})."
+
+msgid "Cannot create the log there; choose a new filename on mounted removable media."
+msgstr "No se puede crear el registro allí; elige un nombre de archivo nuevo en un medio extraíble montado."
+
+msgid "Cannot determine RAM size for hibernation."
+msgstr "No se puede determinar el tamaño de la RAM para la hibernación."
+
+msgid "Cannot determine btrfs resume offset."
+msgstr "No se puede determinar el desplazamiento de reanudación de btrfs."
+
+msgid "Cannot determine ext4 resume offset."
+msgstr "No se puede determinar el desplazamiento de reanudación de ext4."
+
+msgid "Cannot determine the new account UID/GID."
+msgstr "No se puede determinar el UID/GID de la cuenta nueva."
+
+msgid "Cannot identify the live boot medium."
+msgstr "No se puede identificar el medio de arranque en vivo."
+
+msgid "Cannot identify the live boot medium; installation is refused."
+msgstr "No se puede identificar el medio de arranque en vivo; se rechaza la instalación."
+
+msgid "Cannot inspect existing btrfs subvolumes."
+msgstr "No se pueden inspeccionar los subvolúmenes btrfs existentes."
+
+msgid "Cannot load archinstall 4.5 and its dependencies: "
+msgstr "No se pueden cargar archinstall 4.5 ni sus dependencias: "
+
+msgid "Cannot read the Windows volume signature."
+msgstr "No se puede leer la firma del volumen de Windows."
+
+#, python-brace-format
+msgid "Cannot read the signature of {value1}; it may be part of a multi-device set."
+msgstr "No se puede leer la firma de {value1}; puede formar parte de un conjunto de varios dispositivos."
+
+#, python-brace-format
+msgid "Cannot run {value1}: {value2}."
+msgstr "No se puede ejecutar {value1}: {value2}."
+
+msgid "Cannot safely inspect the Windows hibernation file."
+msgstr "No se puede inspeccionar de forma segura el archivo de hibernación de Windows."
+
+msgid "Cannot verify GPT partition "
+msgstr "No se puede verificar la partición GPT "
+
+msgid "Cannot verify NTFS, hibernation state or GPT metadata: "
+msgstr "No se pueden verificar NTFS, el estado de hibernación o los metadatos GPT: "
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of {value2}."
+msgstr "No se puede verificar que {value1} sea el único dispositivo de {value2}."
+
+#, python-brace-format
+msgid "Cannot write {value1}: {value2}."
+msgstr "No se puede escribir {value1}: {value2}."
+
+msgid "Changing filesystem type requires format: true."
+msgstr "Cambiar el tipo de sistema de archivos requiere format: true."
+
+msgid "Checking available disk space (pacman)."
+msgstr "Comprobando el espacio disponible en disco (pacman)."
+
+msgid "Checking for conflicting files (pacman)."
+msgstr "Buscando archivos en conflicto (pacman)."
+
+msgid "Checking package compatibility (pacman)."
+msgstr "Comprobando la compatibilidad de los paquetes (pacman)."
+
+msgid "Checking package files (pacman)."
+msgstr "Comprobando los archivos de paquetes (pacman)."
+
+msgid "Checking trusted package keys (pacman)."
+msgstr "Comprobando las claves de paquetes de confianza (pacman)."
+
+msgid "Choose Rich or Minimal software."
+msgstr "Elige la selección completa o mínima de software."
+
+msgid "Choose a log file on removable media."
+msgstr "Elige un archivo de registro en un medio extraíble."
+
+msgid "Choose a time zone from the city list."
+msgstr "Elige una zona horaria de la lista de ciudades."
+
+msgid "Choose a whole-MiB Emaki size within the verified shrink bounds (at least 32 GiB)."
+msgstr "Elige un tamaño de Emaki en MiB enteros dentro de los límites de reducción verificados (al menos 32 GiB)."
+
+msgid "Choose btrfs or ext4."
+msgstr "Elige btrfs o ext4."
+
+msgid "Choose whether to encrypt the disk and which password to use."
+msgstr "Elige si deseas cifrar el disco y qué contraseña usar."
+
+msgid "Cleanup failed: "
+msgstr "Falló la limpieza: "
+
+msgid "Close it [cryptsetup close]"
+msgstr "Ciérralo [cryptsetup close]"
+
+msgid "Config must be an object."
+msgstr "La configuración debe ser un objeto."
+
+msgid "Confirm the reviewed disk plan and install."
+msgstr "Confirma el plan de disco revisado e instala."
+
+msgid "Connected"
+msgstr "Conectado"
+
+msgid "Connected, but the Wi-Fi settings could not be saved for installation. Connect again."
+msgstr "Conectado, pero no se pudo guardar la configuración de Wi-Fi para la instalación. Vuelve a conectarte."
+
+msgid "Connection timed out."
+msgstr "Se agotó el tiempo de espera de la conexión."
+
+msgid "Could not connect to this network."
+msgstr "No se pudo conectar a esta red."
+
+msgid "Could not connect. Check the password."
+msgstr "No se pudo conectar. Revisa la contraseña."
+
+msgid "Could not prepare to restart. Keep the USB stick connected and try again."
+msgstr "No se pudo preparar el reinicio. Mantén la memoria USB conectada e inténtalo de nuevo."
+
+msgid "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."
+msgstr "No se pudo reiniciar. Inténtalo de nuevo o mantén presionado el botón de encendido para apagar la computadora y vuelve a encenderla. Tu instalación está a salvo."
+
+msgid "Could not save the Wi-Fi connection [NetworkManager]. Connect to that network again before installing."
+msgstr "No se pudo guardar la conexión Wi-Fi [NetworkManager]. Vuelve a conectarte a esa red antes de instalar."
+
+#, python-brace-format
+msgid "Could not stop target process {value1}: {value2}"
+msgstr "No se pudo detener el proceso de destino {value1}: {value2}"
+
+msgid "Could not unmount all target filesystems; inspect the log before retrying."
+msgstr "No se pudieron desmontar todos los sistemas de archivos de destino; revisa el registro antes de reintentar."
+
+msgid "Create Emaki's own startup partition (1 GiB) and root in the freed space; Windows' startup partition is not changed."
+msgstr "Crear la partición de arranque propia de Emaki (1 GiB) y su raíz en el espacio liberado; la partición de arranque de Windows no cambia."
+
+#, python-brace-format
+msgid "Create a new GPT partition table on {value1}; the disk is empty."
+msgstr "Crear una tabla de particiones GPT nueva en {value1}; el disco está vacío."
+
+#, python-brace-format
+msgid "Create partition {value1}: {value2}, {value3}{value4}; use: {value5}."
+msgstr "Crear la partición {value1}: {value2}, {value3}{value4}; uso: {value5}."
+
+msgid "Create the partitions for the new partition table."
+msgstr "Crear las particiones para la tabla de particiones nueva."
+
+msgid "Creating the package trust store (pacman-key --init)."
+msgstr "Creando el almacén de confianza de paquetes (pacman-key --init)."
+
+#, python-brace-format
+msgid "DKMS module {value1}/{value2} for {value3} has no built modules."
+msgstr "El módulo DKMS {value1}/{value2} para {value3} no tiene módulos compilados."
+
+#, python-brace-format
+msgid "DKMS module {value1}/{value2} for {value3} is not signed by the machine key: "
+msgstr "El módulo DKMS {value1}/{value2} para {value3} no está firmado por la clave de la máquina: "
+
+msgid "Deactivate it [lvchange -an]"
+msgstr "Desactívalo [lvchange -an]"
+
+#, python-brace-format
+msgid "Delete partition {value1} ({value2}): all its files are lost."
+msgstr "Eliminar la partición {value1} ({value2}): se perderán todos sus archivos."
+
+msgid "Deleted partitions lose all their files. Nothing on the disk changes until you press Install."
+msgstr "Las particiones eliminadas perderán todos sus archivos. El disco no cambia hasta que presiones Instalar."
+
+msgid "Destination is not on a mounted removable filesystem."
+msgstr "El destino no está en un sistema de archivos extraíble montado."
+
+msgid "Destination is not removable/USB media."
+msgstr "El destino no es un medio extraíble/USB."
+
+msgid "Destination mount changed during export."
+msgstr "El montaje de destino cambió durante la exportación."
+
+msgid "Destination must be block media."
+msgstr "El destino debe ser un medio de bloques."
+
+msgid "Destination must be under /run/media/live/."
+msgstr "El destino debe estar bajo /run/media/live/."
+
+#, python-brace-format
+msgid "Device cannot be opened exclusively: {value1}."
+msgstr "El dispositivo no se puede abrir de forma exclusiva: {value1}."
+
+msgid "Disk identity or partition layout changed after the review."
+msgstr "La identidad del disco o la distribución de particiones cambió después de la revisión."
+
+msgid "Disk password must be nonempty and contain no control characters (line breaks, tabs)."
+msgstr "La contraseña del disco no debe estar vacía ni contener caracteres de control (saltos de línea, tabulaciones)."
+
+msgid "Display scale must be a number from 0.5 to 4."
+msgstr "La escala de pantalla debe ser un número entre 0.5 y 4."
+
+msgid "Display scales must be an object with at most 64 outputs."
+msgstr "Las escalas de pantalla deben ser un objeto con un máximo de 64 salidas."
+
+msgid "Duplicate fstab mountpoint."
+msgstr "Punto de montaje duplicado en fstab."
+
+msgid "Duplicate mountpoint."
+msgstr "Punto de montaje duplicado."
+
+msgid "Duplicate subvolume name."
+msgstr "Nombre de subvolumen duplicado."
+
+msgid "EFI loader is not a valid bounded file."
+msgstr "El cargador EFI no es un archivo válido de tamaño acotado."
+
+msgid "EFI loader path contains a symlink."
+msgstr "La ruta del cargador EFI contiene un enlace simbólico."
+
+msgid "Emaki could not confirm that the Windows disk is safe to shrink. Start Windows, let it check the disk if it asks, then choose Shut down (not Restart) and start from the USB stick again."
+msgstr "Emaki no pudo confirmar que sea seguro reducir el disco de Windows. Inicia Windows, deja que compruebe el disco si lo solicita, elige Apagar (no Reiniciar) y vuelve a arrancar desde la memoria USB."
+
+msgid "Emaki could not make itself the computer's default startup choice. If another system starts instead, choose Emaki in the firmware boot menu."
+msgstr "Emaki no pudo establecerse como la opción de arranque predeterminada de la computadora. Si arranca otro sistema, elige Emaki en el menú de arranque del firmware."
+
+msgid "Emaki could not make itself the computer's default startup choice. If another system starts instead, start the installation USB and use its GRUB console to load EFI/Emaki/grubx64.efi from this installation's startup partition."
+msgstr "Emaki no pudo establecerse como la opción de arranque predeterminada de la computadora. Si arranca otro sistema, inicia desde la memoria USB de instalación y usa su consola GRUB para cargar EFI/Emaki/grubx64.efi desde la partición de arranque de esta instalación."
+
+msgid "Emaki could not verify that the firmware starts the new installation first."
+msgstr "Emaki no pudo verificar que el firmware arranque primero la instalación nueva."
+
+msgid "Emaki installer protocol client (live ISO)."
+msgstr "Cliente del protocolo del instalador de Emaki (ISO en vivo)."
+
+msgid "Emaki needs one full update before you install apps; when online, use the terminal to update the whole system [pacman]."
+msgstr "Emaki necesita una actualización completa antes de que instales aplicaciones; cuando tengas conexión, usa la terminal para actualizar todo el sistema [pacman]."
+
+#, python-brace-format
+msgid "Emaki needs two free GPT partition entries (its startup partition and its root); this disk has {value1}."
+msgstr "Emaki necesita dos entradas libres de particiones GPT (su partición de arranque y su raíz); este disco tiene {value1}."
+
+msgid "Emaki owns device discovery"
+msgstr "Emaki se encarga de la detección de dispositivos"
+
+msgid "Emaki requires archinstall distribution version 4.5."
+msgstr "Emaki requiere la versión 4.5 del paquete archinstall."
+
+msgid "Emaki's startup partition could not be verified from its saved partition identity. Nothing was changed."
+msgstr "No se pudo verificar la partición de arranque de Emaki a partir de su identidad de partición guardada. No se hicieron cambios."
+
+msgid "Emaki's startup partition is not a new one; disk untouched."
+msgstr "La partición de arranque de Emaki no es nueva; disco sin cambios."
+
+msgid "Encrypted root has no LUKS UUID."
+msgstr "La raíz cifrada no tiene UUID de LUKS."
+
+msgid "Encrypted-volume confirmations require a device path, encryption type and UUID."
+msgstr "Las confirmaciones de volúmenes cifrados requieren una ruta de dispositivo, un tipo de cifrado y un UUID."
+
+msgid "Encrypting root requires formatting it; existing files cannot be encrypted in place."
+msgstr "Cifrar la raíz requiere formatearla; los archivos existentes no se pueden cifrar sin formatear."
+
+msgid "Encryption: LUKS2 root, account password."
+msgstr "Cifrado: raíz LUKS2, contraseña de la cuenta."
+
+msgid "Encryption: LUKS2 root, separate disk password."
+msgstr "Cifrado: raíz LUKS2, contraseña de disco independiente."
+
+msgid "Encryption: off."
+msgstr "Cifrado: desactivado."
+
+msgid "Erase all partitions and create a new GPT partition table."
+msgstr "Borrar todas las particiones y crear una tabla de particiones GPT nueva."
+
+msgid "Erase disk"
+msgstr "Borrar disco"
+
+#, python-brace-format
+msgid "Erase installation on {path} ({model})."
+msgstr "Instalación borrando el disco {path} ({model})."
+
+msgid "Every new partition needs a use: choose its mount point or swap, or remove it."
+msgstr "Cada partición nueva necesita un uso: elige su punto de montaje o swap, o quítala."
+
+msgid "Exactly one / and one /efi are required."
+msgstr "Se requieren exactamente una partición / y una /efi."
+
+msgid "Existing snapper root config points at a different subvolume."
+msgstr "La configuración de raíz existente de snapper apunta a un subvolumen diferente."
+
+msgid "Finding required packages (pacman)."
+msgstr "Buscando los paquetes necesarios (pacman)."
+
+#, python-brace-format
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}{value5}: its files are lost; use: {value6}."
+msgstr "Formatear la partición {value1} ({value2}, {value3}) como {value4}{value5}: se perderán sus archivos; uso: {value6}."
+
+msgid "Freed extent overlaps another partition."
+msgstr "El espacio liberado se superpone con otra partición."
+
+#, python-brace-format
+msgid "Fresh Emaki {value1} install"
+msgstr "Instalación nueva de Emaki {value1}"
+
+msgid "GPT identity or geometry could not be verified."
+msgstr "No se pudo verificar la identidad o la geometría GPT."
+
+msgid "GPT validation failed; Windows will not be resized."
+msgstr "Falló la validación GPT; no se cambiará el tamaño de Windows."
+
+msgid "GRUB NVRAM registration failed and no removable loader could be installed."
+msgstr "Falló el registro de GRUB en NVRAM y no se pudo instalar un cargador en la ruta de medios extraíbles."
+
+#, python-brace-format
+msgid "GRUB has no executable entry for {value1}."
+msgstr "GRUB no tiene una entrada ejecutable para {value1}."
+
+#, python-brace-format
+msgid "GRUB loader {value1} does not carry the expected prefix; the unlock screen was not built."
+msgstr "El cargador GRUB {value1} no contiene el prefijo esperado; no se creó la pantalla de desbloqueo."
+
+msgid "GRUB's SBAT data is missing or unrecognized."
+msgstr "Los datos SBAT de GRUB faltan o no se reconocen."
+
+msgid "GRUB's SBAT data names no GRUB version."
+msgstr "Los datos SBAT de GRUB no indican una versión de GRUB."
+
+msgid "GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority."
+msgstr "GRUB, linux + linux-lts; /boot dentro de la raíz; zram con mayor prioridad de intercambio."
+
+#, python-brace-format
+msgid "Graphics controller (PCI {value1:04x}:"
+msgstr "Controlador gráfico (PCI {value1:04x}:"
+
+#, python-brace-format
+msgid "Graphics driver packages (Nvidia): {packages}."
+msgstr "Paquetes del controlador gráfico (Nvidia): {packages}."
+
+msgid "Graphics hardware or driver availability changed; prepare a new installation plan."
+msgstr "El hardware gráfico o la disponibilidad de los controladores cambió; prepara un plan de instalación nuevo."
+
+msgid "Hibernation writes memory, including passwords, to the disk unencrypted."
+msgstr "La hibernación escribe la memoria sin cifrar en el disco, incluidas las contraseñas."
+
+msgid "Hibernation: off."
+msgstr "Hibernación: desactivada."
+
+#, python-brace-format
+msgid "Hibernation: reserve {value1:,} bytes ({value2:.2f} GiB), equal to RAM."
+msgstr "Hibernación: reservar {value1:,} bytes ({value2:.2f} GiB), equivalentes a la RAM."
+
+msgid "Hostname must be one DNS label (1–63 characters)."
+msgstr "El nombre de la computadora debe ser una etiqueta DNS (entre 1 y 63 caracteres)."
+
+msgid "Implicit and explicit mounts overlap."
+msgstr "Los montajes implícitos y explícitos se superponen."
+
+msgid "Installation cancelled at a phase boundary; disk changes are not undone."
+msgstr "Instalación cancelada al terminar una fase; los cambios del disco no se deshacen."
+
+msgid "Installation complete; syncing and unmounting target filesystems."
+msgstr "Instalación completada; sincronizando y desmontando los sistemas de archivos de destino."
+
+#, python-brace-format
+msgid "Installation failed: {value1}: {value2}"
+msgstr "Falló la instalación: {value1}: {value2}"
+
+msgid "Installer connection closed or sent an invalid frame."
+msgstr "La conexión del instalador se cerró o envió una trama no válida."
+
+#, python-brace-format
+msgid "Installing a package (pacman: {value1})."
+msgstr "Instalando un paquete (pacman: {value1})."
+
+msgid "Installing alongside Windows is not available in this version."
+msgstr "La instalación junto a Windows no está disponible en esta versión."
+
+msgid "Installing next to Windows requires a GPT disk with an existing startup partition."
+msgstr "La instalación junto a Windows requiere un disco GPT con una partición de arranque existente."
+
+msgid "Installing next to Windows requires exactly one FAT32 startup partition."
+msgstr "La instalación junto a Windows requiere exactamente una partición de arranque FAT32."
+
+msgid "Installing next to Windows requires exactly one existing FAT32 startup partition on the selected disk."
+msgstr "La instalación junto a Windows requiere exactamente una partición de arranque FAT32 existente en el disco seleccionado."
+
+msgid "Invalid GPT GUID."
+msgstr "GUID de GPT no válido."
+
+msgid "Invalid GPT geometry or name."
+msgstr "Geometría o nombre GPT no válido."
+
+msgid "Invalid UTF-8 JSON."
+msgstr "JSON UTF-8 no válido."
+
+msgid "Invalid Wi-Fi connection ID."
+msgstr "ID de conexión Wi-Fi no válido."
+
+msgid "Invalid account."
+msgstr "Cuenta no válida."
+
+msgid "Invalid config values."
+msgstr "Valores de configuración no válidos."
+
+msgid "Invalid display output name."
+msgstr "Nombre de salida de pantalla no válido."
+
+msgid "Invalid filesystem or format flag."
+msgstr "Sistema de archivos o indicador de formato no válido."
+
+msgid "Invalid frame length."
+msgstr "Longitud de trama no válida."
+
+msgid "Invalid full name."
+msgstr "Nombre completo no válido."
+
+#, python-brace-format
+msgid "Invalid memdisk name {value1}."
+msgstr "Nombre de memdisk no válido: {value1}."
+
+msgid "Invalid mode."
+msgstr "Modo no válido."
+
+msgid "Invalid mount row."
+msgstr "Fila de montaje no válida."
+
+msgid "Invalid new partition."
+msgstr "Partición nueva no válida."
+
+msgid "Invalid partition changes."
+msgstr "Cambios de particiones no válidos."
+
+msgid "Invalid plan confirmation."
+msgstr "Confirmación del plan no válida."
+
+msgid "Invalid repository URL."
+msgstr "URL de repositorio no válida."
+
+msgid "Invalid resume sequence."
+msgstr "Secuencia de reanudación no válida."
+
+msgid "Invalid target path."
+msgstr "Ruta de destino no válida."
+
+msgid "Invalid time zone data."
+msgstr "Datos de zona horaria no válidos."
+
+msgid "Invalid time zone."
+msgstr "Zona horaria no válida."
+
+msgid "Invalid timezone."
+msgstr "Zona horaria no válida."
+
+msgid "Invalid user login."
+msgstr "Nombre de usuario no válido."
+
+msgid "Job is not retained by this daemon."
+msgstr "Este servicio no conserva la tarea."
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}."
+msgstr "Conservar la partición {value1} ({value2}, {value3}, {value4}) y sus archivos; uso: {value5}."
+
+msgid "Kernel partition size differs after resize."
+msgstr "El tamaño de la partición registrado en el kernel difiere después del cambio de tamaño."
+
+msgid "Keyboard trial is available only in the live Emaki session."
+msgstr "La prueba del teclado solo está disponible en la sesión en vivo de Emaki."
+
+#, python-brace-format
+msgid "Keyboard: {value1} (default), {value2}. Super+Space switches."
+msgstr "Teclado: {value1} (predeterminado), {value2}. Super+Space permite cambiar."
+
+#, python-brace-format
+msgid "Keyboard: {value1}."
+msgstr "Teclado: {value1}."
+
+msgid "Layouts saved for the live session; allow a moment for niri to reload. Super+Space switches layouts."
+msgstr "Distribuciones guardadas para la sesión en vivo; espera un momento a que niri recargue. Super+Space cambia la distribución."
+
+msgid "Live clock changes are available only on the Emaki ISO."
+msgstr "Los cambios del reloj de la sesión en vivo solo están disponibles en la ISO de Emaki."
+
+msgid "Live clock changes are unavailable."
+msgstr "Los cambios del reloj de la sesión en vivo no están disponibles."
+
+msgid "Log export is unavailable after restart preparation."
+msgstr "La exportación del registro no está disponible después de preparar el reinicio."
+
+msgid "Log export is unavailable during restart preparation."
+msgstr "La exportación del registro no está disponible durante la preparación del reinicio."
+
+msgid "Log export unavailable."
+msgstr "La exportación del registro no está disponible."
+
+#, python-brace-format
+msgid "Login name checked against {value1} packages."
+msgstr "Nombre de usuario comprobado con {value1} paquetes."
+
+msgid "Make an installed Emaki start again with Secure Boot: rebuild its boot loader and firmware startup entries. Run it from the Emaki installation USB."
+msgstr "Haz que una instalación de Emaki vuelva a arrancar con Secure Boot: reconstruye su cargador de arranque y las entradas de arranque del firmware. Ejecútalo desde la memoria USB de instalación de Emaki."
+
+msgid "Malformed genfstab output."
+msgstr "Salida de genfstab con formato incorrecto."
+
+#, python-brace-format
+msgid "Manual installation on {path} ({model})."
+msgstr "Instalación manual en {path} ({model})."
+
+msgid "Manual installation requires GPT."
+msgstr "La instalación manual requiere GPT."
+
+msgid "Manual mode: preserving the partition table, starts, GUIDs and flags."
+msgstr "Modo manual: conservando la tabla de particiones, los inicios, los GUID y los indicadores."
+
+msgid "Minimal — Dolphin, Firefox and kitty."
+msgstr "Mínima: Dolphin, Firefox y kitty."
+
+msgid "Mirror ranking returned no usable HTTPS list."
+msgstr "La clasificación de servidores espejo no devolvió una lista HTTPS utilizable."
+
+#, python-brace-format
+msgid "Missing /boot/{value1}."
+msgstr "Falta /boot/{value1}."
+
+#, python-brace-format
+msgid "Missing {value1} mkinitcpio preset."
+msgstr "Falta el preajuste {value1} de mkinitcpio."
+
+#, python-brace-format
+msgid "More than one disk holds the same file system or encrypted disk ({devices}), as after copying a whole disk. Disconnect or change all but one of them, then run sudo emaki-boot-repair again. Nothing was changed."
+msgstr "Más de un disco contiene el mismo sistema de archivos o disco cifrado ({devices}), como ocurre al copiar un disco completo. Desconecta o modifica todos menos uno y vuelve a ejecutar sudo emaki-boot-repair. No se hicieron cambios."
+
+#, python-brace-format
+msgid "More than one installed Emaki was found: {devices}. Name the one to repair, for example: sudo emaki-boot-repair --root {first}"
+msgstr "Se encontró más de una instalación de Emaki: {devices}. Indica cuál reparar, por ejemplo: sudo emaki-boot-repair --root {first}"
+
+msgid "Mountpoints must be canonical absolute paths."
+msgstr "Los puntos de montaje deben ser rutas absolutas canónicas."
+
+msgid "NTFS allocation metadata is unreadable."
+msgstr "Los metadatos de asignación NTFS son ilegibles."
+
+msgid "NTFS backup boot record does not match after resize."
+msgstr "El registro de arranque de respaldo de NTFS no coincide después del cambio de tamaño."
+
+msgid "NTFS is dirty or needs a Windows consistency check. Run chkdsk in Windows and fully shut down first."
+msgstr "NTFS está marcado como sucio o necesita una comprobación de coherencia de Windows. Primero ejecuta chkdsk en Windows y apágalo por completo."
+
+msgid "NTFS metadata lies outside the resized filesystem."
+msgstr "Los metadatos NTFS están fuera del sistema de archivos redimensionado."
+
+msgid "NTFS minimum size is invalid."
+msgstr "El tamaño mínimo de NTFS no es válido."
+
+msgid "NTFS resize dry run did not pass; disk untouched."
+msgstr "La simulación del cambio de tamaño NTFS no pasó la comprobación; disco sin cambios."
+
+msgid "NTFS size does not match the approved shrink."
+msgstr "El tamaño NTFS no coincide con la reducción aprobada."
+
+msgid "Network is no longer available."
+msgstr "La red ya no está disponible."
+
+msgid "NetworkManager did not answer within 35 seconds."
+msgstr "NetworkManager no respondió en 35 segundos."
+
+msgid "NetworkManager is not running."
+msgstr "NetworkManager no se está ejecutando."
+
+msgid "NetworkManager is unavailable. You can install offline."
+msgstr "NetworkManager no está disponible. Puedes instalar sin conexión."
+
+#, python-brace-format
+msgid "NetworkManager lists {value1} Wi-Fi profiles with this UUID."
+msgstr "NetworkManager enumera {value1} perfiles Wi-Fi con este UUID."
+
+msgid "NetworkManager returned an empty profile."
+msgstr "NetworkManager devolvió un perfil vacío."
+
+msgid "NetworkManager's normalized profile could not be read."
+msgstr "No se pudo leer el perfil normalizado de NetworkManager."
+
+msgid "New partition table is not GPT."
+msgstr "La tabla de particiones nueva no es GPT."
+
+msgid "New partitions are out of order."
+msgstr "Las particiones nuevas están desordenadas."
+
+msgid "No GRUB loader was written."
+msgstr "No se escribió ningún cargador GRUB."
+
+msgid "No active job. Pass --job-id to replay the last completed job."
+msgstr "No hay ninguna tarea activa. Pasa --job-id para volver a mostrar la última tarea completada."
+
+msgid "No by-id name is available; device identity and geometry will be rechecked."
+msgstr "No hay un nombre by-id disponible; se volverán a comprobar la identidad y la geometría del dispositivo."
+
+msgid "No firmware entry starts this Emaki (an older one names another disk); creating one."
+msgstr "Ninguna entrada del firmware arranca este Emaki (una anterior indica otro disco); creando una."
+
+msgid "No installation disk is visible behind the Intel storage controller (VMD/RST). In your firmware settings, disable VMD or Intel RST and select AHCI storage mode, then restart the USB. If another operating system is installed, prepare it for AHCI before changing this setting; otherwise it may stop booting."
+msgstr "No hay ningún disco de instalación visible detrás del controlador de almacenamiento Intel (VMD/RST). En la configuración del firmware, desactiva VMD o Intel RST y selecciona el modo de almacenamiento AHCI; luego reinicia desde la memoria USB. Si hay otro sistema operativo instalado, prepáralo para AHCI antes de cambiar esta opción; de lo contrario, podría dejar de arrancar."
+
+msgid "No installation is running."
+msgstr "No hay ninguna instalación en curso."
+
+msgid "No installation packages could be found online; your disk has not been changed."
+msgstr "No se encontraron paquetes de instalación en línea; no se hicieron cambios en tu disco."
+
+#, python-brace-format
+msgid "No installed Emaki was found on the unlocked disks. If Emaki is on the encrypted disk {device}, unlock it with: sudo cryptsetup open {device} emaki-root and run sudo emaki-boot-repair again."
+msgstr "No se encontró ninguna instalación de Emaki en los discos desbloqueados. Si Emaki está en el disco cifrado {device}, desbloquéalo con: sudo cryptsetup open {device} emaki-root y vuelve a ejecutar sudo emaki-boot-repair."
+
+msgid "No installed Emaki was found on this computer's disks. Nothing was changed."
+msgstr "No se encontró ninguna instalación de Emaki en los discos de esta computadora. No se hicieron cambios."
+
+msgid "No outstanding installation plan."
+msgstr "No hay ningún plan de instalación pendiente."
+
+msgid "No verified Microsoft EFI loader exists on this disk."
+msgstr "No existe ningún cargador EFI de Microsoft verificado en este disco."
+
+msgid "No verified Microsoft EFI loader exists on this disk; automatic Windows boot setup is unavailable."
+msgstr "No existe ningún cargador EFI de Microsoft verificado en este disco; la configuración automática del arranque de Windows no está disponible."
+
+msgid "No verified NTFS shrink bounds are available."
+msgstr "No hay límites de reducción NTFS verificados disponibles."
+
+msgid "Not enough free space for the RAM-sized swapfile."
+msgstr "No hay suficiente espacio libre para el archivo de intercambio del tamaño de la RAM."
+
+msgid "Not enough free space. Emaki needs about 35 GB that Windows does not use. Delete or move files in Windows, then shut it down and start from the USB stick again."
+msgstr "No hay suficiente espacio libre. Emaki necesita unos 35 GB que Windows no use. Elimina o mueve archivos en Windows; luego apágalo y vuelve a arrancar desde la memoria USB."
+
+#, python-brace-format
+msgid "Offline package or signature is missing: {value1}."
+msgstr "Falta un paquete sin conexión o su firma: {value1}."
+
+msgid "Offline package signatures must be required and trusted."
+msgstr "Las firmas de los paquetes sin conexión deben ser obligatorias y de confianza."
+
+msgid "Offline package transaction is empty."
+msgstr "La transacción de paquetes sin conexión está vacía."
+
+msgid "Offline pacman configuration is missing or unreadable."
+msgstr "La configuración de pacman sin conexión falta o es ilegible."
+
+msgid "Offline repository must be the live USB file:// repository."
+msgstr "El repositorio sin conexión debe ser el repositorio file:// de la memoria USB en vivo."
+
+msgid "Offline repository preflight failed"
+msgstr "Falló la comprobación previa del repositorio sin conexión"
+
+msgid "Offline repository preflight failed; disk untouched: "
+msgstr "Falló la comprobación previa del repositorio sin conexión; disco sin cambios: "
+
+#, python-brace-format
+msgid "Offline repository preflight failed; disk untouched: package signature verification failed: {value1}."
+msgstr "Falló la comprobación previa del repositorio sin conexión; disco sin cambios: falló la verificación de firmas de paquetes: {value1}."
+
+#, python-brace-format
+msgid "One password for everything is not available: the login screen starts in {value1}, but the disk is unlocked at startup in {value2}."
+msgstr "La opción «Una contraseña para todo» no está disponible: la pantalla de inicio de sesión usa la distribución {value1}, pero el disco se desbloquea con {value2}."
+
+msgid "Online repositories are forbidden during pacstrap."
+msgstr "Los repositorios en línea están prohibidos durante pacstrap."
+
+msgid "Only [emaki-offline] is permitted for pacstrap."
+msgstr "Solo se permite [emaki-offline] para pacstrap."
+
+msgid "Only a formatted partition other than root and /efi can be encrypted on its own, and only with an encrypted root, which keeps its key."
+msgstr "Solo una partición formateada distinta de la raíz y /efi se puede cifrar de forma independiente, y solo con una raíz cifrada que guarde su clave."
+
+msgid "Only a swap partition can be used as swap."
+msgstr "Solo una partición swap se puede usar como swap."
+
+msgid "Only an unambiguous largest Windows/NTFS partition can be offered."
+msgstr "Solo se puede ofrecer la partición de Windows/NTFS más grande si no hay ambigüedad."
+
+msgid "Only directly attached whole block devices are supported."
+msgstr "Solo se admiten dispositivos de bloques completos conectados directamente."
+
+msgid "Only protocol 1 is supported."
+msgstr "Solo se admite el protocolo 1."
+
+msgid "Only the largest Windows/NTFS partition is considered; this partition is not offered."
+msgstr "Solo se considera la partición de Windows/NTFS más grande; esta partición no se ofrece."
+
+msgid "Only verified single-device btrfs filesystems can be preserved."
+msgstr "Solo se pueden conservar sistemas de archivos btrfs verificados de un solo dispositivo."
+
+msgid "Opening package files (pacman)."
+msgstr "Abriendo archivos de paquetes (pacman)."
+
+msgid "Outgoing message exceeds 64 KiB."
+msgstr "El mensaje saliente supera los 64 KiB."
+
+msgid "Oversized subprocess log line suppressed."
+msgstr "Se omitió una línea demasiado larga del registro de un subproceso."
+
+msgid "Package cache cleanup failed: "
+msgstr "Falló la limpieza de la caché de paquetes: "
+
+msgid "Package setup did not finish [pacman]."
+msgstr "La configuración de paquetes no terminó [pacman]."
+
+msgid "Packages are downloaded and verified before disk changes."
+msgstr "Los paquetes se descargan y verifican antes de hacer cambios en el disco."
+
+msgid "Packages are installed from the signed offline USB repository."
+msgstr "Los paquetes se instalan desde el repositorio sin conexión firmado de la memoria USB."
+
+msgid "Partition changes belong to a manual installation."
+msgstr "Los cambios de particiones corresponden a una instalación manual."
+
+msgid "Partition editor"
+msgstr "Editor de particiones"
+
+msgid "Partition editor: applying the reviewed changes."
+msgstr "Editor de particiones: aplicando los cambios revisados."
+
+#, python-brace-format
+msgid "Partition editor: create partition {value1}."
+msgstr "Editor de particiones: crear la partición {value1}."
+
+#, python-brace-format
+msgid "Partition editor: delete partition {value1} ({value2})."
+msgstr "Editor de particiones: eliminar la partición {value1} ({value2})."
+
+msgid "Partition editor: the disk was read again; its kernel view matches the written table."
+msgstr "Editor de particiones: se volvió a leer el disco; su vista en el kernel coincide con la tabla escrita."
+
+msgid "Partition editor: whole-disk reread is busy; updating only changed kernel entries."
+msgstr "Editor de particiones: la relectura del disco completo está ocupada; actualizando solo las entradas modificadas del kernel."
+
+msgid "Partition geometry differs from the approved plan."
+msgstr "La geometría de las particiones difiere del plan aprobado."
+
+msgid "Partition geometry is unknown or the partition is read-only."
+msgstr "La geometría de la partición es desconocida o la partición es de solo lectura."
+
+msgid "Partition identity differs from the written table. Nothing was formatted."
+msgstr "La identidad de la partición difiere de la tabla escrita. No se formateó nada."
+
+msgid "Partition is not on the selected disk."
+msgstr "La partición no está en el disco seleccionado."
+
+#, python-brace-format
+msgid "Partition recovery for {value1}: {value2}; {value3}; "
+msgstr "Recuperación de partición para {value1}: {value2}; {value3}; "
+
+#, python-brace-format
+msgid "Partition {value1} cannot be deleted: its place on the disk is unknown or it is read-only."
+msgstr "La partición {value1} no se puede eliminar: su ubicación en el disco es desconocida o es de solo lectura."
+
+#, python-brace-format
+msgid "Partition {value1} holds {value2}. Confirm deleting it by typing %1."
+msgstr "La partición {value1} contiene {value2}. Confirma su eliminación escribiendo %1."
+
+#, python-brace-format
+msgid "Partition {value1} holds {value2}. Emaki does not change it; delete the partition to use its space."
+msgstr "La partición {value1} contiene {value2}. Emaki no la modifica; elimina la partición para usar su espacio."
+
+#, python-brace-format
+msgid "Partition {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
+msgstr "Partición {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
+
+msgid "Partitions not listed here are not changed."
+msgstr "Las particiones que no aparecen aquí no cambian."
+
+msgid "Password must be nonempty and contain no control characters (line breaks, tabs)."
+msgstr "La contraseña no debe estar vacía ni contener caracteres de control (saltos de línea, tabulaciones)."
+
+msgid "Plan token expired; review a new plan."
+msgstr "El token del plan caducó; revisa un plan nuevo."
+
+msgid "Preparing language support (locale-gen)."
+msgstr "Preparando la compatibilidad de idiomas (locale-gen)."
+
+msgid "Preparing packages (pacman)."
+msgstr "Preparando paquetes (pacman)."
+
+msgid "Preserve all other partitions; add Windows Boot Manager to GRUB; Emaki stays the default."
+msgstr "Conservar todas las demás particiones; agregar Windows Boot Manager a GRUB; Emaki sigue siendo el predeterminado."
+
+msgid "Processes rooted inside target: "
+msgstr "Procesos con raíz dentro del destino: "
+
+msgid "RAM size changed after the review; prepare a new installation plan."
+msgstr "El tamaño de la RAM cambió después de la revisión; prepara un plan de instalación nuevo."
+
+msgid "Reading package lists (pacman)."
+msgstr "Leyendo listas de paquetes (pacman)."
+
+msgid "Reading packages from the installation media (pacman)."
+msgstr "Leyendo paquetes del medio de instalación (pacman)."
+
+msgid "Reboot is only available after a completed installation."
+msgstr "El reinicio solo está disponible después de completar la instalación."
+
+msgid "Reboot is unavailable."
+msgstr "El reinicio no está disponible."
+
+msgid "Refusing process cleanup of the live root."
+msgstr "Se rechaza la limpieza de procesos de la raíz de la sesión en vivo."
+
+msgid "Removed the stale pacman lock; no pacman runs in the target."
+msgstr "Se eliminó el bloqueo obsoleto de pacman; no hay ningún pacman en ejecución en el destino."
+
+#, python-brace-format
+msgid "Repairing the installed Emaki on {root} with the startup partition {esp}."
+msgstr "Reparando la instalación de Emaki en {root} con la partición de arranque {esp}."
+
+msgid "Repeated partition rows need distinct subvolumes and identical format flags."
+msgstr "Las filas de partición repetidas necesitan subvolúmenes distintos e indicadores de formato idénticos."
+
+msgid "Repository URL must be HTTPS, without credentials or fragments."
+msgstr "La URL del repositorio debe usar HTTPS, sin credenciales ni fragmentos."
+
+msgid "Request failed: "
+msgstr "Falló la solicitud: "
+
+msgid "Requests need a string type and a nonempty ID (at most 128 characters)."
+msgstr "Las solicitudes necesitan un tipo de cadena y un ID no vacío (como máximo 128 caracteres)."
+
+#, python-brace-format
+msgid "Required target file missing: {value1}."
+msgstr "Falta un archivo de destino necesario: {value1}."
+
+#, python-brace-format
+msgid "Restart scope adoption failed: {value1}. Continuing without verified isolation; the guardian may remain in the installer service cgroup."
+msgstr "Falló la adopción del ámbito de reinicio: {value1}. Continuando sin aislamiento verificado; el supervisor puede permanecer en el cgroup del servicio del instalador."
+
+msgid "Resume a known job, including a completed job."
+msgstr "Reanudar una tarea conocida, incluida una tarea completada."
+
+msgid "Rich — desktop apps, office, email, media and utilities."
+msgstr "Completa: aplicaciones de escritorio, oficina, correo electrónico, multimedia y utilidades."
+
+msgid "Root encryption is chosen on the Encryption step (the plan encryption)."
+msgstr "El cifrado de la raíz se elige en el paso Cifrado (el cifrado del plan)."
+
+msgid "Root must be btrfs or ext4."
+msgstr "La raíz debe ser btrfs o ext4."
+
+msgid "Root needs 20 GiB plus the RAM-sized hibernation file and encryption header."
+msgstr "La raíz necesita 20 GiB más el archivo de hibernación del tamaño de la RAM y la cabecera de cifrado."
+
+msgid "Root partition must be at least 20 GiB."
+msgstr "La partición raíz debe tener al menos 20 GiB."
+
+msgid "Run the repair as root: sudo emaki-boot-repair"
+msgstr "Ejecuta la reparación como root: sudo emaki-boot-repair"
+
+#, python-brace-format
+msgid "Running package setup step {value1} of {value2} (pacman: {value3})."
+msgstr "Ejecutando el paso de configuración de paquetes {value1} de {value2} (pacman: {value3})."
+
+msgid "STOP: NTFS resize did not confirm success. Partition table untouched; inspect Windows before retrying."
+msgstr "ALTO: el cambio de tamaño NTFS no confirmó el éxito. Tabla de particiones sin cambios; inspecciona Windows antes de reintentar."
+
+msgid "STOP: Windows GPT metadata differs after shrink. No Emaki root was created."
+msgstr "ALTO: los metadatos GPT de Windows difieren después de la reducción. No se creó ninguna raíz de Emaki."
+
+msgid "STOP: Windows was resized but the post-shrink NTFS check failed. No Emaki root was created or formatted. Do not retry the installer; boot Windows for a consistency check and inspect the installation log."
+msgstr "ALTO: se cambió el tamaño de Windows, pero falló la comprobación NTFS posterior a la reducción. No se creó ni formateó ninguna raíz de Emaki. No vuelvas a ejecutar el instalador; arranca Windows para una comprobación de coherencia y revisa el registro de instalación."
+
+msgid "STOP: an existing partition changed unexpectedly; formatting refused."
+msgstr "ALTO: una partición existente cambió inesperadamente; se rechaza el formateo."
+
+msgid "STOP: changing the partition table failed after it had begun, so the disk may have been changed. Nothing was formatted; inspect the disk and the installation log before trying again."
+msgstr "ALTO: el cambio de la tabla de particiones falló después de comenzar, por lo que el disco puede haber cambiado. No se formateó nada; inspecciona el disco y el registro de instalación antes de volver a intentarlo."
+
+msgid "STOP: preserved GPT metadata changed. No Emaki root was created."
+msgstr "ALTO: los metadatos GPT conservados cambiaron. No se creó ninguna raíz de Emaki."
+
+msgid "STOP: the partition table differs from the reviewed changes after writing. Nothing was formatted; inspect the disk and the installation log."
+msgstr "ALTO: la tabla de particiones difiere de los cambios revisados después de escribirla. No se formateó nada; inspecciona el disco y el registro de instalación."
+
+msgid "STOP: unexpected partition table after shrinking Windows."
+msgstr "ALTO: tabla de particiones inesperada después de reducir Windows."
+
+#, python-brace-format
+msgid "STOP: {value1} differs from the approved freed extent; formatting refused."
+msgstr "ALTO: {value1} difiere del espacio liberado aprobado; se rechaza el formateo."
+
+msgid "Scale must be null or a number from 0.5 to 4."
+msgstr "La escala debe ser null o un número entre 0.5 y 4."
+
+msgid "Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often \"Allow Microsoft 3rd Party UEFI CA\") or turn Secure Boot off, then start the USB again. No disk has been changed."
+msgstr "Secure Boot está activado, pero esta computadora no confía en el certificado de Microsoft con el que arranca Emaki. En la configuración del firmware, activa la opción de certificados de terceros (a menudo «Allow Microsoft 3rd Party UEFI CA») o desactiva Secure Boot y vuelve a arrancar desde la memoria USB. No se hicieron cambios en ningún disco."
+
+#, python-brace-format
+msgid "Secure Boot on a kept startup partition: it has {value1} bytes free, this installation and later boot updates need {value2}."
+msgstr "Secure Boot en una partición de arranque conservada: tiene {value1} bytes libres; esta instalación y las actualizaciones de arranque posteriores necesitan {value2}."
+
+msgid "Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 and 2023."
+msgstr "Secure Boot: activado; el firmware confía en Microsoft UEFI CA 2011 y 2023."
+
+msgid "Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 only."
+msgstr "Secure Boot: activado; el firmware solo confía en Microsoft UEFI CA 2011."
+
+msgid "Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2023 only."
+msgstr "Secure Boot: activado; el firmware solo confía en Microsoft UEFI CA 2023."
+
+msgid "Secure Boot: removing the firmware entries of an earlier Emaki boot slot on this disk: "
+msgstr "Secure Boot: quitando las entradas del firmware de una ranura de arranque anterior de Emaki en este disco: "
+
+msgid "Secure Boot: the machine key waits for confirmation in MokManager at the next start."
+msgstr "Secure Boot: la clave de la máquina espera confirmación en MokManager en el próximo arranque."
+
+msgid "Selected Windows NTFS partition is not on this disk."
+msgstr "La partición NTFS de Windows seleccionada no está en este disco."
+
+msgid "Selected disk no longer exists."
+msgstr "El disco seleccionado ya no existe."
+
+msgid "Shrink the Windows filesystem and its partition end only; preserve its start, GUID, type, name and files."
+msgstr "Reducir solo el sistema de archivos de Windows y el final de su partición; conservar su inicio, GUID, tipo, nombre y archivos."
+
+#, python-brace-format
+msgid "Shutdown ramfs preparation failed or was skipped: {value1}"
+msgstr "La preparación del ramfs de apagado falló o se omitió: {value1}"
+
+msgid "Socket path is not a socket."
+msgstr "La ruta del socket no es un socket."
+
+msgid "Software: "
+msgstr "Software: "
+
+msgid "Some packages need different versions of each other. Wait for matching packages, then try the full update again."
+msgstr "Algunos paquetes necesitan versiones diferentes entre sí. Espera a que haya paquetes compatibles y vuelve a intentar la actualización completa."
+
+msgid "Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there."
+msgstr "Arranca la computadora desde la memoria USB de instalación de Emaki y ejecuta sudo emaki-boot-repair allí."
+
+msgid "Stop it [mdadm --stop]"
+msgstr "Detenlo [mdadm --stop]"
+
+#, python-brace-format
+msgid "Stopping target process {value1}: {value2}"
+msgstr "Deteniendo el proceso de destino {value1}: {value2}"
+
+msgid "Subvolume name is a symlink."
+msgstr "El nombre del subvolumen es un enlace simbólico."
+
+msgid "Supply one to four distinct XKB layouts."
+msgstr "Proporciona entre una y cuatro distribuciones XKB distintas."
+
+msgid "Swapfile size or resume offset is invalid."
+msgstr "El tamaño del archivo de intercambio o el desplazamiento de reanudación no es válido."
+
+msgid "Target pacman.conf is missing standard Arch repositories."
+msgstr "Faltan los repositorios estándar de Arch en el pacman.conf de destino."
+
+msgid "Target root is a symlink."
+msgstr "La raíz de destino es un enlace simbólico."
+
+#, python-brace-format
+msgid "Target symlink refused: {value1}."
+msgstr "Se rechazó el enlace simbólico de destino: {value1}."
+
+#, python-brace-format
+msgid "Target {value1} has unsafe directory permissions."
+msgstr "El destino {value1} tiene permisos de directorio inseguros."
+
+msgid "Test mode requires /etc/emaki-test/authorized_keys."
+msgstr "El modo de prueba requiere /etc/emaki-test/authorized_keys."
+
+msgid "The GRUB early config must be printable ASCII."
+msgstr "La configuración inicial de GRUB debe ser ASCII imprimible."
+
+msgid "The GRUB image command names no single output."
+msgstr "El comando de imagen de GRUB no indica una única salida."
+
+msgid "The GRUB unlock-screen assets are invalid: "
+msgstr "Los recursos de la pantalla de desbloqueo de GRUB no son válidos: "
+
+msgid "The GRUB unlock-screen font is missing from this ISO."
+msgstr "Falta la fuente de la pantalla de desbloqueo de GRUB en esta ISO."
+
+msgid "The GRUB unlock-screen font is not a PFF2 font."
+msgstr "La fuente de la pantalla de desbloqueo de GRUB no es una fuente PFF2."
+
+msgid "The GRUB version for SBAT is invalid."
+msgstr "La versión de GRUB para SBAT no es válida."
+
+msgid "The ISO XKB layout inventory is unavailable."
+msgstr "El inventario de distribuciones XKB de la ISO no está disponible."
+
+msgid "The Secure Boot key could not be mounted read-only, so nothing was changed."
+msgstr "No se pudo montar la clave de Secure Boot en modo de solo lectura, por lo que no se hicieron cambios."
+
+msgid "The Secure Boot setting changed after the review; prepare a new installation plan."
+msgstr "La configuración de Secure Boot cambió después de la revisión; prepara un plan de instalación nuevo."
+
+msgid "The Windows part of this disk is set up in a way Emaki cannot safely shrink."
+msgstr "La parte de Windows de este disco tiene una configuración que Emaki no puede reducir de forma segura."
+
+msgid "The Windows partition does not start on a 1 MiB boundary; this layout is unsupported."
+msgstr "La partición de Windows no comienza en un límite de 1 MiB; esta distribución no es compatible."
+
+msgid "The Windows partition is mounted, held, or in use. Unmount it before trying again."
+msgstr "La partición de Windows está montada, retenida o en uso. Desmóntala antes de volver a intentarlo."
+
+msgid "The Windows partition or its disk is mounted, held, or in use."
+msgstr "La partición de Windows o su disco está montado, retenido o en uso."
+
+msgid "The automatic clock setting could not be restored (network time). Check the date and time in the live session, then try again. Your disk has not been changed."
+msgstr "No se pudo restaurar el ajuste automático del reloj (hora de la red). Revisa la fecha y la hora en la sesión en vivo e inténtalo de nuevo. No se hicieron cambios en tu disco."
+
+msgid "The available packages do not yet match this Emaki release. Wait for matching packages, then try the full update again. Do not force this update."
+msgstr "Los paquetes disponibles todavía no corresponden a esta versión de Emaki. Espera a que haya paquetes compatibles y vuelve a intentar la actualización completa. No fuerces esta actualización."
+
+#, python-brace-format
+msgid "The boot slot a could not be written: {value1}"
+msgstr "No se pudo escribir la ranura de arranque «a»: {value1}"
+
+msgid "The computer clock could not be corrected. Set the date and time in the live session, then try again. Your disk has not been changed."
+msgstr "No se pudo corregir el reloj de la computadora. Ajusta la fecha y la hora en la sesión en vivo e inténtalo de nuevo. No se hicieron cambios en tu disco."
+
+msgid "The computer clock is still incorrect. Set the date and time in the live session, then try again. Your disk has not been changed."
+msgstr "El reloj de la computadora sigue siendo incorrecto. Ajusta la fecha y la hora en la sesión en vivo e inténtalo de nuevo. No se hicieron cambios en tu disco."
+
+msgid "The computer clock was corrected for this live session so package signatures can be checked."
+msgstr "Se corrigió el reloj de la computadora para esta sesión en vivo a fin de comprobar las firmas de los paquetes."
+
+msgid "The current time could not be checked online. If package signatures fail, check the date and time in the live session."
+msgstr "No se pudo comprobar la hora actual en línea. Si fallan las firmas de los paquetes, revisa la fecha y la hora en la sesión en vivo."
+
+msgid "The default (first) layout must type Latin letters; a non-Latin layout can be second."
+msgstr "La distribución predeterminada (la primera) debe permitir escribir letras latinas; una distribución no latina puede ser la segunda."
+
+msgid "The disk could not be read. Installation stopped."
+msgstr "No se pudo leer el disco. Se detuvo la instalación."
+
+msgid "The disk does not hold a GPT partition table."
+msgstr "El disco no contiene una tabla de particiones GPT."
+
+#, python-brace-format
+msgid "The disk inspection stopped because {target} could not be unmounted: {error}. No more disks were inspected."
+msgstr "La inspección del disco se detuvo porque no se pudo desmontar {target}: {error}. No se inspeccionaron más discos."
+
+msgid "The disk is busy. Close its files and unmount its volumes [umount], then try again."
+msgstr "El disco está ocupado. Cierra sus archivos y desmonta sus volúmenes [umount]; luego inténtalo de nuevo."
+
+msgid "The disk is no longer empty. The disk was not changed; start a new review."
+msgstr "El disco ya no está vacío. No se hicieron cambios en el disco; inicia una nueva revisión."
+
+msgid "The disk is read-only or is the live boot medium."
+msgstr "El disco es de solo lectura o es el medio de arranque en vivo."
+
+msgid "The disk is still being read. Try again in a moment."
+msgstr "Todavía se está leyendo el disco. Inténtalo de nuevo en un momento."
+
+msgid "The disk must be at least 24 GiB."
+msgstr "El disco debe tener al menos 24 GiB."
+
+msgid "The disk sector size changed. Installation stopped."
+msgstr "El tamaño de sector del disco cambió. Se detuvo la instalación."
+
+msgid "The disk sector size changed. The disk was not changed; start a new review."
+msgstr "El tamaño de sector del disco cambió. No se hicieron cambios en el disco; inicia una nueva revisión."
+
+msgid "The disk sector size could not be read. The disk was not changed."
+msgstr "No se pudo leer el tamaño de sector del disco. No se hicieron cambios en el disco."
+
+msgid "The disk sequence number could not be read. Installation stopped."
+msgstr "No se pudo leer el número de secuencia del disco. Se detuvo la instalación."
+
+msgid "The disk sequence number is unknown. Installation stopped."
+msgstr "El número de secuencia del disco es desconocido. Se detuvo la instalación."
+
+msgid "The disk was read again and its partition table changed after installation stopped. Close the installer and inspect the disk before starting a new review."
+msgstr "Se volvió a leer el disco y su tabla de particiones cambió después de detenerse la instalación. Cierra el instalador e inspecciona el disco antes de iniciar una nueva revisión."
+
+msgid "The disk was replaced after the review. Installation stopped."
+msgstr "El disco se reemplazó después de la revisión. Se detuvo la instalación."
+
+msgid "The disk's startup files could not be checked safely, so Emaki stopped."
+msgstr "No se pudieron comprobar de forma segura los archivos de arranque del disco, por lo que Emaki se detuvo."
+
+#, python-brace-format
+msgid "The disk's startup partition is too full for Secure Boot updates: Emaki needs about {need} MB free there (it has {free} MB). Making it bigger needs a backup and a disk tool. Do not delete Windows startup files."
+msgstr "La partición de arranque del disco está demasiado llena para las actualizaciones de Secure Boot: Emaki necesita unos {need} MB libres allí (tiene {free} MB). Para ampliarla se necesita una copia de seguridad y una herramienta de discos. No elimines los archivos de arranque de Windows."
+
+msgid "The disk's startup partitions could not be identified safely, so Emaki stopped."
+msgstr "No se pudieron identificar de forma segura las particiones de arranque del disco, por lo que Emaki se detuvo."
+
+msgid "The downloaded package repository could not be prepared; your disk has not been changed."
+msgstr "No se pudo preparar el repositorio de paquetes descargados; no se hicieron cambios en tu disco."
+
+#, python-brace-format
+msgid "The encrypted partition {value1} could not be identified."
+msgstr "No se pudo identificar la partición cifrada {value1}."
+
+msgid "The encrypted system partition could not be identified."
+msgstr "No se pudo identificar la partición cifrada del sistema."
+
+msgid "The firmware could not save a startup entry (NVRAM/efibootmgr). Emaki installed the standard fallback loader (EFI/BOOT/BOOTX64.EFI). If needed, choose this disk in your firmware boot menu."
+msgstr "El firmware no pudo guardar una entrada de arranque (NVRAM/efibootmgr). Emaki instaló el cargador de respaldo estándar (EFI/BOOT/BOOTX64.EFI). Si es necesario, elige este disco en el menú de arranque del firmware."
+
+msgid "The firmware entry for Emaki could not be activated."
+msgstr "No se pudo activar la entrada del firmware para Emaki."
+
+msgid "The firmware entry for Emaki is not first after removing the unsigned one."
+msgstr "La entrada del firmware para Emaki no está en primer lugar después de quitar la que no estaba firmada."
+
+msgid "The firmware signature database is malformed."
+msgstr "La base de datos de firmas del firmware tiene un formato incorrecto."
+
+msgid "The firmware signature database is truncated."
+msgstr "La base de datos de firmas del firmware está truncada."
+
+msgid "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again. No disk has been changed."
+msgstr "No se pudo leer la configuración de firmas del firmware (Secure Boot). Reinicia para entrar en la configuración del firmware, desactiva Secure Boot y vuelve a arrancar desde la memoria USB. No se hicieron cambios en ningún disco."
+
+msgid "The firmware startup entries could not be read, so the startup copies were not replaced."
+msgstr "No se pudieron leer las entradas de arranque del firmware, por lo que no se reemplazaron las copias de arranque."
+
+msgid "The firmware still starts an earlier Emaki startup copy on this disk, so the startup copies were not replaced."
+msgstr "El firmware todavía arranca una copia de arranque anterior de Emaki en este disco, por lo que no se reemplazaron las copias de arranque."
+
+#, python-brace-format
+msgid "The firmware variable {value1} is unreadable."
+msgstr "La variable del firmware {value1} es ilegible."
+
+msgid "The formatted partition could not be identified."
+msgstr "No se pudo identificar la partición formateada."
+
+msgid "The free space Secure Boot updates need on the disk's startup partition could not be checked."
+msgstr "No se pudo comprobar el espacio libre que necesitan las actualizaciones de Secure Boot en la partición de arranque del disco."
+
+msgid "The grub package has no kernel.img or moddep.lst for x86_64-efi."
+msgstr "El paquete grub no tiene kernel.img ni moddep.lst para x86_64-efi."
+
+msgid "The grub package lacks the modules "
+msgstr "Al paquete grub le faltan los módulos "
+
+msgid "The installation files are missing. Connect to the internet and try again (Ventoy or copytoram). Your disk has not been changed."
+msgstr "Faltan los archivos de instalación. Conéctate a internet e inténtalo de nuevo (Ventoy o copytoram). No se hicieron cambios en tu disco."
+
+msgid "The installation files are missing. Connect to the internet before installing (Ventoy or copytoram)."
+msgstr "Faltan los archivos de instalación. Conéctate a internet antes de instalar (Ventoy o copytoram)."
+
+msgid "The installation files could not be downloaded and checked. Check the internet connection and free space in the live session, then try again; your disk has not been changed. "
+msgstr "No se pudieron descargar y comprobar los archivos de instalación. Revisa la conexión a internet y el espacio libre en la sesión en vivo e inténtalo de nuevo; no se hicieron cambios en tu disco. "
+
+msgid "The installation files were not found on the live medium. Packages will be downloaded and checked before your disk is changed. Keep the internet connection active (Ventoy or copytoram)."
+msgstr "No se encontraron los archivos de instalación en el medio en vivo. Los paquetes se descargarán y comprobarán antes de hacer cambios en tu disco. Mantén la conexión a internet activa (Ventoy o copytoram)."
+
+msgid "The installation log cannot be saved while the installer is stopping."
+msgstr "El registro de instalación no se puede guardar mientras el instalador se está deteniendo."
+
+msgid "The installed Emaki is too old for this repair. Nothing was changed."
+msgstr "La instalación de Emaki es demasiado antigua para esta reparación. No se hicieron cambios."
+
+#, python-brace-format
+msgid "The installed directory {path} is not a safe directory. The repair stopped."
+msgstr "El directorio instalado {path} no es un directorio seguro. Se detuvo la reparación."
+
+msgid "The installed system will include the Intel storage driver (vmd) so this disk can start."
+msgstr "El sistema instalado incluirá el controlador de almacenamiento Intel (vmd) para que este disco pueda arrancar."
+
+msgid "The installer is busy or stopping. Wait before trying again."
+msgstr "El instalador está ocupado o se está deteniendo. Espera antes de volver a intentarlo."
+
+#, python-brace-format
+msgid "The installer mapping {value1} is already in use."
+msgstr "El mapeo del instalador {value1} ya está en uso."
+
+msgid "The installer needs a user runtime directory"
+msgstr "El instalador necesita un directorio de ejecución del usuario"
+
+msgid "The installer root mapping is already in use."
+msgstr "El mapeo raíz del instalador ya está en uso."
+
+msgid "The live Arch mirrorlist is missing."
+msgstr "Falta la lista de servidores espejo de Arch de la sesión en vivo."
+
+msgid "The live ISO boot mount is missing."
+msgstr "Falta el montaje de arranque de la ISO en vivo."
+
+msgid "The live boot medium cannot be a target."
+msgstr "El medio de arranque en vivo no puede ser un destino."
+
+#, python-brace-format
+msgid "The login name check could not read a package ({value1}; bsdtar). The disk has not been changed."
+msgstr "La comprobación del nombre de usuario no pudo leer un paquete ({value1}; bsdtar). No se hicieron cambios en el disco."
+
+msgid "The machine certificate has no single subject name."
+msgstr "El certificado de la máquina no tiene un único nombre de sujeto."
+
+msgid "The machine key label is invalid."
+msgstr "La etiqueta de la clave de la máquina no es válida."
+
+#, python-brace-format
+msgid "The menu face {value1} is not a regular file."
+msgstr "La fuente del menú {value1} no es un archivo regular."
+
+msgid "The new firmware entry for Emaki is not listed."
+msgstr "La entrada nueva del firmware para Emaki no aparece en la lista."
+
+msgid "The new startup copy could not be written. Check the installation log for details."
+msgstr "No se pudo escribir la copia de arranque nueva. Consulta el registro de instalación para obtener más detalles."
+
+msgid "The new startup partition did not get a valid FAT32 file system, so Emaki stopped before writing its boot files."
+msgstr "La partición de arranque nueva no obtuvo un sistema de archivos FAT32 válido, por lo que Emaki se detuvo antes de escribir sus archivos de arranque."
+
+msgid "The one-time password is invalid."
+msgstr "La contraseña de un solo uso no es válida."
+
+msgid "The online update did not finish; use the terminal to update the whole system before installing apps [pacman]."
+msgstr "La actualización en línea no terminó; usa la terminal para actualizar todo el sistema antes de instalar aplicaciones [pacman]."
+
+msgid "The package download address is unsafe; your disk has not been changed."
+msgstr "La dirección de descarga de paquetes no es segura; no se hicieron cambios en tu disco."
+
+msgid "The package emaki-shim-signed is not in this installation."
+msgstr "El paquete emaki-shim-signed no está en esta instalación."
+
+msgid "The package hook directory is not empty or is unavailable [pacman]."
+msgstr "El directorio de hooks de paquetes no está vacío o no está disponible [pacman]."
+
+#, python-brace-format
+msgid "The package repository could not be read: {value1}"
+msgstr "No se pudo leer el repositorio de paquetes: {value1}"
+
+#, python-brace-format
+msgid "The package repository holds {value1} archives of {value2}."
+msgstr "El repositorio de paquetes contiene {value1} archivos de {value2}."
+
+#, python-brace-format
+msgid "The packages {value1} are not in this installation."
+msgstr "Los paquetes {value1} no están en esta instalación."
+
+msgid "The partition table changed after the review. The disk was not changed; start a new review."
+msgstr "La tabla de particiones cambió después de la revisión. No se hicieron cambios en el disco; inicia una nueva revisión."
+
+msgid "The partition table could not be read. Installation stopped."
+msgstr "No se pudo leer la tabla de particiones. Se detuvo la instalación."
+
+msgid "The partition table differs from the reviewed change. Installation stopped."
+msgstr "La tabla de particiones difiere del cambio revisado. Se detuvo la instalación."
+
+msgid "The partition table was written, but a changed partition is still busy. Nothing was formatted; read the disk again."
+msgstr "Se escribió la tabla de particiones, pero una partición modificada sigue ocupada. No se formateó nada; vuelve a leer el disco."
+
+msgid "The partition table was written, but the disk is still busy. Nothing was formatted; read the disk again."
+msgstr "Se escribió la tabla de particiones, pero el disco sigue ocupado. No se formateó nada; vuelve a leer el disco."
+
+msgid "The partition table was written, but the kernel could not read a new partition. Nothing was formatted; read the disk again."
+msgstr "Se escribió la tabla de particiones, pero el kernel no pudo leer una partición nueva. No se formateó nada; vuelve a leer el disco."
+
+msgid "The partition table was written, but the kernel could not read it. Nothing was formatted; read the disk again."
+msgstr "Se escribió la tabla de particiones, pero el kernel no pudo leerla. No se formateó nada; vuelve a leer el disco."
+
+msgid "The partitions on the disk could not be read. Installation stopped."
+msgstr "No se pudieron leer las particiones del disco. Se detuvo la instalación."
+
+#, python-brace-format
+msgid "The place of partition {value1} on the disk is unknown, so the partition editor cannot change this disk."
+msgstr "La ubicación de la partición {value1} en el disco es desconocida, por lo que el editor de particiones no puede modificar este disco."
+
+msgid "The repair did not finish; the messages above say why."
+msgstr "La reparación no terminó; los mensajes anteriores explican el motivo."
+
+msgid "The repair finished. Remove the installation USB and restart the computer."
+msgstr "La reparación terminó. Retira la memoria USB de instalación y reinicia la computadora."
+
+msgid "The request could not be completed. Check the installation log for details."
+msgstr "No se pudo completar la solicitud. Consulta el registro de instalación para obtener más detalles."
+
+msgid "The restart service could not start."
+msgstr "No se pudo iniciar el servicio de reinicio."
+
+msgid "The root partition and the partitions marked encrypted are encrypted. The startup partition and the other partitions stay unencrypted."
+msgstr "La partición raíz y las particiones marcadas como cifradas se cifran. La partición de arranque y las demás particiones quedan sin cifrar."
+
+msgid "The root partition is encrypted. The startup partition and any separate data partitions stay unencrypted."
+msgstr "La partición raíz se cifra. La partición de arranque y las particiones de datos independientes quedan sin cifrar."
+
+msgid "The shutdown ramfs is unavailable."
+msgstr "El ramfs de apagado no está disponible."
+
+msgid "The signed GRUB image does not carry its early config and memdisk."
+msgstr "La imagen de GRUB firmada no contiene su configuración inicial ni su memdisk."
+
+#, python-brace-format
+msgid "The startup copy {value1} could not be read back after it was written."
+msgstr "No se pudo volver a leer la copia de arranque {value1} después de escribirla."
+
+msgid "The startup partition could not be identified, so the startup copies were not replaced."
+msgstr "No se pudo identificar la partición de arranque, por lo que no se reemplazaron las copias de arranque."
+
+msgid "The startup partition needs at least 32 MiB of verified free space."
+msgstr "La partición de arranque necesita al menos 32 MiB de espacio libre verificado."
+
+#, python-brace-format
+msgid "The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)"
+msgstr "No se encontró la partición de arranque de la instalación de Emaki ({source}). Indícala, por ejemplo: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (junto a Windows, la partición con etiqueta EMAKI)"
+
+msgid "The startup password must use characters available on an English (US) keyboard."
+msgstr "La contraseña de arranque debe usar caracteres disponibles en un teclado en inglés (EE. UU.)."
+
+msgid "The swap partition could not be identified."
+msgstr "No se pudo identificar la partición swap."
+
+msgid "The system partition could not be identified."
+msgstr "No se pudo identificar la partición del sistema."
+
+msgid "The target is read-only."
+msgstr "El destino es de solo lectura."
+
+msgid "The update could not check packages held after a rollback. Resolve the reported problem before trying again."
+msgstr "La actualización no pudo comprobar los paquetes retenidos después de una reversión. Resuelve el problema indicado antes de volver a intentarlo."
+
+msgid "The update could not finish. Resolve the reported problem before trying again."
+msgstr "La actualización no pudo terminar. Resuelve el problema indicado antes de volver a intentarlo."
+
+msgid "The update could not reach a package source. Check your connection, then try again."
+msgstr "La actualización no pudo acceder a una fuente de paquetes. Revisa tu conexión e inténtalo de nuevo."
+
+msgid "The update could not verify a download. Check the date and connection, then try again. Do not turn off signature checks."
+msgstr "La actualización no pudo verificar una descarga. Revisa la fecha y la conexión e inténtalo de nuevo. No desactives las comprobaciones de firmas."
+
+msgid "The update includes a package held after a rollback. Review the held packages before trying again."
+msgstr "La actualización incluye un paquete retenido después de una reversión. Revisa los paquetes retenidos antes de volver a intentarlo."
+
+msgid "There is not enough free space for the update. Free some space, then try again."
+msgstr "No hay suficiente espacio libre para la actualización. Libera espacio e inténtalo de nuevo."
+
+msgid "This ISO lacks GRUB modules for the encrypted unlock screen: "
+msgstr "A esta ISO le faltan módulos de GRUB para la pantalla de desbloqueo del cifrado: "
+
+msgid "This ISO lacks the GRUB unlock-screen font."
+msgstr "A esta ISO le falta la fuente de la pantalla de desbloqueo de GRUB."
+
+msgid "This NTFS partition is not a verified Windows system volume."
+msgstr "Esta partición NTFS no es un volumen del sistema Windows verificado."
+
+msgid "This disk has no free GPT partition entry left."
+msgstr "Este disco ya no tiene entradas de particiones GPT libres."
+
+msgid "This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again."
+msgstr "Este disco está ocupado [LVM, RAID o un volumen cifrado abierto]. Cierra sus volúmenes e inténtalo de nuevo."
+
+msgid "This login name belongs to the system. Choose another name; the disk has not been changed."
+msgstr "Este nombre de usuario pertenece al sistema. Elige otro nombre; no se hicieron cambios en el disco."
+
+msgid "This operation is unavailable. Please try again."
+msgstr "Esta operación no está disponible. Inténtalo de nuevo."
+
+msgid "This session does not read the keyboard trial."
+msgstr "Esta sesión no lee la prueba del teclado."
+
+msgid "Time source did not use HTTPS."
+msgstr "La fuente de hora no usó HTTPS."
+
+msgid "Time source omitted the time zone."
+msgstr "La fuente de hora omitió la zona horaria."
+
+msgid "Time zone data is unavailable."
+msgstr "Los datos de zonas horarias no están disponibles."
+
+msgid "UEFI boot is required."
+msgstr "Se requiere arranque UEFI."
+
+msgid "Unaligned Windows end."
+msgstr "Final de Windows sin alinear."
+
+msgid "Unexpected device."
+msgstr "Dispositivo inesperado."
+
+msgid "Unexpected partition count after write."
+msgstr "Cantidad de particiones inesperada después de escribir."
+
+msgid "Unexpected partition count or table type after write. Nothing was formatted."
+msgstr "Cantidad de particiones o tipo de tabla inesperados después de escribir. No se formateó nada."
+
+msgid "Unexpected partition name from sfdisk."
+msgstr "Nombre de partición inesperado de sfdisk."
+
+msgid "Unformatted filesystems keep data; installation still writes system and account files."
+msgstr "Los sistemas de archivos sin formatear conservan los datos; aun así, la instalación escribe archivos del sistema y de la cuenta."
+
+msgid "Unknown CPU"
+msgstr "CPU desconocida"
+
+msgid "Unknown GPU"
+msgstr "GPU desconocida"
+
+msgid "Unknown config fields."
+msgstr "Campos de configuración desconocidos."
+
+msgid "Unknown request type."
+msgstr "Tipo de solicitud desconocido."
+
+#, python-brace-format
+msgid "Unknown startup copy {value1!r}."
+msgstr "Copia de arranque desconocida: {value1!r}."
+
+msgid "Unknown timezone."
+msgstr "Zona horaria desconocida."
+
+#, python-brace-format
+msgid "Unmount failed after {value1} attempts: {value2}"
+msgstr "Falló el desmontaje después de {value1} intentos: {value2}"
+
+msgid "Unreadable NTFS boot record after resize."
+msgstr "Registro de arranque NTFS ilegible después del cambio de tamaño."
+
+msgid "Unsafe log destination."
+msgstr "Destino del registro inseguro."
+
+msgid "Unsafe offline pacman directive: HookDir."
+msgstr "Directiva de pacman sin conexión insegura: HookDir."
+
+#, python-brace-format
+msgid "Unsafe offline pacman directive: {value1}."
+msgstr "Directiva de pacman sin conexión insegura: {value1}."
+
+msgid "Unsafe runtime directory."
+msgstr "Directorio de ejecución inseguro."
+
+msgid "Unsafe temporary mountpoint."
+msgstr "Punto de montaje temporal inseguro."
+
+msgid "Unsupported NTFS sector or cluster geometry."
+msgstr "Geometría de sectores o clústeres NTFS no compatible."
+
+msgid "Unsupported filesystem."
+msgstr "Sistema de archivos no compatible."
+
+msgid "Unsupported kernel preset."
+msgstr "Preajuste del kernel no compatible."
+
+msgid "Unsupported mountpoint; /boot, /usr and the pacman database must stay in root."
+msgstr "Punto de montaje no compatible; /boot, /usr y la base de datos de pacman deben permanecer en la raíz."
+
+msgid "Unsupported sector geometry."
+msgstr "Geometría de sectores no compatible."
+
+msgid "Unsupported system language."
+msgstr "Idioma del sistema no compatible."
+
+msgid "Update Emaki at the end: off."
+msgstr "Actualizar Emaki al finalizar: desactivado."
+
+msgid "Update Emaki at the end: when connected."
+msgstr "Actualizar Emaki al finalizar: si hay conexión."
+
+msgid "Update download stopped."
+msgstr "Se detuvo la descarga de la actualización."
+
+msgid "Use a simple top-level btrfs subvolume name."
+msgstr "Usa un nombre de subvolumen btrfs simple de nivel superior."
+
+msgid "Use at least 8 characters for the startup password."
+msgstr "Usa al menos 8 caracteres para la contraseña de arranque."
+
+msgid "Use only letters, digits and symbols of the English (US) keyboard."
+msgstr "Usa solo letras, dígitos y símbolos del teclado en inglés (EE. UU.)."
+
+msgid "Using a partition as swap requires formatting it."
+msgstr "Usar una partición como swap requiere formatearla."
+
+msgid "WARNING: Arch mirror ranking failed; the USB mirror list is retained: "
+msgstr "ADVERTENCIA: falló la clasificación de servidores espejo de Arch; se conserva la lista de la memoria USB: "
+
+msgid "WARNING: GRUB NVRAM registration failed; retrying vendor files without NVRAM."
+msgstr "ADVERTENCIA: falló el registro de GRUB en NVRAM; reintentando los archivos del proveedor sin NVRAM."
+
+msgid "WARNING: GRUB menu title adjustment reported a problem; installation continues."
+msgstr "ADVERTENCIA: el ajuste de los títulos del menú de GRUB informó un problema; la instalación continúa."
+
+#, python-brace-format
+msgid "WARNING: could not remove {value1}: {value2}"
+msgstr "ADVERTENCIA: no se pudo quitar {value1}: {value2}"
+
+msgid "WARNING: firmware startup order: "
+msgstr "ADVERTENCIA: orden de arranque del firmware: "
+
+msgid "WARNING: no connected DRM output identified; scale override omitted."
+msgstr "ADVERTENCIA: no se identificó ninguna salida DRM conectada; se omitió la escala personalizada."
+
+msgid "WARNING: online update failed; the offline installation is retained: "
+msgstr "ADVERTENCIA: falló la actualización en línea; se conserva la instalación sin conexión: "
+
+#, python-brace-format
+msgid "WARNING: optional unit {value1} is missing; skipped."
+msgstr "ADVERTENCIA: falta la unidad opcional {value1}; se omitió."
+
+msgid "WARNING: pacman is still running in the target; its lock is kept."
+msgstr "ADVERTENCIA: pacman sigue ejecutándose en el destino; se conserva su bloqueo."
+
+msgid "WARNING: preserving another system's startup files; removable GRUB copy skipped."
+msgstr "ADVERTENCIA: se conservan los archivos de arranque de otro sistema; se omitió la copia de GRUB para medios extraíbles."
+
+msgid "WARNING: preserving existing fallback EFI boot file; removable GRUB copy skipped."
+msgstr "ADVERTENCIA: se conserva el archivo de arranque EFI de respaldo existente; se omitió la copia de GRUB para medios extraíbles."
+
+msgid "WARNING: removable GRUB installation failed."
+msgstr "ADVERTENCIA: falló la instalación de GRUB para medios extraíbles."
+
+msgid "WARNING: the Arch keyring was not refreshed; the update is still attempted: "
+msgstr "ADVERTENCIA: no se actualizó el llavero de Arch; se intenta la actualización de todas formas: "
+
+msgid "WARNING: the Emaki keyring was not refreshed; the update is still attempted: "
+msgstr "ADVERTENCIA: no se actualizó el llavero de Emaki; se intenta la actualización de todas formas: "
+
+msgid "WARNING: the firmware boot entries could not be read; the startup order is unchanged."
+msgstr "ADVERTENCIA: no se pudieron leer las entradas de arranque del firmware; el orden de arranque no cambia."
+
+msgid "WARNING: the full update is deferred until every repository is reachable."
+msgstr "ADVERTENCIA: se pospone la actualización completa hasta que todos los repositorios sean accesibles."
+
+msgid "WARNING: the installed Emaki version could not be read; problem reports will not say whether this is a fresh installation."
+msgstr "ADVERTENCIA: no se pudo leer la versión instalada de Emaki; los informes de problemas no indicarán si esta es una instalación nueva."
+
+msgid "WARNING: the login screen shows its plain background until the first login (wallpaper copy: "
+msgstr "ADVERTENCIA: la pantalla de inicio de sesión muestra su fondo liso hasta el primer inicio de sesión (copia del fondo de pantalla: "
+
+msgid "WARNING: vendor GRUB retry failed; attempting the removable loader."
+msgstr "ADVERTENCIA: falló el reintento de GRUB del proveedor; intentando el cargador en la ruta de medios extraíbles."
+
+#, python-brace-format
+msgid "WARNING: {value1}/{value2} on the EFI partition holds other files; they were kept."
+msgstr "ADVERTENCIA: {value1}/{value2} en la partición EFI contiene otros archivos; se conservaron."
+
+#, python-brace-format
+msgid "Warning: {target} could not be unmounted: {error}"
+msgstr "Advertencia: no se pudo desmontar {target}: {error}"
+
+msgid "Wi-Fi country could not be set; continuing with the time zone."
+msgstr "No se pudo establecer el país de Wi-Fi; se continúa con la zona horaria."
+
+msgid "Wi-Fi country left unset: timezone "
+msgstr "No se estableció el país de Wi-Fi: la zona horaria "
+
+msgid "Wi-Fi was not copied; join it again after restarting."
+msgstr "No se copió la conexión Wi-Fi; vuelve a conectarte después de reiniciar."
+
+msgid "Wi-Fi: "
+msgstr "Wi-Fi: "
+
+#, python-brace-format
+msgid "Wi-Fi: chose {value1}: {value2}."
+msgstr "Wi-Fi: se eligió {value1}: {value2}."
+
+#, python-brace-format
+msgid "Wi-Fi: installed {value1} into /etc/NetworkManager/system-connections (0600)."
+msgstr "Wi-Fi: se instaló {value1} en /etc/NetworkManager/system-connections (0600)."
+
+#, python-brace-format
+msgid "Wi-Fi: not copied: {value1}"
+msgstr "Wi-Fi: no se copió: {value1}"
+
+#, python-brace-format
+msgid "Wi-Fi: not copied: {value1}."
+msgstr "Wi-Fi: no se copió: {value1}."
+
+#, python-brace-format
+msgid "Wi-Fi: not installed: {value1}."
+msgstr "Wi-Fi: no se instaló: {value1}."
+
+#, python-brace-format
+msgid "Wi-Fi: nothing chosen: {value1}."
+msgstr "Wi-Fi: no se eligió nada: {value1}."
+
+#, python-brace-format
+msgid "Wi-Fi: the live session has {value1} Wi-Fi profile(s); Network page join: {value2}."
+msgstr "Wi-Fi: la sesión en vivo tiene {value1} perfil(es) Wi-Fi; conexión desde la página Red: {value2}."
+
+msgid "Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting."
+msgstr "Windows Boot Manager no fue detectado por os-prober; inspecciona GRUB antes de reiniciar."
+
+msgid "Windows GPT identity or geometry could not be verified."
+msgstr "No se pudo verificar la identidad o la geometría GPT de Windows."
+
+msgid "Windows GPT metadata changed after review; disk untouched."
+msgstr "Los metadatos GPT de Windows cambiaron después de la revisión; disco sin cambios."
+
+msgid "Windows candidates have equal sizes; selection is ambiguous."
+msgstr "Las particiones candidatas de Windows tienen el mismo tamaño; la selección es ambigua."
+
+msgid "Windows end, Emaki's startup partition and Emaki root disagree; disk untouched."
+msgstr "El final de Windows, la partición de arranque de Emaki y la raíz de Emaki no concuerdan; disco sin cambios."
+
+msgid "Windows firmware startup could not be identified safely; boot menu setup stopped."
+msgstr "No se pudo identificar de forma segura el arranque de Windows en el firmware; se detuvo la configuración del menú de arranque."
+
+msgid "Windows geometry is unknown or the partition is busy/read-only."
+msgstr "La geometría de Windows es desconocida o la partición está ocupada o es de solo lectura."
+
+msgid "Windows is asleep, not shut down (hibernation or Fast Startup is on). In Windows, open Command Prompt as administrator, type powercfg /hibernate off and press Enter. Then shut Windows down and start from the USB stick again."
+msgstr "Windows está suspendido, no apagado (la hibernación o el Inicio rápido está activado). En Windows, abre Símbolo del sistema como administrador, escribe powercfg /hibernate off y presiona Enter. Luego apaga Windows y vuelve a arrancar desde la memoria USB."
+
+msgid "Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys."
+msgstr "Windows está cifrado con BitLocker, por lo que Emaki no puede crear espacio junto a él. No se hicieron cambios en Windows. En Windows, desactiva BitLocker y espera a que termine; luego apágalo y vuelve a arrancar desde la memoria USB. Si Windows dejó de arrancar después de cambiar Secure Boot, revierte ese cambio. Nunca elimines ni restablezcas las claves del firmware."
+
+#, python-brace-format
+msgid "Windows keeps {value1:.2f} GB, Emaki gets {value2:.2f} GB; back up your files first."
+msgstr "Windows conserva {value1:.2f} GB y Emaki recibe {value2:.2f} GB; primero haz una copia de seguridad de tus archivos."
+
+msgid "Windows must retain its minimum size plus 2 GiB."
+msgstr "Windows debe conservar su tamaño mínimo más 2 GiB."
+
+msgid "Windows shrink bounds, disk identity or startup partition state changed after review; disk untouched."
+msgstr "Los límites de reducción de Windows, la identidad del disco o el estado de la partición de arranque cambiaron después de la revisión; disco sin cambios."
+
+msgid "Windows system metadata is unreadable after resize."
+msgstr "Los metadatos del sistema Windows son ilegibles después del cambio de tamaño."
+
+msgid "Windows uses this disk as a dynamic disk or in Storage Spaces. Emaki cannot share such a disk."
+msgstr "Windows usa este disco como disco dinámico o en Espacios de almacenamiento. Emaki no puede compartir un disco de ese tipo."
+
+msgid "Windows will run a consistency check (chkdsk) on its first boot after resizing. Let it finish."
+msgstr "Windows ejecutará una comprobación de coherencia (chkdsk) en el primer arranque después del cambio de tamaño. Deja que termine."
+
+msgid "Windows' startup partition changed during the installation."
+msgstr "La partición de arranque de Windows cambió durante la instalación."
+
+msgid "Windows' startup partition could not be read after loader installation."
+msgstr "No se pudo leer la partición de arranque de Windows después de instalar el cargador."
+
+msgid "Windows' startup partition could not be read, so Emaki stopped before changing the disk."
+msgstr "No se pudo leer la partición de arranque de Windows, por lo que Emaki se detuvo antes de modificar el disco."
+
+msgid "Windows' startup partition read failed: "
+msgstr "Falló la lectura de la partición de arranque de Windows: "
+
+#, python-brace-format
+msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
+msgstr "sha256 de la partición de arranque de Windows antes de la primera escritura en disco: {value1}; ahora: {value2}."
+
+msgid "Worker failed: "
+msgstr "Falló el proceso de trabajo: "
+
+msgid "Worker failed; inspect the log."
+msgstr "Falló el proceso de trabajo; revisa el registro."
+
+#, python-brace-format
+msgid "Wrong btrfs subvolume at {value1}."
+msgstr "Subvolumen btrfs incorrecto en {value1}."
+
+#, python-brace-format
+msgid "Wrong filesystem UUID at {value1}."
+msgstr "UUID de sistema de archivos incorrecto en {value1}."
+
+msgid "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
+msgstr "Tu instalación está a salvo. Si la computadora no se reinició sola, mantén presionado el botón de encendido para apagarla y vuelve a encenderla."
+
+msgid "bad length"
+msgstr "longitud incorrecta"
+
+#, python-brace-format
+msgid "cannot list {value1}: {value2}"
+msgstr "no se puede listar {value1}: {value2}"
+
+msgid "emaki-config did not install the snapshot boot hook."
+msgstr "emaki-config no instaló el hook de arranque de instantáneas."
+
+#, python-brace-format
+msgid "emaki-install: the running installer did not show its window:\n{0}"
+msgstr "emaki-install: el instalador en ejecución no mostró su ventana:\n{0}"
+
+msgid "emaki-installerd must run as root on the live ISO."
+msgstr "emaki-installerd debe ejecutarse como root en la ISO en vivo."
+
+msgid "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
+msgstr "emaki-shim-signed no contiene shimx64.efi ni mmx64.efi."
+
+msgid "ext4 recovery: use linux-lts, cached packages, or the live ISO; snapshots are unavailable."
+msgstr "Recuperación de ext4: usa linux-lts, paquetes en caché o la ISO en vivo; las instantáneas no están disponibles."
+
+#, python-brace-format
+msgid "files of group {value1} keep that group (not a regular group)"
+msgstr "los archivos del grupo {value1} conservan ese grupo (no es un grupo normal)"
+
+#, python-brace-format
+msgid "files of group {value1} now have group {value2}"
+msgstr "los archivos del grupo {value1} ahora tienen el grupo {value2}"
+
+#, python-brace-format
+msgid "files of user {value1} keep that owner (not a regular account)"
+msgstr "los archivos del usuario {value1} conservan ese propietario (no es una cuenta normal)"
+
+#, python-brace-format
+msgid "files of user {value1} now belong to {value2} ({value3})"
+msgstr "los archivos del usuario {value1} ahora pertenecen a {value2} ({value3})"
+
+msgid "format"
+msgstr "formatear"
+
+#, python-brace-format
+msgid "fstab filesystem or UUID missing at {value1}."
+msgstr "Falta el sistema de archivos o el UUID de fstab en {value1}."
+
+msgid "fstab must contain exactly the planned filesystem mounts and no swap."
+msgstr "fstab debe contener exactamente los montajes de sistemas de archivos planeados y ningún swap."
+
+msgid "grub-install did not write the cryptomount line of the encrypted root."
+msgstr "grub-install no escribió la línea cryptomount de la raíz cifrada."
+
+msgid "grub-mkimage did not produce a GRUB image with the expected prefix."
+msgstr "grub-mkimage no generó una imagen GRUB con el prefijo esperado."
+
+msgid "grub-mkimage still rejects the SBAT level of the signed image."
+msgstr "grub-mkimage sigue rechazando el nivel SBAT de la imagen firmada."
+
+msgid "hibernation must be boolean."
+msgstr "hibernation debe ser booleano."
+
+msgid "invalid PF2 character index"
+msgstr "índice de caracteres PF2 no válido"
+
+msgid "invalid PF2 font"
+msgstr "fuente PF2 no válida"
+
+msgid "invalid PF2 glyph metrics or bitmap"
+msgstr "métricas de glifo o mapa de bits PF2 no válidos"
+
+msgid "invalid PF2 glyph offset or storage"
+msgstr "desplazamiento o almacenamiento de glifo PF2 no válido"
+
+msgid "invalid PF2 section"
+msgstr "sección PF2 no válida"
+
+msgid "its startup partition"
+msgstr "su partición de arranque"
+
+msgid "missing PF2 data"
+msgstr "faltan datos PF2"
+
+msgid "nmcli could not be started."
+msgstr "No se pudo iniciar nmcli."
+
+msgid "nmcli printed text that is not UTF-8."
+msgstr "nmcli imprimió texto que no es UTF-8."
+
+msgid "no answer"
+msgstr "sin respuesta"
+
+msgid "no single emaki-config archive in the resolved package set."
+msgstr "no hay un único archivo de emaki-config en el conjunto de paquetes resuelto."
+
+msgid "ntfsresize did not report one unambiguous minimum size."
+msgstr "ntfsresize no informó un único tamaño mínimo inequívoco."
+
+msgid "one of --probe, --plan, --follow, --save-log is required"
+msgstr "se requiere una de las opciones --probe, --plan, --follow, --save-log"
+
+msgid "online_update must be boolean."
+msgstr "online_update debe ser booleano."
+
+msgid "preserve"
+msgstr "conservar"
+
+msgid "snapper did not print the new snapshot number."
+msgstr "snapper no imprimió el número de la instantánea nueva."
+
+msgid "startup partition, FAT32"
+msgstr "partición de arranque, FAT32"
+
+msgid "the fallback font must have visible printable ASCII glyphs"
+msgstr "la fuente de respaldo debe tener glifos ASCII imprimibles visibles"
+
+msgid "the filesystem of the installed Emaki to repair"
+msgstr "el sistema de archivos de la instalación de Emaki que se va a reparar"
+
+msgid "the installation USB holds no package repository."
+msgstr "la memoria USB de instalación no contiene ningún repositorio de paquetes."
+
+#, python-brace-format
+msgid "the keyfile could not be opened ({value1})."
+msgstr "no se pudo abrir el archivo de clave ({value1})."
+
+msgid "truncated"
+msgstr "truncado"
+
+#, python-brace-format
+msgid "unclosed quote at {value1}"
+msgstr "comilla sin cerrar en {value1}"
+
+msgid "unknown unlock artwork variant"
+msgstr "variante desconocida de la imagen de la pantalla de desbloqueo"
+
+#, python-brace-format
+msgid "unlock artwork has the wrong format: {value1}/{value2}"
+msgstr "la imagen de la pantalla de desbloqueo tiene un formato incorrecto: {value1}/{value2}"
+
+#, python-brace-format
+msgid "unlock artwork is unavailable: {value1}/{value2}"
+msgstr "la imagen de la pantalla de desbloqueo no está disponible: {value1}/{value2}"
+
+#, python-brace-format
+msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
+msgstr "{value1} y el subvolumen {value2} están reservados para la clave de Secure Boot."
+
+#, python-brace-format
+msgid "{value1} carries no signature."
+msgstr "{value1} no contiene ninguna firma."
+
+#, python-brace-format
+msgid "{value1} could not be read back after it was written."
+msgstr "No se pudo volver a leer {value1} después de escribirlo."
+
+#, python-brace-format
+msgid "{value1} could not be read back from the startup partition."
+msgstr "No se pudo volver a leer {value1} desde la partición de arranque."
+
+#, python-brace-format
+msgid "{value1} could not be read: {value2}"
+msgstr "No se pudo leer {value1}: {value2}"
+
+#, python-brace-format
+msgid "{value1} does not verify with the machine key after signing."
+msgstr "{value1} no se verifica con la clave de la máquina después de firmarlo."
+
+#, python-brace-format
+msgid "{value1} does not verify with the machine key."
+msgstr "{value1} no se verifica con la clave de la máquina."
+
+#, python-brace-format
+msgid "{value1} exited with status {value2}."
+msgstr "{value1} terminó con el estado {value2}."
+
+#, python-brace-format
+msgid "{value1} failed: {value2}"
+msgstr "{value1} falló: {value2}"
+
+#, python-brace-format
+msgid "{value1} has no snapshot boot hook (/{value2}, /{value3})."
+msgstr "{value1} no tiene un hook de arranque de instantáneas (/{value2}, /{value3})."
+
+#, python-brace-format
+msgid "{value1} is a directory inside a startup copy."
+msgstr "{value1} es un directorio dentro de una copia de arranque."
+
+#, python-brace-format
+msgid "{value1} is a symbolic link."
+msgstr "{value1} es un enlace simbólico."
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. {value3}, then try again."
+msgstr "{value1} está activo [{value2}]. {value3}, luego inténtalo de nuevo."
+
+#, python-brace-format
+msgid "{value1} is held by {value2} [device mapper or RAID]. Deactivate that volume or stop that array before trying again."
+msgstr "{value1} está retenido por {value2} [device mapper o RAID]. Desactiva ese volumen o detén ese arreglo antes de volver a intentarlo."
+
+#, python-brace-format
+msgid "{value1} is not a directory."
+msgstr "{value1} no es un directorio."
+
+#, python-brace-format
+msgid "{value1} is open at {value2} [mount]. Close files there, then unmount it [umount]."
+msgstr "{value1} está abierto en {value2} [mount]. Cierra los archivos allí y luego desmóntalo [umount]."
+
+#, python-brace-format
+msgid "{value1} timed out."
+msgstr "Se agotó el tiempo de espera de {value1}."
+
+#, python-brace-format
+msgid "{value1}: udev settle did not complete; checking the kernel directly."
+msgstr "{value1}: la espera de udev no terminó; comprobando el kernel directamente."
+
+#, python-brace-format
+msgid "{value1}: {value2}: retry deadline reached."
+msgstr "{value1}: {value2}: se alcanzó el límite de tiempo de reintento."

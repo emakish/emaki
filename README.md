@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.10.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.11.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 
@@ -93,7 +93,7 @@ The installer offers:
 The installed system gets GRUB with `linux` and `linux-lts`, zram and NetworkManager. The
 installer offers two software sets. **Minimal** is the desktop with Dolphin, Firefox and kitty.
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
-Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
+Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
 media codecs. Not in 0.9.0: BIOS boot, installing alongside another Linux.
 

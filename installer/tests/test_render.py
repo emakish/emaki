@@ -9,9 +9,10 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from emaki_installer.constants import GRUB_VISIBLE_FONT, SUBVOLUMES
-from emaki_installer import grub_screen
+from emaki_installer import boot, grub_screen
 from emaki_installer.errors import Code, InstallError
 from emaki_installer.planner import make_plan
 from emaki_installer.render import (CONSOLE, GRUB_EARLY_MODULES, GRUB_GFXMODE, GRUB_UNLOCK_GFXMODE, console_keymap, grub_defaults,
@@ -36,6 +37,18 @@ class RenderTests(unittest.TestCase):
         self.assertIn('\nWIRELESS_REGDOM="PT"\n', wireless_regdom('Europe/Lisbon', tab))
         for unset in ('UTC', 'Etc/Bogus', 'America/New_Yor'):
             self.assertIsNone(wireless_regdom(unset, tab))
+
+    def test_legacy_boot_aliases_never_use_translation(self):
+        menu = (boot.HEADER_END + "menuentry 'Emaki, with Linux linux' --id 'linux' {\n"
+                "  linux /vmlinuz-linux\n}\n"
+                "menuentry 'Emaki, with Linux linux (fallback initramfs)' --id 'fallback' {\n"
+                "  linux /vmlinuz-linux\n}\n")
+        original = boot.menu_layout(menu)
+        with patch.object(boot, '_', side_effect=lambda value: '[' + value + ']'):
+            translated = boot.menu_layout(menu)
+        self.assertEqual(translated, original)
+        self.assertIn("'Emaki, with Linux linux'", translated)
+        self.assertIn("'Emaki, with Linux linux (fallback initramfs)'", translated)
 
     def test_grub_parameters(self):
         text = grub_defaults()
@@ -205,7 +218,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(data, grub_unlock_memdisk(font, load_cfg, LUKS_UUID))
 
     def test_unlock_rejects_a_blank_fallback_font(self):
-        from emaki_installer import grub_screen
+        from emaki_installer import boot, grub_screen
         load_cfg = f'cryptomount -u {LUKS_UUID}\n'
         with self.assertRaises(InstallError) as raised:
             grub_unlock_memdisk(grub_screen._hidden_font(), load_cfg, LUKS_UUID)

@@ -13,6 +13,18 @@ does not stop it. Every recipe runs as a throwaway user with no home folder
 and a read-only system; only its finished packages are installed. A receipt
 records what the install added so that it can be undone exactly.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import codecs
 from collections import deque
 import fcntl
@@ -77,7 +89,7 @@ def srcinfo_keys(text):
 def build(base, commit):
     """Fetch the reviewed recipe commit and build it; print the finished files."""
     if os.geteuid() == 0:
-        raise RuntimeError('A recipe never runs as root.')
+        raise RuntimeError(_('A recipe never runs as root.'))
     root = Path(os.environ['CACHE_DIRECTORY'].split(':')[0])
     work = root / 'build'
     shutil.rmtree(work, ignore_errors=True)
@@ -91,14 +103,14 @@ def build(base, commit):
     def run(arguments, cwd=None):
         result = subprocess.run(arguments, cwd=cwd or root, env=environment, stdin=subprocess.DEVNULL)
         if result.returncode:
-            raise RuntimeError(' '.join(arguments[:2]) + ' failed with status ' + str(result.returncode))
+            raise RuntimeError(_('{command} failed with status {status}').format(command=' '.join(arguments[:2]), status=result.returncode))
 
     run(['git', 'clone', '--quiet', '--no-checkout', 'https://aur.archlinux.org/' + base + '.git', str(source)])
     run(['git', '-c', 'advice.detachedHead=false', 'checkout', '--quiet', commit], cwd=source)
     head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=source, env=environment,
                           capture_output=True, text=True).stdout.strip()
     if head != commit:
-        raise RuntimeError('The recipe is not the reviewed commit.')
+        raise RuntimeError(_('The recipe is not the reviewed commit.'))
     try:
         keys = srcinfo_keys((source / '.SRCINFO').read_text(errors='replace'))
     except OSError:
@@ -134,24 +146,24 @@ def run(arguments, timeout=None, **options):
 def versions():
     result = run(['pacman', '-Q'], timeout=60)
     if result.returncode:
-        raise RuntimeError('The installed package versions could not be read.')
+        raise RuntimeError(_('The installed package versions could not be read.'))
     return dict(line.split(maxsplit=1) for line in result.stdout.splitlines())
 
 
 def reviewed_plan(target, token):
-    arch, aur, _, _ = modules()
+    arch, aur, _unused, _unused = modules()
     require_consent()
     plan = aur.build_plan(target, aur.System(aur.fetch_json, dict(arch.ENV), refresh=True))
     if plan['token'] != token:
-        raise ValueError('The AUR program or its packages changed. Review the install again.')
+        raise ValueError(_('The AUR program or its packages changed. Review the install again.'))
     return plan
 
 
 def require_consent():
     """Read the authenticated caller's acceptance again at the privileged boundary."""
-    _, aur, _, _ = modules()
+    _unused, aur, _unused, _unused = modules()
     caller = os.environ.get('PKEXEC_UID') or os.environ.get('EMAKI_AUR_UID', '')
-    message = 'Open the AUR section and accept its warning before installing.'
+    message = _('Open the AUR section and accept its warning before installing.')
     if not caller.isascii() or not caller.isdecimal() or int(caller) == 0:
         raise ValueError(message)
     try:
@@ -174,18 +186,18 @@ def require_consent():
 
 
 def require_update_root():
-    _, _, _, guard = modules()
+    _unused, _unused, _unused, guard = modules()
     result = run([guard.ROLLBACK, 'status', '--json'], timeout=20)
     try:
         mode = json.loads(result.stdout)['mode'] if result.returncode == 0 else ''
     except (ValueError, KeyError, TypeError):
         mode = ''
     if mode == 'unsupported':
-        raise RuntimeError('AUR installs need system snapshots. This system does not support them, so nothing was installed.')
+        raise RuntimeError(_('AUR installs need system snapshots. This system does not support them, so nothing was installed.'))
     if mode in ('pending', 'snapshot'):
-        raise RuntimeError('Restart into the normal system before installing programs.')
+        raise RuntimeError(_('Restart into the normal system before installing programs.'))
     if mode != 'normal':
-        raise RuntimeError('The system restore status could not be checked. Nothing was installed.')
+        raise RuntimeError(_('The system restore status could not be checked. Nothing was installed.'))
 
 
 def discard_snapshot(number):
@@ -202,7 +214,7 @@ def discard_snapshot(number):
 def preinstall_snapshot():
     """Create our own pre point and verify its receipt and read-only btrfs subvolume."""
     import restore
-    message = 'A verified system snapshot could not be created. Nothing was installed.'
+    message = _('A verified system snapshot could not be created. Nothing was installed.')
     result = run(['snapper', '--no-dbus', '-c', 'root', 'create', '--type', 'pre',
                   '--print-number', '--cleanup-algorithm', 'number', '--description', 'AUR install'], timeout=120)
     number = result.stdout.strip()
@@ -279,7 +291,7 @@ def sandbox_build(base, commit):
             files = event['files']
             break
     if status or not files:
-        raise RuntimeError('Building ' + base + ' did not finish. The details are above.')
+        raise RuntimeError(_('Building {package} did not finish. The details are above.').format(package=base))
     return unit, files
 
 
@@ -301,12 +313,12 @@ def collect(base, files, wanted):
         query = run(['pacman', '-Qp', str(copy)], timeout=60)
         if query.returncode:
             continue
-        package, _, version = query.stdout.strip().partition(' ')
+        package, _unused, version = query.stdout.strip().partition(' ')
         if package in wanted and NAME.fullmatch(package):
             chosen[package] = (str(copy), version)
     missing = sorted(set(wanted) - set(chosen))
     if missing:
-        raise RuntimeError('The build of ' + base + ' did not produce: ' + ', '.join(missing) + '.')
+        raise RuntimeError(_('The build of {package} did not produce: {missing}.').format(package=base, missing=', '.join(missing)))
     return target, chosen
 
 
@@ -314,7 +326,7 @@ def remove_leftovers(before, additions):
     """Remove new build-only orphans, retry failures, and verify no eligible tools remain."""
     removed = []
     failures = 0
-    for _ in range(32):
+    for _unused in range(32):
         try:
             orphans = run(['pacman', '-Qdttq'], timeout=60)
             if (orphans.returncode not in (0, 1) or orphans.stderr.strip()
@@ -324,7 +336,7 @@ def remove_leftovers(before, additions):
                 names = sorted(name for name in orphans.stdout.split() if name not in before and name in additions)
                 if not names:
                     return removed
-                status, _ = stream(['pacman', '-Rn', '--noconfirm', '--', *names])
+                status, _unused = stream(['pacman', '-Rn', '--noconfirm', '--', *names])
                 if not status:
                     removed += names
                     continue
@@ -333,8 +345,8 @@ def remove_leftovers(before, additions):
             failures += 1
         if failures >= 2:
             break
-        progress('Removing build tools did not finish. Trying again.')
-    raise RuntimeError('Build tools could not be removed. The install was not completed.')
+        progress(_('Removing build tools did not finish. Trying again.'))
+    raise RuntimeError(_('Build tools could not be removed. The install was not completed.'))
 
 
 def build_only_packages(plan):
@@ -365,12 +377,12 @@ def add_only(arguments, baseline, additions):
     preview = run([*arguments[:2], '--needed', '--print', '--print-format', '%n %v',
                    '--noconfirm', *arguments[2:]], timeout=120)
     if preview.returncode:
-        raise RuntimeError('The packages to install could not be checked.')
+        raise RuntimeError(_('The packages to install could not be checked.'))
     selected = set()
     for line in preview.stdout.splitlines():
         name, separator, version = line.partition(' ')
         if not separator or not NAME.fullmatch(name) or not version:
-            raise RuntimeError('The packages to install could not be checked.')
+            raise RuntimeError(_('The packages to install could not be checked.'))
         selected.add(name)
     # Keep the selected scope even if an interrupted command cannot report its result.
     previous_changes = set(additions)
@@ -378,13 +390,13 @@ def add_only(arguments, baseline, additions):
     # --print skips conflict checks. The real transaction still checks them, with
     # --noconfirm selecting No for ALPM_QUESTION_CONFLICT_PKG; never add --ask.
     install_arguments = [argument for argument in arguments[2:] if argument != '--asdeps']
-    status, _ = stream([*arguments[:2], '--needed', '--noconfirm', *install_arguments])
+    status, _unused = stream([*arguments[:2], '--needed', '--noconfirm', *install_arguments])
     after = versions()
     # A transaction-wide --asdeps also demotes existing explicit packages.
     # Keep their reasons and mark only packages this transaction added.
     new_dependencies = sorted((selected - set(state)) & set(after))
     if new_dependencies:
-        reason_status, _ = stream(['pacman', '-D', '--asdeps', '--', *new_dependencies])
+        reason_status, _unused = stream(['pacman', '-D', '--asdeps', '--', *new_dependencies])
         status = status or reason_status
     # External transactions during a build are not part of this install's receipt.
     additions.difference_update(name for name in selected - previous_changes
@@ -397,34 +409,34 @@ def rollback_additions(baseline, additions):
     current = versions()
     added = sorted((set(current) - set(baseline)) & additions)
     if added:
-        progress('Removing packages added by the failed install. The completed system update will stay.')
-        for _ in range(2):
-            status, _ = stream(['pacman', '-Rn', '--noconfirm', '--', *added])
+        progress(_('Removing packages added by the failed install. The completed system update will stay.'))
+        for _unused in range(2):
+            status, _unused = stream(['pacman', '-Rn', '--noconfirm', '--', *added])
             current = versions()
             added = sorted((set(current) - set(baseline)) & additions)
             if not added:
                 break
         if added:
-            raise RuntimeError('Some packages from the failed install remain. Restore the pre-install snapshot before trying again.')
+            raise RuntimeError(_('Some packages from the failed install remain. Restore the pre-install snapshot before trying again.'))
     if install_state(baseline, versions(), additions) != baseline:
-        raise RuntimeError('The package state after the failed install could not be restored. Use the pre-install snapshot.')
+        raise RuntimeError(_('The package state after the failed install could not be restored. Use the pre-install snapshot.'))
 
 
 def worker(target, token):
-    arch, aur, receipts, _ = modules()
+    arch, aur, receipts, _unused = modules()
     descriptor = os.open(LOCK, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     with os.fdopen(descriptor, 'w') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return finish('busy', notStarted=True, message='Another package transaction is running.')
+            return finish('busy', notStarted=True, message=_('Another package transaction is running.'))
         try:
             require_update_root()
             plan = reviewed_plan(target, token)
             before = versions()
-            preflight, _ = preinstall_snapshot()
+            preflight, _unused = preinstall_snapshot()
             if not discard_snapshot(preflight):
-                raise RuntimeError('The snapshot check could not be cleaned up. Nothing was installed.')
+                raise RuntimeError(_('The snapshot check could not be cleaned up. Nothing was installed.'))
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, aur.Refused) as error:
             return finish('refused', notStarted=True, message=str(error))
         snapshot, snapshot_token = '', ''
@@ -434,36 +446,36 @@ def worker(target, token):
         cleaned = []
         receipt = None
         try:
-            progress('Bringing the system up to date first.')
-            status, _ = stream(['systemd-inhibit', '--what=sleep:handle-lid-switch', '--mode=block',
+            progress(_('Bringing the system up to date first.'))
+            status, _unused = stream(['systemd-inhibit', '--what=sleep:handle-lid-switch', '--mode=block',
                                 '--who=Emaki', '--why=Installing a program from the AUR',
                                 str(Path(arch.BINDIR) / 'emaki-update'), '--noninteractive'])
             if status:
-                raise RuntimeError('The system update did not finish, so nothing was built.')
+                raise RuntimeError(_('The system update did not finish, so nothing was built.'))
             baseline = versions()
             snapshot, snapshot_token = preinstall_snapshot()
             needed = [row['package'] for row in plan['packages'] if row['package'] not in baseline]
             if needed:
-                progress('Installing what the build needs from Arch.')
+                progress(_('Installing what the build needs from Arch.'))
                 status = add_only(['pacman', '-S', '--asdeps', '--', *needed], baseline, additions)
                 if status:
-                    raise RuntimeError('Packages from Arch the build needs could not be installed.')
+                    raise RuntimeError(_('Packages from Arch the build needs could not be installed.'))
             for step in plan['builds']:
                 base = step['packageBase']
-                progress('Building ' + base + ' from the AUR as a separate user without access to your files.')
-                _, files = sandbox_build(base, step['commit'])
+                progress(_('Building {package} from the AUR as a separate user without access to your files.').format(package=base))
+                _unused, files = sandbox_build(base, step['commit'])
                 wanted = [row['package'] for row in step['packages']]
                 directory, chosen = collect(base, files, wanted)
                 try:
                     status = add_only(['pacman', '-U', '--asdeps',
-                                       '--', *[path for path, _ in chosen.values()]], baseline, additions)
+                                       '--', *[path for path, _unused in chosen.values()]], baseline, additions)
                     if not status and target in chosen:
-                        status, _ = stream(['pacman', '-D', '--asexplicit', '--', target])
+                        status, _unused = stream(['pacman', '-D', '--asexplicit', '--', target])
                 finally:
                     shutil.rmtree(directory, ignore_errors=True)
                 if status:
-                    raise RuntimeError(base + ' was built but could not be installed.')
-                built += [dict(package=name, version=version) for name, (_, version) in sorted(chosen.items())]
+                    raise RuntimeError(_('{package} was built but could not be installed.').format(package=base))
+                built += [dict(package=name, version=version) for name, (_unused, version) in sorted(chosen.items())]
             expected_tools = (build_only_packages(plan) - set(baseline)) & additions
             for attempt in range(2):
                 cleaned += remove_leftovers(baseline, additions)
@@ -471,16 +483,16 @@ def worker(target, token):
                 if not expected_tools.intersection(after):
                     break
                 if attempt == 0:
-                    progress('Removing build tools did not finish. Trying again.')
+                    progress(_('Removing build tools did not finish. Trying again.'))
             else:
-                raise RuntimeError('Build tools could not be removed. The install was not completed.')
+                raise RuntimeError(_('Build tools could not be removed. The install was not completed.'))
             try:
                 receipt = receipts.record('aur', 'aur:' + target, target, target, baseline,
                                           install_state(baseline, after, additions), snapshot,
                                           snapshot_token=snapshot_token)
             except (OSError, ValueError, RuntimeError) as error:
-                raise RuntimeError('The install could not be saved for Undo. The added packages will be removed.') from error
-            code, ok, message = 'success', True, 'The program from the AUR is installed.'
+                raise RuntimeError(_('The install could not be saved for Undo. The added packages will be removed.')) from error
+            code, ok, message = 'success', True, _('The program from the AUR is installed.')
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             code, ok, message = 'failed', False, str(error)
         if not ok and baseline is not None:
@@ -491,10 +503,10 @@ def worker(target, token):
         try:
             after = versions()
         except (OSError, RuntimeError, subprocess.SubprocessError):
-            return finish('unknown', message='The result could not be checked. Look at Installed before trying again.')
+            return finish('unknown', message=_('The result could not be checked. Look at Installed before trying again.'))
         if not ok and snapshot and not additions:
             if not discard_snapshot(snapshot):
-                message += ' The unused snapshot will be removed by scheduled cleanup.'
+                message = _('{error} The unused snapshot will be removed by scheduled cleanup.').format(error=message)
         restart, sign_out = update_backend().changed(before, after)
         if not ok and baseline is not None and install_state(baseline, after, additions) != baseline:
             code = 'partial'
@@ -523,7 +535,7 @@ def request(target, token):
     caller = require_consent()
     reviewed_plan(target, token)
     field = 'EMAKI_AUR_REQUEST=' + uuid.uuid4().hex
-    progress('Starting the install from the AUR.')
+    progress(_('Starting the install from the AUR.'))
     finished, cursor = None, ''
     with subprocess.Popen(['systemd-run', '--wait', '--collect', '--unit=' + SERVICE,
                            '--property=Type=exec', '--property=StandardOutput=journal',
@@ -563,18 +575,18 @@ def request(target, token):
     if finished:
         emit('finished', **{key: value for key, value in finished.items() if key != 'type'})
         return 0 if finished.get('ok') else 1
-    return finish('unknown', message='The service result could not be observed. Check its journal before retrying.')
+    return finish('unknown', message=_('The service result could not be observed. Check its journal before retrying.'))
 
 
 def validate(arguments):
     if len(arguments) == 3 and arguments[0] == '--build':
         if not NAME.fullmatch(arguments[1]) or not COMMIT.fullmatch(arguments[2]):
-            raise ValueError('Invalid build request.')
+            raise ValueError(_('Invalid build request.'))
         return 'build', arguments[1], arguments[2]
     mode = 'run' if arguments[:1] == ['--run'] else 'request'
     values = arguments[1:] if mode == 'run' else arguments
     if len(values) != 2 or not NAME.fullmatch(values[0]) or not TOKEN.fullmatch(values[1]):
-        raise ValueError('Select one AUR program and its reviewed install.')
+        raise ValueError(_('Select one AUR program and its reviewed install.'))
     return mode, values[0], values[1]
 
 
@@ -592,13 +604,13 @@ def main(argv):
             return 1
     try:
         if os.geteuid() != 0:
-            raise ValueError('Authorization is required to install programs from the AUR.')
+            raise ValueError(_('Authorization is required to install programs from the AUR.'))
         os.umask(0o077)
         return worker(first, second) if mode == 'run' else request(first, second)
     except (ValueError, RuntimeError) as error:
         return finish('refused', notStarted=True, message=str(error))
     except (OSError, subprocess.SubprocessError):
-        return finish('unknown', message='The service result could not be observed. Check its journal before retrying.')
+        return finish('unknown', message=_('The service result could not be observed. Check its journal before retrying.'))
 
 
 if __name__ == '__main__':

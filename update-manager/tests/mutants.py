@@ -92,6 +92,8 @@ def main():
                          root / 'packaging/emaki-config/zzz-emaki-session-update.hook')
             (root / 'scripts').mkdir()
             shutil.copy2(ROOT / 'scripts/emaki-update', root / 'scripts/emaki-update')
+            for helper in ('emaki_i18n.py', 'emaki_paths.py'):
+                shutil.copy2(ROOT / 'scripts' / helper, root / 'scripts' / helper)
             (root / 'installer/emaki_installer').mkdir(parents=True)
             shutil.copy2(ROOT / 'installer/emaki_installer/update_errors.py', root / 'installer/emaki_installer/update_errors.py')
             path = root / 'update-manager' / filename

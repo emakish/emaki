@@ -61,7 +61,7 @@ Item {
         id: offline
         anchors.centerIn: parent
         visible: !strip.niri.connected && !strip.connecting
-        text: "Workspaces unavailable"
+        text: qsTranslate("WorkspaceStrip", "Workspaces unavailable")
         textFormat: Text.PlainText
         font.family: ShellPalette.uiFont
         font.pixelSize: 12
@@ -80,7 +80,7 @@ Item {
             width: strip.cell
             height: strip.height
             KeyboardTarget {
-                label: "Workspace " + cell.position
+                label: qsTranslate("WorkspaceStrip", "Workspace %1").arg(cell.position)
                 onActivated: strip.choose(cell.position)
             }
             // Optical centre: the glyph's ink box (TextMetrics.tightBoundingRect), not the

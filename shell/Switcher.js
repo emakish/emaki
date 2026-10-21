@@ -57,7 +57,7 @@ function entries(windows, labels, focusTimes, appOnly, focusedId) {
         return {
             id: w.id,
             appId: String(label.appId || ""),
-            title: String(label.title || "") || "Window #" + w.id,
+            title: String(label.title || "") || qsTranslate("Shell", "Window #%1").arg(w.id),
             focused: focusedIn(w, focusedId),
             urgent: !!w.is_urgent,
             workspaceId: w.workspace_id === undefined ? null : w.workspace_id

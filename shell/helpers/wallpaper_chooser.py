@@ -2,6 +2,19 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Read a single local picture selection from the desktop file chooser portal."""
+
+import sys as _i18n_sys
+from pathlib import Path as _I18nPath
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[2] / 'scripts'))
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import emaki_paths as _i18n_paths
+    _i18n_sys.path.insert(0, _i18n_paths.LIBEXECDIR)
+    from emaki_i18n import translation
+gettext = translation('shell').gettext
+
 import os
 from pathlib import Path
 import re
@@ -30,7 +43,7 @@ def local_picture(uri):
     return path
 
 
-def choose(timeout_ms=120000, title='Choose a wallpaper', mime_types=('image/*',)):
+def choose(timeout_ms=120000, title=gettext('Choose a wallpaper'), mime_types=('image/*',)):
     try:
         import gi
         gi.require_version('Gio', '2.0')
@@ -41,7 +54,7 @@ def choose(timeout_ms=120000, title='Choose a wallpaper', mime_types=('image/*',
     return choose_on_bus(bus, Gio, GLib, timeout_ms, title, mime_types)
 
 
-def choose_on_bus(bus, Gio, GLib, timeout_ms, title='Choose a wallpaper', mime_types=('image/*',)):
+def choose_on_bus(bus, Gio, GLib, timeout_ms, title=gettext('Choose a wallpaper'), mime_types=('image/*',)):
     loop = GLib.MainLoop()
     token = 'emaki_wallpaper_' + secrets.token_hex(12)
     predicted = ROOT + '/request/' + bus.get_unique_name()[1:].replace('.', '_') + '/' + token
@@ -121,7 +134,7 @@ def choose_on_bus(bus, Gio, GLib, timeout_ms, title='Choose a wallpaper', mime_t
             'handle_token': GLib.Variant('s', token),
             'multiple': GLib.Variant('b', False),
             'directory': GLib.Variant('b', False),
-            'filters': GLib.Variant('a(sa(us))', [('Pictures', [(1, mime) for mime in mime_types])]),
+            'filters': GLib.Variant('a(sa(us))', [(gettext('Pictures'), [(1, mime) for mime in mime_types])]),
         }
         bus.call(PORTAL, ROOT, 'org.freedesktop.portal.FileChooser', 'OpenFile',
                  GLib.Variant('(ssa{sv})', ('', title, options)),

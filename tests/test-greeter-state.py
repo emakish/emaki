@@ -98,6 +98,7 @@ class StateTests(unittest.TestCase):
             executable = binary / name
             executable.write_text('#!/usr/bin/python3\nimport os,sys\nfrom pathlib import Path\n'
                                   'name=Path(sys.argv[0]).name\n'
+                                  'if name=="qs": assert os.environ["EMAKI_LANGUAGE"]=="en_XA"\n'
                                   'if name=="regreet": assert os.environ["XDG_DATA_DIRS"].split(":")[0]=="/usr/share/emaki/greetd/data"\n'
                                   'with open(os.environ["FIXTURE_COMMANDS"],"a") as f: f.write(name+"\\n")\n'
                                   'print(name+"-output"); print(name+"-error",file=sys.stderr)\n'
@@ -109,7 +110,7 @@ class StateTests(unittest.TestCase):
         command = str(ROOT / 'scripts/emaki-greeter-run')
         env = dict(os.environ, PATH=str(binary), FIXTURE_JOURNAL=str(self.base / 'journal'),
                    FIXTURE_COMMANDS=str(self.base / 'commands'), XDG_RUNTIME_DIR=str(self.base),
-                   EMAKI_GREETER_COMPOSITOR='niri-emaki', FIXTURE_WRAPPER=command)
+                   EMAKI_GREETER_COMPOSITOR='niri-emaki', FIXTURE_WRAPPER=command, EMAKI_LANGUAGE='en_XA')
         for logger in (True, False):
             if not logger:
                 journal.unlink()

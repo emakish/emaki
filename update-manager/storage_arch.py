@@ -1,6 +1,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Read-only Arch retention rules; callers alone own preview and deletion."""
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from contextlib import contextmanager, ExitStack
 from contextvars import ContextVar
 from functools import cmp_to_key, wraps
@@ -49,14 +61,14 @@ class Refused(RuntimeError):
 
 def require(condition):
     if not condition:
-        raise Refused('Package retention could not be verified. Nothing was removed.')
+        raise Refused(_('Package retention could not be verified. Nothing was removed.'))
 
 
 def remaining():
     deadline = DEADLINE.get()
     seconds = SCAN_SECONDS if deadline is None else deadline - time.monotonic()
     if seconds <= 0:
-        raise Refused('Storage inventory took too long. Nothing was removed.')
+        raise Refused(_('Storage inventory took too long. Nothing was removed.'))
     return seconds
 
 
@@ -162,7 +174,7 @@ def read_versions(database):
         try:
             name, version = lines[lines.index('%NAME%') + 1], lines[lines.index('%VERSION%') + 1]
         except IndexError as error:
-            raise Refused('Package metadata is incomplete.') from error
+            raise Refused(_('Package metadata is incomplete.')) from error
         require(NAME.fullmatch(name) and VERSION.fullmatch(version) and name not in result)
         result[name] = version
     require(bool(result))
@@ -352,8 +364,8 @@ def cache_inventory():
         value = command(['vercmp', left, right]).strip()
         require(re.fullmatch(r'-?[0-9]+', value))
         return int(value)
-    for name in {name for _, name, _ in archives}:
-        versions = {version for _, package, version in archives if package == name}
+    for name in {name for _unused, name, _unused in archives}:
+        versions = {version for _unused, package, version in archives if package == name}
         protected.update((name, version) for version in sorted(versions, key=cmp_to_key(compare))[-3:])
     candidates = []
     for path, name, version in archives:
@@ -390,9 +402,9 @@ def quota_status():
     finally:
         os.close(descriptor)
     require(struct.unpack_from('=I', buffer, 64)[0] == 1)
-    _, objectid, offset, kind, length = struct.unpack_from('=QQQII', buffer, 104)
+    _unused, objectid, offset, kind, length = struct.unpack_from('=QQQII', buffer, 104)
     require((objectid, offset, kind) == (0, 0, 240) and 32 <= length <= 40)
-    version, generation, flags, _ = struct.unpack_from('<4Q', buffer, 136)
+    version, generation, flags, _unused = struct.unpack_from('<4Q', buffer, 136)
     require(version == 1 and flags == 1)
     return generation
 
@@ -457,11 +469,11 @@ def subvolume_id(path):
 @bounded
 def snapshot_usage():
     """Use an existing exact aggregate, or report individual exclusive data."""
-    unavailable = {'bytes': None, 'reason': 'Exclusive snapshot usage is unavailable.'}
+    unavailable = {'bytes': None, 'reason': _('Exclusive snapshot usage is unavailable.')}
     try:
         paths = snapshot_paths()
         if not paths:
-            return {'bytes': 0, 'reason': 'No retained snapshots were found.'}
+            return {'bytes': 0, 'reason': _('No retained snapshots were found.')}
         generation = quota_status()
         wanted = {subvolume_id(path) for path in paths}
         require(len(wanted) == len(paths) and subvolume_id('/') not in wanted)
@@ -479,9 +491,8 @@ def snapshot_usage():
         if aggregate is not None:
             require(aggregate >= total)
             return {'bytes': aggregate, 'exclusive_bytes': total,
-                    'reason': 'Space exclusively held by retained snapshots, including their shared extents.'}
+                    'reason': _('Space exclusively held by retained snapshots, including their shared extents.')}
         return {'bytes': None, 'exclusive_bytes': total,
-                'reason': 'Individual snapshots hold at least '
-                          f'{total} exclusive bytes; space shared between snapshots is unavailable.'}
+                'reason': _('Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable.').format(bytes=total)}
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         return unavailable

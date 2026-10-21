@@ -8,6 +8,18 @@ A kernel event must belong to the running kernel, never merely another installed
 kernel. Unknown custom kernels need a surviving modules/pkgbase file to identify
 that relationship. Package logs are read by this backend, never by the window.
 """
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 from contextlib import contextmanager
 from datetime import datetime
 import fcntl
@@ -73,7 +85,7 @@ def boot_context(proc=Path('/proc')):
     proc = Path(proc)
     boot_id = (proc / 'sys/kernel/random/boot_id').read_text().strip()
     if not re.fullmatch(r'[a-fA-F0-9-]{36}', boot_id):
-        raise ValueError('Invalid boot identity')
+        raise ValueError(_('Invalid boot identity'))
     boot_time = next(int(line.split()[1]) for line in (proc / 'stat').read_text().splitlines()
                      if line.startswith('btime '))
     vendor = ''
@@ -185,7 +197,7 @@ def acknowledge(cache_dir=None, *, proc=Path('/proc')):
 def _acknowledge(cache_dir=None, *, proc=Path('/proc')):
     """Dismiss this boot's reminder; keep restart evidence available to the window."""
     try:
-        boot_id, _, _ = boot_context(proc)
+        boot_id, _unused, _unused = boot_context(proc)
     except (OSError, ValueError, StopIteration, IndexError):
         return False
     path = cache_path(cache_dir)
@@ -201,13 +213,13 @@ def notify_restart(cache_dir=None):
     state = status(cache_dir)
     if not state.get('restart') or not state.get('reminder'):
         return dict(ok=True, notified=False)
-    return notify('Restart to finish the update',
-                  'The new kernel and system services start after a restart. Save your work first.')
+    return notify(_('Restart to finish the update'),
+                  _('The new kernel and system services start after a restart. Save your work first.'))
 
 
 def notify_completed():
     """Report a successful update even when no restart is needed."""
-    return notify('Updated', 'All updates are installed.')
+    return notify(_('Updated'), _('All updates are installed.'))
 
 
 def offer_report(part):
@@ -225,7 +237,7 @@ def notify(title, body):
                  'org.freedesktop.Notifications', 'Notify', 'susssasa{sv}i',
                  'Programs & Updates', '0', 'emaki-programs-updates',
                  title, body,
-                 '0', '2', 'resident', 'b', 'true', 'urgency', 'y', '1', '0']
+                 '0', '3', 'desktop-entry', 's', 'emaki-update-manager', 'resident', 'b', 'true', 'urgency', 'y', '1', '0']
     try:
         result = subprocess.run(arguments, stdin=subprocess.DEVNULL, capture_output=True,
                                 text=True, timeout=3, check=False)

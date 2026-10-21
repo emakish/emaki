@@ -322,3 +322,59 @@ notes/tests/test_backend.py	Isolated storage, live watcher and reminder regressi
 scripts/templates/notes.svg	Source template for the installed accent-coloured Notes icon.	scripts/render-shell-palette; notes/emaki-notes.svg
 notes/ui/tests/NotesTest.qml	Offscreen app interaction and screenshot fixture.	notes/ui/tests/run.py
 notes/ui/tests/run.py	Isolated app loading, interaction and screenshot runner.	Makefile:check
+crates/emaki-core/src/i18n.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+i18n/README.md	Contributor instructions for adding and testing translations; not runtime application content.	i18n/catalogues.py; Makefile:translations-update and check-i18n
+i18n/allow.json	Translation scanner exceptions used only during source checks.	tests/check-i18n.py; Makefile:check-i18n
+i18n/catalogues.py	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/cli/cli.pot	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/cli/en.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/cli/en_XA.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/cli/es.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/cli/pt_BR.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/es-glossary.md	Translator reference (terms kept identical across a language); not part of the installed system.	i18n/README.md
+i18n/es-unchanged.json	Translator reference (terms kept identical across a language); not part of the installed system.	i18n/README.md
+i18n/install.py	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/en.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/en.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/en_XA.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/en_XA.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/es.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/es.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/installer.pot	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/pt_BR.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/installer/pt_BR.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/native/CMakeLists.txt	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/native/plugin.cpp	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/en.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/en.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/en_XA.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/en_XA.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/es.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/es.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/notes.pot	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/pt_BR.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/notes/pt_BR.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/en.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/en.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/en_XA.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/en_XA.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/es.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/es.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/programs.pot	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/pt_BR.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/programs/pt_BR.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/pt_BR-glossary.md	Translator reference (terms kept identical across a language); not part of the installed system.	i18n/README.md
+i18n/shell/en.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/en.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/en_XA.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/en_XA.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/es.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/es.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/pt_BR.po	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/pt_BR.ts	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+i18n/shell/shell.pot	Translation build input; compiled catalogues and the QML plugin ship instead.	Makefile:build-i18n and install-i18n; i18n/catalogues.py
+installer/tests/test_i18n.py	Isolated translation regression test; not part of the installed application.	Makefile:check-i18n
+installer/ui/tests/english.py	Isolated English-output regression test for the installer window; not part of the installed application.	Makefile:check-i18n
+installer/ui/tests/i18n.py	Isolated translation regression test; not part of the installed application.	Makefile:check-i18n
+installer/ui/tests/translations.js	Isolated translation regression test; not part of the installed application.	Makefile:check-i18n
+update-manager/ui/tests/i18n.py	Isolated translation regression test; not part of the installed application.	Makefile:check-i18n

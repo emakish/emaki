@@ -199,5 +199,30 @@ class UpdateErrors(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
 
 
+class InstalledLayout(unittest.TestCase):
+    """emaki-config installs update_errors.py alone as libexec/emaki_update_errors.py (Makefile), and emaki-update and
+    Programs & Updates import it from there. 0.11.0-1 broke that copy with a package-relative import."""
+
+    def test_the_installed_copy_imports_and_translates(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            libexec = Path(directory)
+            (libexec / 'emaki_update_errors.py').write_text(
+                (ROOT / 'installer/emaki_installer/update_errors.py').read_text())
+            (libexec / 'emaki_i18n.py').write_text((ROOT / 'scripts/emaki_i18n.py').read_text())
+            probe = ('import sys; sys.path.insert(0, sys.argv[1]); '
+                     'from emaki_update_errors import error_lines, explain; '
+                     'print(explain("error: failed to commit transaction (conflicting files)"))')
+            environment = dict(os.environ, EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'))
+            english = subprocess.run([sys.executable, '-I', '-c', probe, directory], capture_output=True, text=True,
+                                     env=dict(environment, EMAKI_LANGUAGE='en'), cwd=directory)
+            self.assertEqual(english.returncode, 0, english.stderr)
+            self.assertTrue(english.stdout.strip())
+            spanish = subprocess.run([sys.executable, '-I', '-c', probe, directory], capture_output=True, text=True,
+                                     env=dict(environment, EMAKI_LANGUAGE='es'), cwd=directory)
+            self.assertEqual(spanish.returncode, 0, spanish.stderr)
+            self.assertNotEqual(spanish.stdout, english.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

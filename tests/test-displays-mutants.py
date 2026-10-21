@@ -4,6 +4,7 @@
 """Check that display transaction tests reject missing safety boundaries."""
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,8 @@ mutants = [
     ('KDL validation', "            run(['validate', '--config', name])", '            pass', 'test_validation_failure_changes_nothing'),
 ]
 with tempfile.TemporaryDirectory(prefix='display-mutants-') as directory:
+    for dependency in ('emaki_i18n.py', 'emaki_paths.py'):
+        shutil.copyfile(ROOT / 'scripts' / dependency, Path(directory) / dependency)
     for index, (name, old, new, test) in enumerate(mutants):
         if source.count(old) != 1:
             raise SystemExit(f'{name}: mutation anchor changed')

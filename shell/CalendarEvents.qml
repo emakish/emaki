@@ -18,7 +18,8 @@ Item {
     onPickedDateChanged: if (editing && pickedDate)
         draftDate = pickedDate
     readonly property string headingDate: editing && draftDate ? draftDate : selectedDate
-    readonly property string dateHeading: Qt.locale("en_GB").toString(new Date(Number(headingDate.slice(0, 4)), Number(headingDate.slice(5, 7)) - 1, Number(headingDate.slice(8, 10))), "dddd, d MMMM")
+    //: Qt date pattern: d, dddd and MMMM are fields; put literal words in single quotes, as in 'de'.
+    readonly property string dateHeading: new Date(Number(headingDate.slice(0, 4)), Number(headingDate.slice(5, 7)) - 1, Number(headingDate.slice(8, 10))).toLocaleDateString(Qt.locale(), qsTranslate("CalendarEvents", "dddd, d MMMM"))
     readonly property color fieldColor: ink.r > 0.5 ? "#383239" : "#fffaf8"
     readonly property color rim: Qt.rgba(dim.r, dim.g, dim.b, 0.25)
     property bool editing: false
@@ -57,7 +58,7 @@ Item {
         const start = String(hourField.value).padStart(2, "0") + ":" + String(minuteField.value).padStart(2, "0");
         const duration = durations[durationField.currentIndex] === "custom" ? Number(customField.text) : durations[durationField.currentIndex];
         if (!titleField.text.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(draftDate) || (duration !== "all-day" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(start)) || (duration !== "all-day" && (!Number.isInteger(duration) || duration <= 0))) {
-            error = "Enter a title and a positive duration.";
+            error = qsTranslate("CalendarEvents", "Enter a title and a positive duration.");
             return;
         }
         const fields = {
@@ -74,7 +75,7 @@ Item {
         error = "";
         pending = String(service.request("calendar.save", fields));
         if (!pending)
-            error = service.error || "Calendar is reconnecting. Your changes are still here.";
+            error = service.error || qsTranslate("CalendarEvents", "Calendar is reconnecting. Your changes are still here.");
     }
     function remove(): void {
         if (pending || !original)
@@ -84,7 +85,7 @@ Item {
             revision: original.revision
         }));
         if (!pending)
-            error = service.error || "Calendar is reconnecting. Try again shortly.";
+            error = service.error || qsTranslate("CalendarEvents", "Calendar is reconnecting. Try again shortly.");
     }
     Connections {
         target: events.service
@@ -96,7 +97,7 @@ Item {
                 events.editing = false;
                 events.confirmingDelete = false;
             } else
-                events.error = result.error || "The event could not be saved. Your changes are still here.";
+                events.error = result.error || qsTranslate("CalendarEvents", "The event could not be saved. Your changes are still here.");
         }
     }
     HoverHandler {
@@ -265,7 +266,7 @@ Item {
             }
             Action {
                 width: 110
-                text: "New event"
+                text: qsTranslate("CalendarEvents", "New event")
                 visible: !events.editing
                 onClicked: events.edit(null)
             }
@@ -276,7 +277,7 @@ Item {
             spacing: 2
             Caption {
                 visible: events.dayEvents.length === 0
-                text: "No events. A little space in the day."
+                text: qsTranslate("CalendarEvents", "No events. A little space in the day.")
                 height: 28
                 verticalAlignment: Text.AlignVCenter
             }
@@ -286,7 +287,7 @@ Item {
                     required property var modelData
                     width: content.width
                     height: 46
-                    text: (modelData.duration === "all-day" ? "All day" : modelData.start + " · " + modelData.duration + " min") + "  ·  " + modelData.title
+                    text: (modelData.duration === "all-day" ? qsTranslate("CalendarEvents", "All day") : modelData.start + " · " + qsTranslate("CalendarEvents", "%n min", "", Number(modelData.duration))) + "  ·  " + modelData.title
                     onClicked: events.edit(modelData)
                     contentItem: Text {
                         text: parent.text
@@ -305,23 +306,23 @@ Item {
             width: parent.width
             spacing: 12
             Caption {
-                text: events.original ? "Edit event" : "New event"
+                text: events.original ? qsTranslate("CalendarEvents", "Edit event") : qsTranslate("CalendarEvents", "New event")
             }
             Field {
                 id: titleField
                 objectName: "event-title"
                 width: parent.width
-                placeholderText: "Title"
-                Accessible.name: "Event title"
+                placeholderText: qsTranslate("CalendarEvents", "Title")
+                Accessible.name: qsTranslate("CalendarEvents", "Event title")
                 onAccepted: events.save()
             }
             Caption {
-                text: "Choose a day in the calendar above"
+                text: qsTranslate("CalendarEvents", "Choose a day in the calendar above")
             }
             Column {
                 width: parent.width
                 spacing: 5
-                Caption { text: "Start time" }
+                Caption { text: qsTranslate("CalendarEvents", "Start time") }
                 Row {
                     width: parent.width
                     spacing: 8
@@ -332,7 +333,7 @@ Item {
                         objectName: "event-hour"
                         width: 116
                         to: 23
-                        Accessible.name: "Start hour"
+                        Accessible.name: qsTranslate("CalendarEvents", "Start hour")
                     }
                     Caption { text: ":"; height: 38; verticalAlignment: Text.AlignVCenter }
                     TimePart {
@@ -340,7 +341,7 @@ Item {
                         objectName: "event-minute"
                         width: 116
                         to: 59
-                        Accessible.name: "Start minute"
+                        Accessible.name: qsTranslate("CalendarEvents", "Start minute")
                     }
                 }
             }
@@ -351,42 +352,42 @@ Item {
                     width: (parent.width - 8) / 2
                     spacing: 3
                     Caption {
-                        text: "Duration"
+                        text: qsTranslate("CalendarEvents", "Duration")
                     }
                     Choice {
                         id: durationField
                         objectName: "event-duration"
                         width: parent.width
-                        model: ["15 minutes", "30 minutes", "1 hour", "2 hours", "All day", "Custom"]
-                        Accessible.name: "Duration"
+                        model: [qsTranslate("CalendarEvents", "15 minutes"), qsTranslate("CalendarEvents", "30 minutes"), qsTranslate("CalendarEvents", "1 hour"), qsTranslate("CalendarEvents", "2 hours"), qsTranslate("CalendarEvents", "All day"), qsTranslate("CalendarEvents", "Custom")]
+                        Accessible.name: qsTranslate("CalendarEvents", "Duration")
                     }
                 }
                 Column {
                     width: (parent.width - 8) / 2
                     spacing: 3
                     Caption {
-                        text: "Reminder"
+                        text: qsTranslate("CalendarEvents", "Reminder")
                     }
                     Choice {
                         id: reminderField
                         objectName: "event-reminder"
                         width: parent.width
-                        model: ["None", "At start", "5 minutes before", "10 minutes before", "30 minutes before", "1 hour before", "1 day before"]
-                        Accessible.name: "Reminder"
+                        model: [qsTranslate("CalendarEvents", "None"), qsTranslate("CalendarEvents", "At start"), qsTranslate("CalendarEvents", "5 minutes before"), qsTranslate("CalendarEvents", "10 minutes before"), qsTranslate("CalendarEvents", "30 minutes before"), qsTranslate("CalendarEvents", "1 hour before"), qsTranslate("CalendarEvents", "1 day before")]
+                        Accessible.name: qsTranslate("CalendarEvents", "Reminder")
                     }
                 }
             }
             Caption {
                 visible: durationField.currentIndex === 5
-                text: "Duration in minutes"
+                text: qsTranslate("CalendarEvents", "Duration in minutes")
             }
             Field {
                 id: customField
                 objectName: "event-custom"
                 visible: durationField.currentIndex === 5
                 width: parent.width
-                placeholderText: "Duration in minutes"
-                Accessible.name: "Custom duration in minutes"
+                placeholderText: qsTranslate("CalendarEvents", "Duration in minutes")
+                Accessible.name: qsTranslate("CalendarEvents", "Custom duration in minutes")
                 validator: IntValidator {
                     bottom: 1
                     top: 525600
@@ -404,7 +405,7 @@ Item {
                 enabled: events.pending === ""
                 Action {
                     visible: !!events.original
-                    text: events.confirmingDelete ? "Confirm delete" : "Delete"
+                    text: events.confirmingDelete ? qsTranslate("CalendarEvents", "Confirm delete") : qsTranslate("CalendarEvents", "Delete")
                     onClicked: {
                         if (events.confirmingDelete)
                             events.remove();
@@ -414,14 +415,14 @@ Item {
                 }
                 Item { Layout.fillWidth: true }
                 Action {
-                    text: "Cancel"
+                    text: qsTranslate("CalendarEvents", "Cancel")
                     onClicked: {
                         events.editing = false;
                         events.confirmingDelete = false;
                     }
                 }
                 Action {
-                    text: "Save event"
+                    text: qsTranslate("CalendarEvents", "Save event")
                     primary: true
                     onClicked: events.save()
                 }

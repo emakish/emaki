@@ -13,8 +13,8 @@ const managerDir = fileURLToPath(new URL('../update-manager/', import.meta.url))
 const source = fs.readFileSync(new URL('ui/ManagerLogic.js', `file://${managerDir}`), 'utf8')
     .split('\n').filter(line => !/^\s*\.(pragma|import)\b/.test(line)).join('\n');
 const Logic = {};
-vm.runInNewContext(source + '\nObject.assign(Logic, {installedRows, merge, edition, identity, consolidate, removalStatus, updateProgress});',
-                   {Logic, Qt: {}});
+vm.runInNewContext(`String.prototype.arg = function(value) { return this.replace(/%1/g, () => String(value)); };\n` + source + '\nObject.assign(Logic, {installedRows, merge, edition, identity, consolidate, removalStatus, updateProgress, progressEvent, aurBuilds, undoRefusal, downloadText});',
+                   {Logic, Qt: {}, qsTranslate: (context, text, hint, count) => text.replace("need(s)", count === 1 ? "needs" : "need")});
 
 const python = `
 import json, sys
@@ -198,3 +198,21 @@ for (const [name, blockers, protectedRow, reason] of [
     const warning = Logic.updateProgress(':: Processing package changes...\nremoving foo breaks dependency \'foo\' required by bar');
     assert.equal(warning.done, 0);
 }
+{
+    // Update rows: a release marker package of a few kilobytes (emaki 0.10.0-1 downloads 7.70 KiB)
+    // never reads as zero; 0 is pacman's "already in the cache"; no size stays unknown.
+    assert.equal(Logic.downloadText(7885), '< 0.1 MB');
+    assert.equal(Logic.downloadText(49999), '< 0.1 MB');
+    assert.equal(Logic.downloadText(50000), '0.1 MB');
+    assert.equal(Logic.downloadText(0), '0 MB');
+    assert.equal(Logic.downloadText(null), '—');
+    assert.equal(Logic.downloadText(150000000), '150.0 MB');
+    assert.equal(Logic.downloadText(1500000000), '1.5 GB');
+}
+
+// Progress and warning identity stay independent of translated display strings.
+assert.equal(Logic.progressEvent(Logic.updateProgress(''), {phase: 'flatpak', message: '[Translated progress]'}).step, 4);
+assert.equal(Logic.updateProgress('Updating Flatpak applications').step, 0);
+assert.equal(Logic.aurBuilds({transaction: {kind: 'aur', builds: [{orphan: true}]}})[0].orphan, true);
+assert.equal(Logic.undoRefusal({code: 'cannot-undo', requiredBy: ['one']}), ' one needs what it added.');
+assert.equal(Logic.undoRefusal({code: 'cannot-undo', requiredBy: ['one', 'two']}), ' one, two need what it added.');

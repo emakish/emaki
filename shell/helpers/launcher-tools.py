@@ -2,6 +2,19 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Private bounded JSON pipe for launcher operations; no payloads in diagnostics."""
+
+import sys as _i18n_sys
+from pathlib import Path as _I18nPath
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+_i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[2] / 'scripts'))
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import emaki_paths as _i18n_paths
+    _i18n_sys.path.insert(0, _i18n_paths.LIBEXECDIR)
+    from emaki_i18n import translation
+gettext = translation('shell').gettext
+
 import fcntl
 import json
 import os
@@ -248,7 +261,7 @@ def handle(request):
         # missing mimeinfo.cache does not hide an installed application.
         shown=[a for a in Gio.AppInfo.get_all() if a.should_show() and isinstance(a,Gio.DesktopAppInfo)]
         def entry(app): return dict(id=app.get_id(),name=app.get_display_name())
-        for role,key,mime in [('Browser','defaults.browser','x-scheme-handler/https'),('Terminal','defaults.terminal',None),('Files','defaults.files','inode/directory'),('Text editor',None,'text/plain'),('Image viewer',None,'image/png'),('Video player',None,'video/mp4')]:
+        for role,key,mime in [(gettext('Browser'),'defaults.browser','x-scheme-handler/https'),(gettext('Terminal'),'defaults.terminal',None),(gettext('Files'),'defaults.files','inode/directory'),(gettext('Text editor'),None,'text/plain'),(gettext('Image viewer'),None,'image/png'),(gettext('Video player'),None,'video/mp4')]:
             if mime:
                 app=Gio.AppInfo.get_default_for_type(mime,False)
                 choices=[entry(a) for a in shown if mime in (a.get_supported_types() or [])][:32] if key else []
@@ -276,7 +289,7 @@ def handle(request):
     if op=='account-picture-choose':
         # Settings > Users hands the chosen path to emaki-settings-users, which decodes it.
         import wallpaper_chooser
-        return wallpaper_chooser.choose(title='Choose your picture',
+        return wallpaper_chooser.choose(title=gettext('Choose your picture'),
                                        mime_types=('image/png', 'image/jpeg', 'image/webp'))
     if op=='wallpapers':
         # Candidate pictures for the page: the packaged/user Emaki wallpaper folders only.
@@ -285,7 +298,7 @@ def handle(request):
         rows=[]; seen=set()
         shipped=Path(emaki_paths.DATADIR)/'wallpaper/fallback.png'
         if shipped.is_file():
-            rows.append(dict(path=str(shipped),name='Emaki landscape'))
+            rows.append(dict(path=str(shipped),name=gettext('Emaki landscape')))
             seen.add(shipped.name)
         for root in roots:
             folder=root/'emaki/wallpapers'

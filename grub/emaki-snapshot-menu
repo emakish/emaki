@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 
 
@@ -197,8 +198,14 @@ def kernel_signature_check(root=Path('/')):
     if not SECUREBOOT.is_file():
         # Without the boot library's Secure Boot module the menu stays as generated.
         return None
-    spec = importlib.util.spec_from_file_location('emaki_secureboot', SECUREBOOT)
+    # A module of its own folder's package, so its relative imports (its translations,
+    # 0.11) resolve beside it.
+    package = importlib.util.module_from_spec(importlib.util.spec_from_loader('emaki_secureboot', None, is_package=True))
+    package.__path__ = [str(SECUREBOOT.parent)]
+    sys.modules['emaki_secureboot'] = package
+    spec = importlib.util.spec_from_file_location('emaki_secureboot.secureboot', SECUREBOOT)
     secureboot = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = secureboot
     spec.loader.exec_module(secureboot)
     if not secureboot.enabled(root):
         return None

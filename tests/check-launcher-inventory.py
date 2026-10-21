@@ -21,7 +21,7 @@ MINIMAL = {'emaki-welcome', 'firefox', 'kitty', 'org.kde.dolphin',
            'emaki-update-manager', 'emaki-report'}
 LIVE = MINIMAL | {'emaki-install'}
 RICH = MINIMAL | {
-    'org.kde.ark', 'org.kde.discover', 'org.kde.elisa', 'org.kde.filelight',
+    'org.kde.ark', 'org.kde.elisa', 'org.kde.filelight',
     'org.kde.gwenview', 'org.kde.haruna', 'org.kde.isoimagewriter', 'org.kde.kate',
     'org.kde.kcharselect', 'emaki-printers',
     'org.keepassxc.KeePassXC', 'com.obsproject.Studio',

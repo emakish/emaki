@@ -559,6 +559,8 @@ package() {
         prepared = self.base / 'installer-prepared'
         project = prepared / 'emaki-installer'
         shutil.copytree(ROOT / 'installer', project / 'installer', ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(ROOT / 'i18n/installer', project / 'i18n/installer')
+        shutil.copy2(ROOT / 'i18n/catalogues.py', project / 'i18n/catalogues.py')
         shutil.copy2(ROOT / 'LICENSE', project / 'LICENSE')
         archive = source.archive(recipe, prepared, self.out, commit, '0.2.0-1')
         unpacked = self.base / 'installer-unpacked'

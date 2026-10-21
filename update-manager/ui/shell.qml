@@ -10,6 +10,7 @@ import "file:@EMAKI_DATADIR@/shell" as Shell
 
 ShellRoot {
     id: root
+    readonly property bool translationsReady: Shell.Translation.initialize()
     property string currentPage: Quickshell.env("EMAKI_MANAGER_PAGE") === "updates" ? "updates" : "browse"
     property string currentCategory: ""
     property string currentCategoryName: ""
@@ -26,7 +27,8 @@ ShellRoot {
     UpdateController { id: controller; externalBusy: programs.mutating }
     ProgramsController {
         id: programs
-        externalBusy: controller.busy || controller.restorePending
+        // Only an update that changes the system holds Programs; a check or a restore-point read does not.
+        externalBusy: ["applying", "restarting", "restoring"].includes(controller.phase) || controller.restorePending
         onRestoreFinished: result => controller.accept(JSON.stringify(Object.assign({}, result, {type: "restoreFinished"})))
         onTransactionFinished: ok => {
             root.checkPending = true;
@@ -81,7 +83,7 @@ ShellRoot {
         sourceComponent: FloatingWindow {
             id: window
             property alias manager: updateView
-            title: "Programs & Updates"
+            title: qsTranslate("shell", "Programs & Updates")
             implicitWidth: 1180
             implicitHeight: 780
             // The smallest size where every page stays usable (tests/layout.py walks it), within a niri

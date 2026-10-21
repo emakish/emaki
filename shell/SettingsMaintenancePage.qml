@@ -50,7 +50,7 @@ Column {
                 Qt.callLater(function () {
                     if (!channelProcess.completed) {
                         root.pending = false;
-                        root.message = "Update channel settings could not be opened. Try again.";
+                        root.message = qsTranslate("SettingsMaintenancePage", "Update channel settings could not be opened. Try again.");
                     }
                 });
         }
@@ -63,11 +63,11 @@ Column {
             try {
                 const result = JSON.parse(root.reply);
                 if (code !== 0 || result.schema_version !== 1 || !["read", "applied", "unchanged"].includes(result.status))
-                    throw new Error(result.message || "The update channel could not be changed.");
+                    throw new Error(result.message || qsTranslate("SettingsMaintenancePage", "The update channel could not be changed."));
                 root.channel = result;
                 root.message = result.message || "";
             } catch (error) {
-                root.message = code === 126 ? "Authentication was cancelled." : "The update channel could not be confirmed. Reopen Settings to check.";
+                root.message = code === 126 ? qsTranslate("SettingsMaintenancePage", "Authentication was cancelled.") : qsTranslate("SettingsMaintenancePage", "The update channel could not be confirmed. Reopen Settings to check.");
                 try {
                     const result = JSON.parse(root.reply);
                     if (result.message)
@@ -83,7 +83,7 @@ Column {
             if (!running)
                 Qt.callLater(function () {
                     if (!passwordProcess.completed)
-                        root.message = "The password window could not be opened.";
+                        root.message = qsTranslate("SettingsMaintenancePage", "The password window could not be opened.");
                 });
         }
         property string result: ""
@@ -99,7 +99,7 @@ Column {
                     throw new Error();
                 root.message = reply.message;
             } catch (_) {
-                root.message = "The password change could not be confirmed. Check the password window.";
+                root.message = qsTranslate("SettingsMaintenancePage", "The password change could not be confirmed. Check the password window.");
             }
         }
     }
@@ -116,22 +116,22 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.page === "updates" && root.channel.editable === true
-        title: "Update channel"
+        title: qsTranslate("SettingsMaintenancePage", "Update channel")
         SettingsChoiceRow {
             objectName: "settings-update-channel"
             width: parent.width
-            title: "Channel"
-            explanation: "Choose which releases your next update uses."
+            title: qsTranslate("SettingsMaintenancePage", "Channel")
+            explanation: qsTranslate("SettingsMaintenancePage", "Choose which releases your next update uses.")
             value: root.channel.channel || ""
             defaultValue: "stable"
             busy: root.pending
             options: [
                 {
-                    label: "Stable",
+                    label: qsTranslate("SettingsMaintenancePage", "Stable"),
                     value: "stable"
                 },
                 {
-                    label: "Testing",
+                    label: qsTranslate("SettingsMaintenancePage", "Testing"),
                     value: "testing"
                 }
             ]
@@ -143,16 +143,16 @@ Column {
         objectName: "settings-snapshot-recovery"
         width: parent.width
         visible: root.page === "updates" && !!root.service.recovery?.snapshot
-        title: "Recovery snapshot"
+        title: qsTranslate("SettingsMaintenancePage", "Recovery snapshot")
         SettingsRow {
             width: parent.width
-            title: "Review snapshot"
-            explanation: "Return to the recovery prompt to keep this state."
+            title: qsTranslate("SettingsMaintenancePage", "Review snapshot")
+            explanation: qsTranslate("SettingsMaintenancePage", "Return to the recovery prompt to keep this state.")
             controlWidth: 150
             control: Component {
                 SettingsButton {
                     objectName: "settings-review-snapshot"
-                    text: "Review snapshot"
+                    text: qsTranslate("SettingsMaintenancePage", "Review snapshot")
                     onClicked: root.service.recovery.opened = true
                 }
             }
@@ -161,19 +161,19 @@ Column {
     SettingsCard {
         width: parent.width
         visible: root.page === "lock"
-        title: "Password"
+        title: qsTranslate("SettingsMaintenancePage", "Password")
         SettingsRow {
             objectName: "settings-password"
             width: parent.width
-            title: "Change password"
-            explanation: "Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately."
+            title: qsTranslate("SettingsMaintenancePage", "Change password")
+            explanation: qsTranslate("SettingsMaintenancePage", "Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.")
             busy: passwordProcess.running
             controlWidth: 150
             control: Component {
                 SettingsButton {
-                    text: "Change password"
+                    text: qsTranslate("SettingsMaintenancePage", "Change password")
                     onClicked: {
-                        root.message = "Enter your current and new password in the terminal.";
+                        root.message = qsTranslate("SettingsMaintenancePage", "Enter your current and new password in the terminal.");
                         passwordProcess.completed = false;
                         passwordProcess.result = "";
                         passwordProcess.running = true;

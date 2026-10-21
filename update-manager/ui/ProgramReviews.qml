@@ -12,6 +12,7 @@ import Quickshell.Io
 // or absent network never holds the store. AUR packages show the AUR's votes instead.
 ColumnLayout {
     id: reviews
+    readonly property bool translationsReady: Shell.Translation.initialize()
     property var program: ({})
     // The engine command; tests point it at a recorded service.
     property var command: ["emaki-programs"]
@@ -66,19 +67,21 @@ ColumnLayout {
         readerWatch.restart();
     }
     function date(seconds: int): string {
-        return seconds > 0 ? new Date(seconds * 1000).toLocaleDateString(Qt.locale("en_US"), "d MMM yyyy") : "";
+        // English sessions keep 0.10's en_US names ("Sep"); other languages name the month themselves.
+        const english = Qt.locale().name === "C" || Qt.locale().name.startsWith("en_");
+        return seconds > 0 ? new Date(seconds * 1000).toLocaleDateString(english ? Qt.locale("en_US") : Qt.locale(), "d MMM yyyy") : "";
     }
 
     Timer {
         // A command that cannot start never exits: say so instead of loading forever.
         id: readerWatch
         interval: 3000
-        onTriggered: if (!reader.running && reviews.loading) { reviews.loading = false; reviews.loaded = true; reviews.error = "Ratings could not be loaded. Check your connection."; }
+        onTriggered: if (!reader.running && reviews.loading) { reviews.loading = false; reviews.loaded = true; reviews.error = qsTranslate("ProgramReviews", "Ratings could not be loaded. Check your connection."); }
     }
     Timer {
         id: writerWatch
         interval: 3000
-        onTriggered: if (!writer.running && dialog.sending) { dialog.sending = false; dialog.problem = "The review could not be sent. Check your connection and try again."; }
+        onTriggered: if (!writer.running && dialog.sending) { dialog.sending = false; dialog.problem = qsTranslate("ProgramReviews", "The review could not be sent. Check your connection and try again."); }
     }
     Process {
         id: reader
@@ -98,9 +101,9 @@ ColumnLayout {
                 reviews.items = Array.isArray(result.reviews) ? result.reviews : [];
                 reviews.appId = result.appId || "";
                 reviews.reviewed = result.reviewed === true;
-                reviews.error = result.ok === true ? "" : (result.message || "Ratings could not be loaded. Check your connection.");
+                reviews.error = result.ok === true ? "" : (result.message || qsTranslate("ProgramReviews", "Ratings could not be loaded. Check your connection."));
             } catch (_) {
-                reviews.error = "Ratings could not be loaded. Check your connection.";
+                reviews.error = qsTranslate("ProgramReviews", "Ratings could not be loaded. Check your connection.");
             }
         })
     }
@@ -115,24 +118,23 @@ ColumnLayout {
             if (result.ok === true) {
                 dialog.close();
                 reviews.reload();
-                reviews.notice = "Thank you. Your review is sent; it shows here once the service lists it.";
+                reviews.notice = qsTranslate("ProgramReviews", "Thank you. Your review is sent; it shows here once the service lists it.");
             } else {
-                dialog.problem = result.message || "The review could not be sent. Check your connection and try again.";
+                dialog.problem = result.message || qsTranslate("ProgramReviews", "The review could not be sent. Check your connection and try again.");
             }
         })
     }
 
-    ManagerLabel { text: reviews.aur ? "VOTES" : "RATINGS AND REVIEWS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
+    ManagerLabel { text: reviews.aur ? qsTranslate("ProgramReviews", "VOTES") : qsTranslate("ProgramReviews", "RATINGS AND REVIEWS"); font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
     ManagerLabel {
         objectName: "reviews-aur-votes"
         visible: reviews.aur
-        text: reviews.aur ? Number(reviews.program.votes || 0).toLocaleString(Qt.locale("en_US"), "f", 0) + (reviews.program.votes === 1 ? " vote" : " votes")
-            + " on the AUR · popularity " + Number(reviews.program.popularity || 0).toFixed(2) : ""
+        text: reviews.aur ? Shell.Translation.englishPlural(qsTranslate("ProgramReviews", "%1 vote(s) on the AUR · popularity %2", "", reviews.program.votes || 0), reviews.program.votes || 0).arg(Number(reviews.program.votes || 0).toLocaleString(Qt.locale("en_US"), "f", 0)).arg(Number(reviews.program.popularity || 0).toFixed(2)) : ""
         font.weight: Font.DemiBold
     }
     ManagerLabel {
         visible: reviews.aur
-        text: "AUR packages have no star ratings. Votes come from AUR users; popularity counts recent votes."
+        text: qsTranslate("ProgramReviews", "AUR packages have no star ratings. Votes come from AUR users; popularity counts recent votes.")
         color: Shell.ShellPalette.managerDim; font.pixelSize: 12
     }
     Stars {
@@ -147,10 +149,10 @@ ColumnLayout {
     ManagerLabel {
         objectName: "reviews-state"
         visible: !reviews.aur && text !== ""
-        text: reviews.loading ? "Loading ratings…"
+        text: reviews.loading ? qsTranslate("ProgramReviews", "Loading ratings…")
             : reviews.error !== "" ? reviews.error
-            : reviews.loaded && !reviews.rating && !reviews.items.length ? "No ratings yet. Be the first to review it."
-            : reviews.loaded && !reviews.items.length ? "No written reviews in your language yet." : ""
+            : reviews.loaded && !reviews.rating && !reviews.items.length ? qsTranslate("ProgramReviews", "No ratings yet. Be the first to review it.")
+            : reviews.loaded && !reviews.items.length ? qsTranslate("ProgramReviews", "No written reviews in your language yet.") : ""
         color: Shell.ShellPalette.managerDim; font.pixelSize: 13
     }
     Repeater {
@@ -172,8 +174,8 @@ ColumnLayout {
                 ManagerLabel { text: card.modelData.summary || ""; font.weight: Font.DemiBold; visible: text !== "" }
                 ManagerLabel { text: card.modelData.text || ""; color: Shell.ShellPalette.managerBody; font.pixelSize: 13; lineHeight: 1.3; visible: text !== "" }
                 ManagerLabel {
-                    text: [card.modelData.mine ? "Your review" : card.modelData.name || "Anonymous", reviews.date(card.modelData.date || 0),
-                           card.modelData.version ? "version " + card.modelData.version : ""].filter(part => part !== "").join(" · ")
+                    text: [card.modelData.mine ? qsTranslate("ProgramReviews", "Your review") : card.modelData.name || qsTranslate("ProgramReviews", "Anonymous"), reviews.date(card.modelData.date || 0),
+                           card.modelData.version ? qsTranslate("ProgramReviews", "version %1").arg(card.modelData.version) : ""].filter(part => part !== "").join(" · ")
                     color: Shell.ShellPalette.managerDim; font.pixelSize: 12
                 }
             }
@@ -188,7 +190,7 @@ ColumnLayout {
             width: Math.min(implicitWidth, parent.width)
             squeezed: parent.width > 0 && implicitWidth > parent.width
             visible: !reviews.expanded && reviews.items.length > 3
-            text: "Show all " + reviews.items.length + " reviews"
+            text: Shell.Translation.englishPlural(qsTranslate("ProgramReviews", "Show all %n review(s)", "", reviews.items.length), reviews.items.length)
             quiet: true
             onClicked: reviews.expanded = true
         }
@@ -196,7 +198,7 @@ ColumnLayout {
             objectName: "reviews-write"
             width: Math.min(implicitWidth, parent.width)
             squeezed: parent.width > 0 && implicitWidth > parent.width
-            text: "Write a review"
+            text: qsTranslate("ProgramReviews", "Write a review")
             visible: !reviews.reviewed
             enabled: reviews.loaded && reviews.ids.length > 0
             onClicked: dialog.open()
@@ -231,7 +233,7 @@ ColumnLayout {
             ColumnLayout {
                 width: dialogScroll.availableWidth
                 spacing: 12
-                ManagerLabel { text: "Review " + (reviews.program?.name || "this program"); font.pixelSize: 20; font.weight: Font.DemiBold }
+                ManagerLabel { text: qsTranslate("ProgramReviews", "Review %1").arg(reviews.program?.name || qsTranslate("ProgramReviews", "this program")); font.pixelSize: 20; font.weight: Font.DemiBold }
                 Row {
                     objectName: "review-stars"
                     spacing: 2
@@ -243,7 +245,7 @@ ColumnLayout {
                             objectName: "review-star-" + (index + 1)
                             // Five stars always fit the dialog's width.
                             implicitWidth: Math.min(34, Math.floor((dialog.availableWidth - 8) / 5)); implicitHeight: 34
-                            Accessible.name: "Rate " + (index + 1) + " of 5"
+                            Accessible.name: qsTranslate("ProgramReviews", "Rate %1 of 5").arg(index + 1)
                             Accessible.role: Accessible.RadioButton
                             Accessible.selected: dialog.stars === index + 1
                             checkable: true
@@ -269,7 +271,7 @@ ColumnLayout {
                     id: title
                     objectName: "review-title"
                     Layout.fillWidth: true
-                    placeholderText: "Title, for example: Works well for drawing"
+                    placeholderText: qsTranslate("ProgramReviews", "Title, for example: Works well for drawing")
                     maximumLength: 70
                     leftPadding: 10; rightPadding: 10
                     font.family: "Noto Sans"; font.pixelSize: 14
@@ -284,7 +286,7 @@ ColumnLayout {
                     C.TextArea {
                         id: body
                         objectName: "review-text"
-                        placeholderText: "What is good or bad about it?"
+                        placeholderText: qsTranslate("ProgramReviews", "What is good or bad about it?")
                         wrapMode: TextEdit.Wrap
                         KeyNavigation.priority: KeyNavigation.BeforeItem
                         KeyNavigation.tab: author
@@ -299,7 +301,7 @@ ColumnLayout {
                     id: author
                     objectName: "review-name"
                     Layout.fillWidth: true
-                    placeholderText: "Your name as others see it (optional)"
+                    placeholderText: qsTranslate("ProgramReviews", "Your name as others see it (optional)")
                     maximumLength: 40
                     leftPadding: 10; rightPadding: 10
                     font.family: "Noto Sans"; font.pixelSize: 14
@@ -307,15 +309,15 @@ ColumnLayout {
                     background: Rectangle { radius: 10; color: Shell.ShellPalette.managerBackground; border.width: author.activeFocus ? 2 : 1; border.color: author.activeFocus ? Shell.ShellPalette.accentForeground : Qt.alpha(Shell.ShellPalette.managerInk, .2) }
                 }
                 ManagerLabel {
-                    text: "Your review is public. It goes to the open ratings service at odrs.gnome.org, which GNOME Software and KDE Discover use too, with the name above or “Anonymous”. The service also keeps the network address it came from."
+                    text: qsTranslate("ProgramReviews", "Your review is public. It goes to the open ratings service at odrs.gnome.org, which GNOME Software and KDE Discover use too, with the name above or “Anonymous”. The service also keeps the network address it came from.")
                     color: Shell.ShellPalette.managerDim; font.pixelSize: 12; lineHeight: 1.3
                 }
                 ManagerLabel { objectName: "review-problem"; visible: dialog.problem !== ""; text: dialog.problem; color: Shell.ShellPalette.managerError; font.pixelSize: 13 }
                 ManagerActions {
-                    ManagerButton { text: "Cancel"; enabled: !writer.running; onClicked: dialog.close() }
+                    ManagerButton { text: qsTranslate("ProgramReviews", "Cancel"); enabled: !writer.running; onClicked: dialog.close() }
                     ManagerButton {
                         objectName: "review-send"
-                        text: writer.running ? "Sending…" : "Send review"
+                        text: writer.running ? qsTranslate("ProgramReviews", "Sending…") : qsTranslate("ProgramReviews", "Send review")
                         primary: true
                         enabled: !writer.running && dialog.stars > 0 && title.text.trim() !== "" && body.text.trim() !== ""
                         onClicked: {

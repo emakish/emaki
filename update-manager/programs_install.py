@@ -2,6 +2,18 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Authorize one repository target and keep its update and install owned by systemd."""
+
+try:
+    from emaki_i18n import translation
+except ModuleNotFoundError:
+    import sys as _i18n_sys
+    from pathlib import Path as _I18nPath
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
+    _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
+    from emaki_i18n import translation
+
+_ = translation('programs').gettext
+
 import fcntl
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
@@ -49,18 +61,18 @@ def validate(arguments):
     worker = bool(arguments and arguments[0] == '--run')
     values = arguments[1:] if worker else arguments
     if len(values) != 2:
-        raise ValueError('Select one repository program and its preview.')
+        raise ValueError(_('Select one repository program and its preview.'))
     target, token = values
     arch.validate_target(target)
     if not re.fullmatch('[0-9a-f]{64}', token):
-        raise ValueError('Refresh the installation preview.')
+        raise ValueError(_('Refresh the installation preview.'))
     return worker, target, token
 
 
 def revalidate(target, token):
     plan = arch.install_plan(target, refresh=True)
     if not plan.get('ok') or plan.get('token') != token:
-        raise ValueError('Packages changed. Refresh the installation preview.')
+        raise ValueError(_('Packages changed. Refresh the installation preview.'))
     return plan
 
 
@@ -68,7 +80,7 @@ def preinstall_snapshot(required=False):
     """Keep a verified store-owned point that the existing restore list accepts."""
     if not SNAPSHOTS.is_dir() and not required:
         return '', ''
-    message = 'A verified system snapshot could not be created. Nothing was installed.'
+    message = _('A verified system snapshot could not be created. Nothing was installed.')
     result = subprocess.run(['snapper', '--no-dbus', '-c', 'root', 'create', '--type', 'pre',
                              '--print-number', '--cleanup-algorithm', 'number',
                              '--description', 'Program install'],
@@ -105,7 +117,7 @@ def worker(target, token):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return finish('busy', notStarted=True, message='Another package transaction is running.')
+            return finish('busy', notStarted=True, message=_('Another package transaction is running.'))
         backend = update_backend()
         try:
             backend.require_update_root()
@@ -114,7 +126,7 @@ def worker(target, token):
             before = backend.versions()
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             return finish('refused', notStarted=True, message=str(error))
-        emit('progress', message='Installing with a full repository update. Closing this window does not stop it.')
+        emit('progress', message=_('Installing with a full repository update. Closing this window does not stop it.'))
         baseline = None
         snapshot, snapshot_token = '', ''
         try:
@@ -131,7 +143,7 @@ def worker(target, token):
                 except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                     restart, sign_out = backend.changed(before, after)
                     return finish('refused', restart=restart, signOut=sign_out,
-                                  message='A verified system snapshot could not be created. Nothing was installed.')
+                                  message=_('A verified system snapshot could not be created. Nothing was installed.'))
                 result = subprocess.run(['systemd-inhibit', '--what=sleep:handle-lid-switch', '--mode=block',
                                          '--who=Emaki', '--why=Installing repository programs',
                                          UPDATE, '--noninteractive', '--install-only', *targets],
@@ -139,7 +151,7 @@ def worker(target, token):
                 after = backend.versions()
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             return finish('unknown', snapshot=snapshot, restoreToken=snapshot_token,
-                          message='The transaction result could not be checked. Check repository updates before trying again.')
+                          message=_('The transaction result could not be checked. Check repository updates before trying again.'))
         restart, sign_out = backend.changed(before, after)
         code = 'success' if result.returncode == 0 else 'partial' if before != after else 'cancelled' if result.returncode == 130 else 'failed'
         receipt = ''
@@ -155,8 +167,8 @@ def worker(target, token):
         return finish(code, ok=result.returncode == 0, restart=restart, signOut=sign_out, receipt=receipt,
                       snapshot=snapshot if result.returncode != 0 else '',
                       restoreToken=snapshot_token if result.returncode != 0 else '',
-                      message='Repository installation finished.' if result.returncode == 0 else
-                      'Repository installation did not finish. Review the transaction details.')
+                      message=_('Repository installation finished.') if result.returncode == 0 else
+                      _('Repository installation did not finish. Review the transaction details.'))
 
 
 def request(target, token):
@@ -166,7 +178,7 @@ def request(target, token):
     # This root-generated marker survives collection of the transient service.
     # A new request cannot observe a previous or already-running transaction.
     request_field = 'EMAKI_INSTALL_REQUEST=' + uuid.uuid4().hex
-    emit('progress', message='Starting repository installation.')
+    emit('progress', message=_('Starting repository installation.'))
     subprocess.run(['systemd-run', '--wait', '--collect', '--unit=' + SERVICE,
                     '--property=Type=exec', '--property=StandardOutput=journal',
                     '--property=LogExtraFields=' + request_field,
@@ -202,20 +214,20 @@ def request(target, token):
             finished['message'] = (finished.get('message', '') + '\n' + details.strip()).strip()
         emit('finished', **{key: value for key, value in finished.items() if key != 'type'})
         return 0 if finished.get('ok') else 1
-    return finish('unknown', message='The service result could not be observed. Check its journal before retrying.')
+    return finish('unknown', message=_('The service result could not be observed. Check its journal before retrying.'))
 
 
 def main(argv):
     try:
         is_worker, target, token = validate(argv)
         if os.geteuid() != 0:
-            raise ValueError('Authorization is required to install repository programs.')
+            raise ValueError(_('Authorization is required to install repository programs.'))
         os.umask(0o077)
         return worker(target, token) if is_worker else request(target, token)
     except (ValueError, RuntimeError) as error:
         return finish('refused', notStarted=True, message=str(error))
     except (OSError, subprocess.SubprocessError):
-        return finish('unknown', message='The service result could not be observed. Check its journal before retrying.')
+        return finish('unknown', message=_('The service result could not be observed. Check its journal before retrying.'))
 
 
 if __name__ == '__main__':

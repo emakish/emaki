@@ -61,7 +61,7 @@ Item {
         })
 
     Accessible.role: Accessible.Graphic
-    Accessible.name: "Time zone map"
+    Accessible.name: qsTranslate("TimezoneMap", "Time zone map")
     Accessible.description: caption
     activeFocusOnTab: true
 

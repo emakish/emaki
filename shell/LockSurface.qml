@@ -209,7 +209,7 @@ Item {
             Text {
                 id: placeholder
                 anchors.centerIn: parent
-                text: surface.auth.usernameMode ? "Username" : surface.auth.prompt === "Password" ? "Password" : "Response"
+                text: surface.auth.usernameMode ? qsTranslate("LockSurface", "Username") : ["Password", qsTranslate("AuthController", "Password"), qsTranslate("LockAuth", "Password"), qsTranslate("GreeterAuth", "Password")].includes(surface.auth.prompt) ? qsTranslate("LockSurface", "Password") : qsTranslate("LockSurface", "Response")
                 visible: surface.auth.dotCount === 0
                 color: LiquidPalette.plateDim
                 font.pixelSize: 15
@@ -255,7 +255,7 @@ Item {
             x: Math.max(12, (surface.width - 440) / 2)
             y: surface.height / 2 - 49
             width: Math.min(440, surface.width - 24)
-            text: surface.auth.usernameMode || surface.auth.prompt === "Password" ? "" : surface.auth.prompt
+            text: surface.auth.usernameMode || ["Password", qsTranslate("AuthController", "Password"), qsTranslate("LockAuth", "Password"), qsTranslate("GreeterAuth", "Password")].includes(surface.auth.prompt) ? "" : surface.auth.prompt
             opacity: surface.life
             color: LiquidPalette.plateDim
             font.pixelSize: 12
@@ -278,7 +278,7 @@ Item {
                 // Keep refusal ink readable independently of the wallpaper.
                 color: Qt.rgba(LiquidPalette.flatPlate.r, LiquidPalette.flatPlate.g, LiquidPalette.flatPlate.b, 1)
             }
-            text: surface.auth.displayMessage || (surface.environment.capsLock ? "Caps Lock is on" : "")
+            text: surface.auth.displayMessage || (surface.environment.capsLock ? qsTranslate("LockSurface", "Caps Lock is on") : "")
             opacity: surface.life
             color: ["technical", "pam-error", "wrong", "username"].indexOf(surface.auth.messageKind) >= 0 ? LiquidPalette.danger : LiquidPalette.plateDim
             font.pixelSize: surface.auth._lockoutUntil > 0 ? 16 : 13

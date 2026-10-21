@@ -959,6 +959,13 @@ ShellRoot {
                 // Choosing /efi in the window keeps the ESP's FAT32 instead of the first listed format.
                 controller.mounts = [];
                 const espMount = test.find("mountSelect-/dev/vdb1");
+                test.check(espMount.currentText === "none", "the unassigned mount keeps its protocol token");
+                test.check(espMount.contentItem.text === qsTranslate("InstallerView", "none"), "the selected mount label is translated");
+                const unassignedOption = espMount.delegate.createObject(espMount, {
+                    index: 0
+                });
+                test.check(unassignedOption.text === qsTranslate("InstallerView", "none"), "the popup mount label is translated");
+                unassignedOption.destroy();
                 espMount.currentIndex = 2;
                 espMount.activated(2);
                 test.check(JSON.stringify(controller.mounts) === JSON.stringify([
@@ -1302,6 +1309,7 @@ ShellRoot {
                 // A long plan ending as the planner ends it: the keyboard line comes late in its list.
                 controller.session.plan = {
                     token: "fixture",
+                    summary_keys: Array(12).fill("").concat(["keyboard", "", ""]),
                     summary: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine"].map(word => "Plan line " + word + " of a long review that needs the full width.").concat(["Encryption: LUKS2 root, account password.", "Hibernation: reserve 6,442,450,944 bytes (6.00 GiB), equal to RAM.", "Account: demo; hostname: emaki; timezone: UTC.", "Keyboard: Czech (default), English (US). Super+Space switches.", "Software: Rich — desktop apps, office, email, media and utilities.", "Packages are installed from the signed offline USB repository."]),
                     warnings: [],
                     errors: []
@@ -2289,7 +2297,8 @@ ShellRoot {
                     type: "reply",
                     id: rebootId,
                     ok: false,
-                    msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."
+                    msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.",
+                    recovery_included: true
                 });
             } else if (test.stage === 81) {
                 test.check((test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text).text === "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.", "the removal prompt shows a reboot failure and manual recovery");
@@ -2301,7 +2310,8 @@ ShellRoot {
                     type: "reply",
                     id: rebootId,
                     ok: false,
-                    msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."
+                    msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.",
+                    recovery_included: true
                 });
                 controller.removeUsbPrompt = false;
                 controller.catalog = Object.assign({}, controller.catalog, {

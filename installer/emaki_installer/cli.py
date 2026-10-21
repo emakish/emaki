@@ -1,5 +1,6 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
+from .i18n import _
 import argparse
 import json
 from pathlib import Path
@@ -23,25 +24,25 @@ def unavailable(path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Emaki installer protocol client (live ISO).')
+    parser = argparse.ArgumentParser(description=_('Emaki installer protocol client (live ISO).'))
     action = parser.add_mutually_exclusive_group()
     action.add_argument('--probe', action='store_true')
     action.add_argument('--plan', type=Path, metavar='FILE.json')
     parser.add_argument('--follow', action='store_true')
     action.add_argument('--save-log', metavar='DEST')
-    parser.add_argument('--yes', action='store_true', help='Confirm the reviewed disk plan and install.')
-    parser.add_argument('--job-id', help='Resume a known job, including a completed job.')
+    parser.add_argument('--yes', action='store_true', help=_('Confirm the reviewed disk plan and install.'))
+    parser.add_argument('--job-id', help=_('Resume a known job, including a completed job.'))
     parser.add_argument('--since-seq', type=int, default=0)
     parser.add_argument('--socket', type=Path, default=SOCKET)
     args = parser.parse_args(argv)
     if not (args.probe or args.plan or args.save_log or args.follow):
-        parser.error('one of --probe, --plan, --follow, --save-log is required')
+        parser.error(_('one of --probe, --plan, --follow, --save-log is required'))
     if args.follow and (args.probe or args.save_log):
-        parser.error('--follow combines only with --plan --yes')
+        parser.error(_('--follow combines only with --plan --yes'))
     if args.follow and args.plan and not args.yes:
-        parser.error('--plan with --follow requires --yes')
+        parser.error(_('--plan with --follow requires --yes'))
     if args.yes and not args.plan:
-        parser.error('--yes requires --plan')
+        parser.error(_('--yes requires --plan'))
     config = None
     try:
         if args.plan:
@@ -64,7 +65,7 @@ def main(argv=None):
             while True:
                 frame = stream.readline(MAX_FRAME + 1)
                 if not frame or len(frame) > MAX_FRAME or not frame.endswith(b'\n'):
-                    print('Installer connection closed or sent an invalid frame.', file=sys.stderr)
+                    print(_('Installer connection closed or sent an invalid frame.'), file=sys.stderr)
                     return 2
                 msg = json.loads(frame)
                 kind = msg['type']
@@ -82,7 +83,7 @@ def main(argv=None):
                     else:
                         job_id = args.job_id or msg.get('busy_job')
                         if not job_id:
-                            print('No active job. Pass --job-id to replay the last completed job.', file=sys.stderr)
+                            print(_('No active job. Pass --job-id to replay the last completed job.'), file=sys.stderr)
                             return 2
                         send('resume', job_id=job_id, since_seq=args.since_seq)
                     continue
@@ -115,7 +116,7 @@ def main(argv=None):
                     return 2
     except (OSError, ValueError, InstallError) as exc:
         # Never echo plan input or a JSON parsing exception (may contain secrets).
-        print('emaki-install-cli: ' + type(exc).__name__ + '; could not complete request.', file=sys.stderr)
+        print('emaki-install-cli: ' + type(exc).__name__ + _('; could not complete request.'), file=sys.stderr)
         return 2
 
 

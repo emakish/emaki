@@ -7,6 +7,11 @@ emaki_paths="${emaki_script%/*}/paths"
 [ -r "$emaki_paths" ] || emaki_paths='@EMAKI_LIBEXECDIR@/paths'
 # shellcheck source=scripts/paths
 . "$emaki_paths"
+# greetd supplies only its PAM environment; read the system language before showing UI.
+if [[ -z ${EMAKI_LANGUAGE:-} ]]; then
+    EMAKI_LANGUAGE=$("$EMAKI_PYTHON" -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from emaki_i18n import system_languages; print(":".join(system_languages()))' "${emaki_paths%/*}" 2>/dev/null) || EMAKI_LANGUAGE=en
+    export EMAKI_LANGUAGE
+fi
 unset emaki_script emaki_paths
 # A successful greetd acknowledgement is recorded before compositor teardown.
 # Qt may _exit(255) on Wayland disconnect; that is not a greeter failure.
