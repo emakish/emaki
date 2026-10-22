@@ -21,14 +21,7 @@ Install Emaki, use it, and tell me what broke.
 
 Emaki becomes a beta when it has been tested on enough different hardware.
 
-Why Arch, and what about NixOS. Emaki is built on Arch Linux because Arch is what I use every day.
-For a long time I wanted to move to NixOS, but when the idea of Emaki came, I understood that Emaki
-cannot be a distribution built on NixOS. NixOS is declarative: the whole system is described in
-configuration files. That is its strength, but Emaki promises a system you never have to configure
-by hand. As a port, though, it fits well: you install ordinary NixOS, add one line to its
-configuration and get Emaki. That is one of the plans for later, when Emaki on Arch is out of beta
-and stable. Until then, everything new in Emaki is designed so it can be carried over. More:
-[NIXOS.md](NIXOS.md).
+Why Arch. Emaki is built on Arch Linux because Arch is what I use every day.
 
 AI assistants, deep and safe. More and more people let AI agents like Claude Code or Codex run
 commands on their computers. On most systems that means one of two things: keep the agent away from
