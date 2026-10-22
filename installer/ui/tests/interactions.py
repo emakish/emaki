@@ -62,7 +62,7 @@ def run(width, height, test='InteractionTest', marker='INTERACTION_OK', scale=1)
                 'request = json.loads(sys.stdin.readline())\n'
                 f'networks = {WIFI_NETWORKS!r}\n'
                 'if request["op"] == "join":\n'
-                '    opened = request == dict(op="join", device="wlan0", bssid=request.get("bssid"), password="") and request.get("bssid") in ("02:00:00:00:00:15", "02:00:00:00:00:16", "02:00:00:00:00:17")\n'
+                '    opened = request == dict(op="join", language="en_US.UTF-8", device="wlan0", bssid=request.get("bssid"), password="") and request.get("bssid") in ("02:00:00:00:00:15", "02:00:00:00:00:16", "02:00:00:00:00:17")\n'
                 '    secured = request.get("bssid") in ("02:00:00:00:00:00", "02:00:00:00:00:18", "02:00:00:00:01:18") and request.get("password") in ("abc", "xyz") and request.get("device") == "wlan0"\n'
                 '    message = "Could not connect. Check the password." if secured or opened else "Unexpected join payload"\n'
                 '    print(json.dumps(dict(ok=False, message=message)))\n'

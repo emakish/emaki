@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Ordered installation phases. All mutations start only after confirmation."""
-from .i18n import _, LOCALES
+from .i18n import _ as translate
+from .i18n import _, N_, LOCALES
 import contextlib
 import hashlib
 import json
@@ -34,7 +35,7 @@ from .planner import ESP_SECURE_BOOT_ROOM, make_plan, probed_removable, removabl
 from .render import (GRUB_EARLY_MODULES, console_keymap,
                      grub_btrfs_package_config, grub_defaults, grub_early_config, grub_image_carries, grub_prefix,
                      grub_unlock_memdisk, mkinitcpio_machine_config, mkinitcpio_package_preset, niri_config,
-                     managed_niri_config, home_files_manifest,
+                     managed_niri_config, home_files_manifest, kept_windows_esp,
                      normalize_fstab, snapper_config, vconsole_conf, verify_grub, wireless_regdom)
 from .runtime import Runner, TargetFiles, cleanup, processes_under, safe_log
 
@@ -61,9 +62,9 @@ DOWNLOAD_PACMAN = ['env', 'SNAP_PAC_SKIP=y', 'stdbuf', '-oL', 'pacman']
 # emaki-config's snapshot boot hook, as named inside its archive; a btrfs image runs it.
 SNAPSHOT_HOOK = ('usr/lib/initcpio/hooks/emaki-snapshot-fstab', 'usr/lib/initcpio/install/emaki-snapshot-fstab')
 # Completion advice never asks for a refresh-only or individual package update.
-UPGRADE_FIRST = (_('Emaki needs one full update before you install apps; when online, use the terminal to update the whole system [pacman].'))
-PARTIAL_UPDATE = (_('The online update did not finish; use the terminal to update the whole system before installing apps [pacman].'))
-WIFI_NOT_COPIED = _('Wi-Fi was not copied; join it again after restarting.')
+UPGRADE_FIRST = (N_('Emaki needs one full update before you install apps; when online, use the terminal to update the whole system [pacman].'))
+PARTIAL_UPDATE = (N_('The online update did not finish; use the terminal to update the whole system before installing apps [pacman].'))
+WIFI_NOT_COPIED = N_('Wi-Fi was not copied; join it again after restarting.')
 
 
 def process_name(pid):
@@ -102,17 +103,19 @@ EMAKI_LOADER = r'\EFI\Emaki\grubx64.efi'
 # The signed image's own modules (the boot refresh builds the same), before secureboot's list.
 SIGNED_IMAGE_BASE = (*GRUB_EARLY_MODULES, 'search_fs_uuid')
 # A kept (manual) ESP with Secure Boot: checked before the first disk write.
-ESP_UNCHECKED = (_("The free space Secure Boot updates need on the disk's startup partition could not be checked."))
+ESP_UNCHECKED = (N_("The free space Secure Boot updates need on the disk's startup partition could not be checked."))
 # Secure Boot: the firmware entries around the boot slots (R9S9 #5).
-FIRMWARE_UNREADABLE = _('The firmware startup entries could not be read, so the startup copies were not replaced.')
-ESP_UNIDENTIFIED = _('The startup partition could not be identified, so the startup copies were not replaced.')
-SLOT_STILL_STARTED = (_('The firmware still starts an earlier Emaki startup copy on this disk, so the startup copies were not replaced.'))
-SLOT_B_STILL_STARTED = 'A firmware startup entry still points to a startup copy removed by this installation.'
-SLOT_A_NOT_FIRST = _('Emaki could not verify that the firmware starts the new installation first.')
-REVIEW_BOUNDS = ('WARNING: plan review could not read the boot loader packages, so it checks the startup '
-                 'partition by lower bounds; the exact check runs before the first disk write: ')
+FIRMWARE_UNREADABLE = N_('The firmware startup entries could not be read, so the startup copies were not replaced.')
+ESP_UNIDENTIFIED = N_('The startup partition could not be identified, so the startup copies were not replaced.')
+SLOT_STILL_STARTED = (N_('The firmware still starts an earlier Emaki startup copy on this disk, so the startup copies were not replaced.'))
+SLOT_B_STILL_STARTED = N_('A firmware startup entry still points to a startup copy removed by this installation.')
+SLOT_A_NOT_FIRST = N_('Emaki could not verify that the firmware starts the new installation first.')
+REVIEW_BOUNDS = (N_('WARNING: plan review could not read the boot loader packages, so it checks the startup '
+                 'partition by lower bounds; the exact check runs before the first disk write: '))
 # Next to Windows: Windows' ESP is read whole before the first disk write and after the bootloader phase.
-WINDOWS_ESP_UNREADABLE = _("Windows' startup partition could not be read, so Emaki stopped before changing the disk.")
+WINDOWS_ESP_UNREADABLE = N_("Windows' startup partition could not be read, so Emaki stopped before changing the disk.")
+# A manual layout's kept /efi gained or lost Windows' files between the review and a recheck.
+SHARED_ESP_CHANGED = N_("The startup partition's contents changed after the review. The disk was not changed; start a new review.")
 
 
 def device_sha256(path):
@@ -124,9 +127,33 @@ def device_sha256(path):
     return digest.hexdigest()
 
 
+def same_shared_esp(fresh, plan):
+    """Whether a fresh plan keeps the reviewed plan's shared-layout choice (render.kept_windows_esp).
+
+    The fingerprint leaves out the kept ESP's EFI/Microsoft evidence, and settings() writes the
+    shared record, the read-only /efi row and the drop-ins from the reviewed plan: installing after
+    that evidence changed would leave a record the package hook refuses, or none where it needs one.
+    """
+    old, new = kept_windows_esp(plan), kept_windows_esp(fresh)
+    if old is None or new is None:
+        return old is new
+    return (old.path, old.number) == (new.path, new.number)
+
+
 def windows_esp(plan):
     """Windows' ESP from the reviewed disk (alongside: the planner admitted exactly one)."""
     return next(part for part in plan.disk['partitions'] if part['esp'])
+
+
+def os_prober_possible(plan):
+    """Whether the installation may list Windows through os-prober (Worker.os_prober): next to
+    Windows, or a manual layout that keeps its /efi, which shared_layout() decides only once that
+    ESP is mounted. The preflight resolves the packages before the first disk write, so it proves
+    os-prober and ntfs-3g for this superset; copy_packages installs them only on the decision."""
+    if plan.config['mode'] == 'alongside':
+        return True
+    esp = next((p for p in plan.partitions if p.esp and p.mountpoint == '/efi'), None)
+    return esp is not None and not esp.format and not esp.create
 
 
 def secure_boot_extra(encrypted):
@@ -156,7 +183,7 @@ def review_esp_need(root=Path('/'), log=lambda line: None):
                 secureboot.repo_archives(repo), cluster, secureboot.signed_image_modules(SIGNED_IMAGE_BASE),
                 secure_boot_extra(encrypted), removable=removable)
         except (secureboot.SecureBootError, InstallError, OSError) as error:
-            log(REVIEW_BOUNDS + (error.message if isinstance(error, InstallError) else str(error)))
+            log(translate(REVIEW_BOUNDS) + (error.message if isinstance(error, InstallError) else str(error)))
             return None
     return need
 
@@ -179,7 +206,7 @@ def dkms_installed(text):
 # to stay at least 16 clusters away from that limit. Linux vfat's statfs reports the data
 # clusters as f_blocks (fs/fat/inode.c fat_statfs: max_cluster - FAT_START_ENT).
 FAT32_MIN_CLUSTERS = 65525 + 16
-ESP_NOT_FAT32 = (_('The new startup partition did not get a valid FAT32 file system, so Emaki stopped before writing its boot files.'))
+ESP_NOT_FAT32 = (N_('The new startup partition did not get a valid FAT32 file system, so Emaki stopped before writing its boot files.'))
 
 
 def fat32_esp(path):
@@ -281,7 +308,7 @@ def verify_graphics(runner, plan, target):
         runner.chroot(['python3', '-I', '/usr/lib/emaki/nvidia/runtime.py', 'check'], target)
 
 
-def preflight_repo(runner, test_mode=False, software='rich', *, alongside_mode=False, btrfs=True,
+def preflight_repo(runner, test_mode=False, software='rich', *, os_prober=False, btrfs=True,
                    graphics=(), secure_boot=False, online=False, notice=lambda message: None, source_context=None,
                    source_ready=lambda source: None, root=Path("/")):
     """Resolve the complete transaction without touching the target or live DB."""
@@ -290,7 +317,7 @@ def preflight_repo(runner, test_mode=False, software='rich', *, alongside_mode=F
     try:
         packages = (software_packages(software, btrfs=btrfs, graphics=graphics, secure_boot=secure_boot)
                     + (TEST_PACKAGES if test_mode else []))
-        if alongside_mode:
+        if os_prober:
             packages += ['os-prober', 'ntfs-3g']
         if source_context is None:
             conf = offline_config()
@@ -426,6 +453,9 @@ class Worker:
         self.mok_password = None
         # Next to Windows: sha256 of Windows' whole ESP, read before the first disk write.
         self.windows_esp_sha256 = None
+        # Whether /efi gets the shared layout's policy: decided once, from the mounted target ESP
+        # (shared_layout), for os-prober, the fstab row, the record and the drop-ins alike.
+        self.shared_esp_layout = None
         # The inventory probed when the run started: every disk, for windows_kept().
         self.machine = None
         self.cleanup_required = False
@@ -484,6 +514,7 @@ class Worker:
                               esp_need=getattr(self.inventory, 'esp_need', None))
             require(fresh.fingerprint == plan.fingerprint, Code.DISK_CHANGED,
                     _('Disk identity or partition layout changed after the review.'))
+            require(same_shared_esp(fresh, plan), Code.DISK_CHANGED, translate(SHARED_ESP_CHANGED))
             require(fresh.swap_bytes == plan.swap_bytes, Code.DISK_CHANGED,
                     _('RAM size changed after the review; prepare a new installation plan.'))
             require(fresh.graphics_packages == plan.graphics_packages, Code.DISK_CHANGED,
@@ -499,7 +530,7 @@ class Worker:
                         _('Test mode requires /etc/emaki-test/authorized_keys.'))
             self.capture_live_wifi(plan.config.get('wifi_uuid'))
             packages = preflight_repo(self.runner, self.test_mode, plan.config.get('software', 'rich'),
-                                      alongside_mode=plan.config['mode'] == 'alongside', btrfs=plan.btrfs,
+                                      os_prober=os_prober_possible(plan), btrfs=plan.btrfs,
                                       graphics=plan.graphics_packages, secure_boot=bool(plan.secure_boot),
                                       online=self.online, notice=self.notice, source_context=sources,
                                       source_ready=lambda source: setattr(self, "package_source", source),
@@ -512,7 +543,8 @@ class Worker:
                 verify_snapshot_hook(self.runner, packages)
             verify_account_name(self.runner, packages, plan.config['user']['login'])
             self.check_secure_boot_esp(packages, current)
-            # The resolved closure is exactly what the copy phase will announce.
+            # The resolved closure is what the copy phase will announce (os-prober and ntfs-3g
+            # at most: copy_packages adds them only on shared_layout(), os_prober_possible).
             self.package_total = len(packages) if isinstance(packages, list) and packages else None
             self.cleanup_required = True
             cleanup(self.runner, [self.target, WORK / 'btrfs-top'], lazy=True)
@@ -628,9 +660,9 @@ class Worker:
 
     def wifi_copy_failed(self):
         self.wifi_profile = None
-        if WIFI_NOT_COPIED not in self.warnings:
-            self.warnings.append(WIFI_NOT_COPIED)
-            safe_log(self.log, WIFI_NOT_COPIED)
+        if translate(WIFI_NOT_COPIED) not in self.warnings:
+            self.warnings.append(translate(WIFI_NOT_COPIED))
+            safe_log(self.log, translate(WIFI_NOT_COPIED))
 
     def prepare_disk(self):
         if self.plan.config['mode'] == 'alongside':
@@ -643,6 +675,7 @@ class Worker:
                 _('Windows shrink bounds, disk identity or startup partition state changed after review; disk untouched.')
                 if self.plan.config['mode'] == 'alongside' else
                 _('Disk identity or partition layout changed after the review.'))
+        require(same_shared_esp(fresh, self.plan), Code.DISK_CHANGED, translate(SHARED_ESP_CHANGED))
         require(fresh.swap_bytes == self.plan.swap_bytes, Code.DISK_CHANGED,
                 _('RAM size changed after the review; prepare a new installation plan.'))
         require(fresh.graphics_packages == self.plan.graphics_packages, Code.DISK_CHANGED,
@@ -653,7 +686,7 @@ class Worker:
                 self.windows_esp_sha256 = device_sha256(windows_esp(self.plan)['path'])
             except OSError as exc:
                 self.log(_("Windows' startup partition read failed: ") + type(exc).__name__)
-                raise InstallError(Code.UNSAFE_DISK, WINDOWS_ESP_UNREADABLE) from exc
+                raise InstallError(Code.UNSAFE_DISK, translate(WINDOWS_ESP_UNREADABLE)) from exc
             self.backend.devices.changed = self.mark_disk_changed
         else:
             self.mark_disk_changed()
@@ -680,7 +713,7 @@ class Worker:
         self.files.write('/etc/vconsole.conf', vconsole_conf(layouts, font))
         packages = software_packages(self.plan.config.get('software', 'rich'), btrfs=self.plan.btrfs,
                                      graphics=self.plan.graphics_packages, secure_boot=bool(self.plan.secure_boot))
-        if self.plan.config['mode'] == 'alongside':
+        if self.os_prober():
             packages += ['os-prober', 'ntfs-3g']
         self.backend.instance.pacman.strap(packages)
         if self.plan.graphics_packages:
@@ -701,7 +734,7 @@ class Worker:
         # a too small or 4Kn-limited one would be FAT16, which not every firmware starts from.
         esp = next((p for p in self.plan.partitions if p.esp and p.mountpoint == '/efi'), None)
         if esp is not None and esp.format:
-            require(fat32_esp(self.files.path('/efi')), Code.BOOT_VERIFY, ESP_NOT_FAT32)
+            require(fat32_esp(self.files.path('/efi')), Code.BOOT_VERIFY, translate(ESP_NOT_FAT32))
         root = self.plan.root
         if self.plan.encrypted:
             self.files.mkdir('/etc/cryptsetup-keys.d', 0o700).chmod(0o700)
@@ -750,7 +783,7 @@ class Worker:
                 p = self.files.path('/boot/' + name)
                 require(p.is_file() and p.stat().st_size > 0, Code.BOOT_VERIFY, _('Missing /boot/{value1}.').format(value1=name))
         self.files.write('/etc/default/grub', grub_defaults(
-            self.plan.config['mode'] == 'alongside', root.luks_uuid,
+            self.os_prober(), root.luks_uuid,
             root.uuid if self.plan.swap_bytes else None, offset))
         # Recognize a previous Emaki copy before updating the vendor binary.
         # FAT is case insensitive; Path works on the actual mounted filesystem.
@@ -810,8 +843,12 @@ class Worker:
         if self.plan.config['mode'] == 'alongside':
             # After the last step that could reach it: os-prober mounts it read-only for GRUB's menu.
             self.check_windows_esp()
+        self.write_fstab()
+
+    def write_fstab(self):
+        """/etc/fstab from the mounted target, with shared_layout()'s decision."""
         text = self.runner.run(['genfstab', '-U', '-f', str(self.target), str(self.target)])
-        fstab = normalize_fstab(text, self.plan)
+        fstab = normalize_fstab(text, self.plan, shared=self.shared_layout())
         if self.plan.swap_bytes:
             fstab += '/swap/swapfile\tnone\tswap\tdefaults,pri=10\t0 0\n'
         # A swap partition from the partition editor; zram keeps the higher priority.
@@ -910,8 +947,8 @@ class Worker:
         try:
             parsed = secureboot.firmware_entries(self.runner.run(['efibootmgr', '-v']))
         except InstallError as error:
-            raise InstallError(Code.BOOT_VERIFY, FIRMWARE_UNREADABLE) from error
-        require(parsed is not None, Code.BOOT_VERIFY, FIRMWARE_UNREADABLE)
+            raise InstallError(Code.BOOT_VERIFY, translate(FIRMWARE_UNREADABLE)) from error
+        require(parsed is not None, Code.BOOT_VERIFY, translate(FIRMWARE_UNREADABLE))
         return parsed
 
     def withdraw_slots(self):
@@ -922,7 +959,7 @@ class Worker:
         The listing read back afterwards must name no slot on this ESP."""
         partuuid = self.esp_partuuid()
         require(re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', partuuid), Code.BOOT_VERIFY,
-                ESP_UNIDENTIFIED)
+                translate(ESP_UNIDENTIFIED))
         parsed = self.firmware()
         found = secureboot.slot_entries(parsed, partuuid)
         numbers = [number for slot in secureboot.SLOTS for number in found[slot]]
@@ -940,7 +977,7 @@ class Worker:
         parsed = self.firmware()
         require(not any(secureboot.slot_entries(parsed, partuuid).values())
                 and not set(parsed['order']) & set(numbers) and parsed['next'] not in numbers,
-                Code.BOOT_VERIFY, SLOT_STILL_STARTED)
+                Code.BOOT_VERIFY, translate(SLOT_STILL_STARTED))
 
     def verify_slot_entries(self, first):
         """After the bootloader phase: no entry on this ESP names slot b, which the install
@@ -950,12 +987,12 @@ class Worker:
         partuuid = self.esp_partuuid()
         parsed = self.firmware()
         found = secureboot.slot_entries(parsed, partuuid)
-        require(not found['b'], Code.BOOT_VERIFY, SLOT_B_STILL_STARTED)
+        require(not found['b'], Code.BOOT_VERIFY, translate(SLOT_B_STILL_STARTED))
         if first:
             number = parsed['order'][0] if parsed['order'] else None
-            require(found['a'] == [number] and parsed['entries'][number][0], Code.BOOT_VERIFY, SLOT_A_NOT_FIRST)
+            require(found['a'] == [number] and parsed['entries'][number][0], Code.BOOT_VERIFY, translate(SLOT_A_NOT_FIRST))
         else:
-            require(len(found['a']) <= 1, Code.BOOT_VERIFY, SLOT_A_NOT_FIRST)
+            require(len(found['a']) <= 1, Code.BOOT_VERIFY, translate(SLOT_A_NOT_FIRST))
 
     def clear_slot(self, esp, slot):
         """Remove a slot an earlier Emaki left on a kept ESP, manifest first: after the install
@@ -1063,7 +1100,7 @@ class Worker:
         probed = next((part for disk in (machine or {}).get('disks', [])
                        for part in disk.get('partitions', []) if part.get('path') == esp.path), {})
         free = probed.get('_esp_free_bytes')
-        require(free is not None, Code.ESP_SPACE, ESP_UNCHECKED)
+        require(free is not None, Code.ESP_SPACE, translate(ESP_UNCHECKED))
         # Inventories from before the probe recorded the cluster size: FAT32's usual 4 KiB.
         cluster = probed.get('_esp_cluster_bytes') or 4096
         extra = secure_boot_extra(self.plan.encrypted)
@@ -1072,9 +1109,9 @@ class Worker:
                 packages, cluster, secureboot.signed_image_modules(SIGNED_IMAGE_BASE), extra,
                 removable=probed_removable(probed))
         except secureboot.SecureBootError as error:
-            raise InstallError(Code.ESP_SPACE, ESP_UNCHECKED + ' ' + str(error)) from error
+            raise InstallError(Code.ESP_SPACE, translate(ESP_UNCHECKED) + ' ' + str(error)) from error
         self.log(_('Secure Boot on a kept startup partition: it has {value1} bytes free, this installation and later boot updates need {value2}.').format(value1=free, value2=need))
-        require(free >= need, Code.ESP_SPACE, ESP_SECURE_BOOT_ROOM.format(
+        require(free >= need, Code.ESP_SPACE, translate(ESP_SECURE_BOOT_ROOM).format(
             need=-(-need // 1000000), free=free // 1000000))
 
     def fwupd_keep_keys(self):
@@ -1204,6 +1241,15 @@ class Worker:
             original_windows = windows_bootnext_menu(
                 original, str(esp.get('_partuuid') or '').lower(), esp.get('uuid'),
                 self.runner.run(['efibootmgr', '-v']))
+        elif self.shared_layout():
+            # Windows' ESP kept as /efi: every update's menu refresh (grub/emaki_boot/refresh.py
+            # generate) makes this same replacement and refuses without exactly one os-prober
+            # Windows entry on this ESP, so a menu the first update would refuse stops here.
+            require(re.search(r'^menuentry [^\n]*Windows Boot Manager', original, re.M), Code.BOOT_VERIFY,
+                    _('Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting.'))
+            esp = next(part for part in self.plan.partitions if part.esp and part.mountpoint == '/efi')
+            original_windows = windows_bootnext_menu(original, self.esp_partuuid(), esp.uuid,
+                                                     self.runner.run(['efibootmgr', '-v']))
         else:
             original_windows = original
         safe = menu_layout(quiet_linux_entries(menu_font_fallback(original_windows)))
@@ -1351,6 +1397,11 @@ class Worker:
         if self.plan.config['mode'] == 'alongside':
             # Include the record in the first snapshot as well as the live root.
             self.record_alongside_boot()
+        elif self.shared_layout():
+            # A manual layout that keeps Windows' ESP as /efi: the older shared layout's record
+            # and policy, in the first snapshot too. Without the record the package hook
+            # (00-emaki-alongside.hook) refuses every transaction on the installed system.
+            self.record_shared_esp()
         if windows_kept(self.plan, self.machine):
             # Before the first snapshot and the optional update: restoring "Fresh Emaki"
             # must not let fwupd change the KEK and db that BitLocker measures.
@@ -1462,8 +1513,8 @@ class Worker:
                 if re.search(r'^error: command failed to execute correctly\s*$', output, re.M):
                     raise InstallError(Code.COMMAND_FAILED, _('Package setup did not finish [pacman].'), output=output)
             except InstallError as exc:
-                self.warnings.append(PARTIAL_UPDATE + ' ' + update_error_details(exc.output or exc.message))
-                self.log(f'WARNING: {PARTIAL_UPDATE} ({exc.message})')
+                self.warnings.append(translate(PARTIAL_UPDATE) + ' ' + update_error_details(exc.output or exc.message))
+                self.log(f'WARNING: {translate(PARTIAL_UPDATE)} ({exc.message})')
                 return
             self.upgraded = True
         finally:
@@ -1556,8 +1607,8 @@ class Worker:
 
     def update_notice(self):
         """Explain the full update needed before installing apps, without changing packages."""
-        if not self.upgraded and not any(warning.startswith(PARTIAL_UPDATE) for warning in self.warnings):
-            self.warnings.append(UPGRADE_FIRST)
+        if not self.upgraded and not any(warning.startswith(translate(PARTIAL_UPDATE)) for warning in self.warnings):
+            self.warnings.append(translate(UPGRADE_FIRST))
 
     def finish(self):
         if self.plan.graphics_packages:
@@ -1685,4 +1736,66 @@ class Worker:
         self.files.write('/var/lib/emaki/alongside-boot.json', json.dumps({
             'version': 1, 'esp_partuuid': ids[0].lower(), 'emaki_esp_partuuid': ids[1].lower(),
             'windows_esp_uuid': ids[2]}) + '\n', 0o644)
+        enable_units(self.runner, self.target, ['emaki-boot-order.service'])
+
+    def os_prober(self):
+        """Whether GRUB's menu lists Windows through os-prober: next to Windows, or on Windows' ESP
+        kept as /efi (shared_layout), where the installed menu refresh needs that entry. The
+        packages (copy_packages), GRUB's defaults and the Windows entry check follow it."""
+        return self.plan.config['mode'] == 'alongside' or self.shared_layout()
+
+    def shared_layout(self):
+        """Whether /efi is a kept ESP shared with Windows. os-prober (copy_packages), the fstab
+        row (bootloader phase), then the record and the drop-ins (settings) take this one
+        decision, before the first snapshot.
+
+        The rechecks compare probes taken before the target is mounted. This decision is made
+        once, when it is first needed, from the mounted target ESP with the installed boot code's
+        own test (inventory.efi_microsoft, refresh.py shared_esp), so wherever the package hook
+        will find EFI/Microsoft at /efi it also finds the record. Evidence the review saw keeps
+        the shared policy too: a record with a read-only row is consistent for the hook and the
+        more careful choice. An ESP this install formats or creates holds no Windows files. Where
+        the boot code could not decide either (EFI a link, or unreadable) it refuses every write,
+        so the installation stops here rather than finish on an ESP it could never update.
+        """
+        if self.shared_esp_layout is None:
+            esp = next((p for p in self.plan.partitions if p.esp and p.mountpoint == '/efi'), None)
+            if esp is None or esp.format or esp.create:
+                self.shared_esp_layout = False
+            else:
+                reviewed = kept_windows_esp(self.plan) is not None
+                mounted = alongside.efi_microsoft(self.files.path('/efi'))
+                if mounted is None:
+                    self.log('Shared startup partition check: the EFI directory of the mounted /efi '
+                             'is a link or cannot be read.')
+                    raise InstallError(Code.BOOT_VERIFY, translate(alongside.EFI_MANIFEST_UNSAFE))
+                if mounted != reviewed:
+                    self.log('Shared startup partition check: the mounted /efi '
+                             + ('now holds' if mounted else 'no longer holds')
+                             + ' EFI/Microsoft after the last recheck; it is installed as shared with Windows.')
+                self.shared_esp_layout = mounted or reviewed
+        return self.shared_esp_layout
+
+    def record_shared_esp(self):
+        """A manual layout that keeps Windows' ESP as /efi (shared_layout): the older
+        shared layout, one ESP for both systems. Its record names that ESP alone (esp_partuuid;
+        grub/emaki_boot/shared.py record()): the package hook and every boot write then verify the
+        partition and Windows' shutdown state before a temporary writable remount; the fstab row is
+        read-only (normalize_fstab). The hibernate drop-ins unmount the shared ESP around
+        hibernation (a failed unmount cancels sleep, and the counters GRUB changes are saved
+        first); the boot order service puts Emaki first again when Windows makes itself the default."""
+        partuuid = self.esp_partuuid()
+        require(re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', partuuid),
+                Code.BOOT_VERIFY, _("The disk's startup partitions could not be identified safely, so Emaki stopped."))
+        self.files.write('/var/lib/emaki/alongside-boot.json',
+                         json.dumps({'version': 1, 'esp_partuuid': partuuid}) + '\n', 0o644)
+        # The sleep service does not start if the unmount fails. ExecStopPost also restores the
+        # read-only mount after a failed sleep attempt. A system-sleep hook cannot provide this
+        # barrier: failures there do not cancel sleep, and it runs too late to save the counters.
+        dropin = ('# Copyright (C) 2026 Artur Yakymenko\n'
+                  '# SPDX-License-Identifier: GPL-3.0-or-later\n'
+                  '[Service]\nExecStartPre=emaki-update-boot hibernate-pre\n'
+                  'ExecStopPost=emaki-update-boot hibernate-post\n')
+        for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate'):
+            self.files.write(f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf', dropin)
         enable_units(self.runner, self.target, ['emaki-boot-order.service'])

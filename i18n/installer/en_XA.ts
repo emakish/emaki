@@ -6,18 +6,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>InstallerController</name>
         <message>
-            <source>English</source>
-            <translation>[Éñĝļîšĥ·]</translation>
-        </message>
-        <message>
-            <source>Spanish (Latin America)</source>
-            <translation>[Šþàñîšĥ (Ļàţîñ Àɱéŕîçà)·······]</translation>
-        </message>
-        <message>
-            <source>Portuguese (Brazil)</source>
-            <translation>[Þöŕţûĝûéšé (Ɓŕàžîļ)·····]</translation>
-        </message>
-        <message>
             <source>Pasted text cannot be used for this password. Type it key by key.</source>
             <translation>[Þàšţéð ţéẋţ çàññöţ ƀé ûšéð ƒöŕ ţĥîš þàššŵöŕð. Ţÿþé îţ ķéÿ ƀÿ ķéÿ.·····················]</translation>
         </message>
@@ -1346,6 +1334,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Ţĥé îñšţàļļéŕ çöûļð ñöţ çöñţîñûé.··········]</translation>
         </message>
         <message>
+            <source>Type ERASE to confirm that this volume and any connected data can be erased.</source>
+            <translation>[Ţÿþé ÉŔÀŠÉ ţö çöñƒîŕɱ ţĥàţ ţĥîš ṽöļûɱé àñð àñÿ çöññéçţéð ðàţà çàñ ƀé éŕàšéð.·························]</translation>
+        </message>
+        <message>
             <source>Use characters available on an English (US) keyboard for the startup password (at most 1024 characters).</source>
             <translation>[Ûšé çĥàŕàçţéŕš àṽàîļàƀļé öñ àñ Éñĝļîšĥ (ÛŠ) ķéÿƀöàŕð ƒöŕ ţĥé šţàŕţûþ þàššŵöŕð (àţ ɱöšţ 1024 çĥàŕàçţéŕš).···································]</translation>
         </message>
@@ -1518,6 +1510,14 @@ Install alongside Windows is not possible here. %1</source>
         <message>
             <source>A new partition needs at least %1 GiB.</source>
             <translation>[À ñéŵ þàŕţîţîöñ ñééðš àţ ļéàšţ %1 ĜîƁ.············]</translation>
+        </message>
+        <message>
+            <source>another system</source>
+            <translation>[àñöţĥéŕ šÿšţéɱ···]</translation>
+        </message>
+        <message>
+            <source>files Emaki cannot check</source>
+            <translation>[ƒîļéš Éɱàķî çàññöţ çĥéçķ·······]</translation>
         </message>
         <message>
             <source>%1 GiB</source>

@@ -66,6 +66,9 @@ msgstr "[À ðéļéţéð þàŕţîţîöñ çàññöţ ƀé ûšéð.···�
 msgid "A disk ID is required."
 msgstr "[À ðîšķ ÎÐ îš ŕéǫûîŕéð.······]"
 
+msgid "A firmware startup entry still points to a startup copy removed by this installation."
+msgstr "[À ƒîŕɱŵàŕé šţàŕţûþ éñţŕÿ šţîļļ þöîñţš ţö à šţàŕţûþ çöþÿ ŕéɱöṽéð ƀÿ ţĥîš îñšţàļļàţîöñ.····························]"
+
 msgid "A kept partition changed its name. Nothing was formatted."
 msgstr "[À ķéþţ þàŕţîţîöñ çĥàñĝéð îţš ñàɱé. Ñöţĥîñĝ ŵàš ƒöŕɱàţţéð.··················]"
 
@@ -93,8 +96,14 @@ msgstr "[À þàŕţîţîöñ îš ðéļéţéð ţŵîçé.·········
 msgid "A partition to delete is not on the selected disk."
 msgstr "[À þàŕţîţîöñ ţö ðéļéţé îš ñöţ öñ ţĥé šéļéçţéð ðîšķ.················]"
 
+msgid "A previous restart is still pending. Wait for it to finish before starting another installation."
+msgstr "[À þŕéṽîöûš ŕéšţàŕţ îš šţîļļ þéñðîñĝ. Ŵàîţ ƒöŕ îţ ţö ƒîñîšĥ ƀéƒöŕé šţàŕţîñĝ àñöţĥéŕ îñšţàļļàţîöñ.································]"
+
 msgid "A repository override requires a test build in test mode."
 msgstr "[À ŕéþöšîţöŕÿ öṽéŕŕîðé ŕéǫûîŕéš à ţéšţ ƀûîļð îñ ţéšţ ɱöðé.··················]"
+
+msgid "A safety check could not finish cleanly. Windows was not changed. Restart the computer from the USB stick and try again."
+msgstr "[À šàƒéţÿ çĥéçķ çöûļð ñöţ ƒîñîšĥ çļéàñļÿ. Ŵîñðöŵš ŵàš ñöţ çĥàñĝéð. Ŕéšţàŕţ ţĥé çöɱþûţéŕ ƒŕöɱ ţĥé ÛŠƁ šţîçķ àñð ţŕÿ àĝàîñ.········································]"
 
 msgid "A safety check stopped the update. Resolve the reported problem before trying again."
 msgstr "[À šàƒéţÿ çĥéçķ šţöþþéð ţĥé ûþðàţé. Ŕéšöļṽé ţĥé ŕéþöŕţéð þŕöƀļéɱ ƀéƒöŕé ţŕÿîñĝ àĝàîñ.····························]"
@@ -104,6 +113,10 @@ msgstr "[À šéļéçţéð ẊĶƁ ļàÿöûţ îš ñöţ àṽàîļàƀļ�
 
 msgid "A separate disk password is only used with that password choice."
 msgstr "[À šéþàŕàţé ðîšķ þàššŵöŕð îš öñļÿ ûšéð ŵîţĥ ţĥàţ þàššŵöŕð çĥöîçé.·····················]"
+
+#, python-brace-format
+msgid "A startup copy needs exactly {names}."
+msgstr "[À šţàŕţûþ çöþÿ ñééðš éẋàçţļÿ {names}.···········]"
 
 msgid "A startup partition may only be mounted at /efi."
 msgstr "[À šţàŕţûþ þàŕţîţîöñ ɱàÿ öñļÿ ƀé ɱöûñţéð àţ /éƒî.···············]"
@@ -179,8 +192,8 @@ msgstr "[Àššîĝñ éẋàçţļÿ öñé ŕööţ àñð öñé šţàŕţû
 msgid "At least 32 GiB must be freed from Windows for Emaki."
 msgstr "[Àţ ļéàšţ 32 ĜîƁ ɱûšţ ƀé ƒŕééð ƒŕöɱ Ŵîñðöŵš ƒöŕ Éɱàķî.·················]"
 
-msgid "Automatic restart is unavailable. "
-msgstr "[Àûţöɱàţîç ŕéšţàŕţ îš ûñàṽàîļàƀļé. ··········]"
+msgid "Automatic restart is unavailable. Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
+msgstr "[Àûţöɱàţîç ŕéšţàŕţ îš ûñàṽàîļàƀļé. Ÿöûŕ îñšţàļļàţîöñ îš šàƒé. Îƒ ţĥé çöɱþûţéŕ ĥàš ñöţ ŕéšţàŕţéð ƀÿ îţšéļƒ, ĥöļð ţĥé þöŵéŕ ƀûţţöñ ţö ţûŕñ îţ öƒƒ, ţĥéñ šţàŕţ îţ àĝàîñ.························································]"
 
 msgid "Bounded termination requires a timeout, a positive budget and no stdin."
 msgstr "[Ɓöûñðéð ţéŕɱîñàţîöñ ŕéǫûîŕéš à ţîɱéöûţ, à þöšîţîṽé ƀûðĝéţ àñð ñö šţðîñ.·······················]"
@@ -1498,6 +1511,9 @@ msgstr "[Ţĥé šţàŕţûþ þàŕţîţîöñ ñééðš àţ ļéàšţ 32 
 msgid "The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)"
 msgstr "[Ţĥé šţàŕţûþ þàŕţîţîöñ öƒ ţĥé îñšţàļļéð Éɱàķî ({source}) ŵàš ñöţ ƒöûñð. Ñàɱé îţ, ƒöŕ éẋàɱþļé: šûðö éɱàķî-ƀööţ-ŕéþàîŕ --éšþ /ðéṽ/ñṽɱé0ñ1þ5 (ñéẋţ ţö Ŵîñðöŵš, ţĥé þàŕţîţîöñ ļàƀéļļéð ÉṀÀĶÎ)·······························································]"
 
+msgid "The startup partition's contents changed after the review. The disk was not changed; start a new review."
+msgstr "[Ţĥé šţàŕţûþ þàŕţîţîöñ'š çöñţéñţš çĥàñĝéð àƒţéŕ ţĥé ŕéṽîéŵ. Ţĥé ðîšķ ŵàš ñöţ çĥàñĝéð; šţàŕţ à ñéŵ ŕéṽîéŵ.···································]"
+
 msgid "The startup password must use characters available on an English (US) keyboard."
 msgstr "[Ţĥé šţàŕţûþ þàššŵöŕð ɱûšţ ûšé çĥàŕàçţéŕš àṽàîļàƀļé öñ àñ Éñĝļîšĥ (ÛŠ) ķéÿƀöàŕð.··························]"
 
@@ -1560,6 +1576,9 @@ msgstr "[Ţîɱé šöûŕçé öɱîţţéð ţĥé ţîɱé žöñé.····�
 
 msgid "Time zone data is unavailable."
 msgstr "[Ţîɱé žöñé ðàţà îš ûñàṽàîļàƀļé.·········]"
+
+msgid "Type ERASE to confirm that this volume and any connected data can be erased."
+msgstr "[Ţÿþé ÉŔÀŠÉ ţö çöñƒîŕɱ ţĥàţ ţĥîš ṽöļûɱé àñð àñÿ çöññéçţéð ðàţà çàñ ƀé éŕàšéð.·························]"
 
 msgid "UEFI boot is required."
 msgstr "[ÛÉƑÎ ƀööţ îš ŕéǫûîŕéð.······]"
@@ -1691,6 +1710,9 @@ msgstr "[ŴÀŔÑÎÑĜ: öþţîöñàļ ûñîţ {value1} îš ɱîššîñĝ;
 
 msgid "WARNING: pacman is still running in the target; its lock is kept."
 msgstr "[ŴÀŔÑÎÑĜ: þàçɱàñ îš šţîļļ ŕûññîñĝ îñ ţĥé ţàŕĝéţ; îţš ļöçķ îš ķéþţ.·····················]"
+
+msgid "WARNING: plan review could not read the boot loader packages, so it checks the startup partition by lower bounds; the exact check runs before the first disk write: "
+msgstr "[ŴÀŔÑÎÑĜ: þļàñ ŕéṽîéŵ çöûļð ñöţ ŕéàð ţĥé ƀööţ ļöàðéŕ þàçķàĝéš, šö îţ çĥéçķš ţĥé šţàŕţûþ þàŕţîţîöñ ƀÿ ļöŵéŕ ƀöûñðš; ţĥé éẋàçţ çĥéçķ ŕûñš ƀéƒöŕé ţĥé ƒîŕšţ ðîšķ ŵŕîţé: ························································]"
 
 msgid "WARNING: preserving another system's startup files; removable GRUB copy skipped."
 msgstr "[ŴÀŔÑÎÑĜ: þŕéšéŕṽîñĝ àñöţĥéŕ šÿšţéɱ'š šţàŕţûþ ƒîļéš; ŕéɱöṽàƀļé ĜŔÛƁ çöþÿ šķîþþéð.··························]"
@@ -1849,6 +1871,18 @@ msgstr "[Ŵŕöñĝ ƒîļéšÿšţéɱ ÛÛÎÐ àţ {value1}.········
 msgid "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
 msgstr "[Ÿöûŕ îñšţàļļàţîöñ îš šàƒé. Îƒ ţĥé çöɱþûţéŕ ĥàš ñöţ ŕéšţàŕţéð ƀÿ îţšéļƒ, ĥöļð ţĥé þöŵéŕ ƀûţţöñ ţö ţûŕñ îţ öƒƒ, ţĥéñ šţàŕţ îţ àĝàîñ.············································]"
 
+msgid "a Btrfs filesystem"
+msgstr "[à Ɓţŕƒš ƒîļéšÿšţéɱ·····]"
+
+msgid "a RAID array"
+msgstr "[à ŔÀÎÐ àŕŕàÿ···]"
+
+msgid "an LVM volume group"
+msgstr "[àñ ĻṼṀ ṽöļûɱé ĝŕöûþ·····]"
+
+msgid "another system"
+msgstr "[àñöţĥéŕ šÿšţéɱ···]"
+
 msgid "bad length"
 msgstr "[ƀàð ļéñĝţĥ··]"
 
@@ -1856,8 +1890,20 @@ msgstr "[ƀàð ļéñĝţĥ··]"
 msgid "cannot list {value1}: {value2}"
 msgstr "[çàññöţ ļîšţ {value1}: {value2}·········]"
 
+#, python-brace-format
+msgid "captured {value1} from {value2}: security {value3}, {value4}; autoconnect preserved, any adapter, every user."
+msgstr "[çàþţûŕéð {value1} ƒŕöɱ {value2}: šéçûŕîţÿ {value3}, {value4}; àûţöçöññéçţ þŕéšéŕṽéð, àñÿ àðàþţéŕ, éṽéŕÿ ûšéŕ.·····································]"
+
 msgid "emaki-config did not install the snapshot boot hook."
 msgstr "[éɱàķî-çöñƒîĝ ðîð ñöţ îñšţàļļ ţĥé šñàþšĥöţ ƀööţ ĥööķ.·················]"
+
+#, python-brace-format
+msgid "emaki-install-cli: the installer service cannot start: the boot medium is not mounted at {value1} (the live system was copied to RAM). Restart from the USB stick without the 'copy to RAM' option to install."
+msgstr "[éɱàķî-îñšţàļļ-çļî: ţĥé îñšţàļļéŕ šéŕṽîçé çàññöţ šţàŕţ: ţĥé ƀööţ ɱéðîûɱ îš ñöţ ɱöûñţéð àţ {value1} (ţĥé ļîṽé šÿšţéɱ ŵàš çöþîéð ţö ŔÀṀ). Ŕéšţàŕţ ƒŕöɱ ţĥé ÛŠƁ šţîçķ ŵîţĥöûţ ţĥé 'çöþÿ ţö ŔÀṀ' öþţîöñ ţö îñšţàļļ.·······································································]"
+
+#, python-brace-format
+msgid "emaki-install-cli: the installer service is not running (nothing listens at {value1})."
+msgstr "[éɱàķî-îñšţàļļ-çļî: ţĥé îñšţàļļéŕ šéŕṽîçé îš ñöţ ŕûññîñĝ (ñöţĥîñĝ ļîšţéñš àţ {value1}).·····························]"
 
 #, python-brace-format
 msgid "emaki-install: the running installer did not show its window:\n{0}"
@@ -1869,8 +1915,23 @@ msgstr "[éɱàķî-îñšţàļļéŕð ɱûšţ ŕûñ àš ŕööţ öñ ţĥ
 msgid "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
 msgstr "[éɱàķî-šĥîɱ-šîĝñéð ðöéš ñöţ ĥöļð šĥîɱẋ64.éƒî àñð ɱɱẋ64.éƒî.···················]"
 
+msgid "encrypted Linux system (LUKS)"
+msgstr "[éñçŕÿþţéð Ļîñûẋ šÿšţéɱ (ĻÛĶŠ)·········]"
+
+msgid "encrypted Windows drive (BitLocker)"
+msgstr "[éñçŕÿþţéð Ŵîñðöŵš ðŕîṽé (ƁîţĻöçķéŕ)···········]"
+
+msgid "encrypted macOS disk (FileVault 2)"
+msgstr "[éñçŕÿþţéð ɱàçÖŠ ðîšķ (ƑîļéṼàûļţ 2)··········]"
+
+msgid "enterprise (802.1X) networks are not copied."
+msgstr "[éñţéŕþŕîšé (802.1Ẋ) ñéţŵöŕķš àŕé ñöţ çöþîéð.··············]"
+
 msgid "ext4 recovery: use linux-lts, cached packages, or the live ISO; snapshots are unavailable."
 msgstr "[éẋţ4 ŕéçöṽéŕÿ: ûšé ļîñûẋ-ļţš, çàçĥéð þàçķàĝéš, öŕ ţĥé ļîṽé ÎŠÖ; šñàþšĥöţš àŕé ûñàṽàîļàƀļé.······························]"
+
+msgid "files Emaki cannot check"
+msgstr "[ƒîļéš Éɱàķî çàññöţ çĥéçķ·······]"
 
 #, python-brace-format
 msgid "files of group {value1} keep that group (not a regular group)"
@@ -1928,11 +1989,37 @@ msgstr "[îñṽàļîð ÞƑ2 šéçţîöñ·····]"
 msgid "its startup partition"
 msgstr "[îţš šţàŕţûþ þàŕţîţîöñ······]"
 
+#, python-brace-format
+msgid "joined on the Network page, one of {value1} active Wi-Fi connections"
+msgstr "[ĵöîñéð öñ ţĥé Ñéţŵöŕķ þàĝé, öñé öƒ {value1} àçţîṽé Ŵî-Ƒî çöññéçţîöñš······················]"
+
+msgid "joined on the Network page; no Wi-Fi is active now"
+msgstr "[ĵöîñéð öñ ţĥé Ñéţŵöŕķ þàĝé; ñö Ŵî-Ƒî îš àçţîṽé ñöŵ················]"
+
+#, python-brace-format
+msgid "key management {value1} is not supported."
+msgstr "[ķéÿ ɱàñàĝéɱéñţ {value1} îš ñöţ šûþþöŕţéð.·············]"
+
+#, python-brace-format
+msgid "locked {description}"
+msgstr "[ļöçķéð {description}·····]"
+
+msgid "macOS disk (APFS)"
+msgstr "[ɱàçÖŠ ðîšķ (ÀÞƑŠ)····]"
+
 msgid "missing PF2 data"
 msgstr "[ɱîššîñĝ ÞƑ2 ðàţà····]"
 
+#, python-brace-format
+msgid "mokutil could not report the machine key: {details}"
+msgstr "[ɱöķûţîļ çöûļð ñöţ ŕéþöŕţ ţĥé ɱàçĥîñé ķéÿ: {details}················]"
+
 msgid "nmcli could not be started."
 msgstr "[ñɱçļî çöûļð ñöţ ƀé šţàŕţéð.········]"
+
+#, python-brace-format
+msgid "nmcli failed (exit {value1})."
+msgstr "[ñɱçļî ƒàîļéð (éẋîţ {value1}).·········]"
 
 msgid "nmcli printed text that is not UTF-8."
 msgstr "[ñɱçļî þŕîñţéð ţéẋţ ţĥàţ îš ñöţ ÛŢƑ-8.···········]"
@@ -1940,11 +2027,17 @@ msgstr "[ñɱçļî þŕîñţéð ţéẋţ ţĥàţ îš ñöţ ÛŢƑ-8.··�
 msgid "no answer"
 msgstr "[ñö àñšŵéŕ··]"
 
+msgid "no secret (open network)"
+msgstr "[ñö šéçŕéţ (öþéñ ñéţŵöŕķ)·······]"
+
 msgid "no single emaki-config archive in the resolved package set."
 msgstr "[ñö šîñĝļé éɱàķî-çöñƒîĝ àŕçĥîṽé îñ ţĥé ŕéšöļṽéð þàçķàĝé šéţ.···················]"
 
 msgid "ntfsresize did not report one unambiguous minimum size."
 msgstr "[ñţƒšŕéšîžé ðîð ñöţ ŕéþöŕţ öñé ûñàɱƀîĝûöûš ɱîñîɱûɱ šîžé.··················]"
+
+msgid "ntfsresize reported an error; shrinking Windows is refused."
+msgstr "[ñţƒšŕéšîžé ŕéþöŕţéð àñ éŕŕöŕ; šĥŕîñķîñĝ Ŵîñðöŵš îš ŕéƒûšéð.···················]"
 
 msgid "one of --probe, --plan, --follow, --save-log is required"
 msgstr "[öñé öƒ --þŕöƀé, --þļàñ, --ƒöļļöŵ, --šàṽé-ļöĝ îš ŕéǫûîŕéð··················]"
@@ -1952,14 +2045,34 @@ msgstr "[öñé öƒ --þŕöƀé, --þļàñ, --ƒöļļöŵ, --šàṽé-ļö�
 msgid "online_update must be boolean."
 msgstr "[öñļîñé_ûþðàţé ɱûšţ ƀé ƀööļéàñ.·········]"
 
+msgid "pacman returned no details"
+msgstr "[þàçɱàñ ŕéţûŕñéð ñö ðéţàîļš········]"
+
 msgid "preserve"
 msgstr "[þŕéšéŕṽé·]"
+
+msgid "recovery discarded."
+msgstr "[ŕéçöṽéŕÿ ðîšçàŕðéð.·····]"
+
+msgid "secret saved in the keyfile"
+msgstr "[šéçŕéţ šàṽéð îñ ţĥé ķéÿƒîļé········]"
 
 msgid "snapper did not print the new snapshot number."
 msgstr "[šñàþþéŕ ðîð ñöţ þŕîñţ ţĥé ñéŵ šñàþšĥöţ ñûɱƀéŕ.···············]"
 
 msgid "startup partition, FAT32"
 msgstr "[šţàŕţûþ þàŕţîţîöñ, ƑÀŢ32·······]"
+
+#, python-brace-format
+msgid "the Network page join {value1} is no longer saved and no Wi-Fi is active now"
+msgstr "[ţĥé Ñéţŵöŕķ þàĝé ĵöîñ {value1} îš ñö ļöñĝéŕ šàṽéð àñð ñö Ŵî-Ƒî îš àçţîṽé ñöŵ·························]"
+
+#, python-brace-format
+msgid "the WEP key is not saved in the keyfile (wep-key-flags {value1}: held by a desktop keyring client or asked at each connection)."
+msgstr "[ţĥé ŴÉÞ ķéÿ îš ñöţ šàṽéð îñ ţĥé ķéÿƒîļé (ŵéþ-ķéÿ-ƒļàĝš {value1}: ĥéļð ƀÿ à ðéšķţöþ ķéÿŕîñĝ çļîéñţ öŕ àšķéð àţ éàçĥ çöññéçţîöñ).···········································]"
+
+msgid "the active Wi-Fi connection"
+msgstr "[ţĥé àçţîṽé Ŵî-Ƒî çöññéçţîöñ········]"
 
 msgid "the fallback font must have visible printable ASCII glyphs"
 msgstr "[ţĥé ƒàļļƀàçķ ƒöñţ ɱûšţ ĥàṽé ṽîšîƀļé þŕîñţàƀļé ÀŠÇÎÎ ĝļÿþĥš···················]"
@@ -1971,8 +2084,63 @@ msgid "the installation USB holds no package repository."
 msgstr "[ţĥé îñšţàļļàţîöñ ÛŠƁ ĥöļðš ñö þàçķàĝé ŕéþöšîţöŕÿ.················]"
 
 #, python-brace-format
+msgid "the keyfile belongs to UID {value1}, not {value2}."
+msgstr "[ţĥé ķéÿƒîļé ƀéļöñĝš ţö ÛÎÐ {value1}, ñöţ {value2}.················]"
+
+#, python-brace-format
 msgid "the keyfile could not be opened ({value1})."
 msgstr "[ţĥé ķéÿƒîļé çöûļð ñöţ ƀé öþéñéð ({value1}).··············]"
+
+msgid "the keyfile has more than one hard link."
+msgstr "[ţĥé ķéÿƒîļé ĥàš ɱöŕé ţĥàñ öñé ĥàŕð ļîñķ.············]"
+
+msgid "the keyfile has no WEP key."
+msgstr "[ţĥé ķéÿƒîļé ĥàš ñö ŴÉÞ ķéÿ.········]"
+
+msgid "the keyfile has no password."
+msgstr "[ţĥé ķéÿƒîļé ĥàš ñö þàššŵöŕð.········]"
+
+msgid "the keyfile holds another UUID."
+msgstr "[ţĥé ķéÿƒîļé ĥöļðš àñöţĥéŕ ÛÛÎÐ.·········]"
+
+msgid "the keyfile is larger than 1 MiB."
+msgstr "[ţĥé ķéÿƒîļé îš ļàŕĝéŕ ţĥàñ 1 ṀîƁ.··········]"
+
+msgid "the keyfile is not a Wi-Fi profile."
+msgstr "[ţĥé ķéÿƒîļé îš ñöţ à Ŵî-Ƒî þŕöƒîļé.···········]"
+
+msgid "the keyfile is not a regular file."
+msgstr "[ţĥé ķéÿƒîļé îš ñöţ à ŕéĝûļàŕ ƒîļé.··········]"
+
+#, python-brace-format
+msgid "the keyfile is outside NetworkManager's connection directories ({directories})."
+msgstr "[ţĥé ķéÿƒîļé îš öûţšîðé ÑéţŵöŕķṀàñàĝéŕ'š çöññéçţîöñ ðîŕéçţöŕîéš ({directories}).··························]"
+
+#, python-brace-format
+msgid "the keyfile is readable by others (mode {value1:o})."
+msgstr "[ţĥé ķéÿƒîļé îš ŕéàðàƀļé ƀÿ öţĥéŕš (ɱöðé {value1:o}).·················]"
+
+msgid "the keyfile path goes through a symbolic link."
+msgstr "[ţĥé ķéÿƒîļé þàţĥ ĝöéš ţĥŕöûĝĥ à šÿɱƀöļîç ļîñķ.···············]"
+
+msgid "the live session has no Wi-Fi profile"
+msgstr "[ţĥé ļîṽé šéššîöñ ĥàš ñö Ŵî-Ƒî þŕöƒîļé···········]"
+
+msgid "the only saved Wi-Fi profile has never connected"
+msgstr "[ţĥé öñļÿ šàṽéð Ŵî-Ƒî þŕöƒîļé ĥàš ñéṽéŕ çöññéçţéð···············]"
+
+msgid "the only saved Wi-Fi profile, and it has connected; no Wi-Fi is active now"
+msgstr "[ţĥé öñļÿ šàṽéð Ŵî-Ƒî þŕöƒîļé, àñð îţ ĥàš çöññéçţéð; ñö Ŵî-Ƒî îš àçţîṽé ñöŵ························]"
+
+#, python-brace-format
+msgid "the password is not saved in the keyfile (psk-flags {value1}: held by a desktop keyring client or asked at each connection)."
+msgstr "[ţĥé þàššŵöŕð îš ñöţ šàṽéð îñ ţĥé ķéÿƒîļé (þšķ-ƒļàĝš {value1}: ĥéļð ƀÿ à ðéšķţöþ ķéÿŕîñĝ çļîéñţ öŕ àšķéð àţ éàçĥ çöññéçţîöñ).··········································]"
+
+msgid "the profile ID is not a UUID."
+msgstr "[ţĥé þŕöƒîļé ÎÐ îš ñöţ à ÛÛÎÐ.·········]"
+
+msgid "the profile has no keyfile (NetworkManager keeps it only in memory)."
+msgstr "[ţĥé þŕöƒîļé ĥàš ñö ķéÿƒîļé (ÑéţŵöŕķṀàñàĝéŕ ķééþš îţ öñļÿ îñ ɱéɱöŕÿ).······················]"
 
 msgid "truncated"
 msgstr "[ţŕûñçàţéð··]"
@@ -1980,6 +2148,10 @@ msgstr "[ţŕûñçàţéð··]"
 #, python-brace-format
 msgid "unclosed quote at {value1}"
 msgstr "[ûñçļöšéð ǫûöţé àţ {value1}········]"
+
+#, python-brace-format
+msgid "unknown startup prompt: {prompt!r}"
+msgstr "[ûñķñöŵñ šţàŕţûþ þŕöɱþţ: {prompt!r}··········]"
 
 msgid "unknown unlock artwork variant"
 msgstr "[ûñķñöŵñ ûñļöçķ àŕţŵöŕķ ṽàŕîàñţ·········]"
@@ -1992,13 +2164,40 @@ msgstr "[ûñļöçķ àŕţŵöŕķ ĥàš ţĥé ŵŕöñĝ ƒöŕɱàţ: {val
 msgid "unlock artwork is unavailable: {value1}/{value2}"
 msgstr "[ûñļöçķ àŕţŵöŕķ îš ûñàṽàîļàƀļé: {value1}/{value2}···············]"
 
+msgid "will retry on the next probe."
+msgstr "[ŵîļļ ŕéţŕÿ öñ ţĥé ñéẋţ þŕöƀé.·········]"
+
+#, python-brace-format
+msgid "{device} does not hold an installed Emaki. Nothing was changed."
+msgstr "[{device} ðöéš ñöţ ĥöļð àñ îñšţàļļéð Éɱàķî. Ñöţĥîñĝ ŵàš çĥàñĝéð.·····················]"
+
+#, python-brace-format
+msgid "{device} is Windows' startup partition. Emaki starts from its own startup partition and never changes Windows'. Nothing was changed."
+msgstr "[{device} îš Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ. Éɱàķî šţàŕţš ƒŕöɱ îţš öŵñ šţàŕţûþ þàŕţîţîöñ àñð ñéṽéŕ çĥàñĝéš Ŵîñðöŵš'. Ñöţĥîñĝ ŵàš çĥàñĝéð.·············································]"
+
+#, python-brace-format
+msgid "{device} is not a FAT startup partition. Nothing was changed."
+msgstr "[{device} îš ñöţ à ƑÀŢ šţàŕţûþ þàŕţîţîöñ. Ñöţĥîñĝ ŵàš çĥàñĝéð.····················]"
+
+#, python-brace-format
+msgid "{value1} Wi-Fi connections are active and the Network page joined none of them"
+msgstr "[{value1} Ŵî-Ƒî çöññéçţîöñš àŕé àçţîṽé àñð ţĥé Ñéţŵöŕķ þàĝé ĵöîñéð ñöñé öƒ ţĥéɱ··························]"
+
 #, python-brace-format
 msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
 msgstr "[{value1} àñð ţĥé šûƀṽöļûɱé {value2} àŕé ŕéšéŕṽéð ƒöŕ ţĥé Šéçûŕé Ɓööţ ķéÿ.························]"
 
 #, python-brace-format
+msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
+msgstr "[{value1} çàŕŕîéš à {value2} šîĝñàţûŕé àñð ɱàÿ ƀé þàŕţ öƒ à ɱûļţî-ðéṽîçé šéţ.·························]"
+
+#, python-brace-format
 msgid "{value1} carries no signature."
 msgstr "[{value1} çàŕŕîéš ñö šîĝñàţûŕé.·········]"
+
+#, python-brace-format
+msgid "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "[{value1} çöñţàîñš à {value2}. Ţĥé îñšţàļļéŕ çàññöţ çĥéçķ îţš çöñţéñţš; ţĥéÿ ɱàÿ ƀéļöñĝ ţö à šéţ öƒ šéṽéŕàļ ðîšķš.······································]"
 
 #, python-brace-format
 msgid "{value1} could not be read back after it was written."
@@ -2029,6 +2228,10 @@ msgid "{value1} failed: {value2}"
 msgstr "[{value1} ƒàîļéð: {value2}·······]"
 
 #, python-brace-format
+msgid "{value1} has no readable volume ID, so the installer cannot erase this device safely. Choose another target, or clear this device in a terminal [wipefs --all {value2}] and refresh disks. If this is a partition, you can also leave it unchanged in Manual mode."
+msgstr "[{value1} ĥàš ñö ŕéàðàƀļé ṽöļûɱé ÎÐ, šö ţĥé îñšţàļļéŕ çàññöţ éŕàšé ţĥîš ðéṽîçé šàƒéļÿ. Çĥööšé àñöţĥéŕ ţàŕĝéţ, öŕ çļéàŕ ţĥîš ðéṽîçé îñ à ţéŕɱîñàļ [ŵîþéƒš --àļļ {value2}] àñð ŕéƒŕéšĥ ðîšķš. Îƒ ţĥîš îš à þàŕţîţîöñ, ÿöû çàñ àļšö ļéàṽé îţ ûñçĥàñĝéð îñ Ṁàñûàļ ɱöðé.·························································································]"
+
+#, python-brace-format
 msgid "{value1} has no snapshot boot hook (/{value2}, /{value3})."
 msgstr "[{value1} ĥàš ñö šñàþšĥöţ ƀööţ ĥööķ (/{value2}, /{value3}).···················]"
 
@@ -2053,8 +2256,16 @@ msgid "{value1} is not a directory."
 msgstr "[{value1} îš ñöţ à ðîŕéçţöŕÿ.········]"
 
 #, python-brace-format
+msgid "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
+msgstr "[{value1} îš öñé öƒ {value2} ðéṽîçéš öƒ {value3}; éŕàšîñĝ îţ ŵöûļð ðàɱàĝé ţĥé öţĥéŕ ðéṽîçéš.······························]"
+
+#, python-brace-format
 msgid "{value1} is open at {value2} [mount]. Close files there, then unmount it [umount]."
 msgstr "[{value1} îš öþéñ àţ {value2} [ɱöûñţ]. Çļöšé ƒîļéš ţĥéŕé, ţĥéñ ûñɱöûñţ îţ [ûɱöûñţ].···························]"
+
+#, python-brace-format
+msgid "{value1} saved Wi-Fi profiles, none is active and the Network page joined none of them"
+msgstr "[{value1} šàṽéð Ŵî-Ƒî þŕöƒîļéš, ñöñé îš àçţîṽé àñð ţĥé Ñéţŵöŕķ þàĝé ĵöîñéð ñöñé öƒ ţĥéɱ·····························]"
 
 #, python-brace-format
 msgid "{value1} timed out."

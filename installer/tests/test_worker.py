@@ -11,6 +11,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
+from emaki_installer.boot import WINDOWS_UNSAFE
 from emaki_installer.constants import MARKER, PACKAGES, PHASES
 from emaki_installer.errors import Code, InstallError
 from emaki_installer.network_profiles import Choice
@@ -1091,6 +1092,8 @@ class BootAndSnapshotTests(unittest.TestCase):
                         self.root = self.worker.target = Path(temp)
                         self.worker.files = TargetFiles(self.root)
                         self.worker.runner = RecordingRunner()
+                        # A new worker per installation (protocol.py): no earlier shared_layout().
+                        self.worker.shared_esp_layout = None
                         self.worker.plan = make_plan(config(), inventory())
                         self.worker.plan.config['mode'] = 'manual'
                         esp = next(p for p in self.worker.plan.partitions if p.esp)
@@ -1100,6 +1103,11 @@ class BootAndSnapshotTests(unittest.TestCase):
                              '_efi_loaders': {} if unreadable else {loader: 'hash'}, **unreadable}]
                         self.boot_files()
                         self.worker.files.write('/efi/' + loader, b'other-system')
+                        windows = loader.startswith('EFI/Microsoft/')
+                        if windows:
+                            # Windows' ESP kept as /efi: os-prober lists its Boot Manager (F1-011I).
+                            self.worker.files.write('/boot/grub/grub.cfg', self.worker.files.read(
+                                '/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD)
                         if existing:
                             self.worker.files.write('/efi/EFI/Emaki/grubx64.efi', b'old-emaki')
                             self.worker.files.write('/efi/EFI/BOOT/BOOTX64.EFI', b'old-emaki')
@@ -1118,6 +1126,8 @@ class BootAndSnapshotTests(unittest.TestCase):
                         for name in ('grubx64.efi', 'mmx64.efi'):
                             self.assertEqual(self.worker.files.path('/efi/EFI/BOOT/' + name).read_bytes(), b'preserve')
                         self.assertEqual(self.worker.files.path('/efi/' + loader).read_bytes(), b'other-system')
+                        self.assertIn(f'GRUB_DISABLE_OS_PROBER={"false" if windows else "true"}\n',
+                                      self.worker.files.read('/etc/default/grub'))
 
     @alongside_on()
     def test_alongside_grub_uses_chroot_os_prober_and_own_esp(self):
@@ -1230,6 +1240,73 @@ class BootAndSnapshotTests(unittest.TestCase):
         with self.assertRaises(InstallError):
             self.worker.grub_config()
         self.assertEqual(f.read('/boot/grub/grub.cfg'), original)
+
+    def kept_esp(self, loaders):
+        """A manual layout keeping the disk's ESP (MAC_ESP: MAC_LISTING's Windows entry, volume
+        1234-ABCD) as /efi; `loaders` are its reviewed and mounted startup files (F1-011I)."""
+        self.worker.plan = make_plan(config(), inventory())
+        self.worker.plan.config['mode'] = 'manual'
+        for p in self.worker.plan.partitions:
+            p.path = '/dev/test' + str(p.number)
+        esp = next(p for p in self.worker.plan.partitions if p.esp)
+        esp.format, esp.create = False, False
+        self.worker.plan.disk['partitions'] = [{'path': esp.path, 'fs': 'vfat',
+                                                '_efi_loaders': {name: 'hash' for name in loaders}}]
+        self.boot_files()
+        for name in loaders:
+            self.worker.files.write('/efi/' + name, b'other-system')
+
+    def test_manual_kept_windows_esp_lists_windows_through_os_prober(self):
+        self.kept_esp(['EFI/Microsoft/Boot/bootmgfw.efi', 'EFI/Microsoft/Boot/BCD'])
+        f = self.worker.files
+        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD)
+        self.worker.bootloader()
+        self.assertIn('GRUB_DISABLE_OS_PROBER=false\n', f.read('/etc/default/grub'))
+        menu = f.read('/boot/grub/grub.cfg')
+        # The replacement every update's menu refresh makes on this layout (refresh.py generate).
+        self.assertIn('bootnext 0002', menu)
+        self.assertNotIn('chainloader /EFI/Microsoft/Boot/bootmgfw.efi', menu)
+        self.assertTrue(f.path('/etc/fstab').is_file())
+
+    def test_manual_kept_windows_esp_without_its_os_prober_entry_stops_before_fstab(self):
+        # The menu the first update would refuse forever: stop at installation, as next to Windows.
+        other_volume = WINDOWS_CHAINLOAD.replace('1234-ABCD', '5678-EF01')
+        for name, extra, message in (
+                ('no entry', '', 'Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting.'),
+                ('another ESP only', other_volume, WINDOWS_UNSAFE),
+                ('two ESPs', WINDOWS_CHAINLOAD + other_volume, WINDOWS_UNSAFE)):
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as temp:
+                self.root = self.worker.target = Path(temp)
+                self.worker.files = TargetFiles(self.root)
+                self.worker.runner = RecordingRunner()
+                self.worker.shared_esp_layout = None
+                self.kept_esp(['EFI/Microsoft/Boot/bootmgfw.efi'])
+                f = self.worker.files
+                f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + extra)
+                with self.assertRaises(InstallError) as caught:
+                    self.worker.bootloader()
+                self.assertEqual(caught.exception.code, Code.BOOT_VERIFY)
+                self.assertEqual(caught.exception.message, message)
+                self.assertFalse(f.path('/etc/fstab').exists())
+
+    def test_layouts_without_windows_esp_keep_os_prober_disabled(self):
+        for name, loaders in (('erase', None), ('manual, kept empty ESP', []),
+                              ('manual, kept ESP with another loader', ['EFI/ubuntu/shimx64.efi'])):
+            with self.subTest(layout=name), tempfile.TemporaryDirectory() as temp:
+                self.root = self.worker.target = Path(temp)
+                self.worker.files = TargetFiles(self.root)
+                self.worker.runner = RecordingRunner()
+                self.worker.shared_esp_layout = None
+                if loaders is None:
+                    self.worker.plan = make_plan(config(), inventory())
+                    for p in self.worker.plan.partitions:
+                        p.path = '/dev/test' + str(p.number)
+                    self.boot_files()
+                else:
+                    self.kept_esp(loaders)
+                self.worker.bootloader()
+                self.assertIn('GRUB_DISABLE_OS_PROBER=true\n', self.worker.files.read('/etc/default/grub'))
+                self.assertNotIn('bootnext', self.worker.files.read('/boot/grub/grub.cfg'))
 
     @alongside_on()
     def test_alongside_missing_windows_menu_is_fatal(self):

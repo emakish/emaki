@@ -5,18 +5,6 @@
     <context>
         <name>InstallerController</name>
         <message>
-            <source>English</source>
-            <translation>Inglés</translation>
-        </message>
-        <message>
-            <source>Spanish (Latin America)</source>
-            <translation>Español (Latinoamérica)</translation>
-        </message>
-        <message>
-            <source>Portuguese (Brazil)</source>
-            <translation>Portugués (Brasil)</translation>
-        </message>
-        <message>
             <source>Pasted text cannot be used for this password. Type it key by key.</source>
             <translation>No puedes pegar texto para esta contraseña. Escríbela tecla por tecla.</translation>
         </message>
@@ -1065,6 +1053,18 @@
     </context>
     <context>
         <name>Protocol</name>
+        <message>
+            <source>another system</source>
+            <translation>otro sistema</translation>
+        </message>
+        <message>
+            <source>files Emaki cannot check</source>
+            <translation>archivos que Emaki no puede comprobar</translation>
+        </message>
+        <message>
+            <source>Type ERASE to confirm that this volume and any connected data can be erased.</source>
+            <translation>Escribe ERASE para confirmar que este volumen y todos los datos conectados se pueden borrar.</translation>
+        </message>
         <message>
             <source>Connecting to the installer…</source>
             <translation>Conectando con el instalador…</translation>

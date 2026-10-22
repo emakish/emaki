@@ -102,7 +102,7 @@ def typed_characters():
 @unittest.skipUnless(shutil.which('node'), 'node is unavailable')
 class UnseenCharacters(unittest.TestCase):
     def test_the_window_names_what_a_list_cannot_show(self):
-        names = {int(code): name for code, name in window('UNSEEN_NAMES').items()}
+        names = {int(code): name for code, name in window('unseenNames()').items()}
         # The names are Unicode's (a tab has none there); unassigned and private-use code points have none.
         for code, name in names.items():
             with self.subTest(code=hex(code)):

@@ -1001,6 +1001,7 @@ check-i18n: paths build-i18n
 	python3 tests/test-i18n-shell.py
 	python3 update-manager/ui/tests/i18n.py
 	python3 installer/ui/tests/i18n.py
+	python3 installer/ui/tests/language.py
 	python3 installer/ui/tests/english.py
 
 install-i18n: check-i18n-build

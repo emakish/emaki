@@ -12,7 +12,7 @@ require("./translations.js").install(P);
 vm.runInContext(protocol, P);
 function controller() {
     const c = vm.createContext({
-        Protocol: P, session: P.initial(), mode: "manual", step: "disk", diskId: "disk",
+        Protocol: P, session: P.initial(), languageProbes: {}, mode: "manual", step: "disk", diskId: "disk",
         manualAssignments: false, editorPending: false, inventoryRefresh: false, editorLayout: "", diskRefreshNotice: "",
         encryptedConfirmed: true, manualReady: false,
         agreed: true, mounts: [{partition_id: "stale"}], partitionEdits: {delete: ["stale"]},

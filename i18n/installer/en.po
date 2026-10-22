@@ -66,6 +66,9 @@ msgstr "A deleted partition cannot be used."
 msgid "A disk ID is required."
 msgstr "A disk ID is required."
 
+msgid "A firmware startup entry still points to a startup copy removed by this installation."
+msgstr "A firmware startup entry still points to a startup copy removed by this installation."
+
 msgid "A kept partition changed its name. Nothing was formatted."
 msgstr "A kept partition changed its name. Nothing was formatted."
 
@@ -93,8 +96,14 @@ msgstr "A partition is deleted twice."
 msgid "A partition to delete is not on the selected disk."
 msgstr "A partition to delete is not on the selected disk."
 
+msgid "A previous restart is still pending. Wait for it to finish before starting another installation."
+msgstr "A previous restart is still pending. Wait for it to finish before starting another installation."
+
 msgid "A repository override requires a test build in test mode."
 msgstr "A repository override requires a test build in test mode."
+
+msgid "A safety check could not finish cleanly. Windows was not changed. Restart the computer from the USB stick and try again."
+msgstr "A safety check could not finish cleanly. Windows was not changed. Restart the computer from the USB stick and try again."
 
 msgid "A safety check stopped the update. Resolve the reported problem before trying again."
 msgstr "A safety check stopped the update. Resolve the reported problem before trying again."
@@ -104,6 +113,10 @@ msgstr "A selected XKB layout is not available on this ISO."
 
 msgid "A separate disk password is only used with that password choice."
 msgstr "A separate disk password is only used with that password choice."
+
+#, python-brace-format
+msgid "A startup copy needs exactly {names}."
+msgstr "A startup copy needs exactly {names}."
 
 msgid "A startup partition may only be mounted at /efi."
 msgstr "A startup partition may only be mounted at /efi."
@@ -179,8 +192,8 @@ msgstr "Assign exactly one root and one startup partition, plus optional data mo
 msgid "At least 32 GiB must be freed from Windows for Emaki."
 msgstr "At least 32 GiB must be freed from Windows for Emaki."
 
-msgid "Automatic restart is unavailable. "
-msgstr "Automatic restart is unavailable. "
+msgid "Automatic restart is unavailable. Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
+msgstr "Automatic restart is unavailable. Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
 
 msgid "Bounded termination requires a timeout, a positive budget and no stdin."
 msgstr "Bounded termination requires a timeout, a positive budget and no stdin."
@@ -1498,6 +1511,9 @@ msgstr "The startup partition needs at least 32 MiB of verified free space."
 msgid "The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)"
 msgstr "The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)"
 
+msgid "The startup partition's contents changed after the review. The disk was not changed; start a new review."
+msgstr "The startup partition's contents changed after the review. The disk was not changed; start a new review."
+
 msgid "The startup password must use characters available on an English (US) keyboard."
 msgstr "The startup password must use characters available on an English (US) keyboard."
 
@@ -1560,6 +1576,9 @@ msgstr "Time source omitted the time zone."
 
 msgid "Time zone data is unavailable."
 msgstr "Time zone data is unavailable."
+
+msgid "Type ERASE to confirm that this volume and any connected data can be erased."
+msgstr "Type ERASE to confirm that this volume and any connected data can be erased."
 
 msgid "UEFI boot is required."
 msgstr "UEFI boot is required."
@@ -1691,6 +1710,9 @@ msgstr "WARNING: optional unit {value1} is missing; skipped."
 
 msgid "WARNING: pacman is still running in the target; its lock is kept."
 msgstr "WARNING: pacman is still running in the target; its lock is kept."
+
+msgid "WARNING: plan review could not read the boot loader packages, so it checks the startup partition by lower bounds; the exact check runs before the first disk write: "
+msgstr "WARNING: plan review could not read the boot loader packages, so it checks the startup partition by lower bounds; the exact check runs before the first disk write: "
 
 msgid "WARNING: preserving another system's startup files; removable GRUB copy skipped."
 msgstr "WARNING: preserving another system's startup files; removable GRUB copy skipped."
@@ -1849,6 +1871,18 @@ msgstr "Wrong filesystem UUID at {value1}."
 msgid "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
 msgstr "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
 
+msgid "a Btrfs filesystem"
+msgstr "a Btrfs filesystem"
+
+msgid "a RAID array"
+msgstr "a RAID array"
+
+msgid "an LVM volume group"
+msgstr "an LVM volume group"
+
+msgid "another system"
+msgstr "another system"
+
 msgid "bad length"
 msgstr "bad length"
 
@@ -1856,8 +1890,20 @@ msgstr "bad length"
 msgid "cannot list {value1}: {value2}"
 msgstr "cannot list {value1}: {value2}"
 
+#, python-brace-format
+msgid "captured {value1} from {value2}: security {value3}, {value4}; autoconnect preserved, any adapter, every user."
+msgstr "captured {value1} from {value2}: security {value3}, {value4}; autoconnect preserved, any adapter, every user."
+
 msgid "emaki-config did not install the snapshot boot hook."
 msgstr "emaki-config did not install the snapshot boot hook."
+
+#, python-brace-format
+msgid "emaki-install-cli: the installer service cannot start: the boot medium is not mounted at {value1} (the live system was copied to RAM). Restart from the USB stick without the 'copy to RAM' option to install."
+msgstr "emaki-install-cli: the installer service cannot start: the boot medium is not mounted at {value1} (the live system was copied to RAM). Restart from the USB stick without the 'copy to RAM' option to install."
+
+#, python-brace-format
+msgid "emaki-install-cli: the installer service is not running (nothing listens at {value1})."
+msgstr "emaki-install-cli: the installer service is not running (nothing listens at {value1})."
 
 #, python-brace-format
 msgid "emaki-install: the running installer did not show its window:\n{0}"
@@ -1869,8 +1915,23 @@ msgstr "emaki-installerd must run as root on the live ISO."
 msgid "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
 msgstr "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
 
+msgid "encrypted Linux system (LUKS)"
+msgstr "encrypted Linux system (LUKS)"
+
+msgid "encrypted Windows drive (BitLocker)"
+msgstr "encrypted Windows drive (BitLocker)"
+
+msgid "encrypted macOS disk (FileVault 2)"
+msgstr "encrypted macOS disk (FileVault 2)"
+
+msgid "enterprise (802.1X) networks are not copied."
+msgstr "enterprise (802.1X) networks are not copied."
+
 msgid "ext4 recovery: use linux-lts, cached packages, or the live ISO; snapshots are unavailable."
 msgstr "ext4 recovery: use linux-lts, cached packages, or the live ISO; snapshots are unavailable."
+
+msgid "files Emaki cannot check"
+msgstr "files Emaki cannot check"
 
 #, python-brace-format
 msgid "files of group {value1} keep that group (not a regular group)"
@@ -1928,11 +1989,37 @@ msgstr "invalid PF2 section"
 msgid "its startup partition"
 msgstr "its startup partition"
 
+#, python-brace-format
+msgid "joined on the Network page, one of {value1} active Wi-Fi connections"
+msgstr "joined on the Network page, one of {value1} active Wi-Fi connections"
+
+msgid "joined on the Network page; no Wi-Fi is active now"
+msgstr "joined on the Network page; no Wi-Fi is active now"
+
+#, python-brace-format
+msgid "key management {value1} is not supported."
+msgstr "key management {value1} is not supported."
+
+#, python-brace-format
+msgid "locked {description}"
+msgstr "locked {description}"
+
+msgid "macOS disk (APFS)"
+msgstr "macOS disk (APFS)"
+
 msgid "missing PF2 data"
 msgstr "missing PF2 data"
 
+#, python-brace-format
+msgid "mokutil could not report the machine key: {details}"
+msgstr "mokutil could not report the machine key: {details}"
+
 msgid "nmcli could not be started."
 msgstr "nmcli could not be started."
+
+#, python-brace-format
+msgid "nmcli failed (exit {value1})."
+msgstr "nmcli failed (exit {value1})."
 
 msgid "nmcli printed text that is not UTF-8."
 msgstr "nmcli printed text that is not UTF-8."
@@ -1940,11 +2027,17 @@ msgstr "nmcli printed text that is not UTF-8."
 msgid "no answer"
 msgstr "no answer"
 
+msgid "no secret (open network)"
+msgstr "no secret (open network)"
+
 msgid "no single emaki-config archive in the resolved package set."
 msgstr "no single emaki-config archive in the resolved package set."
 
 msgid "ntfsresize did not report one unambiguous minimum size."
 msgstr "ntfsresize did not report one unambiguous minimum size."
+
+msgid "ntfsresize reported an error; shrinking Windows is refused."
+msgstr "ntfsresize reported an error; shrinking Windows is refused."
 
 msgid "one of --probe, --plan, --follow, --save-log is required"
 msgstr "one of --probe, --plan, --follow, --save-log is required"
@@ -1952,14 +2045,34 @@ msgstr "one of --probe, --plan, --follow, --save-log is required"
 msgid "online_update must be boolean."
 msgstr "online_update must be boolean."
 
+msgid "pacman returned no details"
+msgstr "pacman returned no details"
+
 msgid "preserve"
 msgstr "preserve"
+
+msgid "recovery discarded."
+msgstr "recovery discarded."
+
+msgid "secret saved in the keyfile"
+msgstr "secret saved in the keyfile"
 
 msgid "snapper did not print the new snapshot number."
 msgstr "snapper did not print the new snapshot number."
 
 msgid "startup partition, FAT32"
 msgstr "startup partition, FAT32"
+
+#, python-brace-format
+msgid "the Network page join {value1} is no longer saved and no Wi-Fi is active now"
+msgstr "the Network page join {value1} is no longer saved and no Wi-Fi is active now"
+
+#, python-brace-format
+msgid "the WEP key is not saved in the keyfile (wep-key-flags {value1}: held by a desktop keyring client or asked at each connection)."
+msgstr "the WEP key is not saved in the keyfile (wep-key-flags {value1}: held by a desktop keyring client or asked at each connection)."
+
+msgid "the active Wi-Fi connection"
+msgstr "the active Wi-Fi connection"
 
 msgid "the fallback font must have visible printable ASCII glyphs"
 msgstr "the fallback font must have visible printable ASCII glyphs"
@@ -1971,8 +2084,63 @@ msgid "the installation USB holds no package repository."
 msgstr "the installation USB holds no package repository."
 
 #, python-brace-format
+msgid "the keyfile belongs to UID {value1}, not {value2}."
+msgstr "the keyfile belongs to UID {value1}, not {value2}."
+
+#, python-brace-format
 msgid "the keyfile could not be opened ({value1})."
 msgstr "the keyfile could not be opened ({value1})."
+
+msgid "the keyfile has more than one hard link."
+msgstr "the keyfile has more than one hard link."
+
+msgid "the keyfile has no WEP key."
+msgstr "the keyfile has no WEP key."
+
+msgid "the keyfile has no password."
+msgstr "the keyfile has no password."
+
+msgid "the keyfile holds another UUID."
+msgstr "the keyfile holds another UUID."
+
+msgid "the keyfile is larger than 1 MiB."
+msgstr "the keyfile is larger than 1 MiB."
+
+msgid "the keyfile is not a Wi-Fi profile."
+msgstr "the keyfile is not a Wi-Fi profile."
+
+msgid "the keyfile is not a regular file."
+msgstr "the keyfile is not a regular file."
+
+#, python-brace-format
+msgid "the keyfile is outside NetworkManager's connection directories ({directories})."
+msgstr "the keyfile is outside NetworkManager's connection directories ({directories})."
+
+#, python-brace-format
+msgid "the keyfile is readable by others (mode {value1:o})."
+msgstr "the keyfile is readable by others (mode {value1:o})."
+
+msgid "the keyfile path goes through a symbolic link."
+msgstr "the keyfile path goes through a symbolic link."
+
+msgid "the live session has no Wi-Fi profile"
+msgstr "the live session has no Wi-Fi profile"
+
+msgid "the only saved Wi-Fi profile has never connected"
+msgstr "the only saved Wi-Fi profile has never connected"
+
+msgid "the only saved Wi-Fi profile, and it has connected; no Wi-Fi is active now"
+msgstr "the only saved Wi-Fi profile, and it has connected; no Wi-Fi is active now"
+
+#, python-brace-format
+msgid "the password is not saved in the keyfile (psk-flags {value1}: held by a desktop keyring client or asked at each connection)."
+msgstr "the password is not saved in the keyfile (psk-flags {value1}: held by a desktop keyring client or asked at each connection)."
+
+msgid "the profile ID is not a UUID."
+msgstr "the profile ID is not a UUID."
+
+msgid "the profile has no keyfile (NetworkManager keeps it only in memory)."
+msgstr "the profile has no keyfile (NetworkManager keeps it only in memory)."
 
 msgid "truncated"
 msgstr "truncated"
@@ -1980,6 +2148,10 @@ msgstr "truncated"
 #, python-brace-format
 msgid "unclosed quote at {value1}"
 msgstr "unclosed quote at {value1}"
+
+#, python-brace-format
+msgid "unknown startup prompt: {prompt!r}"
+msgstr "unknown startup prompt: {prompt!r}"
 
 msgid "unknown unlock artwork variant"
 msgstr "unknown unlock artwork variant"
@@ -1992,13 +2164,40 @@ msgstr "unlock artwork has the wrong format: {value1}/{value2}"
 msgid "unlock artwork is unavailable: {value1}/{value2}"
 msgstr "unlock artwork is unavailable: {value1}/{value2}"
 
+msgid "will retry on the next probe."
+msgstr "will retry on the next probe."
+
+#, python-brace-format
+msgid "{device} does not hold an installed Emaki. Nothing was changed."
+msgstr "{device} does not hold an installed Emaki. Nothing was changed."
+
+#, python-brace-format
+msgid "{device} is Windows' startup partition. Emaki starts from its own startup partition and never changes Windows'. Nothing was changed."
+msgstr "{device} is Windows' startup partition. Emaki starts from its own startup partition and never changes Windows'. Nothing was changed."
+
+#, python-brace-format
+msgid "{device} is not a FAT startup partition. Nothing was changed."
+msgstr "{device} is not a FAT startup partition. Nothing was changed."
+
+#, python-brace-format
+msgid "{value1} Wi-Fi connections are active and the Network page joined none of them"
+msgstr "{value1} Wi-Fi connections are active and the Network page joined none of them"
+
 #, python-brace-format
 msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
 msgstr "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
 
 #, python-brace-format
+msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
+msgstr "{value1} carries a {value2} signature and may be part of a multi-device set."
+
+#, python-brace-format
 msgid "{value1} carries no signature."
 msgstr "{value1} carries no signature."
+
+#, python-brace-format
+msgid "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
 
 #, python-brace-format
 msgid "{value1} could not be read back after it was written."
@@ -2029,6 +2228,10 @@ msgid "{value1} failed: {value2}"
 msgstr "{value1} failed: {value2}"
 
 #, python-brace-format
+msgid "{value1} has no readable volume ID, so the installer cannot erase this device safely. Choose another target, or clear this device in a terminal [wipefs --all {value2}] and refresh disks. If this is a partition, you can also leave it unchanged in Manual mode."
+msgstr "{value1} has no readable volume ID, so the installer cannot erase this device safely. Choose another target, or clear this device in a terminal [wipefs --all {value2}] and refresh disks. If this is a partition, you can also leave it unchanged in Manual mode."
+
+#, python-brace-format
 msgid "{value1} has no snapshot boot hook (/{value2}, /{value3})."
 msgstr "{value1} has no snapshot boot hook (/{value2}, /{value3})."
 
@@ -2053,8 +2256,16 @@ msgid "{value1} is not a directory."
 msgstr "{value1} is not a directory."
 
 #, python-brace-format
+msgid "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
+msgstr "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
+
+#, python-brace-format
 msgid "{value1} is open at {value2} [mount]. Close files there, then unmount it [umount]."
 msgstr "{value1} is open at {value2} [mount]. Close files there, then unmount it [umount]."
+
+#, python-brace-format
+msgid "{value1} saved Wi-Fi profiles, none is active and the Network page joined none of them"
+msgstr "{value1} saved Wi-Fi profiles, none is active and the Network page joined none of them"
 
 #, python-brace-format
 msgid "{value1} timed out."

@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pure, deterministic planning. No subprocess, archinstall import or disk access."""
-from .i18n import _, LOCALES, system_locale
+from .i18n import _ as translate
+from .i18n import _, N_, LOCALES, system_locale
 import copy
 from dataclasses import dataclass, field
 import hashlib
@@ -27,7 +28,7 @@ ESP_LABEL = 'EMAKI'
 # snapshots never hold a copy of the private key, and a rollback of @ keeps the key.
 SECURE_BOOT_SUBVOLUME = '@secureboot'
 # A kept ESP with Secure Boot: refused at plan review and checked again before the first disk write.
-ESP_SECURE_BOOT_ROOM = (_("The disk's startup partition is too full for Secure Boot updates: Emaki needs about {need} MB free there (it has {free} MB). Making it bigger needs a backup and a disk tool. Do not delete Windows startup files."))
+ESP_SECURE_BOOT_ROOM = (N_("The disk's startup partition is too full for Secure Boot updates: Emaki needs about {need} MB free there (it has {free} MB). Making it bigger needs a backup and a disk tool. Do not delete Windows startup files."))
 # Plan review counts a kept ESP by make_plan's esp_need: the worker's rule applied to the USB's
 # archives (worker.review_esp_need), so both gates need the same bytes (R9S9 #9). Only when those
 # archives cannot be read does review fall back to these sizes, which no real Secure Boot install
@@ -240,7 +241,10 @@ def console_unsafe_chars(layouts, password):
 
 def fingerprint(disk):
     identity = {k: disk.get(k) for k in ('id', 'path', 'size_bytes', '_sector_size',
-                                        '_identity', '_pttype', '_fs', 'closed_encrypted')}
+                                        '_identity', '_pttype', '_fs')}
+    # Warnings are display text; confirmations and rechecks name the same stable volume.
+    identity['closed_encrypted'] = [{k: volume.get(k) for k in ('path', 'type', 'uuid')}
+                                    for volume in disk.get('closed_encrypted', [])]
     identity['partitions'] = [{k: p.get(k) for k in
                               ('id', 'path', 'number', 'uuid', 'fs', 'size_bytes',
                                'start_bytes', 'esp', '_subvolumes')}
@@ -249,9 +253,20 @@ def fingerprint(disk):
 
 
 def alongside_fingerprint(disk):
+    def shrink_identity(offer):
+        if offer is None:
+            return None
+        # Both the offered bounds and the original probe carry translated refusal text.
+        # Keep the refusal gate itself, as well as every numeric bound and probe field.
+        return {**{k: v for k, v in offer.items() if k != 'reason'},
+                'reason': bool(offer.get('reason'))}
+
     evidence = {'disk': fingerprint(disk), 'parts': [{k: p.get(k) for k in
                 ('id', 'shrink', '_shrink_probe', '_gpt', '_esp_free_bytes', '_efi_loaders', '_partuuid', '_parttype', '_partlabel')}
                 for p in disk['partitions']]}
+    for part in evidence['parts']:
+        for key in ('shrink', '_shrink_probe'):
+            part[key] = shrink_identity(part[key])
     return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
 
 
@@ -552,7 +567,7 @@ def partition_edits(value, disk):
         system = alongside.other_system(p)
         if system:
             require(row.get('confirm') == deletion_identity(p), Code.MANUAL_LAYOUT,
-                    _('Partition {value1} holds {value2}. Confirm deleting it by typing %1.').replace('%1', 'DELETE').format(value1=p['number'], value2=system))
+                    _('Partition {value1} holds {value2}. Confirm deleting it by typing %1.').replace('%1', 'DELETE').format(value1=p['number'], value2=alongside.other_system_label(system)))
         else:
             require('confirm' not in row, Code.MANUAL_LAYOUT, _('Invalid partition changes.'))
         deleted.append(p)
@@ -630,7 +645,7 @@ def manual_partitions(rows, disk, encryption='none', edits=None):
         require(type(encrypt) is bool, Code.MANUAL_LAYOUT, _('Invalid mount row.'))
         system = alongside.other_system(p)
         require(not system or (p['esp'] and row.get('mountpoint') == '/efi' and row.get('format') is False),
-                Code.MANUAL_LAYOUT, _('Partition {value1} holds {value2}. Emaki does not change it; delete the partition to use its space.').format(value1=p['number'], value2=system))
+                Code.MANUAL_LAYOUT, _('Partition {value1} holds {value2}. Emaki does not change it; delete the partition to use its space.').format(value1=p['number'], value2=alongside.other_system_label(system)))
         if row.get('mountpoint') == 'swap':
             _swap_row(row, p)
             require(row['partition_id'] not in grouped and not any(q is p for q, ignored in swaps), Code.MANUAL_LAYOUT,
@@ -670,6 +685,10 @@ def manual_partitions(rows, disk, encryption='none', edits=None):
             if fmt:
                 require(p['size_bytes'] >= ESP_FORMAT_MIN, Code.ESP_SPACE,
                         _('An EFI system partition needs at least 512 MiB.'))
+            # The installed boot code refuses every write to an ESP whose EFI directory it cannot
+            # read (a symlink, or no directory): the probe could not tell whether it is Windows'.
+            require(fmt or p.get('_efi_microsoft', False) is not None, Code.MANUAL_LAYOUT,
+                    translate(alongside.EFI_MANIFEST_UNSAFE))
             free = p.get('_esp_free_bytes')
             require(fmt or (free is not None and free >= secureboot.SHARED_ESP_RESERVE), Code.ESP_SPACE,
                     _('The startup partition needs at least 32 MiB of verified free space.'))
@@ -772,7 +791,7 @@ def make_plan(config, inventory, test_mode=False, esp_need=None):
         # Emaki starts through shim, which the Microsoft third-party CAs sign; without
         # either one in db nothing can start, and an unreadable state is not guessed.
         cas = hardware.get("secure_boot_cas") if hardware["secure_boot"] is True else None
-        require(cas in SECURE_BOOT_CAS, Code.SECURE_BOOT, SECURE_BOOT_NO_CA if cas == 'none' else SECURE_BOOT_UNKNOWN)
+        require(cas in SECURE_BOOT_CAS, Code.SECURE_BOOT, translate(SECURE_BOOT_NO_CA) if cas == 'none' else translate(SECURE_BOOT_UNKNOWN))
         secure_boot = cas
     disk = next((d for d in inventory['disks'] if d['id'] == c['disk_id']), None)
     require(disk is not None, Code.DISK_NOT_FOUND, inventory.get('hardware', {}).get('disk_notice') or _('Selected disk no longer exists.'))
@@ -802,7 +821,7 @@ def make_plan(config, inventory, test_mode=False, esp_need=None):
             need = esp_need(cluster, removable, c['encryption'] != 'none') if esp_need else None
             if need is None:
                 need = plan_esp_need(cluster, removable)
-            require(free is not None and free >= need, Code.ESP_SPACE, ESP_SECURE_BOOT_ROOM.format(
+            require(free is not None and free >= need, Code.ESP_SPACE, translate(ESP_SECURE_BOOT_ROOM).format(
                 need=-(-need // 1000000), free=(free or 0) // 1000000))
     swap_bytes = storage_layout(c, parts, inventory)
     summary = [({'erase': _('Erase installation on {path} ({model}).'),
@@ -839,7 +858,7 @@ def make_plan(config, inventory, test_mode=False, esp_need=None):
     if graphics_packages:
         summary.append(_('Graphics driver packages (Nvidia): {packages}.').format(packages=", ".join(graphics_packages)))
     if secure_boot:
-        summary += [SECURE_BOOT_CAS[secure_boot],
+        summary += [translate(SECURE_BOOT_CAS[secure_boot]),
                     _("After the restart a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation; you do this only once.")]
     warnings = []
     if hardware.get("media_notice"):
@@ -877,7 +896,7 @@ def manual_summary(disk, parts, edits, encrypted):
     for p in edits.deleted if edits else []:
         system = alongside.other_system(p)
         what = ', '.join([p['path'], size(p['size_bytes'])] + ([p['fs']] if p.get('fs') else [])
-                         + ([system] if system else []))
+                         + ([alongside.other_system_label(system)] if system else []))
         lines.append(_('Delete partition {value1} ({value2}): all its files are lost.').format(value1=p['number'], value2=what))
     for p in sorted(parts, key=lambda p: p.number):
         root = p.mountpoint == '/' or '/' in p.subvolumes.values()

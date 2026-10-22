@@ -10,7 +10,8 @@ inside it through arch-chroot. That code builds the signed GRUB from the install
 and the key, writes a complete slot and repairs the firmware entries. Everything mounted here
 is unmounted on every way out.
 """
-from .i18n import _
+from .i18n import _ as translate
+from .i18n import _, N_
 import argparse
 import json
 import os
@@ -37,26 +38,26 @@ REPAIR = ['emaki-boot-refresh', '--repair-slots']
 ROOT_SUBVOLUME = '@'
 ROOT_FILESYSTEMS = ('btrfs', 'ext4')
 
-NOT_ROOT = _('Run the repair as root: sudo emaki-boot-repair')
-NOT_LIVE = _('Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there.')
-NONE_FOUND = _("No installed Emaki was found on this computer's disks. Nothing was changed.")
-LOCKED = (_('No installed Emaki was found on the unlocked disks. If Emaki is on the encrypted disk {device}, unlock it with: sudo cryptsetup open {device} emaki-root and run sudo emaki-boot-repair again.'))
-SEVERAL = (_('More than one installed Emaki was found: {devices}. Name the one to repair, for example: sudo emaki-boot-repair --root {first}'))
-NAMED_NOT_EMAKI = '{device} does not hold an installed Emaki. Nothing was changed.'
-CLONED = (_('More than one disk holds the same file system or encrypted disk ({devices}), as after copying a whole disk. Disconnect or change all but one of them, then run sudo emaki-boot-repair again. Nothing was changed.'))
-NO_ESP = (_('The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)'))
-ESP_NOT_FAT = '{device} is not a FAT startup partition. Nothing was changed.'
-WINDOWS_ESP = ("{device} is Windows' startup partition. Emaki starts from its own startup partition "
-               "and never changes Windows'. Nothing was changed.")
-ESP_UNPROVEN = (_("Emaki's startup partition could not be verified from its saved partition identity. Nothing was changed."))
-TOO_OLD = (_('The installed Emaki is too old for this repair. Nothing was changed.'))
-KEY_NOT_READ_ONLY = _('The Secure Boot key could not be mounted read-only, so nothing was changed.')
-REPAIRING = _('Repairing the installed Emaki on {root} with the startup partition {esp}.')
-DONE = _('The repair finished. Remove the installation USB and restart the computer.')
-FAILED = _('The repair did not finish; the messages above say why.')
-UNMOUNT_FAILED = _('Warning: {target} could not be unmounted: {error}')
-PROBE_CLEANUP_FAILED = (_('The disk inspection stopped because {target} could not be unmounted: {error}. No more disks were inspected.'))
-UNSAFE_DIRECTORY = _('The installed directory {path} is not a safe directory. The repair stopped.')
+NOT_ROOT = N_('Run the repair as root: sudo emaki-boot-repair')
+NOT_LIVE = N_('Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there.')
+NONE_FOUND = N_("No installed Emaki was found on this computer's disks. Nothing was changed.")
+LOCKED = (N_('No installed Emaki was found on the unlocked disks. If Emaki is on the encrypted disk {device}, unlock it with: sudo cryptsetup open {device} emaki-root and run sudo emaki-boot-repair again.'))
+SEVERAL = (N_('More than one installed Emaki was found: {devices}. Name the one to repair, for example: sudo emaki-boot-repair --root {first}'))
+NAMED_NOT_EMAKI = N_('{device} does not hold an installed Emaki. Nothing was changed.')
+CLONED = (N_('More than one disk holds the same file system or encrypted disk ({devices}), as after copying a whole disk. Disconnect or change all but one of them, then run sudo emaki-boot-repair again. Nothing was changed.'))
+NO_ESP = (N_('The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)'))
+ESP_NOT_FAT = N_('{device} is not a FAT startup partition. Nothing was changed.')
+WINDOWS_ESP = (N_("{device} is Windows' startup partition. Emaki starts from its own startup partition "
+               "and never changes Windows'. Nothing was changed."))
+ESP_UNPROVEN = (N_("Emaki's startup partition could not be verified from its saved partition identity. Nothing was changed."))
+TOO_OLD = (N_('The installed Emaki is too old for this repair. Nothing was changed.'))
+KEY_NOT_READ_ONLY = N_('The Secure Boot key could not be mounted read-only, so nothing was changed.')
+REPAIRING = N_('Repairing the installed Emaki on {root} with the startup partition {esp}.')
+DONE = N_('The repair finished. Remove the installation USB and restart the computer.')
+FAILED = N_('The repair did not finish; the messages above say why.')
+UNMOUNT_FAILED = N_('Warning: {target} could not be unmounted: {error}')
+PROBE_CLEANUP_FAILED = (N_('The disk inspection stopped because {target} could not be unmounted: {error}. No more disks were inspected.'))
+UNSAFE_DIRECTORY = N_('The installed directory {path} is not a safe directory. The repair stopped.')
 
 
 class RepairError(RuntimeError):
@@ -196,7 +197,7 @@ def probe(run, device, mountpoint, mounts=None):
         try:
             mounts.unmount(mountpoint)
         except (RepairError, OSError) as error:
-            raise ProbeCleanupError(PROBE_CLEANUP_FAILED.format(target=mountpoint, error=error)) from error
+            raise ProbeCleanupError(translate(PROBE_CLEANUP_FAILED).format(target=mountpoint, error=error)) from error
 
 
 def twins(devices, item, fstypes):
@@ -247,23 +248,23 @@ def find_system(run, devices, mountpoint, named=None, mounts=None):
         if system is not None:
             systems.append(system)
     if named is not None and not systems:
-        raise RepairError(NAMED_NOT_EMAKI.format(device=named))
+        raise RepairError(translate(NAMED_NOT_EMAKI).format(device=named))
     if not systems:
         locked = [device for device in devices
                   if str(device['fstype']).lower() == 'crypto_luks' and not device['opened']]
         for device in locked:
             copies = twins(devices, device, (device['fstype'],))
             if len(copies) > 1:
-                raise RepairError(CLONED.format(devices=', '.join(copies)))
-        raise RepairError(LOCKED.format(device=locked[0]['path']) if locked else NONE_FOUND)
+                raise RepairError(translate(CLONED).format(devices=', '.join(copies)))
+        raise RepairError(translate(LOCKED).format(device=locked[0]['path']) if locked else translate(NONE_FOUND))
     for system in systems:
         clones = cloned(devices, {**system, 'parent': next(
             (device['parent'] for device in devices if device['path'] == system['device']), None)})
         if clones:
-            raise RepairError(CLONED.format(devices=', '.join(clones)))
+            raise RepairError(translate(CLONED).format(devices=', '.join(clones)))
     if len(systems) > 1:
         names = [system['device'] for system in systems]
-        raise RepairError(SEVERAL.format(devices=', '.join(names), first=names[0]))
+        raise RepairError(translate(SEVERAL).format(devices=', '.join(names), first=names[0]))
     return systems[0]
 
 
@@ -276,7 +277,7 @@ def find_esp(system, devices, named=None):
     windows, own = system.get('windows_esp'), system.get('own_esp')
     rows = [row for row in system['rows'] if row['target'] == '/efi']
     if len(rows) != 1 or rows[0]['fstype'] != 'vfat':
-        raise RepairError(ESP_UNPROVEN)
+        raise RepairError(translate(ESP_UNPROVEN))
     row = rows[0]
     readonly = 'ro' in row['options']
     source = row['source']
@@ -287,28 +288,28 @@ def find_esp(system, devices, named=None):
         named_device = next((item for item in devices
                              if os.path.realpath(item['path']) == os.path.realpath(named)), None)
         if named_device is None or named_device['fstype'] != 'vfat':
-            raise RepairError(ESP_NOT_FAT.format(device=named))
+            raise RepairError(translate(ESP_NOT_FAT).format(device=named))
         if not readonly and windows and str(named_device.get('partuuid') or '').lower() == windows:
-            raise RepairError(WINDOWS_ESP.format(device=named))
+            raise RepairError(translate(WINDOWS_ESP).format(device=named))
     found = {os.path.realpath(item['path']): item for item in devices
              if item['fstype'] == 'vfat'
              and ((own is not None and named_device is not None)
                   or (field and value and str(item.get(field) or '').lower() == value.lower()))
              and (own is None or str(item.get('partuuid') or '').lower() == own)}
     if len(found) != 1:
-        raise RepairError(ESP_UNPROVEN if own is not None and named_device is not None
-                          else NO_ESP.format(source=source))
+        raise RepairError(translate(ESP_UNPROVEN) if own is not None and named_device is not None
+                          else translate(NO_ESP).format(source=source))
     selected = next(iter(found.values()))
     if named_device is not None and os.path.realpath(named_device['path']) != os.path.realpath(selected['path']):
-        raise RepairError(ESP_UNPROVEN)
+        raise RepairError(translate(ESP_UNPROVEN))
     if not readonly:
         if system.get('invalid_esp_record'):
-            raise RepairError(ESP_UNPROVEN)
+            raise RepairError(translate(ESP_UNPROVEN))
         if windows and str(selected.get('partuuid') or '').lower() == windows:
-            raise RepairError(WINDOWS_ESP.format(device=selected['path']))
+            raise RepairError(translate(WINDOWS_ESP).format(device=selected['path']))
         if own and len({os.path.realpath(item['path']) for item in devices
                         if str(item.get('partuuid') or '').lower() == own}) != 1:
-            raise RepairError(ESP_UNPROVEN)
+            raise RepairError(translate(ESP_UNPROVEN))
     return selected
 
 
@@ -320,7 +321,7 @@ def inspect_esp(mounts, system, esp, mountpoint):
     mounts.mount(['-t', 'vfat', '-o', 'ro,nosuid,nodev,noexec', esp['path']], mountpoint)
     try:
         if not read_only(mounts.run, mountpoint):
-            raise RepairError(ESP_UNPROVEN)
+            raise RepairError(translate(ESP_UNPROVEN))
         directory = installed_directory(mountpoint, 'EFI/Microsoft')
         if directory is not None:
             # Match the installed gate even when Windows' loader is missing.
@@ -330,7 +331,7 @@ def inspect_esp(mounts, system, esp, mountpoint):
         try:
             mounts.unmount(mountpoint)
         except (RepairError, OSError) as error:
-            raise ProbeCleanupError(PROBE_CLEANUP_FAILED.format(target=mountpoint, error=error)) from error
+            raise ProbeCleanupError(translate(PROBE_CLEANUP_FAILED).format(target=mountpoint, error=error)) from error
     system['inspected_esp'] = os.path.realpath(esp['path'])
 
 
@@ -355,7 +356,7 @@ class Mounts:
                 self.unmount(target)
             except (RepairError, OSError) as error:
                 failed = True
-                print(UNMOUNT_FAILED.format(target=target, error=error), file=sys.stderr)
+                print(translate(UNMOUNT_FAILED).format(target=target, error=error), file=sys.stderr)
         return not failed
 
 
@@ -387,7 +388,7 @@ def installed_directory(root, relative, create=False):
             descriptor = child
         return root / relative
     except OSError as error:
-        raise RepairError(UNSAFE_DIRECTORY.format(path='/' + relative)) from error
+        raise RepairError(translate(UNSAFE_DIRECTORY).format(path='/' + relative)) from error
     finally:
         if descriptor is not None:
             os.close(descriptor)
@@ -401,7 +402,7 @@ def mount_system(mounts, system, esp, root):
                     or system.get('shared_esp') == os.path.realpath(esp['path'])) else 'rw'
     if mode == 'rw' and (system.get('invalid_esp_record')
                          or system.get('inspected_esp') != os.path.realpath(esp['path'])):
-        raise RepairError(ESP_UNPROVEN)
+        raise RepairError(translate(ESP_UNPROVEN))
     if system['fstype'] == 'btrfs':
         options = ['subvol=/' + system['subvolume']] if system['subvolume'] else ['subvolid=5']
         mounts.mount(['-t', 'btrfs', '-o', ','.join(options), device], root)
@@ -430,7 +431,7 @@ def mount_system(mounts, system, esp, root):
     else:
         state = None
     if state is not None and not read_only(mounts.run, state):
-        raise RepairError(KEY_NOT_READ_ONLY)
+        raise RepairError(translate(KEY_NOT_READ_ONLY))
     mounts.mount(['-t', 'vfat', '-o', mode + ',nosuid,nodev,noexec', esp['path']],
                  installed_directory(root, 'efi', create=True))
 
@@ -447,13 +448,13 @@ def repair(run, call, root_device=None, esp_device=None, base=BASE):
         devices = block_devices(run)
         system = find_system(run, devices, probe_point, root_device, mounts)
         if not system['repairable']:
-            raise RepairError(TOO_OLD)
+            raise RepairError(translate(TOO_OLD))
         esp = find_esp(system, devices, esp_device)
         inspect_esp(mounts, system, esp, probe_point)
-        print(REPAIRING.format(root=system['device'], esp=esp['path']))
+        print(translate(REPAIRING).format(root=system['device'], esp=esp['path']))
         mount_system(mounts, system, esp, root)
         status = 0 if call(['arch-chroot', '-r', root, *REPAIR]) == 0 else 1
-        print(DONE if status == 0 else FAILED, file=sys.stdout if status == 0 else sys.stderr)
+        print(translate(DONE) if status == 0 else translate(FAILED), file=sys.stdout if status == 0 else sys.stderr)
     except (RepairError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         status = 1
@@ -476,9 +477,9 @@ def main(argv=None, run=run, call=call, live=LIVE, base=BASE):
     parser.add_argument('--esp', metavar='DEVICE', help=_('its startup partition'))
     args = parser.parse_args(argv)
     if os.geteuid() != 0:
-        print(NOT_ROOT, file=sys.stderr)
+        print(translate(NOT_ROOT), file=sys.stderr)
         return 1
     if not Path(live).exists():
-        print(NOT_LIVE, file=sys.stderr)
+        print(translate(NOT_LIVE), file=sys.stderr)
         return 1
     return repair(run, call, args.root, args.esp, base)

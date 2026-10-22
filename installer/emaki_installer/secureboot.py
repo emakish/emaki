@@ -297,7 +297,7 @@ def enrollment(run, state=STATE):
         return 'pending'
     if 'is not enrolled' in output:
         return 'missing'
-    raise SecureBootError('mokutil could not report the machine key: ' + output.strip()[-300:])
+    raise SecureBootError(_('mokutil could not report the machine key: {details}').format(details=output.strip()[-300:]))
 
 
 def dkms_config(state=STATE):
@@ -469,7 +469,7 @@ def write_slot(esp, slot, files, generation=None, check=None):
     """
     names = slot_files_names()
     if set(files) != set(names):
-        raise SecureBootError('A startup copy needs exactly ' + ', '.join(names) + '.')
+        raise SecureBootError(_('A startup copy needs exactly {names}.').format(names=', '.join(names)))
     directory = slot_dir(esp, slot)
     if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
         raise SecureBootError(_('{value1} is not a directory.').format(value1=directory))

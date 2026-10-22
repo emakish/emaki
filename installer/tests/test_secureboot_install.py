@@ -722,6 +722,14 @@ class InstallTests(unittest.TestCase):
                     {'path': esp.path, 'fs': 'vfat',
                      '_efi_loaders': {} if unreadable else {loader: 'hash'}, **unreadable}]
                 worker.files.write('/efi/' + loader, b'Windows')
+                # Windows' ESP kept as /efi: os-prober lists its Boot Manager (F1-011I).
+                worker.files.write('/boot/grub/grub.cfg', worker.files.read('/boot/grub/grub.cfg') + (
+                    "### BEGIN /etc/grub.d/30_os-prober ###\n"
+                    "menuentry 'Windows Boot Manager (on /dev/test1)' --class windows --class os "
+                    "$menuentry_id_option 'osprober-efi-1234-ABCD' {\n"
+                    "    search --no-floppy --fs-uuid --set=root 1234-ABCD\n"
+                    "    chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n}\n"
+                    "### END /etc/grub.d/30_os-prober ###\n"))
                 before = {}
                 if existing:
                     worker.files.write('/efi/EFI/Emaki/grubx64.efi', b'old-emaki')

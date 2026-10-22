@@ -6,7 +6,8 @@ Device IDs prefer udev's /dev/disk/by-id links. Machines without a disk serial
 (notably QEMU's default virtio disk) use /dev paths; confirmation must compare
 the private identity and geometry again before permitting a write.
 """
-from .i18n import _
+from .i18n import _ as translate
+from .i18n import _, N_
 
 import json
 import hashlib
@@ -39,8 +40,8 @@ WINDOWS_MANAGED_GUIDS = frozenset({
 })
 MIN_ROOT = 32 * GIB
 WINDOWS_RESERVE = 2 * GIB
-HIBERNATION_REFUSAL = (_('Windows is asleep, not shut down (hibernation or Fast Startup is on). In Windows, open Command Prompt as administrator, type powercfg /hibernate off and press Enter. Then shut Windows down and start from the USB stick again.'))
-BITLOCKER_REFUSAL = (_('Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys.'))
+HIBERNATION_REFUSAL = (N_('Windows is asleep, not shut down (hibernation or Fast Startup is on). In Windows, open Command Prompt as administrator, type powercfg /hibernate off and press Enter. Then shut Windows down and start from the USB stick again.'))
+BITLOCKER_REFUSAL = (N_('Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys.'))
 
 
 def alongside_type_refusal(disk, part):
@@ -72,6 +73,15 @@ CHECKED_FS = frozenset((None, "vfat", "ext4", "btrfs", "ntfs", "ntfs3", "swap", 
 UNCHECKED = "files Emaki cannot check"
 
 
+def other_system_label(value):
+    """Translate a display label without changing the partition's safety identity."""
+    if value == 'another system':
+        return _('another system')
+    if value == UNCHECKED:
+        return _('files Emaki cannot check')
+    return value
+
+
 def other_system(part):
     """The system a partition belongs to when it is not Emaki's to change, else None.
 
@@ -84,7 +94,7 @@ def other_system(part):
     """
     hint = part.get("os_hint")
     fs = part.get("fs")
-    if hint == "windows" or fs in ("ntfs", "ntfs3", "BitLocker"):
+    if hint == "windows" or windows_loader(part) or fs in ("ntfs", "ntfs3", "BitLocker"):
         return "Windows"
     if hint == "macos" or fs in ("apfs", "hfs", "hfsplus", "cs_fvault2"):
         return "macOS"
@@ -106,6 +116,18 @@ def other_system(part):
     return None
 
 
+def windows_loader(part):
+    """True when a probed ESP has Windows' EFI/Microsoft entry (the probe's efi_microsoft).
+
+    The same test the installed boot code uses for a startup partition shared with Windows
+    (grub/emaki_boot/refresh.py shared_esp), so the installer records the shared layout exactly
+    where the package hook will demand its record: also with no files under it, or with a loader
+    manifest the probe refused. Other vendors' loaders make a partition another system's for the
+    partition editor (other_system) but never a shared one for the boot code.
+    """
+    return part.get("_efi_microsoft") is True
+
+
 def require_verified():
     # Read at call time: constants.ALONGSIDE is the only switch.
     require(constants.ALONGSIDE, Code.UNSUPPORTED_MODE,
@@ -115,15 +137,15 @@ def require_verified():
 def ntfs_error(output):
     text = output.lower()
     if 'bitlocker' in text or '-fve-fs-' in text:
-        return BITLOCKER_REFUSAL
+        return translate(BITLOCKER_REFUSAL)
     if any(word in text for word in ('hibernat', 'fast startup', 'windows cache')):
-        return HIBERNATION_REFUSAL
+        return translate(HIBERNATION_REFUSAL)
     if any(word in text for word in ('dirty', 'scheduled for check', 'unclean', 'inconsistent', 'chkdsk /f')):
         return _('NTFS is dirty or needs a Windows consistency check. Run chkdsk in Windows and fully shut down first.')
     if any(word in text for word in ('mounted', 'busy', 'already opened')):
         return _('The Windows partition is mounted, held, or in use. Unmount it before trying again.')
     if re.search(r'\b(error|failed|refused|bad sectors?)\b', text):
-        return 'ntfsresize reported an error; shrinking Windows is refused.'
+        return _('ntfsresize reported an error; shrinking Windows is refused.')
     return None
 
 
@@ -169,7 +191,7 @@ def hibernation_reason(root):
     with matches[0].open('rb') as stream:
         header = stream.read(4096)
     if len(header) != 4096 or any(header):
-        return HIBERNATION_REFUSAL
+        return translate(HIBERNATION_REFUSAL)
     return None
 
 
@@ -293,7 +315,29 @@ EFI_MANIFEST_MAX_ENTRIES = 4096
 EFI_MANIFEST_MAX_BYTES = 256 * MIB
 EFI_MANIFEST_MAX_FILE_BYTES = 64 * MIB
 EFI_MANIFEST_MAX_DEPTH = 16
-EFI_MANIFEST_UNSAFE = _("The disk's startup files could not be checked safely, so Emaki stopped.")
+EFI_MANIFEST_UNSAFE = N_("The disk's startup files could not be checked safely, so Emaki stopped.")
+
+
+def efi_microsoft(root):
+    """Whether the ESP mounted at root has an entry Microsoft in its EFI directory.
+
+    Exactly the installed boot code's test for a startup partition shared with Windows
+    (grub/emaki_boot/refresh.py shared_esp): names compare without case, and any entry counts.
+    Kept apart from efi_loaders, which refuses a whole manifest for one unrelated file. None
+    where that code cannot decide either and refuses every write (UNCHECKED): EFI is a symlink
+    or cannot be read as a directory.
+    """
+    try:
+        for directory in root.iterdir():
+            if directory.name.casefold() == 'efi':
+                if directory.is_symlink():
+                    return None
+                for vendor in directory.iterdir():
+                    if vendor.name.casefold() == 'microsoft':
+                        return True
+        return False
+    except (OSError, UnicodeError):
+        return None
 
 
 def efi_loaders(root):
@@ -318,13 +362,13 @@ def efi_loaders(root):
                 name = child.name.casefold()
                 require(entries <= EFI_MANIFEST_MAX_ENTRIES and name not in seen
                         and not any(ord(c) < 32 for c in child.name),
-                        Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                        Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
                 seen.add(name)
                 yield Path(child.path), name
 
     def visit(path, key, depth):
         nonlocal total
-        require(depth <= EFI_MANIFEST_MAX_DEPTH, Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+        require(depth <= EFI_MANIFEST_MAX_DEPTH, Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
         info = path.lstat()
         require(not stat.S_ISLNK(info.st_mode), Code.UNSAFE_DISK,
                 _('EFI loader path contains a symlink.'))
@@ -333,7 +377,7 @@ def efi_loaders(root):
                 if key == 'efi' and name == 'emaki':
                     # Reject a link even though we do not fingerprint our files.
                     require(not child.is_symlink() and child.is_dir(),
-                            Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                            Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
                     continue
                 visit(child, key + '/' + name, depth + 1)
             return
@@ -341,55 +385,54 @@ def efi_loaders(root):
                 and (not key.endswith('.efi') or info.st_size > 0),
                 Code.UNSAFE_DISK, _('EFI loader is not a valid bounded file.'))
         total += info.st_size
-        require(total <= EFI_MANIFEST_MAX_BYTES, Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+        require(total <= EFI_MANIFEST_MAX_BYTES, Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
         digest = hashlib.sha256()
         with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
             opened = os.fstat(stream.fileno())
             require(stat.S_ISREG(opened.st_mode) and
                     (opened.st_dev, opened.st_ino, opened.st_size) ==
                     (info.st_dev, info.st_ino, info.st_size),
-                    Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                    Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
             remaining = info.st_size
             while remaining:
                 chunk = stream.read(min(remaining, MIB))
-                require(bool(chunk), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                require(bool(chunk), Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
                 digest.update(chunk)
                 remaining -= len(chunk)
-            require(not stream.read(1), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+            require(not stream.read(1), Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
         result[canonical.get(key, 'EFI/' + key[4:])] = digest.hexdigest()
 
     try:
-        require(not root.is_symlink() and root.is_dir(), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+        require(not root.is_symlink() and root.is_dir(), Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
         for path, name in children(root):
             if name == 'efi':
-                require(not path.is_symlink() and path.is_dir(), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                require(not path.is_symlink() and path.is_dir(), Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE))
                 visit(path, name, 0)
     except OSError as exc:
-        raise InstallError(Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE) from exc
+        raise InstallError(Code.UNSAFE_DISK, translate(EFI_MANIFEST_UNSAFE)) from exc
     return result
 
 
 EFI = Path("/sys/firmware/efi")
-BUSY_REASON = _('This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again.')
+BUSY_REASON = N_('This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again.')
 ENCRYPTED_TYPES = {
-    "crypto_LUKS": "encrypted Linux system (LUKS)",
-    "BitLocker": "encrypted Windows drive (BitLocker)",
-    "cs_fvault2": "encrypted macOS disk (FileVault 2)",
-    "apfs": "macOS disk (APFS)",
+    "crypto_LUKS": N_("encrypted Linux system (LUKS)"),
+    "BitLocker": N_("encrypted Windows drive (BitLocker)"),
+    "cs_fvault2": N_("encrypted macOS disk (FileVault 2)"),
+    "apfs": N_("macOS disk (APFS)"),
 }
 
 
 def encrypted_warning(path, kind):
-    description = ENCRYPTED_TYPES[kind] if kind == "apfs" else f"locked {ENCRYPTED_TYPES[kind]}"
-    return (f"{path} contains a {description}. "
-            "The installer cannot check its contents; they may belong to a set of several disks. "
-            "Type ERASE to confirm that this volume and any connected data can be erased.")
+    description = translate(ENCRYPTED_TYPES[kind])
+    if kind != "apfs":
+        description = _('locked {description}').format(description=description)
+    return (_('{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks.').format(value1=path, value2=description)
+            + ' ' + _('Type ERASE to confirm that this volume and any connected data can be erased.'))
 
 
 def unconfirmed_identity_warning(path):
-    return (f"{path} has no readable volume ID, so the installer cannot erase this device safely. "
-            f"Choose another target, or clear this device in a terminal [wipefs --all {path}] and refresh "
-            "disks. If this is a partition, you can also leave it unchanged in Manual mode.")
+    return (_('{value1} has no readable volume ID, so the installer cannot erase this device safely. Choose another target, or clear this device in a terminal [wipefs --all {value2}] and refresh disks. If this is a partition, you can also leave it unchanged in Manual mode.').format(value1=path, value2=path))
 
 
 # Signatures that live on one device only: erasing such a device cannot damage
@@ -542,7 +585,7 @@ def busy_reason(nodes, holders):
             kind = node.get('type')
             action = _('Close it [cryptsetup close]') if kind == 'crypt' else (_('Deactivate it [lvchange -an]') if kind == 'lvm' else _('Stop it [mdadm --stop]'))
             details.append(_('{value1} is active [{value2}]. {value3}, then try again.').format(value1=path, value2=kind, value3=action))
-    return ' '.join(details) or BUSY_REASON
+    return ' '.join(details) or translate(BUSY_REASON)
 
 
 def parse_lsblk(payload, *, stable_ids=None, boot_sources=(), holders=None):
@@ -838,7 +881,7 @@ class Inventory:
             return None
         if not count:
             return _('Cannot verify that {value1} is the only device of {value2}.').format(value1=path, value2=kind)
-        return f"{path} is one of {count} devices of {kind}; erasing it would damage the other devices."
+        return _('{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices.').format(value1=path, value2=count, value3=kind)
 
     def _member_reason(self, path, fs):
         """Why erasing this device could damage another disk; None when it cannot.
@@ -848,14 +891,14 @@ class Inventory:
         if not fs or fs in SINGLE_DEVICE or fs in ENCRYPTED_TYPES:
             return None
         if fs == "btrfs":
-            return self._set_reason(path, "a Btrfs filesystem", self._btrfs_devices(path))
+            return self._set_reason(path, _('a Btrfs filesystem'), self._btrfs_devices(path))
         if fs == "LVM2_member":
-            return self._set_reason(path, "an LVM volume group", self._count(
+            return self._set_reason(path, _('an LVM volume group'), self._count(
                 ["pvs", "--readonly", "--noheadings", "--options", "pv_count", path], r"^\s*(\d+)\s*$"))
         if fs == "linux_raid_member":
-            return self._set_reason(path, "a RAID array", self._count(
+            return self._set_reason(path, _('a RAID array'), self._count(
                 ["mdadm", "--examine", "--export", path], r"^MD_DEVICES=(\d+)$"))
-        return f"{path} carries a {fs} signature and may be part of a multi-device set."
+        return _('{value1} carries a {value2} signature and may be part of a multi-device set.').format(value1=path, value2=fs)
 
     @staticmethod
     def _refuse(disk, reason):
@@ -882,7 +925,7 @@ class Inventory:
             if part["_btrfs_devices"] != 1:
                 # An unverified volume could be a member of a multi-device
                 # filesystem. Erasing one member would also damage other disks.
-                self._refuse(disk, self._set_reason(part["path"], "a Btrfs filesystem", part["_btrfs_devices"]))
+                self._refuse(disk, self._set_reason(part["path"], _('a Btrfs filesystem'), part["_btrfs_devices"]))
                 return
         options = {"vfat": "ro", "ext4": "ro,noload",
                    "btrfs": "ro,nologreplay,subvolid=5",
@@ -907,6 +950,8 @@ class Inventory:
                 part["_esp_cluster_bytes"] = usage.f_frsize
                 if _has_windows(root):
                     part["os_hint"] = "windows"
+                # Whatever the manifest below finds: what the installed boot code will see at /efi.
+                part['_efi_microsoft'] = efi_microsoft(root)
                 try:
                     part['_efi_loaders'] = efi_loaders(root)
                 except InstallError as exc:
@@ -975,7 +1020,7 @@ class Inventory:
         root, mounted = None, False
         try:
             if bitlocker_signature(part['path']):
-                return dict(refusal, reason=BITLOCKER_REFUSAL)
+                return dict(refusal, reason=translate(BITLOCKER_REFUSAL))
             esps = [p for p in disk['partitions'] if p['esp']]
             require(len(esps) == 1 and esps[0]['fs'] == 'vfat', Code.ESP_SPACE,
                     _('Installing next to Windows requires exactly one FAT32 startup partition.'))
@@ -1052,7 +1097,7 @@ class Inventory:
                 refresh()
             except InstallError as exc:
                 safe_log(self.runner.log, _('Partition recovery for {value1}: {value2}; {value3}; ').format(value1=path, value2=exc.code, value3=exc)
-                         + ('will retry on the next probe.' if exc.retryable else 'recovery discarded.'))
+                         + (_('will retry on the next probe.') if exc.retryable else _('recovery discarded.')))
                 if not exc.retryable:
                     del self.pending_partition_refresh[path]
                 # Changed or missing media can be listed afresh. Otherwise its kernel
@@ -1124,7 +1169,7 @@ class Inventory:
             # interface words the boot medium and mounted partitions itself.
             if (disk["_busy"] and not disk["is_boot_medium"]
                     and not any(part["mountpoint"] for part in disk["partitions"])):
-                disk.setdefault("reason", disk.get("_busy_reason", BUSY_REASON))
+                disk.setdefault("reason", disk.get("_busy_reason", translate(BUSY_REASON)))
         online = _online()
         from .graphics import inventory as graphics_inventory
         graphics = graphics_inventory(self.sysfs_root, root=self.root)
@@ -1150,9 +1195,9 @@ class Inventory:
             # 'both', '2011', '2023', 'none', or None when db cannot be read.
             hardware["secure_boot_cas"] = firmware_cas(self.root)
         if vmd_present(self.root, pci) and not any(not d["is_boot_medium"] for d in disks):
-            hardware["disk_notice"] = VMD_MESSAGE
+            hardware["disk_notice"] = translate(VMD_MESSAGE)
         if discover_repo(self.root) is None:
-            hardware["media_notice"] = MISSING_NOTICE if online else (
+            hardware["media_notice"] = translate(MISSING_NOTICE) if online else (
                 _('The installation files are missing. Connect to the internet before installing (Ventoy or copytoram).'))
         return {**graphics, "hardware": hardware, "disks": disks, "gpu": gpu or _('Unknown GPU'), "cpu": cpu,
                 "memory_bytes": memory_size(),

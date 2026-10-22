@@ -15,6 +15,7 @@ from .boot import (GRUB_GFXMODE, GRUB_UNLOCK_GFXMODE, GRUB_EARLY_MODULES,
                    grub_prefix, grub_image_carries, grub_defaults, grub_btrfs_config,
                    verify_grub)
 from .errors import Code, require
+from .inventory import windows_loader
 from .latin_layouts import is_latin
 
 # XKB layout -> the kbd console map that types the same characters on the same keys. Vetted: a
@@ -70,7 +71,7 @@ def unlock_layout(layouts, prompt):
     if prompt == 'grub':
         return 'us'
     if prompt != 'initramfs':
-        raise ValueError('unknown startup prompt: ' + repr(prompt))
+        raise ValueError(_('unknown startup prompt: {prompt!r}').format(prompt=prompt))
     first = layouts[0]
     return first if is_latin(first) and first in CONSOLE else 'us'
 
@@ -217,8 +218,27 @@ def snapper_config(text):
     return text
 
 
-def normalize_fstab(text, plan):
-    """Drop volatile subvolid constraints and verify the actual generated mounts."""
+def kept_windows_esp(plan):
+    """The plan's /efi partition when it is a kept one holding Windows Boot Manager, else None.
+
+    A manual layout may keep Windows' own ESP as /efi: that is the older shared layout (one ESP
+    for both systems, read-only, every write checked by grub/emaki_boot/shared.py), not the
+    alongside plan, whose /efi is Emaki's own new ESP. An ESP this install formats or creates
+    holds no Windows files; the evidence is the reviewed inventory's (inventory.windows_loader).
+    """
+    esp = next((p for p in plan.partitions if p.esp and p.mountpoint == '/efi'), None)
+    if esp is None or esp.format or esp.create:
+        return None
+    probed = next((part for part in plan.disk['partitions'] if part.get('path') == esp.path), {})
+    return esp if windows_loader(probed) else None
+
+
+def normalize_fstab(text, plan, shared=False):
+    """Drop volatile subvolid constraints and verify the actual generated mounts.
+
+    shared: /efi is a kept ESP shared with Windows, the worker's shared_layout(): the one
+    decision its record and drop-ins follow too.
+    """
     rows, entries = [], {}
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith('#'):
@@ -229,6 +249,14 @@ def normalize_fstab(text, plan):
         # /efi is always an ESP of Emaki's or one a manual layout chose: next to Windows Emaki has
         # its own, and Windows' ESP is no planned mount, so the check below refuses a line for it.
         options = [x for x in fields[3].split(',') if not x.startswith('subvolid=')]
+        if fields[1] == '/efi' and shared:
+            # A kept Windows ESP (the older shared layout): Windows can restore Fast Startup
+            # without consulting this installation, so no runtime writer may change its FAT;
+            # each boot write remounts it after checking Windows (grub/emaki_boot/shared.py).
+            options = [x for x in options if x not in ('rw', 'relatime', 'strictatime', 'atime')]
+            options = list(dict.fromkeys([*options, 'ro', 'noatime']))
+            # fsck is a writer too; never repair a potentially hibernated Windows ESP.
+            fields[5] = '0'
         fields[3] = ','.join(options)
         require(fields[1] not in entries, Code.FSTAB_VERIFY, _('Duplicate fstab mountpoint.'))
         entries[fields[1]] = fields

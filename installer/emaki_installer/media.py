@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Find live packages and freeze online recovery before any disk writes."""
-from .i18n import _
+from .i18n import _ as translate
+from .i18n import _, N_
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,7 +13,7 @@ from urllib.parse import unquote, urlsplit
 from .constants import OFFLINE_CONF, OFFLINE_REPO, WORK
 from .errors import Code, InstallError, require
 
-MISSING_NOTICE = (_('The installation files were not found on the live medium. Packages will be downloaded and checked before your disk is changed. Keep the internet connection active (Ventoy or copytoram).'))
+MISSING_NOTICE = (N_('The installation files were not found on the live medium. Packages will be downloaded and checked before your disk is changed. Keep the internet connection active (Ventoy or copytoram).'))
 
 
 def mounted_roots(root=Path('/')):
@@ -155,7 +156,7 @@ def package_source(runner, packages, *, online, root=Path('/'), mount_roots=None
             yield source
         return
     if repo is None:
-        notice(MISSING_NOTICE)
+        notice(translate(MISSING_NOTICE))
         require(online, Code.OFFLINE_REPO_INCOMPLETE,
                 _('The installation files are missing. Connect to the internet and try again (Ventoy or copytoram). Your disk has not been changed.'))
     Path(work_parent).mkdir(parents=True, exist_ok=True)

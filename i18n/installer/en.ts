@@ -6,18 +6,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>InstallerController</name>
         <message>
-            <source>English</source>
-            <translation>English</translation>
-        </message>
-        <message>
-            <source>Spanish (Latin America)</source>
-            <translation>Spanish (Latin America)</translation>
-        </message>
-        <message>
-            <source>Portuguese (Brazil)</source>
-            <translation>Portuguese (Brazil)</translation>
-        </message>
-        <message>
             <source>Pasted text cannot be used for this password. Type it key by key.</source>
             <translation>Pasted text cannot be used for this password. Type it key by key.</translation>
         </message>
@@ -1346,6 +1334,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>The installer could not continue.</translation>
         </message>
         <message>
+            <source>Type ERASE to confirm that this volume and any connected data can be erased.</source>
+            <translation>Type ERASE to confirm that this volume and any connected data can be erased.</translation>
+        </message>
+        <message>
             <source>Use characters available on an English (US) keyboard for the startup password (at most 1024 characters).</source>
             <translation>Use characters available on an English (US) keyboard for the startup password (at most 1024 characters).</translation>
         </message>
@@ -1518,6 +1510,14 @@ Install alongside Windows is not possible here. %1</translation>
         <message>
             <source>A new partition needs at least %1 GiB.</source>
             <translation>A new partition needs at least %1 GiB.</translation>
+        </message>
+        <message>
+            <source>another system</source>
+            <translation>another system</translation>
+        </message>
+        <message>
+            <source>files Emaki cannot check</source>
+            <translation>files Emaki cannot check</translation>
         </message>
         <message>
             <source>%1 GiB</source>

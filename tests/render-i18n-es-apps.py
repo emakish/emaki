@@ -211,7 +211,7 @@ def installer(width, height, selected=None):
         env = isolated(root)
         env.update(EMAKI_INSTALLER_WIDTH=str(width), EMAKI_INSTALLER_HEIGHT=str(height),
                    EMAKI_INSTALLER_CHECKOUT=str(ROOT), TMPDIR=str(root),
-                   TEST_ES_LANGUAGE=translated('installer', 'Spanish (Latin America)'))
+                   TEST_ES_LANGUAGE='Español (Latinoamérica)')
         for screen, heading in zip(screens, headings):
             if selected and screen != selected:
                 continue

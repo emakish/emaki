@@ -88,6 +88,50 @@ public:
     }
 };
 
+// Only the separate installer process opts into changing its translators. The
+// engine stays alive, retaining entered values and the outstanding connection.
+class InstallerLanguage final : public QObject {
+    Q_OBJECT
+public:
+    InstallerLanguage(QQmlEngine *engine, std::vector<std::unique_ptr<QTranslator>> *translators)
+        : engine(engine), translators(translators) {}
+    Q_INVOKABLE bool setLanguage(const QString &locale) {
+        if (qEnvironmentVariable("EMAKI_INSTALLER_UI") != QStringLiteral("1") || !engine)
+            return false;
+        QString language;
+        if (locale == QStringLiteral("en_US.UTF-8")) language = QStringLiteral("en");
+        else if (locale == QStringLiteral("es_MX.UTF-8")) language = QStringLiteral("es");
+        else if (locale == QStringLiteral("pt_BR.UTF-8")) language = QStringLiteral("pt_BR");
+        else return false;
+        const auto directory = qEnvironmentVariable("EMAKI_LOCALE_DIR", QStringLiteral(EMAKI_LOCALE_DIR));
+        std::vector<std::unique_ptr<QTranslator>> replacement;
+        for (const auto *domain : {"shell", "programs", "installer", "notes"}) {
+            const auto base = QString::fromLatin1(domain) + '_';
+            auto english = std::make_unique<QTranslator>();
+            if (english->load(QDir(directory).filePath(base + "en.qm")))
+                replacement.push_back(std::move(english));
+            if (language != QStringLiteral("en")) {
+                auto selected = std::make_unique<QTranslator>();
+                if (selected->load(QDir(directory).filePath(base + language + ".qm")))
+                    replacement.push_back(std::move(selected));
+                else if (QString::fromLatin1(domain) == QStringLiteral("installer"))
+                    return false;
+            }
+        }
+        for (const auto &translator : *translators)
+            QCoreApplication::removeTranslator(translator.get());
+        *translators = std::move(replacement);
+        for (const auto &translator : *translators)
+            QCoreApplication::installTranslator(translator.get());
+        engine->setUiLanguage(language);
+        engine->retranslate();
+        return true;
+    }
+private:
+    QPointer<QQmlEngine> engine;
+    std::vector<std::unique_ptr<QTranslator>> *translators;
+};
+
 // Quickshell creates QQmlEngine, not QQmlApplicationEngine. Loading on import
 // installs translators before any component bindings evaluate their qsTr calls.
 class TranslationPlugin final : public QQmlExtensionPlugin {
@@ -97,6 +141,10 @@ public:
     void registerTypes(const char *uri) override {
         qmlRegisterSingletonType<WindowIdentity>(uri, 1, 0, "WindowIdentity",
             [](QQmlEngine *, QJSEngine *) -> QObject * { return new WindowIdentity; });
+        qmlRegisterSingletonType<InstallerLanguage>(uri, 1, 0, "InstallerLanguage",
+            [this](QQmlEngine *engine, QJSEngine *) -> QObject * {
+                return new InstallerLanguage(engine, &translators);
+            });
         qmlRegisterModule(uri, 1, 0);
     }
     void initializeEngine(QQmlEngine *engine, const char *) override {

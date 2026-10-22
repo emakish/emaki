@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Carry the Wi-Fi network the person joined in the live session into the installed system."""
-from .i18n import _
+from .i18n import _ as translate
+from .i18n import _, N_
 import configparser
 from dataclasses import dataclass
 import os
@@ -16,7 +17,7 @@ from .errors import Code, InstallError
 PROFILE_DIRS = (Path('/etc/NetworkManager/system-connections'),
                 Path('/run/NetworkManager/system-connections'))
 WIFI_TYPES = ('wifi', '802-11-wireless')
-UNAVAILABLE = (_('Could not save the Wi-Fi connection [NetworkManager]. Connect to that network again before installing.'))
+UNAVAILABLE = (N_('Could not save the Wi-Fi connection [NetworkManager]. Connect to that network again before installing.'))
 UUID = r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 
 
@@ -24,7 +25,7 @@ class WifiNotCopied(InstallError):
     """A refusal whose reason goes to the install log: fixed words and UUIDs, never a secret,
     a network name or keyfile contents."""
     def __init__(self, reason):
-        super().__init__(Code.BAD_CONFIG, UNAVAILABLE)
+        super().__init__(Code.BAD_CONFIG, translate(UNAVAILABLE))
         self.reason = reason
 
 
@@ -41,7 +42,7 @@ def private_command(argv, *, input=None):
         raise WifiNotCopied(_('NetworkManager did not answer within 35 seconds.')) from None
     except OSError:
         raise WifiNotCopied(_('nmcli could not be started.')) from None
-    refuse(result.returncode == 0, f'nmcli failed (exit {result.returncode}).')
+    refuse(result.returncode == 0, _('nmcli failed (exit {value1}).').format(value1=result.returncode))
     try:
         return result.stdout.decode("utf-8")
     except UnicodeError:
@@ -93,51 +94,46 @@ def choose_wifi(joined=None, *, run=private_command):
     uuids = {p.uuid for p in profiles}
     active = [p.uuid for p in profiles if p.active]
     if len(active) == 1:
-        return Choice(active[0], 'the active Wi-Fi connection', len(profiles))
+        return Choice(active[0], _('the active Wi-Fi connection'), len(profiles))
     if active:
         if joined in active:
-            return Choice(joined, f'joined on the Network page, one of {len(active)} active Wi-Fi connections',
+            return Choice(joined, _('joined on the Network page, one of {value1} active Wi-Fi connections').format(value1=len(active)),
                           len(profiles))
-        return Choice(None, f'{len(active)} Wi-Fi connections are active and the Network page '
-                            'joined none of them', len(profiles))
+        return Choice(None, _('{value1} Wi-Fi connections are active and the Network page joined none of them').format(value1=len(active)), len(profiles))
     if joined in uuids:
-        return Choice(joined, 'joined on the Network page; no Wi-Fi is active now', len(profiles))
+        return Choice(joined, _('joined on the Network page; no Wi-Fi is active now'), len(profiles))
     if joined:
-        return Choice(None, f'the Network page join {joined} is no longer saved and no Wi-Fi '
-                            'is active now', len(profiles))
+        return Choice(None, _('the Network page join {value1} is no longer saved and no Wi-Fi is active now').format(value1=joined), len(profiles))
     if len(profiles) == 1 and profiles[0].timestamp > 0:
-        return Choice(profiles[0].uuid, 'the only saved Wi-Fi profile, and it has connected; '
-                                        'no Wi-Fi is active now', 1)
+        return Choice(profiles[0].uuid, _('the only saved Wi-Fi profile, and it has connected; no Wi-Fi is active now'), 1)
     if len(profiles) == 1:
         # A failed join leaves a profile that never connected, often with a wrong password.
-        return Choice(None, 'the only saved Wi-Fi profile has never connected', 1)
+        return Choice(None, _('the only saved Wi-Fi profile has never connected'), 1)
     if profiles:
-        return Choice(None, f'{len(profiles)} saved Wi-Fi profiles, none is active and the Network '
-                            'page joined none of them', len(profiles))
-    return Choice(None, 'the live session has no Wi-Fi profile', 0)
+        return Choice(None, _('{value1} saved Wi-Fi profiles, none is active and the Network page joined none of them').format(value1=len(profiles)), len(profiles))
+    return Choice(None, _('the live session has no Wi-Fi profile'), 0)
 
 
 def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0, note=None):
     """Read one root-owned keyfile, active or not; never log its contents or saved secrets."""
-    refuse(isinstance(uuid, str) and re.fullmatch(UUID, uuid), 'the profile ID is not a UUID.')
+    refuse(isinstance(uuid, str) and re.fullmatch(UUID, uuid), _('the profile ID is not a UUID.'))
     paths = [p.filename for p in saved_wifi(run=run) if p.uuid == uuid]
     refuse(len(paths) == 1, _('NetworkManager lists {value1} Wi-Fi profiles with this UUID.').format(value1=len(paths)))
-    refuse(bool(paths[0]), 'the profile has no keyfile (NetworkManager keeps it only in memory).')
+    refuse(bool(paths[0]), _('the profile has no keyfile (NetworkManager keeps it only in memory).'))
     path = Path(paths[0])
-    refuse(path.parent in directories, 'the keyfile is outside NetworkManager\'s connection '
-                                       'directories (' + ', '.join(map(str, directories)) + ').')
-    refuse(path.resolve() == path, 'the keyfile path goes through a symbolic link.')
+    refuse(path.parent in directories, _("the keyfile is outside NetworkManager's connection directories ({directories}).").format(directories=', '.join(map(str, directories))))
+    refuse(path.resolve() == path, _('the keyfile path goes through a symbolic link.'))
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError as error:
         raise WifiNotCopied(_('the keyfile could not be opened ({value1}).').format(value1=error.strerror)) from None
     with os.fdopen(fd, 'rb') as stream:
         info = os.fstat(stream.fileno())
-        refuse(stat.S_ISREG(info.st_mode), 'the keyfile is not a regular file.')
-        refuse(info.st_uid == owner, f'the keyfile belongs to UID {info.st_uid}, not {owner}.')
-        refuse(info.st_nlink == 1, 'the keyfile has more than one hard link.')
-        refuse(not info.st_mode & 0o077, f'the keyfile is readable by others (mode {info.st_mode & 0o777:o}).')
-        refuse(info.st_size <= 1024 * 1024, 'the keyfile is larger than 1 MiB.')
+        refuse(stat.S_ISREG(info.st_mode), _('the keyfile is not a regular file.'))
+        refuse(info.st_uid == owner, _('the keyfile belongs to UID {value1}, not {value2}.').format(value1=info.st_uid, value2=owner))
+        refuse(info.st_nlink == 1, _('the keyfile has more than one hard link.'))
+        refuse(not info.st_mode & 0o077, _('the keyfile is readable by others (mode {value1:o}).').format(value1=info.st_mode & 0o777))
+        refuse(info.st_size <= 1024 * 1024, _('the keyfile is larger than 1 MiB.'))
         data = stream.read(1024 * 1024 + 1)
     # Normalize aliases before checking saved secrets. libnm accepts both wifi-security and
     # 802-11-wireless-security in source keyfiles. Both join paths bind the profile to the live
@@ -151,11 +147,11 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
     try:
         profile = configparser.ConfigParser(interpolation=None, strict=True)
         profile.read_string(prepared)
-        refuse(profile.get('connection', 'uuid') == uuid, 'the keyfile holds another UUID.')
-        refuse(profile.get('connection', 'type') in WIFI_TYPES, 'the keyfile is not a Wi-Fi profile.')
+        refuse(profile.get('connection', 'uuid') == uuid, _('the keyfile holds another UUID.'))
+        refuse(profile.get('connection', 'type') in WIFI_TYPES, _('the keyfile is not a Wi-Fi profile.'))
         # The join page supports personal and open networks. Session-only secrets
         # or external enterprise certificates cannot safely survive this copy.
-        refuse(not profile.has_section('802-1x'), 'enterprise (802.1X) networks are not copied.')
+        refuse(not profile.has_section('802-1x'), _('enterprise (802.1X) networks are not copied.'))
         method = 'open'
         if profile.has_section('wifi-security'):
             security = profile['wifi-security']
@@ -163,24 +159,21 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
             if method == 'none':
                 index = security.get('wep-tx-keyidx', '0')
                 flags = security.get('wep-key-flags', '0')
-                refuse(flags == '0', f'the WEP key is not saved in the keyfile (wep-key-flags {flags}: '
-                                     'held by a desktop keyring client or asked at each connection).')
+                refuse(flags == '0', _('the WEP key is not saved in the keyfile (wep-key-flags {value1}: held by a desktop keyring client or asked at each connection).').format(value1=flags))
                 refuse(index in ('0', '1', '2', '3') and bool(security.get('wep-key' + index)),
-                       'the keyfile has no WEP key.')
+                       _('the keyfile has no WEP key.'))
             elif method in ('wpa-psk', 'sae'):
                 flags = security.get('psk-flags', '0')
-                refuse(flags == '0', f'the password is not saved in the keyfile (psk-flags {flags}: '
-                                     'held by a desktop keyring client or asked at each connection).')
-                refuse(bool(security.get('psk')), 'the keyfile has no password.')
+                refuse(flags == '0', _('the password is not saved in the keyfile (psk-flags {value1}: held by a desktop keyring client or asked at each connection).').format(value1=flags))
+                refuse(bool(security.get('psk')), _('the keyfile has no password.'))
             else:
-                refuse(method == 'owe', f'key management {method or "unknown"} is not supported.')
+                refuse(method == 'owe', _('key management {value1} is not supported.').format(value1=method or 'unknown'))
     except (configparser.Error, UnicodeError, KeyError, ValueError):
         raise WifiNotCopied(_("NetworkManager's normalized profile could not be read.")) from None
     if note:
-        secret = 'no secret (open network)' if method in ('open', 'owe') else \
-            'secret saved in the keyfile'
-        note(f'captured {uuid} from {path.parent}: security {method}, {secret}; '
-             'autoconnect preserved, any adapter, every user.')
+        secret = _('no secret (open network)') if method in ('open', 'owe') else \
+            _('secret saved in the keyfile')
+        note(_('captured {value1} from {value2}: security {value3}, {value4}; autoconnect preserved, any adapter, every user.').format(value1=uuid, value2=path.parent, value3=method, value4=secret))
     return prepared.encode()
 
 

@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Frozen v1 NDJSON framing and the single-writer job controller."""
-from .i18n import _, available_locales
+from .i18n import _, LOCALES, available_locales, using_language
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
@@ -167,7 +167,11 @@ class Controller:
 
     def handle(self, msg, client=None):
         # Probe/plan are serialized, including their read-only temporary mounts.
-        with self.operation_lock:
+        language = msg.get('language')
+        if language is not None and language not in LOCALES:
+            return [self.reply(msg['id'], False, code=Code.BAD_REQUEST.value,
+                               msg=_('Invalid config values.'))]
+        with self.operation_lock, using_language(language):
             try:
                 return self._handle(msg, client)
             except InstallError as exc:
@@ -388,7 +392,10 @@ class Controller:
                 plan.config['user']['password'] = ''
                 plan.config['disk_password'] = ''
                 self.redactor.secrets.clear()
-        thread = threading.Thread(target=run, name='emaki-install-job', daemon=False)
+        def localized_run():
+            with using_language(plan.config.get('language')):
+                run()
+        thread = threading.Thread(target=localized_run, name='emaki-install-job', daemon=False)
         thread.start()
         return thread
 

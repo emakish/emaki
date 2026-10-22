@@ -75,6 +75,7 @@ installer/ui/tests/editor_fixture.py	Partition editor test disk and real-planner
 installer/ui/tests/cut-recording.py	Converts development install recordings into test transcripts.	installer/ui/tests/cut-recording.py:usage
 installer/ui/tests/handshake.py	Source and packaged installer socket handshake regression runner.	Makefile:check-installer
 installer/ui/tests/interactions.py	Installer input interaction test runner.	Makefile:check-installer-ui
+installer/ui/tests/language.py	Installer language switch regression runner.	Makefile:check-i18n
 installer/ui/tests/map.py	Time zone map pixel, input and timing test runner.	Makefile:check-installer
 installer/ui/tests/mock-worker.py	Synthetic worker serving recorded test transcripts.	installer/ui/tests/controller.py; installer/ui/tests/test_helpers.py
 installer/ui/tests/real-worker.py	Installer test worker with fake disks and package operations.	installer/ui/tests/controller.py; installer/ui/tests/real-worker.py:module documentation
@@ -129,7 +130,6 @@ scripts/make-public.sh	Public source export maintenance tool.	MANIFEST.md:public
 scripts/new-secureboot-release-key.sh	Maintainer tool run once on the publishing machine to make the Secure Boot release key; never on installed systems.	docs/signing.md:section 5; tests/test-secureboot-release-key.py
 scripts/release-notes	Offline release draft and missing-note check; not installed.	docs/updates-runbook.md:Release notes draft; tests/test-release-notes.py
 scripts/public/PLANS.md	Public source repository letter on where the project is heading.	scripts/make-public.sh
-scripts/public/NIXOS.md	Public source repository page on Emaki and NixOS.	scripts/make-public.sh
 scripts/public/README.md	Public source repository README template.	scripts/make-public.sh
 scripts/public/allow.txt	Public source export lexical exceptions.	scripts/make-public.sh
 scripts/public/credentials-allow.txt	Public source export credential-scan exceptions.	scripts/make-public.sh

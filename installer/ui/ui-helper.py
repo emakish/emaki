@@ -21,7 +21,7 @@ import sys
 
 # Source-tree runs use the sibling package; installed runs use Python's package path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from emaki_installer.i18n import _
+from emaki_installer.i18n import _, using_language
 
 
 # The live boot medium. Without it (copytoram) the worker's unit never starts:
@@ -344,9 +344,8 @@ def media():
     return dict(ok=True, media=sorted(set(candidates)))
 
 
-def main():
+def dispatch(request):
     try:
-        request = json.loads(sys.stdin.buffer.readline(8193))
         op = request.get('op')
         if op == 'catalog': result = catalog()
         elif op == 'network': result = network()
@@ -362,6 +361,15 @@ def main():
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
         result = dict(ok=False, message=_('This operation is unavailable. Please try again.'))
     print(json.dumps(result, ensure_ascii=False))
+
+
+def main():
+    try:
+        request = json.loads(sys.stdin.buffer.readline(8193))
+        with using_language(request.get('language')):
+            dispatch(request)
+    except (ValueError, TypeError, AttributeError):
+        print(json.dumps(dict(ok=False, message=_('This operation is unavailable. Please try again.'))))
 
 
 if __name__ == '__main__':

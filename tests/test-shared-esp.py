@@ -6,8 +6,9 @@
 Rootless: mount, findmnt, lsblk and ntfs-3g are fakes over private directories.
 The real packaged commands run in the alongside VM check.
 """
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext, redirect_stderr
 import errno
+import io
 import json
 import os
 from pathlib import Path
@@ -21,7 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'installer'), str(ROOT / 'grub')]
 from emaki_installer import boot
 sys.modules['emaki_boot.boot'] = boot
-from emaki_boot import shared
+from emaki_installer import secureboot
+sys.modules['emaki_boot.secureboot'] = secureboot
+from emaki_boot import refresh, shared, update
 from emaki_installer import inventory
 
 ESP_GUID = '4c6a2f50-8b1e-4d55-9a7e-0f1f2b3c4d5e'
@@ -700,6 +703,133 @@ class Gate(unittest.TestCase):
         (self.machine.esp / 'EFI/BOOT/link').unlink()
         with patch.object(shared, 'FILE_LIMIT', 2):
             self.assertRefused(shared.UNCHECKED, shared.foreign_files, self.machine.esp)
+
+
+class ManualKeptWindowsEsp(unittest.TestCase):
+    """IV11I flow B: a manual install kept Windows' ESP (EFI/Microsoft) as /efi, mounted read-write
+    by its fstab, next to a shut-down Windows, with boot-esp.json. The package hook passes only
+    with the installer's shared-layout record (version 1, esp_partuuid alone) and then leaves the
+    partition read-only; without the record it refuses the transaction."""
+
+    def setUp(self):
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        self.root = Path(self.stack.enter_context(tempfile.TemporaryDirectory(prefix='manual-shared-esp-')))
+        self.machine = Machine(self.root)
+        self.machine.options = ['rw', 'relatime', 'fmask=0077', 'dmask=0077']
+        self.machine.windows()
+        for name, data in {'EFI/Microsoft/Boot/bootmgfw.efi': b'MZ windows', 'EFI/Microsoft/Boot/BCD': b'bcd',
+                           'EFI/BOOT/BOOTX64.EFI': b'MZ fallback', 'EFI/Emaki/grubx64.efi': b'MZ emaki'}.items():
+            (self.machine.esp / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.machine.esp / name).write_bytes(data)
+        state = self.root / 'var/lib/emaki'
+        state.mkdir(parents=True)
+        (state / 'boot-esp.json').write_text(json.dumps({'version': 1, 'emaki_esp_partuuid': ESP_GUID}) + '\n')
+        fstab = self.root / 'etc/fstab'
+        fstab.parent.mkdir()
+        fstab.write_text('UUID=C14E-0C72\t/efi\tvfat\trw,relatime,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,'
+                         'shortname=mixed,utf8,errors=remount-ro\t0\t2\n')
+        # Exactly what installer/emaki_installer/worker.py record_shared_esp writes.
+        self.marker = state / 'alongside-boot.json'
+        self.marker.write_text(json.dumps({'version': 1, 'esp_partuuid': ESP_GUID}) + '\n')
+        self.marker.chmod(0o644)
+        uid, real_fstat = os.getuid(), os.fstat
+
+        def fstat(fd):
+            # The installer writes the record as root; this test runs unprivileged.
+            info = real_fstat(fd)
+            values = list(info)
+            values[4] = 0 if info.st_uid == uid else info.st_uid
+            return os.stat_result(values)
+
+        for name, value in (('MARKER', self.marker), ('MOUNT', self.machine.esp),
+                            ('CHECKS', self.root / 'checks'), ('run', self.machine.run)):
+            self.stack.enter_context(patch.object(shared, name, value))
+        self.stack.enter_context(patch.object(shared.os, 'fstat', side_effect=fstat))
+        self.stack.enter_context(patch.dict(shared._session, {'depth': 0, 'baseline': None}))
+        self.stack.enter_context(patch.object(refresh, 'SHARED_ESP', self.marker))
+        self.stack.enter_context(patch.object(refresh, 'fstab_path', return_value=fstab))
+        self.stack.enter_context(patch.object(refresh, 'esp_mount_path', return_value=self.machine.esp))
+        self.stack.enter_context(patch.object(update.os, 'geteuid', return_value=0))
+        self.stack.enter_context(patch.object(update, 'locked', side_effect=lambda **kwargs: nullcontext()))
+
+    def probed_windows(self):
+        return any(call[0] == 'ntfs-3g' for call in self.machine.calls)
+
+    def test_guard_passes_with_the_record_and_leaves_the_esp_read_only(self):
+        self.assertTrue(refresh.shared_esp())
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            self.assertEqual(update.main(['guard-alongside']), 0)
+        self.assertEqual(errors.getvalue(), '')
+        self.assertTrue(self.probed_windows())
+        self.assertEqual(self.machine.mounted, {})
+        self.assertEqual(self.machine.options[0], 'ro')
+        self.assertFalse((self.root / 'var/lib/emaki/shared-esp-stop.json').exists())
+
+    def test_guard_refuses_without_the_record_before_touching_anything(self):
+        self.marker.unlink()
+        self.assertTrue(refresh.shared_esp())
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            self.assertEqual(update.main(['guard-alongside']), 1)
+        self.assertEqual(errors.getvalue(), shared.BAD_RECORD + '\n')
+        self.assertFalse(self.probed_windows())
+        self.assertEqual(self.machine.options[0], 'rw')
+        self.assertEqual(self.machine.mounted, {})
+
+    def test_guard_refuses_a_record_of_another_partition(self):
+        self.marker.write_text(json.dumps({'version': 1, 'esp_partuuid': '00000000-0000-4000-8000-000000000000'}) + '\n')
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            self.assertEqual(update.main(['guard-alongside']), 1)
+        self.assertEqual(errors.getvalue(), shared.WRONG_ESP + '\n')
+        self.assertFalse(self.probed_windows())
+
+
+class InstallerProbeAgrees(unittest.TestCase):
+    """The installer records the shared layout where its probe (inventory.efi_microsoft) finds
+    Windows' entry; with no record and an rw fstab row that must be exactly where the boot code's
+    shared_esp() finds it, and the probe returns None exactly where shared_esp() refuses."""
+
+    def test_same_trees_same_answer(self):
+        cases = {'empty': [], 'fallback': ['EFI/BOOT/BOOTX64.EFI'], 'other vendor': ['EFI/ubuntu/shimx64.efi'],
+                 'loader': ['EFI/Microsoft/Boot/bootmgfw.efi'], 'no files under it': ['EFI/Microsoft/Boot/'],
+                 'case': ['efi/MICROSOFT/'], 'vendor entry a file': ['EFI/Microsoft'],
+                 'loader and a huge file': ['EFI/Microsoft/Boot/bootmgfw.efi', 'EFI/Linux/huge.efi'],
+                 'EFI a file': ['EFI'], 'EFI a link': ['@link']}
+        with tempfile.TemporaryDirectory(prefix='probe-agrees-') as temp:
+            root = Path(temp)
+            state = root / 'state'
+            state.mkdir()
+            for name, entries in cases.items():
+                with self.subTest(layout=name):
+                    esp = root / name
+                    esp.mkdir()
+                    for entry in entries:
+                        if entry == '@link':
+                            (root / 'target/Microsoft').mkdir(parents=True, exist_ok=True)
+                            (esp / 'EFI').symlink_to(root / 'target')
+                            continue
+                        path = esp / entry.rstrip('/')
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        if entry.endswith('/'):
+                            path.mkdir()
+                        elif entry.endswith('huge.efi'):
+                            with path.open('wb') as stream:
+                                stream.truncate(inventory.EFI_MANIFEST_MAX_FILE_BYTES + 1)
+                        else:
+                            path.write_bytes(b'MZ')
+                    with patch.object(shared, 'MARKER', state / 'alongside-boot.json'), \
+                            patch.object(refresh, 'SHARED_ESP', state / 'alongside-boot.json'), \
+                            patch.object(refresh, 'fstab_path', return_value=root / 'no-fstab'), \
+                            patch.object(refresh, 'esp_mount_path', return_value=esp):
+                        try:
+                            hook = refresh.shared_esp()
+                        except shared.Refused as refused:
+                            self.assertEqual(str(refused), shared.UNCHECKED)
+                            hook = None
+                    self.assertIs(inventory.efi_microsoft(esp), hook)
 
 
 if __name__ == '__main__':

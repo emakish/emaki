@@ -6,18 +6,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>InstallerController</name>
         <message>
-            <source>English</source>
-            <translation>Inglês</translation>
-        </message>
-        <message>
-            <source>Spanish (Latin America)</source>
-            <translation>Espanhol (América Latina)</translation>
-        </message>
-        <message>
-            <source>Portuguese (Brazil)</source>
-            <translation>Português (Brasil)</translation>
-        </message>
-        <message>
             <source>Pasted text cannot be used for this password. Type it key by key.</source>
             <translation>Não é possível usar texto colado para esta senha. Digite uma tecla de cada vez.</translation>
         </message>
@@ -1066,6 +1054,18 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     </context>
     <context>
         <name>Protocol</name>
+        <message>
+            <source>another system</source>
+            <translation>outro sistema</translation>
+        </message>
+        <message>
+            <source>files Emaki cannot check</source>
+            <translation>arquivos que o Emaki não pode verificar</translation>
+        </message>
+        <message>
+            <source>Type ERASE to confirm that this volume and any connected data can be erased.</source>
+            <translation>Digite ERASE para confirmar que este volume e todos os dados conectados podem ser apagados.</translation>
+        </message>
         <message>
             <source>Connecting to the installer…</source>
             <translation>Conectando ao instalador…</translation>

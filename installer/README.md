@@ -128,7 +128,7 @@ Plans use `partition_id` for Windows and `shrink_bytes` for **bytes freed for
 Emaki**. The worker reserves the NTFS minimum plus 2 GiB for Windows and at
 least 32 GiB for Emaki. Root must also fit the existing 20 GiB allowance, RAM
 when hibernation is selected, and the LUKS2 header when encrypted. The slider
-starts at half the available space, bounded by those limits. The 0.9.0 UI
+starts at half the available space, bounded by those limits. The 0.11.0 UI
 always sends hibernation off and reserves no RAM-sized space. The review names both resulting sizes,
 preservation behavior, encryption and hibernation, and requires the backup
 acknowledgement before confirmation.
@@ -435,7 +435,7 @@ the disk; unencrypted installations retain the existing login-password rules.
 
 Plans must explicitly include `encryption: "none" | "account" | "separate"`.
 The separate choice also needs `disk_password`; neither password appears in
-the returned review or logs. The 0.9.0 installer window does not offer hibernation:
+the returned review or logs. The 0.11.0 installer window does not offer hibernation:
 the session on tested hardware did not respond after resume. Its controller keeps
 hibernation off and every UI plan explicitly sends `hibernation: false`; root
 and alongside space calculations do not reserve RAM-sized space.

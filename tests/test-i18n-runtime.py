@@ -200,6 +200,76 @@ ShellRoot {
                     self.assertEqual(result.returncode, 0, output)
                     self.assertIn('RUNTIME_RESULT ' + json.dumps(expected, separators=(',', ':')), output)
 
+    def test_installer_runtime_switch_is_opt_in_and_preserves_engine(self):
+        with tempfile.TemporaryDirectory(prefix='emaki-installer-language-') as temporary:
+            base = Path(temporary)
+            locale = base / 'locale'
+            locale.mkdir()
+            compiler = shutil.which('lrelease6') or shutil.which('lrelease')
+            self.assertIsNotNone(compiler)
+            for language, translated in [('en', 'First'), ('es', 'Primero'), ('pt_BR', 'Primeiro')]:
+                source = base / (language + '.ts')
+                source.write_text('<TS version="2.1" language="' + language + '"><context>'
+                                  '<name>RuntimeTest</name><message><source>First</source><translation>'
+                                  + translated + '</translation></message></context></TS>')
+                for domain in ('installer', 'shell'):
+                    subprocess.run([compiler, str(source), '-qm', str(locale / (domain + '_' + language + '.qm'))],
+                                   check=True, capture_output=True)
+            env = os.environ.copy()
+            for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'NIRI_SOCKET',
+                        'QT_QPA_PLATFORMTHEME', 'EMAKI_LANGUAGE', 'LANGUAGE', 'LC_ALL', 'LC_MESSAGES',
+                        'EMAKI_INSTALLER_UI'):
+                env.pop(key, None)
+            for key in ('HOME', 'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME',
+                        'XDG_DATA_HOME', 'XDG_STATE_HOME'):
+                directory = base / key
+                directory.mkdir(mode=0o700)
+                env[key] = str(directory)
+            env.update(QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
+                       EMAKI_LOCALE_DIR=str(locale), LANG='en_US.UTF-8', QT_QPA_PLATFORM='offscreen',
+                       QT_QUICK_BACKEND='software', QS_DISABLE_CRASH_HANDLER='1',
+                       QML_DISABLE_DISK_CACHE='1', DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-bus'),
+                       DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(base / 'no-system-bus'))
+            fixture = base / 'test.qml'
+            fixture.write_text('''import QtQuick
+import Quickshell
+import Emaki.I18n
+ShellRoot {
+    id: root
+    property string entered: "retained account"
+    property string translated: qsTranslate("RuntimeTest", "First")
+    property int phase: 0
+    property var choices: ["es_MX.UTF-8", "pt_BR.UTF-8", "en_US.UTF-8"]
+    property var expected: ["First", "Primero", "Primeiro", "First"]
+    Timer { interval: 10; running: true; repeat: true; onTriggered: {
+        const enabled = Quickshell.env("EMAKI_INSTALLER_UI") === "1";
+        if (root.translated !== root.expected[root.phase] || root.entered !== "retained account" ||
+            InstallerLanguage.setLanguage("fr_FR.UTF-8")) {
+            console.error("SWITCH_STATE_FAILED", root.phase, root.translated); Qt.exit(1); return;
+        }
+        if (!enabled) {
+            if (InstallerLanguage.setLanguage("es_MX.UTF-8") || root.translated !== "First") {
+                console.error("SWITCH_GUARD_FAILED"); Qt.exit(1); return;
+            }
+            console.log("SWITCH_GUARD_PASS"); Qt.quit(); return;
+        }
+        if (root.phase === 3) { console.log("SWITCH_STATE_PASS"); Qt.quit(); return; }
+        if (!InstallerLanguage.setLanguage(root.choices[root.phase])) {
+            console.error("SWITCH_REFUSED"); Qt.exit(1); return;
+        }
+        root.phase++;
+    } }
+}
+''')
+            for selection, marker in [({}, 'SWITCH_GUARD_PASS'),
+                                      ({'EMAKI_INSTALLER_UI': '1'}, 'SWITCH_STATE_PASS')]:
+                with self.subTest(selection=selection):
+                    result = subprocess.run(['qs', '-p', str(fixture), '--no-color'], env=env | selection,
+                                            capture_output=True, text=True, timeout=20)
+                    output = result.stdout + result.stderr
+                    self.assertEqual(result.returncode, 0, output)
+                    self.assertIn(marker, output)
+
 
 if __name__ == '__main__':
     unittest.main()

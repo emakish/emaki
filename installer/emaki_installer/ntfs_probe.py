@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Run the NTFS writable-open checks against a disposable snapshot only."""
-from .i18n import _
+from .i18n import _ as translate
+from .i18n import _, N_
 from pathlib import Path
 import re
 import tempfile
@@ -9,9 +10,9 @@ import tempfile
 from .errors import Code, InstallError, require
 
 
-REFUSAL = (_('Emaki could not confirm that the Windows disk is safe to shrink. Start Windows, let it check the disk if it asks, then choose Shut down (not Restart) and start from the USB stick again.'))
-CLEANUP_REFUSAL = ('A safety check could not finish cleanly. Windows was not changed. '
-                   'Restart the computer from the USB stick and try again.')
+REFUSAL = (N_('Emaki could not confirm that the Windows disk is safe to shrink. Start Windows, let it check the disk if it asks, then choose Shut down (not Restart) and start from the USB stick again.'))
+CLEANUP_REFUSAL = (N_('A safety check could not finish cleanly. Windows was not changed. '
+                   'Restart the computer from the USB stick and try again.'))
 
 
 def _remove_snapshot(runner, name):
@@ -55,7 +56,7 @@ def check_ntfs_journal(runner, device, size, sector_size=512, *, work='/run/emak
     read-write, never merge the snapshot, and fail closed on setup or cleanup.
     """
     require(type(size) is int and size > 0 and size % 512 == 0
-            and sector_size in (512, 4096), Code.SHRINK_BOUNDS, REFUSAL)
+            and sector_size in (512, 4096), Code.SHRINK_BOUNDS, translate(REFUSAL))
     root = Path(tempfile.mkdtemp(prefix='ntfs-journal-', dir=work))
     cow = root / 'cow'
     name = root.name
@@ -70,14 +71,14 @@ def check_ntfs_journal(runner, device, size, sector_size=512, *, work='/run/emak
         cow.chmod(0o600)
         origin = runner.run(['losetup', '--find', '--show', '--read-only',
                              '--sector-size', str(sector_size), '--', str(device)]).strip()
-        require(re.fullmatch(r'/dev/loop[0-9]+', origin), Code.SHRINK_BOUNDS, REFUSAL)
+        require(re.fullmatch(r'/dev/loop[0-9]+', origin), Code.SHRINK_BOUNDS, translate(REFUSAL))
         overlay = runner.run(['losetup', '--find', '--show', '--', str(cow)]).strip()
         require(re.fullmatch(r'/dev/loop[0-9]+', overlay) and overlay != origin,
-                Code.SHRINK_BOUNDS, REFUSAL)
+                Code.SHRINK_BOUNDS, translate(REFUSAL))
         require(runner.run(['blockdev', '--getro', origin]).strip() == '1',
-                Code.SHRINK_BOUNDS, REFUSAL)
+                Code.SHRINK_BOUNDS, translate(REFUSAL))
         require(runner.run(['blockdev', '--getsize64', origin]).strip() == str(size),
-                Code.SHRINK_BOUNDS, REFUSAL)
+                Code.SHRINK_BOUNDS, translate(REFUSAL))
         # A failed command may still have created a mapping (for example its
         # udev wait failed); attempt removal before touching either loop.
         mapped = True
@@ -93,7 +94,7 @@ def check_ntfs_journal(runner, device, size, sector_size=512, *, work='/run/emak
             raise
         status = runner.run(['dmsetup', 'status', name]).strip()
         require(re.fullmatch(r'0 ' + str(size // 512) + r' snapshot [0-9]+/[0-9]+ [0-9]+', status),
-                Code.SHRINK_BOUNDS, REFUSAL)
+                Code.SHRINK_BOUNDS, translate(REFUSAL))
     except (OSError, RuntimeError) as exc:
         failure = exc
     finally:
@@ -118,6 +119,6 @@ def check_ntfs_journal(runner, device, size, sector_size=512, *, work='/run/emak
                 except OSError as exc:
                     cleanup_failure = exc
     if cleanup_failure is not None:
-        raise InstallError(Code.SHRINK_BOUNDS, CLEANUP_REFUSAL) from cleanup_failure
+        raise InstallError(Code.SHRINK_BOUNDS, translate(CLEANUP_REFUSAL)) from cleanup_failure
     if failure is not None:
-        raise InstallError(Code.SHRINK_BOUNDS, REFUSAL, output=probe_output) from failure
+        raise InstallError(Code.SHRINK_BOUNDS, translate(REFUSAL), output=probe_output) from failure

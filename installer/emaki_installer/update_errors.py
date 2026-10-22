@@ -42,7 +42,7 @@ def error_lines(output):
 
 def details(output):
     """Return bounded technical diagnostics without a second explanation."""
-    detail = "\n".join(error_lines(output)) or "pacman returned no details"
+    detail = "\n".join(error_lines(output)) or _("pacman returned no details")
     if len(detail) > DETAIL_LIMIT:
         detail = detail[:DETAIL_LIMIT - 1] + "…"
     return "[" + detail + "]"

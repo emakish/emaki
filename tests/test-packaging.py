@@ -217,16 +217,19 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('auth       substack    emaki-greetd-auth', (ROOT / 'greetd/pam').read_text())
         self.assertIn('auth       include     system-local-login', (ROOT / 'greetd/pam-auth').read_text())
 
-    def test_release_versions(self, marker_release='3'):
+    def test_release_versions(self, marker_release='6'):
         # test_qt612_activation reruns this on an activated tree, where the marker release may have moved.
         for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia', 'emaki-sudo-key'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
                 # 0.11.0 rebuilds the marker and emaki-config (with the CLI), 0.11.0-2 turns on Spanish and Portuguese on updated
-                # systems; emaki-apps and emaki-installer keep the image's 0.9.0 as 0.9.0-2 (Discover left the Rich set).
-                self.assertEqual(info['pkgver'], ['0.11.0'] if name in ('emaki', 'emaki-config') else ['0.9.0'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['3'] if name in ('emaki-config', 'emaki-installer') else ['2'] if name == 'emaki-apps' else ['1'])
+                # systems; the 0.11.0 image moves emaki-apps and emaki-installer (pkgver = iso/VERSION) to 0.11.0-1 and
+                # rebuilds emaki-config (its source archive is the public tree) and the marker as 0.11.0-4; the Manual
+                # kept-ESP fix moves emaki-installer to 0.11.0-2 and rebuilds emaki-config and the marker as 0.11.0-5;
+                # the installer language switch moves emaki-installer to 0.11.0-3 and emaki-config and the marker to 0.11.0-6.
+                self.assertEqual(info['pkgver'], ['0.11.0'] if name in ('emaki', 'emaki-config', 'emaki-apps', 'emaki-installer') else ['0.9.0'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['6'] if name == 'emaki-config' else ['3'] if name == 'emaki-installer' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera);
                 # emaki-config also ships Plymouth's password prompt pictures (GPL-2.0-or-later).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
@@ -239,7 +242,7 @@ class MetadataTests(unittest.TestCase):
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
         self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.11.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.11.0-3', 'emaki-desktop=0.9.0-1', 'niri-emaki=26.04-28',
+            'emaki-config=0.11.0-6', 'emaki-desktop=0.9.0-1', 'niri-emaki=26.04-28',
             'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.9.0-1', 'emaki-mirrorlist>=0.9.0-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
@@ -625,8 +628,8 @@ class MetadataTests(unittest.TestCase):
         for name in ('snapper', 'snap-pac', 'grub-btrfs', 'zram-generator'):
             self.assertNotIn(name, depends)
         # The installer UI imports the shell modules and shaders under /usr/share/emaki/shell, and
-        # Emaki.I18n, which emaki-config ships from 0.11 on.
-        self.assertIn('emaki-config>=0.11', depends)
+        # Emaki.I18n, which emaki-config ships from 0.11 on; its installer-only language switch from 0.11.0-6.
+        self.assertIn('emaki-config>=0.11.0-6', depends)
 
     def test_snapguard_recipe_pins_its_public_release(self):
         info = self.recipes['snapguard']
@@ -1333,6 +1336,7 @@ from emaki_installer.worker import Worker
 module.boot_framebuffer = lambda: None  # the host's own boot mode must not choose a face
 worker = Worker.__new__(Worker)
 worker.plan = Mock(config={'mode': 'erase'})
+worker.shared_esp_layout = False  # an erase plan's ESP is formatted: never shared (Worker.shared_layout)
 worker.target = '/target'
 worker.runner = Mock()
 worker.runner.chroot.return_value = ''

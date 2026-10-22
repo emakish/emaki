@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Shared installed-system and installer GRUB rendering and verification."""
-from .i18n import _
+from .i18n import _ as translate
+from .i18n import _, N_
 import collections
 import io
 import re
@@ -315,7 +316,7 @@ def firmware_boot_order(listing):
 
 
 WINDOWS_LOADER = '/EFI/Microsoft/Boot/bootmgfw.efi'
-WINDOWS_UNSAFE = (_('Windows firmware startup could not be identified safely; boot menu setup stopped.'))
+WINDOWS_UNSAFE = (N_('Windows firmware startup could not be identified safely; boot menu setup stopped.'))
 
 
 def windows_firmware_entry(listing, partuuid):
@@ -327,7 +328,7 @@ def windows_firmware_entry(listing, partuuid):
     """
     guid = r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
     require(isinstance(partuuid, str) and re.fullmatch(guid, partuuid)
-            and firmware_boot_order(listing) is not None, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+            and firmware_boot_order(listing) is not None, Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
     hardware = r'(?:(?!(?:HD|File)\()[A-Za-z][A-Za-z0-9]*\([^()\t\n]*\)/)*'
     loader = re.escape(WINDOWS_LOADER.replace('/', chr(92)))
     pattern = (rf'Boot([0-9A-Fa-f]{{4}})\* +[^\t\n]*\t{hardware}'
@@ -350,13 +351,13 @@ def windows_firmware_entry(listing, partuuid):
         # efibootmgr appends optional data to a bare filename without a separator.
         # Its verbose data line proves exactly which suffix is data, not filename.
         data = re.findall(r'^    data: ([0-9a-fA-F]{2}(?: [0-9a-fA-F]{2})*)$', record, re.M)
-        require(len(data) <= 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+        require(len(data) <= 1, Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
         if data and line.lower().endswith(data[0].replace(' ', '').lower()):
             line = line[:-len(data[0].replace(' ', ''))]
         match = re.fullmatch(pattern, line, re.I)
-        require(match and match[2].lower() == partuuid.lower(), Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+        require(match and match[2].lower() == partuuid.lower(), Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
         found.append(match[1].upper())
-    require(len(found) <= 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    require(len(found) <= 1, Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
     return found[0] if found else None
 
 
@@ -370,14 +371,14 @@ def windows_bootnext_menu(text, partuuid, esp_uuid, listing):
     shim verification is off at menu execution, never under Secure Boot.
     """
     require(isinstance(esp_uuid, str) and re.fullmatch(r'[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}', esp_uuid),
-            Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+            Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
     number = windows_firmware_entry(listing, partuuid)
     sections = list(re.finditer(r'(### BEGIN /etc/grub\.d/30_os-prober ###\n)(.*?)'
                                r'(### END /etc/grub\.d/30_os-prober ###)', text, re.S))
-    require(len(sections) == 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    require(len(sections) == 1, Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
     section = sections[0]
     entries = top_level_entries(section[2])
-    require(entries.complete, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    require(entries.complete, Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
     candidates = []
     for entry in entries.entries:
         source = section[2][entry.start:entry.end]
@@ -388,9 +389,9 @@ def windows_bootnext_menu(text, partuuid, esp_uuid, listing):
         require(chains and len(chains) == 1 and chains[0].casefold() == WINDOWS_LOADER.casefold()
                 and searches and all('--fs-uuid' in row.split() and '--set=root' in row.split()
                                      and row.split()[-1].casefold() == esp_uuid.casefold()
-                                     for row in searches), Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+                                     for row in searches), Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
         candidates.append(entry)
-    require(len(candidates) == 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    require(len(candidates) == 1, Code.BOOT_VERIFY, translate(WINDOWS_UNSAFE))
     entry = candidates[0]
     source = section[2][entry.start:entry.end]
     start, end = section.start(2) + entry.start, section.start(2) + entry.end

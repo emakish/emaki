@@ -179,9 +179,6 @@ msgstr "Atribua exatamente uma raiz e uma partição de inicialização, além d
 msgid "At least 32 GiB must be freed from Windows for Emaki."
 msgstr "É necessário liberar pelo menos 32 GiB do Windows para o Emaki."
 
-msgid "Automatic restart is unavailable. "
-msgstr "A reinicialização automática está indisponível. "
-
 msgid "Bounded termination requires a timeout, a positive budget and no stdin."
 msgstr "O encerramento limitado exige um tempo limite, um prazo positivo e nenhuma entrada stdin."
 
@@ -1275,6 +1272,7 @@ msgstr "O disco foi lido novamente e sua tabela de partições mudou após a int
 msgid "The disk was replaced after the review. Installation stopped."
 msgstr "O disco foi substituído após a revisão. Instalação interrompida."
 
+# Needs a native check.
 msgid "The disk's startup files could not be checked safely, so Emaki stopped."
 msgstr "Não foi possível verificar com segurança os arquivos de inicialização do disco, então o Emaki parou."
 
@@ -1497,6 +1495,9 @@ msgstr "A partição de inicialização precisa de pelo menos 32 MiB de espaço 
 #, python-brace-format
 msgid "The startup partition of the installed Emaki ({source}) was not found. Name it, for example: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (next to Windows, the partition labelled EMAKI)"
 msgstr "A partição de inicialização do Emaki instalado ({source}) não foi encontrada. Indique-a, por exemplo: sudo emaki-boot-repair --esp /dev/nvme0n1p5 (ao lado do Windows, a partição com o rótulo EMAKI)"
+
+msgid "The startup partition's contents changed after the review. The disk was not changed; start a new review."
+msgstr "O conteúdo da partição de inicialização mudou após a revisão. O disco não foi alterado; inicie uma nova revisão."
 
 msgid "The startup password must use characters available on an English (US) keyboard."
 msgstr "A senha de inicialização deve usar caracteres disponíveis em um teclado em inglês (EUA)."
@@ -2067,3 +2068,214 @@ msgstr "{value1}: a estabilização do udev não foi concluída; verificando o k
 #, python-brace-format
 msgid "{value1}: {value2}: retry deadline reached."
 msgstr "{value1}: {value2}: prazo para novas tentativas atingido."
+
+msgid "A firmware startup entry still points to a startup copy removed by this installation."
+msgstr "Uma entrada de inicialização do firmware ainda aponta para uma cópia de inicialização removida por esta instalação."
+
+msgid "A previous restart is still pending. Wait for it to finish before starting another installation."
+msgstr "Uma reinicialização anterior ainda está pendente. Aguarde sua conclusão antes de iniciar outra instalação."
+
+msgid "A safety check could not finish cleanly. Windows was not changed. Restart the computer from the USB stick and try again."
+msgstr "Uma verificação de segurança não pôde ser concluída corretamente. O Windows não foi alterado. Reinicie o computador pelo pendrive e tente novamente."
+
+msgid "Automatic restart is unavailable. Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
+msgstr "A reinicialização automática não está disponível. Sua instalação está segura. Se o computador não reiniciar sozinho, mantenha o botão de energia pressionado para desligá-lo e ligue-o novamente."
+
+msgid "WARNING: plan review could not read the boot loader packages, so it checks the startup partition by lower bounds; the exact check runs before the first disk write: "
+msgstr "AVISO: a revisão do plano não pôde ler os pacotes do carregador de inicialização, por isso verifica a partição de inicialização pelos limites mínimos; a verificação exata ocorre antes da primeira gravação no disco: "
+
+#, python-brace-format
+msgid "{device} does not hold an installed Emaki. Nothing was changed."
+msgstr "{device} não contém uma instalação do Emaki. Nada foi alterado."
+
+#, python-brace-format
+msgid "{device} is Windows' startup partition. Emaki starts from its own startup partition and never changes Windows'. Nothing was changed."
+msgstr "{device} é a partição de inicialização do Windows. O Emaki inicia pela sua própria partição de inicialização e nunca altera a do Windows. Nada foi alterado."
+
+#, python-brace-format
+msgid "{device} is not a FAT startup partition. Nothing was changed."
+msgstr "{device} não é uma partição de inicialização FAT. Nada foi alterado."
+
+#, python-brace-format
+msgid "A startup copy needs exactly {names}."
+msgstr "Uma cópia de inicialização precisa exatamente de {names}."
+
+msgid "a Btrfs filesystem"
+msgstr "um sistema de arquivos Btrfs"
+
+msgid "a RAID array"
+msgstr "um conjunto RAID"
+
+msgid "an LVM volume group"
+msgstr "um grupo de volumes LVM"
+
+#, python-brace-format
+msgid "captured {value1} from {value2}: security {value3}, {value4}; autoconnect preserved, any adapter, every user."
+msgstr "capturado {value1} de {value2}: segurança {value3}, {value4}; conexão automática preservada, qualquer adaptador, todos os usuários."
+
+#, python-brace-format
+msgid "emaki-install-cli: the installer service cannot start: the boot medium is not mounted at {value1} (the live system was copied to RAM). Restart from the USB stick without the 'copy to RAM' option to install."
+msgstr "emaki-install-cli: o serviço do instalador não pode iniciar: a mídia de inicialização não está montada em {value1} (o sistema live foi copiado para a RAM). Reinicie pelo pendrive sem a opção 'copy to RAM' para instalar."
+
+#, python-brace-format
+msgid "emaki-install-cli: the installer service is not running (nothing listens at {value1})."
+msgstr "emaki-install-cli: o serviço do instalador não está em execução (nada escuta em {value1})."
+
+msgid "encrypted Windows drive (BitLocker)"
+msgstr "unidade do Windows criptografada (BitLocker)"
+
+msgid "encrypted macOS disk (FileVault 2)"
+msgstr "disco do macOS criptografado (FileVault 2)"
+
+msgid "enterprise (802.1X) networks are not copied."
+msgstr "redes corporativas (802.1X) não são copiadas."
+
+#, python-brace-format
+msgid "joined on the Network page, one of {value1} active Wi-Fi connections"
+msgstr "conectada na página Rede, uma de {value1} conexões Wi-Fi ativas"
+
+msgid "joined on the Network page; no Wi-Fi is active now"
+msgstr "conectada na página Rede; nenhuma conexão Wi-Fi está ativa agora"
+
+#, python-brace-format
+msgid "key management {value1} is not supported."
+msgstr "o gerenciamento de chaves {value1} não é compatível."
+
+#, python-brace-format
+msgid "locked {description}"
+msgstr "{description} bloqueado"
+
+msgid "macOS disk (APFS)"
+msgstr "disco do macOS (APFS)"
+
+#, python-brace-format
+msgid "mokutil could not report the machine key: {details}"
+msgstr "mokutil não pôde informar a chave da máquina: {details}"
+
+#, python-brace-format
+msgid "nmcli failed (exit {value1})."
+msgstr "nmcli falhou (código de saída {value1})."
+
+msgid "no secret (open network)"
+msgstr "sem segredo (rede aberta)"
+
+msgid "ntfsresize reported an error; shrinking Windows is refused."
+msgstr "ntfsresize informou um erro; a redução do Windows foi recusada."
+
+msgid "secret saved in the keyfile"
+msgstr "segredo salvo no arquivo de chaves"
+
+#, python-brace-format
+msgid "the Network page join {value1} is no longer saved and no Wi-Fi is active now"
+msgstr "a conexão {value1} da página Rede não está mais salva e nenhuma conexão Wi-Fi está ativa agora"
+
+#, python-brace-format
+msgid "the WEP key is not saved in the keyfile (wep-key-flags {value1}: held by a desktop keyring client or asked at each connection)."
+msgstr "a chave WEP não está salva no arquivo de chaves (wep-key-flags {value1}: mantida por um cliente do chaveiro da área de trabalho ou solicitada a cada conexão)."
+
+msgid "the active Wi-Fi connection"
+msgstr "a conexão Wi-Fi ativa"
+
+#, python-brace-format
+msgid "the keyfile belongs to UID {value1}, not {value2}."
+msgstr "o arquivo de chaves pertence ao UID {value1}, não ao {value2}."
+
+msgid "the keyfile has more than one hard link."
+msgstr "o arquivo de chaves tem mais de um link físico."
+
+msgid "the keyfile has no WEP key."
+msgstr "o arquivo de chaves não tem uma chave WEP."
+
+msgid "the keyfile has no password."
+msgstr "o arquivo de chaves não tem senha."
+
+msgid "the keyfile holds another UUID."
+msgstr "o arquivo de chaves contém outro UUID."
+
+msgid "the keyfile is larger than 1 MiB."
+msgstr "o arquivo de chaves é maior que 1 MiB."
+
+msgid "the keyfile is not a Wi-Fi profile."
+msgstr "o arquivo de chaves não é um perfil Wi-Fi."
+
+msgid "the keyfile is not a regular file."
+msgstr "o arquivo de chaves não é um arquivo regular."
+
+#, python-brace-format
+msgid "the keyfile is outside NetworkManager's connection directories ({directories})."
+msgstr "o arquivo de chaves está fora dos diretórios de conexões do NetworkManager ({directories})."
+
+#, python-brace-format
+msgid "the keyfile is readable by others (mode {value1:o})."
+msgstr "outras pessoas podem ler o arquivo de chaves (modo {value1:o})."
+
+msgid "the keyfile path goes through a symbolic link."
+msgstr "o caminho do arquivo de chaves passa por um link simbólico."
+
+msgid "the live session has no Wi-Fi profile"
+msgstr "a sessão live não tem um perfil Wi-Fi"
+
+msgid "the only saved Wi-Fi profile has never connected"
+msgstr "o único perfil Wi-Fi salvo nunca se conectou"
+
+msgid "the only saved Wi-Fi profile, and it has connected; no Wi-Fi is active now"
+msgstr "o único perfil Wi-Fi salvo, que já se conectou; nenhuma conexão Wi-Fi está ativa agora"
+
+#, python-brace-format
+msgid "the password is not saved in the keyfile (psk-flags {value1}: held by a desktop keyring client or asked at each connection)."
+msgstr "a senha não está salva no arquivo de chaves (psk-flags {value1}: mantida por um cliente do chaveiro da área de trabalho ou solicitada a cada conexão)."
+
+msgid "the profile ID is not a UUID."
+msgstr "o ID do perfil não é um UUID."
+
+msgid "the profile has no keyfile (NetworkManager keeps it only in memory)."
+msgstr "o perfil não tem um arquivo de chaves (o NetworkManager o mantém apenas na memória)."
+
+#, python-brace-format
+msgid "unknown startup prompt: {prompt!r}"
+msgstr "solicitação de inicialização desconhecida: {prompt!r}"
+
+#, python-brace-format
+msgid "{value1} Wi-Fi connections are active and the Network page joined none of them"
+msgstr "há {value1} conexões Wi-Fi ativas e nenhuma foi conectada pela página Rede"
+
+#, python-brace-format
+msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
+msgstr "{value1} contém uma assinatura {value2} e pode fazer parte de um conjunto de vários dispositivos."
+
+#, python-brace-format
+msgid "{value1} has no readable volume ID, so the installer cannot erase this device safely. Choose another target, or clear this device in a terminal [wipefs --all {value2}] and refresh disks. If this is a partition, you can also leave it unchanged in Manual mode."
+msgstr "{value1} não tem um ID de volume legível, por isso o instalador não pode apagar este dispositivo com segurança. Escolha outro destino ou limpe este dispositivo em um terminal [wipefs --all {value2}] e atualize a lista de discos. Se for uma partição, você também pode deixá-la inalterada no modo Manual."
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
+msgstr "{value1} é um dos {value2} dispositivos de {value3}; apagá-lo danificaria os outros dispositivos."
+
+#, python-brace-format
+msgid "{value1} saved Wi-Fi profiles, none is active and the Network page joined none of them"
+msgstr "{value1} perfis Wi-Fi salvos, nenhum está ativo e nenhum foi conectado pela página Rede"
+
+msgid "pacman returned no details"
+msgstr "pacman não retornou detalhes"
+
+msgid "Type ERASE to confirm that this volume and any connected data can be erased."
+msgstr "Digite ERASE para confirmar que este volume e todos os dados conectados podem ser apagados."
+
+#, python-brace-format
+msgid "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contém o seguinte: {value2}. O instalador não pode verificar seu conteúdo; ele pode pertencer a um conjunto de vários discos."
+
+msgid "will retry on the next probe."
+msgstr "uma nova tentativa será feita na próxima análise."
+
+msgid "recovery discarded."
+msgstr "recuperação descartada."
+
+msgid "encrypted Linux system (LUKS)"
+msgstr "sistema Linux criptografado (LUKS)"
+
+msgid "another system"
+msgstr "outro sistema"
+
+msgid "files Emaki cannot check"
+msgstr "arquivos que o Emaki não pode verificar"

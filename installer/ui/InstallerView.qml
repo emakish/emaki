@@ -1920,7 +1920,7 @@ Item {
                                 Copy {
                                     width: parent.width
                                     color: view.danger
-                                    text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 holds %2. Deleting it removes the partition and all its files when you press Install. Type %3 to confirm.").arg(partitionRow.part.number).arg(partitionRow.part.other_system).arg("DELETE") : ""
+                                    text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 holds %2. Deleting it removes the partition and all its files when you press Install. Type %3 to confirm.").arg(partitionRow.part.number).arg(Protocol.systemLabel(partitionRow.part.other_system)).arg("DELETE") : ""
                                 }
                                 Field {
                                     id: confirmField

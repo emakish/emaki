@@ -17,10 +17,8 @@ def unavailable(path):
     """Why nothing listens on the worker's socket, in words instead of an exception name."""
     if not BOOT_MOUNT.is_dir():
         # emaki-installerd.service: ConditionPathExists on the boot mount.
-        return (f'emaki-install-cli: the installer service cannot start: the boot medium is not mounted at '
-                f'{BOOT_MOUNT} (the live system was copied to RAM). '
-                "Restart from the USB stick without the 'copy to RAM' option to install.")
-    return f'emaki-install-cli: the installer service is not running (nothing listens at {path}).'
+        return (_("emaki-install-cli: the installer service cannot start: the boot medium is not mounted at {value1} (the live system was copied to RAM). Restart from the USB stick without the 'copy to RAM' option to install.").format(value1=BOOT_MOUNT))
+    return _('emaki-install-cli: the installer service is not running (nothing listens at {value1}).').format(value1=path)
 
 
 def main(argv=None):

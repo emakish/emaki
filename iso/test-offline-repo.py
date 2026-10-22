@@ -61,11 +61,16 @@ class WorkerPackagesTests(unittest.TestCase):
                             return archive.as_uri() + '\n'
                         return ''
 
+                    # os-prober and ntfs-3g: the preflight proves them and copy_packages installs them on
+                    # Worker.os_prober(), next to Windows here (a Manual kept Windows ESP: test_manual_shared_esp).
+                    os_prober = mode == 'alongside'
                     with patch.object(worker, 'offline_config', return_value=Path(temporary) / 'pacman.conf'):
                         worker.preflight_repo(Mock(run=run), test_mode, software,
-                                              alongside_mode=mode == 'alongside',
+                                              os_prober=os_prober,
                                               secure_boot=bool(secure_boot))
                     install = Mock()
+                    install.os_prober.return_value = os_prober
+                    install.shared_layout.return_value = False
                     install.test_mode = test_mode
                     install.kept_home = None
                     install.wifi_profile = None

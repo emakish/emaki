@@ -1,7 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """A resident restart guardian, isolated from reads of the removable live root."""
-from .i18n import _
+from .i18n import _ as translate
+from .i18n import _, N_
 import ctypes
 import os
 from pathlib import Path
@@ -16,15 +17,15 @@ from .runtime import safe_log
 
 PREPARE_TIMEOUT = 125
 FALLBACK_DELAY = 15
-PREPARE_ERROR = _('Could not prepare to restart. Keep the USB stick connected and try again.')
-UNCONFIRMED_ERROR = (_('Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again.'))
-GUARD_ERROR = _('Automatic restart is unavailable. ') + UNCONFIRMED_ERROR
-RESTART_ERROR = (_('Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.'))
+PREPARE_ERROR = N_('Could not prepare to restart. Keep the USB stick connected and try again.')
+UNCONFIRMED_ERROR = (N_('Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again.'))
+GUARD_ERROR = N_('Automatic restart is unavailable. Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again.')
+RESTART_ERROR = (N_('Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.'))
 PACKET = struct.Struct('!cQd')
 SCOPE = 'emaki-installer-restart.scope'
 SCOPE_PROCS = Path('/sys/fs/cgroup/system.slice') / SCOPE / 'cgroup.procs'
-PENDING_RESTART_ERROR = ('A previous restart is still pending. Wait for it to finish '
-                         'before starting another installation.')
+PENDING_RESTART_ERROR = (N_('A previous restart is still pending. Wait for it to finish '
+                         'before starting another installation.'))
 SCOPE_COMMAND_TIMEOUT = 5
 SCOPE_CGROUP_TIMEOUT = 2
 # Keep the original ten seconds for memory locking and scheduling after adoption.
@@ -49,7 +50,7 @@ def isolate_guardian():
         groups = Path('/proc/self/cgroup').read_text().splitlines()
         if f'0::/system.slice/{SCOPE}' in groups:
             return
-        require(time.monotonic() < deadline, Code.COMMAND_FAILED, GUARD_ERROR, recovery_included=True)
+        require(time.monotonic() < deadline, Code.COMMAND_FAILED, translate(GUARD_ERROR), recovery_included=True)
         time.sleep(0.01)
 
 
@@ -73,7 +74,7 @@ class ResidentReboot:
         # Run in the guardian at daemon startup, before accepting any installation.
         # MCL_CURRENT | MCL_FUTURE pins code/libraries and future anonymous pages.
         # Locks are not inherited across fork: the guardian must pin itself.
-        require(self.lock(3) == 0, Code.COMMAND_FAILED, PREPARE_ERROR)
+        require(self.lock(3) == 0, Code.COMMAND_FAILED, translate(PREPARE_ERROR))
 
     def prepare(self):
         # Only the disposable child performs filesystem reads or global sync.
@@ -92,10 +93,10 @@ class ResidentReboot:
         # The boot mount's directory can remain cached after unplugging. Sysfs
         # disappears with a USB block device; an ejected optical drive has size 0.
         if self.medium_size is not None:
-            require(int(self.medium_size.read_text()) > 0, Code.COMMAND_FAILED, PREPARE_ERROR)
+            require(int(self.medium_size.read_text()) > 0, Code.COMMAND_FAILED, translate(PREPARE_ERROR))
 
     def __call__(self, *, force=False):
-        require(self.ready, Code.BAD_REQUEST, PREPARE_ERROR)
+        require(self.ready, Code.BAD_REQUEST, translate(PREPARE_ERROR))
         previous = None
         try:
             if not force:
@@ -112,7 +113,7 @@ class ResidentReboot:
         finally:
             if previous is not None:
                 signal.signal(signal.SIGTERM, previous)
-        raise InstallError(Code.COMMAND_FAILED, RESTART_ERROR, recovery_included=True)
+        raise InstallError(Code.COMMAND_FAILED, translate(RESTART_ERROR), recovery_included=True)
 
 
 def receive(fd, timeout=None):
@@ -268,10 +269,10 @@ class RestartGuard:
             return  # The old scope has already been collected.
         except OSError:
             # Unknown membership cannot prove an old armed guardian has gone.
-            raise InstallError(Code.RESTART_PENDING, PENDING_RESTART_ERROR) from None
+            raise InstallError(Code.RESTART_PENDING, translate(PENDING_RESTART_ERROR)) from None
         # A timed-out adoption may still move our new, unarmed guardian later.
         require(not any(pid != str(self.pid) for pid in occupants),
-                Code.RESTART_PENDING, PENDING_RESTART_ERROR)
+                Code.RESTART_PENDING, translate(PENDING_RESTART_ERROR))
 
     def request(self, command, timeout):
         self.request_id += 1
@@ -280,31 +281,31 @@ class RestartGuard:
         deadline = time.monotonic() + timeout
         while True:
             packet = receive_packet(self.reply, max(0, deadline - time.monotonic()))
-            require(packet is not None, Code.COMMAND_FAILED, UNCONFIRMED_ERROR, recovery_included=True)
+            require(packet is not None, Code.COMMAND_FAILED, translate(UNCONFIRMED_ERROR), recovery_included=True)
             if packet[0] == b'':
                 self.forced_deadline = None
-            require(packet[0] != b'', Code.COMMAND_FAILED, GUARD_ERROR, recovery_included=True)
+            require(packet[0] != b'', Code.COMMAND_FAILED, translate(GUARD_ERROR), recovery_included=True)
             if packet[1] == request_id:
                 return packet
             # A timed-out request or an unsolicited fallback result belongs to
             # its own request, never the next one. Keep the original deadline.
-            require(time.monotonic() < deadline, Code.COMMAND_FAILED, UNCONFIRMED_ERROR, recovery_included=True)
+            require(time.monotonic() < deadline, Code.COMMAND_FAILED, translate(UNCONFIRMED_ERROR), recovery_included=True)
 
     def prepare(self):
         if not self.ready:
             result, ignored, deadline = self.request(b'P', self.timeout)
-            require(result in (b'P', b'F'), Code.COMMAND_FAILED, GUARD_ERROR, recovery_included=True)
+            require(result in (b'P', b'F'), Code.COMMAND_FAILED, translate(GUARD_ERROR), recovery_included=True)
             self.ready, self.forced = True, result == b'F'
             self.forced_deadline = deadline or None
         return self.forced
 
     def __call__(self):
-        require(self.ready, Code.BAD_REQUEST, PREPARE_ERROR)
+        require(self.ready, Code.BAD_REQUEST, translate(PREPARE_ERROR))
         # The normal guardian path waits eight seconds after asking PID 1. The
         # caller must remain waiting beyond that interval, including stale replies.
         self.request(b'R', 12)
         self.forced_deadline = None
-        raise InstallError(Code.COMMAND_FAILED, RESTART_ERROR, recovery_included=True)
+        raise InstallError(Code.COMMAND_FAILED, translate(RESTART_ERROR), recovery_included=True)
 
     def close(self):
         os.close(self.command)

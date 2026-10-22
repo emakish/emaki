@@ -19,10 +19,38 @@ Item {
     property var layouts: ["us"]
     property string language: "en_US.UTF-8"
     readonly property var languageChoices: [
-        {locale: "en_US.UTF-8", label: qsTranslate("InstallerController", "English")},
-        {locale: "es_MX.UTF-8", label: qsTranslate("InstallerController", "Spanish (Latin America)")},
-        {locale: "pt_BR.UTF-8", label: qsTranslate("InstallerController", "Portuguese (Brazil)")}
+        {locale: "en_US.UTF-8", label: "English"},
+        {locale: "es_MX.UTF-8", label: "Español (Latinoamérica)"},
+        {locale: "pt_BR.UTF-8", label: "Português (Brasil)"}
     ].filter(choice => session.availableLocales.includes(choice.locale))
+    // The optional bridge lives only in the installer, never in the desktop singleton.
+    readonly property var languageBridge: createLanguageBridge()
+    property var languageProbes: ({})
+    function createLanguageBridge(): var {
+        try {
+            return Qt.createQmlObject('import QtQml; import Emaki.I18n; QtObject { function select(locale) { return InstallerLanguage.setLanguage(locale); } }', root, "InstallerLanguageBridge");
+        } catch (_) {
+            return null;
+        }
+    }
+    onLanguageChanged: {
+        Protocol.invalidate(session);
+        agreed = false;
+        publish();
+        if (languageBridge)
+            languageBridge.select(language);
+        diskReasons = ({});
+        diskRefreshNotice = "";
+        timezoneMessage = "";
+        // Re-read localized disk reasons while keeping every entered setting and edit.
+        if (session.ready && !session.running && !session.confirming) {
+            const request = Protocol.request(session, "probe");
+            languageProbes[request.id] = true;
+            write(request);
+            session.notice = "";
+            publish();
+        }
+    }
     property string fullName: ""
     property string login: ""
     property bool loginEdited: false
@@ -239,6 +267,7 @@ Item {
         return windowsPartition ? Math.min(windowsPartition.shrink.max_free_bytes, Math.max(alongsideMinimum, Protocol.alongsideDefault(windowsPartition))) : 0;
     }
     function write(message: var): void {
+        message = Object.assign({}, message, {language: language});
         if (mockTransport)
             outbound(message);
         else if (transport && transport.connected) {
@@ -253,6 +282,8 @@ Item {
         publish();
     }
     function receive(message: var): void {
+        const languageProbe = languageProbes[message.for_id || message.id] === true;
+        delete languageProbes[message.for_id || message.id];
         const probeReply = session.pending[message.for_id || message.id] === "probe";
         const guessReply = session.pending[message.for_id || message.id] === "get_timezone_guess";
         const rebootPrepared = session.pending[message.for_id || message.id] === "prepare_reboot";
@@ -307,7 +338,7 @@ Item {
                 diskReasons = reasons;
             }
         }
-        if (probeReply && message.type === "inventory" && session.inventory) {
+        if (probeReply && !languageProbe && message.type === "inventory" && session.inventory) {
             acceptTimezoneGuess(message.tz_guess);
             if (!selectedDisk)
                 diskId = "";
@@ -331,7 +362,7 @@ Item {
             }
             publish();
         }
-        if (probeReply && message.type === "reply" && !message.ok) {
+        if (probeReply && !languageProbe && message.type === "reply" && !message.ok) {
             editorPending = false;
             inventoryRefresh = false;
             editorLayout = "";
@@ -552,7 +583,7 @@ Item {
         if (mockTransport)
             keyboardOutbound(request);
         else {
-            keyboardInput = JSON.stringify(request) + "\n";
+            keyboardInput = JSON.stringify(Object.assign({}, request, {language: language})) + "\n";
             keyboardHelper.running = true;
         }
     }
@@ -979,7 +1010,7 @@ Item {
             clearJoinResult();
         helperOp = op;
         helperInput = JSON.stringify(Object.assign({
-            op: op
+            op: op, language: language
         }, fields)) + "\n";
         helper.running = true;
     }
@@ -1037,11 +1068,6 @@ Item {
             callHelper("network", {});
         if (step === "done" || step === "error")
             callHelper("media", {});
-    }
-    onLanguageChanged: {
-        Protocol.invalidate(session);
-        agreed = false;
-        publish();
     }
     onModeChanged: {
         Protocol.invalidate(session);

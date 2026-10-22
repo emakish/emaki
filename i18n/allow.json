@@ -121,6 +121,17 @@
         "Clocks"
       ],
       "reason": "Stable notification application key; displayApp translates its displayed label."
+    },
+    {
+      "paths": [
+        "installer/ui/InstallerController.qml"
+      ],
+      "texts": [
+        "English",
+        "Español (Latinoamérica)",
+        "Português (Brasil)"
+      ],
+      "reason": "Native language names remain recognizable before the installer language is chosen."
     }
   ],
   "internal_raises": [

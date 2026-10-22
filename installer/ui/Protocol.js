@@ -310,7 +310,7 @@ function errorPresentation(error) {
     const action = error.retryable || [disk, review, another, larger].indexOf(words[1]) < 0 ? words[1] : save;
     // The ERASE field belongs to Disk. Keep the facts here, without instructions to type into it.
     const details = error.code === "encrypted_confirmation"
-        ? (error.message || "").replace(/\s*Type ERASE to confirm[^.]*\./g, "").trim()
+        ? (error.message || "").replace(qsTranslate("Protocol", "Type ERASE to confirm that this volume and any connected data can be erased."), "").replace(/\s*Type ERASE to confirm[^.]*\./g, "").trim()
         : error.message || "";
     return {sentence: error.code === "disk_busy" && error.message ? error.message : words[0], action: action, details: details};
 }
@@ -384,7 +384,7 @@ function consoleUnsafeChars(table, layouts, password) {
 // private-use code points): the tab and every separator, format character, unassigned or
 // private-use code point an offered layout types. installer/ui/tests/test_console_chars.py
 // holds the names to Unicode's and the list to what the layouts type.
-var UNSEEN_NAMES = {
+function unseenNames() { return {
     0x0009: qsTranslate("Protocol", "tab"), 0x00a0: qsTranslate("Protocol", "no-break space"), 0x00ad: qsTranslate("Protocol", "soft hyphen"), 0x061c: qsTranslate("Protocol", "arabic letter mark"),
     0x09b3: "", 0x09bb: "", 0x0f48: "", 0x17fb: "", 0x17fc: "", 0x17fd: "", 0x17fe: "", 0x17ff: "",
     0x200b: qsTranslate("Protocol", "zero width space"), 0x200c: qsTranslate("Protocol", "zero width non-joiner"), 0x200d: qsTranslate("Protocol", "zero width joiner"),
@@ -394,10 +394,11 @@ var UNSEEN_NAMES = {
     0x202f: qsTranslate("Protocol", "narrow no-break space"), 0x2066: qsTranslate("Protocol", "left-to-right isolate"),
     0x2067: qsTranslate("Protocol", "right-to-left isolate"), 0x2068: qsTranslate("Protocol", "first strong isolate"),
     0x2069: qsTranslate("Protocol", "pop directional isolate"), 0xe60b: "", 0xe656: "", 0xe659: ""
-};
+}; }
 // One character of the console sentence: itself, or "U+00A0 no-break space" for one a list
 // cannot show (and any other control character, by its code point).
 function shownCharacter(c) {
+    const UNSEEN_NAMES = unseenNames();
     const code = c.codePointAt(0);
     const hex = "U+" + code.toString(16).toUpperCase().padStart(4, "0");
     if (Object.prototype.hasOwnProperty.call(UNSEEN_NAMES, code))
@@ -532,9 +533,14 @@ function newPartitionError(free, use, size, root) {
 function deletionIdentity(p) {
     return { path: p.path, start_bytes: p.start_bytes, size_bytes: p.size_bytes, system: p.other_system };
 }
+function systemLabel(value) {
+    if (value === "another system") return qsTranslate("Protocol", "another system");
+    if (value === "files Emaki cannot check") return qsTranslate("Protocol", "files Emaki cannot check");
+    return value || "";
+}
 // One line per partition row: what it is now.
 function partitionText(p) {
-    return [p.path, qsTranslate("Protocol", "%1 GiB").arg(number(p.size_bytes / GIB, 1)), p.fs || qsTranslate("Protocol", "unformatted"), p.esp ? "EFI" : "", p.other_system || ""].filter(x => x).join(" · ");
+    return [p.path, qsTranslate("Protocol", "%1 GiB").arg(number(p.size_bytes / GIB, 1)), p.fs || qsTranslate("Protocol", "unformatted"), p.esp ? "EFI" : "", systemLabel(p.other_system)].filter(x => x).join(" · ");
 }
 // planner.storage_layout: 20 GiB, plus the RAM-sized hibernation file, plus the encryption header.
 function rootMinimum(memory, hibernation, encrypted) {

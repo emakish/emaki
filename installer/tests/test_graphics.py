@@ -312,7 +312,7 @@ class GraphicsTests(unittest.TestCase):
             preflight_repo(Mock(run=run), graphics=plan.graphics_packages)
         worker = SimpleNamespace(plan=plan, backend=Mock(), files=Mock(),
                                  api=SimpleNamespace(locale=SimpleNamespace(LocaleConfiguration=Mock())),
-                                 populate_keyring=Mock(), runner=Mock(), target=self.root)
+                                 populate_keyring=Mock(), runner=Mock(), target=self.root, os_prober=lambda: False)
         Worker.copy_packages(worker)
         self.assertEqual(worker.backend.instance.pacman.strap.call_args.args[0], requested)
         worker.runner.chroot.assert_called_once_with(
@@ -323,7 +323,7 @@ class GraphicsTests(unittest.TestCase):
         plan.graphics_packages = ('emaki-nvidia', 'nvidia-open-dkms')
         worker = SimpleNamespace(plan=plan, backend=Mock(), files=Mock(), runner=Mock(), target=self.root,
                                  api=SimpleNamespace(locale=SimpleNamespace(LocaleConfiguration=Mock())),
-                                 populate_keyring=Mock())
+                                 populate_keyring=Mock(), os_prober=lambda: False)
         worker.runner.chroot.side_effect = InstallError(Code.BOOT_VERIFY, 'missing module')
         for method in (Worker.copy_packages, Worker.finish):
             with self.assertRaisesRegex(InstallError, 'missing module'):

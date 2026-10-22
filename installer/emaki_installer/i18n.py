@@ -1,6 +1,9 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Standalone installer message catalogue and supported target locales."""
+from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import lru_cache
 import gettext
 import os
 from pathlib import Path
@@ -37,8 +40,40 @@ _catalogue = gettext.translation(
     'installer', localedir=os.environ.get('EMAKI_LOCALE_DIR', str(_default_locale)),
     languages=selected_languages(),
     fallback=True)
-_ = _catalogue.gettext
-ngettext = _catalogue.ngettext
+_current_catalogue = ContextVar('installer_catalogue', default=None)
+
+
+def _(message):
+    return (_current_catalogue.get() or _catalogue).gettext(message)
+
+
+def ngettext(singular, plural, count):
+    return (_current_catalogue.get() or _catalogue).ngettext(singular, plural, count)
+
+
+def N_(message):
+    """Mark a deferred message while retaining its English source string."""
+    return message
+
+
+@lru_cache(maxsize=16)
+def language_catalogue(language, directory):
+    return gettext.translation('installer', localedir=directory,
+                               languages=[language], fallback=True)
+
+
+@contextmanager
+def using_language(language=None):
+    """Scope a request or worker's messages without changing the live locale."""
+    if language is not None and language not in LOCALES:
+        raise ValueError(_('Invalid config values.'))
+    catalogue = (language_catalogue(language, os.environ.get('EMAKI_LOCALE_DIR', str(_default_locale)))
+                 if language is not None else None)
+    token = _current_catalogue.set(catalogue)
+    try:
+        yield
+    finally:
+        _current_catalogue.reset(token)
 
 
 def available_locales():
