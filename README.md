@@ -6,9 +6,13 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.11.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
-tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
-[Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
+**Status: 0.11.0 late alpha — not for everyday use yet.** See [Release stages](#release-stages).
+Releases are tested in QEMU with UEFI firmware (OVMF) and on two real computers, an AMD
+laptop and a MacBook, see [Tested hardware](#tested-hardware). Where the project is heading:
+[PLANS.md](PLANS.md).
+
+Since 0.11, Emaki speaks English, Latin American Spanish and Brazilian Portuguese: in the
+installer, the desktop, Programs & Updates and Notes.
 
 ![The Emaki desktop](docs/screenshots/desktop.png)
 
@@ -59,11 +63,11 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## The ISO
 
-Download: https://dl.emaki.sh/iso/0.9.0/emaki-0.9.0-x86_64.iso. Its checksum and signature
+Download: https://dl.emaki.sh/iso/0.11.0/emaki-0.11.0-x86_64.iso. Its checksum and signature
 are at the same address with `.sha256` and `.sig` added; the key that signed it is
-https://dl.emaki.sh/iso/0.9.0/emaki-signing-key.asc.
+https://dl.emaki.sh/iso/0.11.0/emaki-signing-key.asc.
 
-`emaki-0.9.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-0.11.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
@@ -124,10 +128,16 @@ session without your password.
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.5.0 | Update from 0.4.2 with `pacman -Syu`, restart, then a fresh installation from USB (erase disk), boot, login, desktop | Wi-Fi joined in the installer has to be joined again after installing |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.6.0 | Update from 0.5.0 with `pacman -Syu`, restart; then a fresh installation from USB with disk encryption: the Wi-Fi network joined in the installer connects by itself after installing, login, desktop, the password prompt | No new issues found in the installed system |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.8.0 | Installation alongside Windows 10 from USB, Emaki and Windows started from Emaki's boot menu, update from the testing channel, Programs & Updates: installing and removing programs from Arch and the AUR, ratings and reviews | A program installed from Programs & Updates may not appear in the app launcher right away |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.8.1 | Update from the testing channel | No new issues found |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.9.0 | Update from 0.8.1 from the testing channel, restart; then a fresh installation from USB, login, the Welcome tour, window switching with Alt+Tab and Super+Tab, screen lock and unlock | The live session from USB shows boot text with red lines from the Broadcom Wi-Fi and Bluetooth drivers; a USB stick prepared with Ventoy did not start, the image written directly to the stick did |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.9.1 | Update from 0.9.0 from the testing channel | No new issues found |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.10.0 | Update from 0.9.1 from the testing channel, the lock screen wallpaper, Emaki Notes, the clock shade | No new issues found |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.11.0 | Update from 0.10.0 from the testing channel, choosing Spanish or Portuguese after the update; then a fresh installation from USB in Brazilian Portuguese, login, desktop | The live session from USB shows a red "FAILED" line and Broadcom Wi-Fi lines at boot; the language picker in Welcome looks unfinished and the time-zone map in the installer is slightly crooked |
+| ThinkPad P14s Gen 7 AMD | 0.11.0 | Everyday use: Emaki added to an existing Arch installation at 0.9.0 with `pacman -Syu`, then updated from the testing channel to 0.9.1, 0.10.0 and 0.11.0, no failed services | Not installed from USB; this laptop starts with rEFInd, so Emaki's boot menu refresh after updates does not run on it |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
-MacBook is a trademark of Apple Inc.; Emaki is an independent project.
+MacBook is a trademark of Apple Inc. and ThinkPad a trademark of Lenovo; Emaki is an independent project.
 
 ### Known issues in 0.11.0
 
