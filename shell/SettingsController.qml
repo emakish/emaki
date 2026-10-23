@@ -11,6 +11,7 @@ Scope {
     required property NiriService niri
     property var notificationStore: null
     readonly property alias displays: displays
+    readonly property alias settingsReset: settingsReset
     property bool enabled: true
     property var targetHost: null
     property var activeHost: null
@@ -24,6 +25,11 @@ Scope {
         id: displays
         active: controller.opened && controller.page === "displays"
         niri: controller.niri
+    }
+    // Owns the reset's Undo after the Settings page is gone.
+    SettingsReset {
+        id: settingsReset
+        notificationStore: controller.notificationStore
     }
     function open(requested: string): string {
         return openOn(targetHost, requested);

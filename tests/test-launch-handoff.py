@@ -6,15 +6,23 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
+from runtime_fixture import short_runtime
 import reaper
 reaper.guard()
 
 ROOT = Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix='emaki-handoff-') as temporary, \
-        tempfile.TemporaryDirectory(prefix='lh-', dir=ROOT / '.cache') as runtime:
+        short_runtime() as runtime:
     base = Path(temporary)
     shutil.copytree(ROOT / 'shell', base / 'shell')
+    # A standalone run must not depend on generated files left by make paths.
+    # Render the real helper dependencies only inside this private fixture.
+    (base / 'scripts').mkdir()
+    shutil.copyfile(ROOT / 'scripts/emaki_i18n.py', base / 'scripts/emaki_i18n.py')
+    subprocess.run([sys.executable, str(ROOT / 'scripts/render-paths'),
+                    '--source', str(base)], check=True)
     revision = os.environ.get('EMAKI_LAUNCH_REF')
     if os.environ.get('EMAKI_LAUNCH_BASELINE') == '1':
         revision = '78b918a'
@@ -81,6 +89,7 @@ main()
     result = subprocess.run(['qs', '-p', str(base / 'shell/handoff.qml'), '--no-color'],
                             env=env, capture_output=True, text=True, timeout=30)
     output = result.stdout + result.stderr
+    assert 'Failed to start IPC server' not in output, output
     assert result.returncode == 0 and 'LAUNCH_HANDOFF_RESULT 4 0' in output, output
     print(output)
     if env.get('EMAKI_LAUNCH_EVIDENCE_ONLY') == '1':

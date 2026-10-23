@@ -69,6 +69,20 @@ Screenshots:
 
 
 class AppStreamTests(unittest.TestCase):
+    def test_file_failures_translate_whole_messages(self):
+        cases = [
+            (OSError('read failed'), 'AppStream metadata is unreadable: {path}: {error}'),
+            (ImportError('missing library'), 'AppStream metadata could not be parsed (parser unavailable): {path}: {error}'),
+            (ValueError('bad data'), 'AppStream metadata is invalid: {path}: {error}'),
+        ]
+        for error, source in cases:
+            with self.subTest(error=error), patch.object(reader, 'read_file', side_effect=error), \
+                    patch.object(reader, '_', side_effect=lambda text: text) as translate:
+                records, warnings = reader.components([Path('catalog.xml')])
+                self.assertEqual(records, [])
+                self.assertEqual(warnings, [source.format(path='catalog.xml', error=error)])
+                translate.assert_called_once_with(source)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

@@ -232,7 +232,8 @@ function sections() {
         description: qsTranslate("Shell", "Choose an update channel and review snapshot recovery."),
         colors: ["accentSoft","accent"],
         items: [
-            {"id":"updates-update-channel","title":qsTranslate("Shell", "Channel"),"keywords":qsTranslate("Shell", "Update channel"),"source":"SettingsMaintenancePage.qml","explanation":qsTranslate("Shell", "Choose which releases your next update uses."),"staticExplanation":true}
+            {"id":"updates-update-channel","title":qsTranslate("Shell", "Channel"),"keywords":qsTranslate("Shell", "Update channel"),"source":"SettingsMaintenancePage.qml","explanation":qsTranslate("Shell", "Choose which releases your next update uses."),"staticExplanation":true},
+            {"id":"updates-reset-emaki-settings","title":qsTranslate("Shell", "Reset Emaki settings"),"keywords":qsTranslate("Shell", "Reset Emaki settings defaults restore undo"),"source":"SettingsMaintenancePage.qml","explanation":qsTranslate("Shell", "Return Emaki's own settings to their defaults. Your files and app settings are not touched."),"searchExplanation":qsTranslate("Shell", "Your files and app settings are not touched.")}
         ]
     },
     {

@@ -245,6 +245,7 @@ class SessionUpdate(unittest.TestCase):
                 patch.object(update.os, 'getuid', return_value=1001):
             update.send_notification()
         values = calls[0][4][1]
+        self.assertEqual(update.BODY, 'Save your work first.')
         self.assertEqual(values[0], 'Desktop update')
         self.assertEqual(values[3:5], (update.SUMMARY, update.BODY))
         self.assertEqual(values[6]['urgency'], ('y', 2))

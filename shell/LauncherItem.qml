@@ -21,6 +21,8 @@ Item {
     property string term: ""
     readonly property string kind: row?.kind ?? ""
     readonly property var iconCandidates: {
+        if (kind === "command" || kind === "emoji")
+            return [];
         if (kind === "settings")
             return [SystemIcons.settingsSvg(dim)];
         const name = row?.entry?.icon ?? "";
@@ -64,7 +66,7 @@ Item {
             calculator: "accessories-calculator-symbolic",
             web: "web-browser-symbolic",
             clip: "edit-paste-symbolic"
-        })[kind] ?? ""
+        })[kind] ?? (kind === "command" ? row.icon ?? "" : "")
     readonly property string trailing: kind === "window" ? String(row.tag ?? "") : kind === "calculator" ? qsTranslate("LauncherItem", "Copy") : kind === "web" ? qsTranslate("LauncherItem", "Open") : kind === "clip" ? qsTranslate("LauncherItem", "Delete") : kind === "app" ? (row.detail ?? "") : ""
     readonly property bool quietTrailing: kind === "app" || kind === "window" || kind === "clip" || [qsTranslate("LauncherItem", "In use"), qsTranslate("LauncherItem", "Off"), qsTranslate("LauncherItem", "Only one installed"), qsTranslate("LauncherItem", "None installed")].includes(trailing)
     readonly property bool twoLines: shape === "row" && kind !== "app" && kind !== "window" && kind !== "clip" && kind !== "calculator" && (row?.detail ?? "") !== ""
@@ -167,9 +169,9 @@ Item {
             visible: !rowIcon.visible && !rowSymbol.found
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
-            text: item.kind === "calculator" ? "=" : item.kind === "clip" && item.row?.image ? "▣" : (item.row?.label ?? "?").slice(0, 1).toLocaleUpperCase()
+            text: item.kind === "emoji" ? item.row?.emoji ?? "" : item.kind === "calculator" ? "=" : item.kind === "clip" && item.row?.image ? "▣" : (item.row?.label ?? "?").slice(0, 1).toLocaleUpperCase()
             font.family: ShellPalette.uiFont
-            font.pixelSize: 15
+            font.pixelSize: item.kind === "emoji" ? 20 : 15
             font.weight: Font.DemiBold
             color: item.dim
         }

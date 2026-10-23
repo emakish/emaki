@@ -8,6 +8,7 @@ import "../Protocol.js" as Protocol
 
 ShellRoot {
     id: test
+    readonly property var fixtureController: controller
     property var fixture: ({}) // HARDWARE_FIXTURE
     property int cursor: -1
     property var current: null
@@ -96,7 +97,7 @@ ShellRoot {
         UI.InstallerView {
             id: view
             anchors.fill: parent
-            controller: controller
+            controller: test.fixtureController
         }
     }
     Timer {

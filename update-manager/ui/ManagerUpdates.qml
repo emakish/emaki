@@ -45,7 +45,7 @@ ColumnLayout {
     readonly property real fraction: progress.step < 2 ? -1
         : ((progress.step - 1) + (progress.step === 3 && progress.total ? progress.done / progress.total : progress.step === 4 ? 0.5 : 0)) / progress.steps
     function stepText(): string {
-        const label = progress.step === 3 && progress.total ? qsTranslate("ManagerUpdates", "installing %1 of %2").arg(progress.done).arg(progress.total) : progress.label.toLowerCase();
+        const label = progress.step === 3 && progress.total ? qsTranslate("ManagerUpdates", "Installing %1 of %2").arg(progress.done).arg(progress.total) : progress.label;
         return progress.step < 1 ? qsTranslate("ManagerUpdates", "Getting ready…") : qsTranslate("ManagerUpdates", "Step %1 of %2 · %3").arg(progress.step).arg(progress.steps).arg(label);
     }
     readonly property var groups: [
@@ -81,7 +81,8 @@ ColumnLayout {
     function date(value: var): string {
         if (!value) return "";
         const parsed = new Date(value);
-        return isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_GB") : Qt.locale(), "ddd d MMM yyyy, HH:mm");
+        //: Qt date/time pattern for a restore point. Keep the time in 24-hour form.
+        return isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_GB") : Qt.locale(), qsTranslate("ManagerUpdates", "ddd d MMM yyyy, HH:mm"));
     }
     function confirmRestore(selected: var): void {
         if (locked || controller.restorePending || !selected) return;
@@ -89,6 +90,8 @@ ColumnLayout {
         restoreDialog.open();
     }
     function restoreTitle(selected: var): string {
+        if (selected?.operation === "remove")
+            return qsTranslate("ManagerUpdates", "Restore the system as it was before this removal (snapshot %1)").arg(selected.snapshot);
         if (selected?.operation === "install")
             return selected.timestamp || selected.date
                 ? qsTranslate("ManagerUpdates", "Restore the system as it was before the install of %1").arg(date(selected.timestamp || selected.date))

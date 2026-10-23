@@ -643,6 +643,253 @@
     </message>
   </context>
   <context>
+    <name>Commands</name>
+    <message>
+      <source>Copy text from screen</source>
+      <translation>Copiar texto de la pantalla</translation>
+    </message>
+    <message>
+      <source>copy text screen recognize ocr clipboard</source>
+      <translation>leer letras reconocer copiar texto pantalla portapapeles OCR</translation>
+    </message>
+    <message>
+      <source>Read QR code</source>
+      <translation>Leer código QR</translation>
+    </message>
+    <message>
+      <source>qr code scan read screen link</source>
+      <translation>escanear QR leer código enlace pantalla</translation>
+    </message>
+    <message>
+      <source>Development kits</source>
+      <translation>Kits de desarrollo</translation>
+    </message>
+    <message>
+      <source>development programming tools code compiler containers</source>
+      <translation>programar desarrollo herramientas código compilador contenedores</translation>
+    </message>
+    <message>
+      <source>Add a website as an app</source>
+      <translation>Agregar un sitio web como aplicación</translation>
+    </message>
+    <message>
+      <source>website web app browser shortcut add</source>
+      <translation>sitio web página aplicación navegador acceso directo agregar</translation>
+    </message>
+    <message>
+      <source>Switch to dark appearance</source>
+      <translation>Cambiar al modo oscuro</translation>
+    </message>
+    <message>
+      <source>Switch to light appearance</source>
+      <translation>Cambiar al modo claro</translation>
+    </message>
+    <message>
+      <source>Turn Night Light on</source>
+      <translation>Activar la luz nocturna</translation>
+    </message>
+    <message>
+      <source>Turn Night Light off</source>
+      <translation>Desactivar la luz nocturna</translation>
+    </message>
+    <message>
+      <source>Check for updates</source>
+      <translation>Buscar actualizaciones</translation>
+    </message>
+    <message>
+      <source>Install a program</source>
+      <translation>Instalar un programa</translation>
+    </message>
+    <message>
+      <source>Take a screenshot</source>
+      <translation>Tomar una captura de pantalla</translation>
+    </message>
+    <message>
+      <source>Record the screen</source>
+      <translation>Grabar la pantalla</translation>
+    </message>
+    <message>
+      <source>Clipboard history</source>
+      <translation>Historial del portapapeles</translation>
+    </message>
+    <message>
+      <source>Emoji</source>
+      <translation>Emojis</translation>
+    </message>
+    <message>
+      <source>Keyboard shortcuts</source>
+      <translation>Atajos de teclado</translation>
+    </message>
+    <message>
+      <source>Open Notes</source>
+      <translation>Abrir Notas</translation>
+    </message>
+    <message>
+      <source>Report a problem</source>
+      <translation>Reportar un problema</translation>
+    </message>
+    <message>
+      <source>Reset Emaki settings</source>
+      <translation>Restablecer la configuración de Emaki</translation>
+    </message>
+    <message>
+      <source>lock screen away password</source>
+      <translation>bloquear pantalla ausente contraseña</translation>
+    </message>
+    <message>
+      <source>log out sign out leave session exit</source>
+      <translation>cerrar sesión salir abandonar</translation>
+    </message>
+    <message>
+      <source>restart reboot computer</source>
+      <translation>reiniciar equipo computadora</translation>
+    </message>
+    <message>
+      <source>shut down power off turn off computer</source>
+      <translation>apagar equipo computadora</translation>
+    </message>
+    <message>
+      <source>dark mode theme night appearance</source>
+      <translation>modo oscuro tema noche apariencia</translation>
+    </message>
+    <message>
+      <source>light mode theme day appearance</source>
+      <translation>modo claro tema día apariencia</translation>
+    </message>
+    <message>
+      <source>night light warm screen evening blue</source>
+      <translation>luz nocturna cálida pantalla noche azul</translation>
+    </message>
+    <message>
+      <source>update upgrade programs system new version</source>
+      <translation>actualizar actualizaciones programas sistema nueva versión</translation>
+    </message>
+    <message>
+      <source>install add get program app software store</source>
+      <translation>instalar agregar programa aplicación software tienda</translation>
+    </message>
+    <message>
+      <source>screenshot capture picture screen print</source>
+      <translation>captura pantalla imagen foto imprimir</translation>
+    </message>
+    <message>
+      <source>record video screencast capture screen</source>
+      <translation>grabar video grabación captura pantalla</translation>
+    </message>
+    <message>
+      <source>clipboard copied paste history</source>
+      <translation>portapapeles copiado pegar historial</translation>
+    </message>
+    <message>
+      <source>emoji smiley symbols characters</source>
+      <translation>emoji emoticón emoticono carita símbolos caracteres</translation>
+    </message>
+    <message>
+      <source>keyboard shortcuts keys hotkeys</source>
+      <translation>atajos teclado teclas combinaciones</translation>
+    </message>
+    <message>
+      <source>notes note write checklist</source>
+      <translation>notas nota escribir lista</translation>
+    </message>
+    <message>
+      <source>report problem bug help feedback</source>
+      <translation>reportar problema error ayuda comentarios</translation>
+    </message>
+    <message>
+      <source>reset defaults restore settings</source>
+      <translation>restablecer predeterminados restaurar configuración</translation>
+    </message>
+    <message>
+      <source>wifi wireless network internet</source>
+      <translation>wifi inalámbrica red internet</translation>
+    </message>
+    <message>
+      <source>bluetooth headphones devices pair</source>
+      <translation>bluetooth audífonos auriculares dispositivos vincular</translation>
+    </message>
+    <message>
+      <source>ethernet cable wired vpn dns internet</source>
+      <translation>ethernet cable cableada vpn dns internet</translation>
+    </message>
+    <message>
+      <source>theme light dark accent colour color</source>
+      <translation>tema claro oscuro color de acento</translation>
+    </message>
+    <message>
+      <source>background picture image desktop</source>
+      <translation>fondo imagen foto escritorio</translation>
+    </message>
+    <message>
+      <source>bar panel dock taskbar hide</source>
+      <translation>barra panel dock ocultar</translation>
+    </message>
+    <message>
+      <source>windows workspaces gaps width focus columns</source>
+      <translation>ventanas espacios de trabajo separación márgenes ancho foco columnas</translation>
+    </message>
+    <message>
+      <source>monitor screen scale resolution</source>
+      <translation>monitor pantalla escala resolución</translation>
+    </message>
+    <message>
+      <source>audio volume speakers microphone</source>
+      <translation>audio sonido volumen bocinas altavoces micrófono</translation>
+    </message>
+    <message>
+      <source>keyboard layout typing repeat</source>
+      <translation>teclado distribución escribir repetición</translation>
+    </message>
+    <message>
+      <source>mouse touchpad trackpad pointer scroll</source>
+      <translation>ratón mouse touchpad panel táctil puntero desplazamiento</translation>
+    </message>
+    <message>
+      <source>notifications alerts do not disturb</source>
+      <translation>notificaciones alertas no molestar</translation>
+    </message>
+    <message>
+      <source>battery power sleep energy</source>
+      <translation>batería energía suspender</translation>
+    </message>
+    <message>
+      <source>lock login password screen</source>
+      <translation>bloqueo inicio de sesión contraseña pantalla</translation>
+    </message>
+    <message>
+      <source>default apps browser mail</source>
+      <translation>aplicaciones predeterminadas navegador correo</translation>
+    </message>
+    <message>
+      <source>updates recovery snapshots maintenance reset</source>
+      <translation>actualizaciones recuperación instantáneas mantenimiento restablecer</translation>
+    </message>
+    <message>
+      <source>privacy security encryption permissions</source>
+      <translation>privacidad seguridad cifrado permisos</translation>
+    </message>
+    <message>
+      <source>language region time date format</source>
+      <translation>idioma región hora fecha formato</translation>
+    </message>
+    <message>
+      <source>users accounts password picture</source>
+      <translation>usuarios cuentas contraseña imagen</translation>
+    </message>
+    <message>
+      <source>disk space storage free</source>
+      <translation>disco espacio almacenamiento libre</translation>
+    </message>
+    <message>
+      <source>about version system information</source>
+      <translation>acerca de versión sistema información</translation>
+    </message>
+    <message>
+      <source>sudo keys</source>
+      <translation>llaves sudo</translation>
+    </message>
+  </context>
+  <context>
     <name>DisplaysService</name>
     <message>
       <source>Display settings returned an invalid response.</source>
@@ -898,6 +1145,13 @@
     <message>
       <source>%1 · Right-click to pin</source>
       <translation>%1 · Clic derecho para fijar</translation>
+    </message>
+  </context>
+  <context>
+    <name>EmojiCatalog</name>
+    <message>
+      <source>Emoji names could not be loaded.</source>
+      <translation>No se pudieron cargar los nombres de los emojis.</translation>
     </message>
   </context>
   <context>
@@ -1390,6 +1644,18 @@
       <source>Choose the app for this window</source>
       <translation>Elige la aplicación para esta ventana</translation>
     </message>
+    <message>
+      <source>Commands</source>
+      <translation>Comandos</translation>
+    </message>
+    <message>
+      <source>Emoji</source>
+      <translation>Emojis</translation>
+    </message>
+    <message>
+      <source>Reading emoji names…</source>
+      <translation>Leyendo los nombres de los emojis…</translation>
+    </message>
   </context>
   <context>
     <name>LauncherItem</name>
@@ -1763,6 +2029,15 @@
     <message>
       <source>Emaki could not lock the screen before sleep.</source>
       <translation>Emaki no pudo bloquear la pantalla antes de la suspensión.</translation>
+    </message>
+    <message>
+      <source>Settings</source>
+      <translation>Configuración</translation>
+    </message>
+    <message>
+      <source>Emaki Calendar</source>
+      <extracomment>Display name for calendar reminders; the application identifier stays unchanged.</extracomment>
+      <translation>Calendario de Emaki</translation>
     </message>
   </context>
   <context>
@@ -2160,8 +2435,8 @@
       <translation>Cierra sesión y vuelve a iniciarla para terminar de actualizar el escritorio.</translation>
     </message>
     <message>
-      <source>Save your work first [Emaki].</source>
-      <translation>Primero guarda tu trabajo [Emaki].</translation>
+      <source>Save your work first.</source>
+      <translation>Guarda tu trabajo primero.</translation>
     </message>
   </context>
   <context>
@@ -2180,6 +2455,7 @@
     </message>
     <message>
       <source>Version %1 · %2 channel</source>
+            <extracomment>%2 is a translated channel name in running text, not a heading.</extracomment>
       <translation>Versión %1 · canal %2</translation>
     </message>
     <message>
@@ -2297,6 +2573,29 @@
     <message>
       <source>Review report</source>
       <translation>Revisar informe</translation>
+    </message>
+    <message>
+      <source>Stable</source>
+      <translation>Estable</translation>
+    </message>
+    <message>
+      <source>Testing</source>
+      <translation>Pruebas</translation>
+    </message>
+    <message>
+      <source>Version %1 · channel unavailable</source>
+      <extracomment>Complete About summary when version or update channel details are missing.</extracomment>
+      <translation>Versión %1 · canal no disponible</translation>
+    </message>
+    <message>
+      <source>Version unavailable · %1 channel</source>
+      <extracomment>Complete About summary when version or update channel details are missing.</extracomment>
+      <translation>Versión no disponible · canal %1</translation>
+    </message>
+    <message>
+      <source>Version and channel unavailable</source>
+      <extracomment>Complete About summary when version or update channel details are missing.</extracomment>
+      <translation>Versión y canal no disponibles</translation>
     </message>
   </context>
   <context>
@@ -2802,6 +3101,106 @@
     <message>
       <source>Enter your current and new password in the terminal.</source>
       <translation>Ingresa tu contraseña actual y la nueva en la terminal.</translation>
+    </message>
+    <message>
+      <source>Theme, accent, wallpaper choice and window gaps</source>
+      <translation>Tema, color de acento, fondo de pantalla elegido y separación de ventanas</translation>
+    </message>
+    <message>
+      <source>Top bar, dock and when they hide</source>
+      <translation>Barra superior, dock y cuándo se ocultan</translation>
+    </message>
+    <message>
+      <source>Apps pinned to the dock</source>
+      <translation>Aplicaciones fijadas en el dock</translation>
+    </message>
+    <message>
+      <source>Mouse, touchpad, key repeat and shortcuts</source>
+      <translation>Mouse, panel táctil, repetición de teclas y atajos de teclado</translation>
+    </message>
+    <message>
+      <source>Default apps</source>
+      <translation>Aplicaciones predeterminadas</translation>
+    </message>
+    <message>
+      <source>Notification rules and Do Not Disturb</source>
+      <translation>Reglas de notificaciones y No molestar</translation>
+    </message>
+    <message>
+      <source>System sounds and Night Light</source>
+      <translation>Sonidos del sistema y luz nocturna</translation>
+    </message>
+    <message>
+      <source>Screen blanking and lock delay</source>
+      <translation>Apagado de pantalla y tiempo antes del bloqueo</translation>
+    </message>
+    <message>
+      <source>Your files, notes, pictures and wallpapers</source>
+      <translation>Tus archivos, notas, imágenes y fondos de pantalla</translation>
+    </message>
+    <message>
+      <source>Settings inside your apps</source>
+      <translation>La configuración dentro de tus aplicaciones</translation>
+    </message>
+    <message>
+      <source>Your own niri configuration</source>
+      <translation>Tu propia configuración de niri</translation>
+    </message>
+    <message>
+      <source>Displays, keyboard layouts, language and time zone</source>
+      <translation>Pantallas, distribuciones de teclado, idioma y zona horaria</translation>
+    </message>
+    <message>
+      <source>Clipboard and notification history</source>
+      <translation>Historial del portapapeles y de notificaciones</translation>
+    </message>
+    <message>
+      <source>Reset</source>
+      <translation>Restablecer</translation>
+    </message>
+    <message>
+      <source>Reset Emaki settings</source>
+      <translation>Restablecer la configuración de Emaki</translation>
+    </message>
+    <message>
+      <source>Return Emaki's own settings to their defaults. Your files and app settings are not touched.</source>
+      <translation>Devuelve la configuración propia de Emaki a sus valores predeterminados. Tus archivos y la configuración de tus aplicaciones no se modifican.</translation>
+    </message>
+    <message>
+      <source>Undo</source>
+      <translation>Deshacer</translation>
+    </message>
+    <message>
+      <source>Reset…</source>
+      <translation>Restablecer…</translation>
+    </message>
+    <message>
+      <source>Review reset</source>
+      <translation>Revisar restablecimiento</translation>
+    </message>
+    <message>
+      <source>These return to their defaults:</source>
+      <translation>Esto vuelve a sus valores predeterminados:</translation>
+    </message>
+    <message>
+      <source>These are not touched:</source>
+      <translation>Esto no se modifica:</translation>
+    </message>
+    <message>
+      <source>A copy of your current Emaki settings is kept, so you can undo the reset.</source>
+      <translation>Se guarda una copia de tu configuración actual de Emaki para que puedas deshacer el restablecimiento.</translation>
+    </message>
+    <message>
+      <source>Cancel</source>
+      <translation>Cancelar</translation>
+    </message>
+    <message>
+      <source>Reset settings</source>
+      <translation>Restablecer configuración</translation>
+    </message>
+    <message>
+      <source>Change…</source>
+      <translation>Cambiar…</translation>
     </message>
   </context>
   <context>
@@ -3466,6 +3865,65 @@
     <message>
       <source>Refresh</source>
       <translation>Actualizar</translation>
+    </message>
+  </context>
+  <context>
+    <name>SettingsReset</name>
+    <message>
+      <source>Emaki settings could not be reset. Try again.</source>
+      <translation>No se pudo restablecer la configuración de Emaki. Inténtalo de nuevo.</translation>
+    </message>
+    <message>
+      <source>Emaki settings are back to their defaults.</source>
+      <translation>La configuración de Emaki volvió a sus valores predeterminados.</translation>
+    </message>
+    <message>
+      <source>Your files and app settings were not changed.</source>
+      <translation>Tus archivos y la configuración de tus aplicaciones no cambiaron.</translation>
+    </message>
+    <message>
+      <source>Undo</source>
+      <translation>Deshacer</translation>
+    </message>
+    <message>
+      <source>Your previous Emaki settings are restored.</source>
+      <translation>Se restauró tu configuración anterior de Emaki.</translation>
+    </message>
+    <message>
+      <source>Dock pins, Night Light and screen blanking are restored. Other settings changed after the reset, so they stay as they are; see History.</source>
+      <translation>Se restauraron las aplicaciones fijadas en el dock, la luz nocturna y el apagado de pantalla. Otros ajustes cambiaron después del restablecimiento, así que se quedan como están; revisa el Historial.</translation>
+    </message>
+    <message>
+      <source>Dock pins, Night Light and screen blanking are restored. Whether other settings were reset is unknown; see History.</source>
+      <translation>Se restauraron las aplicaciones fijadas en el dock, la luz nocturna y el apagado de pantalla. No se sabe si se restablecieron otros ajustes; revisa el Historial.</translation>
+    </message>
+    <message>
+      <source>The reset could not be confirmed. Undo puts back what it can; History shows the rest.</source>
+      <translation>No se pudo confirmar el restablecimiento. Deshacer devuelve lo que puede; el Historial muestra el resto.</translation>
+    </message>
+    <message>
+      <source>Some Emaki settings could not be reset. Undo puts everything back.</source>
+      <translation>No se pudieron restablecer algunos ajustes de Emaki. Deshacer devuelve todo como estaba.</translation>
+    </message>
+    <message>
+      <source>Emaki settings could not be reset, but some may show their defaults until you change a setting or log in again. Try the reset again, or Undo.</source>
+      <translation>No se pudo restablecer la configuración de Emaki, pero algunos ajustes pueden mostrar sus valores predeterminados hasta que cambies un ajuste o vuelvas a iniciar sesión. Intenta restablecer de nuevo o usa Deshacer.</translation>
+    </message>
+    <message>
+      <source>Your Emaki settings were kept. Some may show their defaults until you change a setting or log in again.</source>
+      <translation>Se conservó tu configuración de Emaki. Algunos ajustes pueden mostrar sus valores predeterminados hasta que cambies un ajuste o vuelvas a iniciar sesión.</translation>
+    </message>
+    <message>
+      <source>Your previous Emaki settings could not be restored. Try Undo again.</source>
+      <translation>No se pudo restaurar tu configuración anterior de Emaki. Prueba Deshacer otra vez.</translation>
+    </message>
+    <message>
+      <source>The reset could not be confirmed. Reopen Settings to check your settings.</source>
+      <translation>No se pudo confirmar el restablecimiento. Vuelve a abrir Configuración para revisar tus ajustes.</translation>
+    </message>
+    <message>
+      <source>Emaki settings could not be reset. Nothing was changed.</source>
+      <translation>No se pudo restablecer la configuración de Emaki. No se cambió nada.</translation>
     </message>
   </context>
   <context>
@@ -6214,6 +6672,62 @@ Las extensiones compartidas o comprimidas pueden reducir el espacio recuperado. 
       <source>Protection and permissions for installed assistants.</source>
       <translation>Protección y permisos de los asistentes instalados.</translation>
     </message>
+    <message>
+      <source>Reset Emaki settings</source>
+      <translation>Restablecer la configuración de Emaki</translation>
+    </message>
+    <message>
+      <source>Reset Emaki settings defaults restore undo</source>
+      <translation>Restablecer configuración Emaki valores predeterminados restaurar deshacer</translation>
+    </message>
+    <message>
+      <source>Your files and app settings are not touched.</source>
+      <translation>Tus archivos y la configuración de tus aplicaciones no se modifican.</translation>
+    </message>
+    <message>
+      <source>Return Emaki's own settings to their defaults. Your files and app settings are not touched.</source>
+      <translation>Devuelve la configuración propia de Emaki a sus valores predeterminados. Tus archivos y la configuración de tus aplicaciones no se modifican.</translation>
+    </message>
+    <message>
+      <source>Text</source>
+      <translation>Texto</translation>
+    </message>
+    <message>
+      <source>QR code</source>
+      <translation>Código QR</translation>
+    </message>
+    <message>
+      <source>Text copied</source>
+      <translation>Texto copiado</translation>
+    </message>
+    <message>
+      <source>Code copied</source>
+      <translation>Código copiado</translation>
+    </message>
+    <message>
+      <source>No text found</source>
+      <translation>No se encontró texto</translation>
+    </message>
+    <message>
+      <source>No QR code or barcode found</source>
+      <translation>No se encontró ningún código QR ni de barras</translation>
+    </message>
+    <message>
+      <source>Clipboard unavailable</source>
+      <translation>El portapapeles no está disponible</translation>
+    </message>
+    <message>
+      <source>Open link</source>
+      <translation>Abrir enlace</translation>
+    </message>
+    <message>
+      <source>Text recognition requires tesseract.</source>
+      <translation>Se necesita tesseract para reconocer texto.</translation>
+    </message>
+    <message>
+      <source>QR code recognition requires zbarimg.</source>
+      <translation>Se necesita zbarimg para leer códigos QR.</translation>
+    </message>
   </context>
   <context>
     <name>ShellPalette</name>
@@ -6559,6 +7073,11 @@ Las extensiones compartidas o comprimidas pueden reducir el espacio recuperado. 
     <message>
       <source>The last window action didn’t go through.</source>
       <translation>La última acción sobre la ventana no se realizó.</translation>
+    </message>
+    <message>
+      <source>ddd d MMM</source>
+            <extracomment>Qt date pattern: ddd, d and MMM are fields; put literal words in single quotes.</extracomment>
+      <translation>ddd d 'de' MMM</translation>
     </message>
   </context>
   <context>
@@ -7166,18 +7685,6 @@ Las extensiones compartidas o comprimidas pueden reducir el espacio recuperado. 
       <translation>Hibernar</translation>
     </message>
     <message>
-      <source>%1 now?</source>
-      <translation>¿%1 ahora?</translation>
-    </message>
-    <message>
-      <source>The screen locks first.</source>
-      <translation>Primero se bloquea la pantalla.</translation>
-    </message>
-    <message>
-      <source>Save your work first.</source>
-      <translation>Guarda tu trabajo primero.</translation>
-    </message>
-    <message>
       <source>Keyboard</source>
       <translation>Teclado</translation>
     </message>
@@ -7192,6 +7699,66 @@ Las extensiones compartidas o comprimidas pueden reducir el espacio recuperado. 
     <message>
       <source>Open settings</source>
       <translation>Abrir configuración</translation>
+    </message>
+    <message>
+      <source>Restart now?
+Save your work first.</source>
+      <translation>¿Reiniciar ahora?
+Guarda tu trabajo primero.</translation>
+    </message>
+    <message>
+      <source>Sleep now?
+The screen locks first.</source>
+      <translation>¿Suspender ahora?
+La pantalla se bloquea primero.</translation>
+    </message>
+    <message>
+      <source>Log out now?
+Save your work first.</source>
+      <translation>¿Cerrar sesión ahora?
+Guarda tu trabajo primero.</translation>
+    </message>
+    <message>
+      <source>Hibernate now?
+The screen locks first.</source>
+      <translation>¿Hibernar ahora?
+La pantalla se bloquea primero.</translation>
+    </message>
+    <message>
+      <source>Shut down now?
+Save your work first.</source>
+      <translation>¿Apagar ahora?
+Guarda tu trabajo primero.</translation>
+    </message>
+    <message>
+      <source>Lock</source>
+      <comment>power row icon label</comment>
+      <translation>Bloquear</translation>
+    </message>
+    <message>
+      <source>Sleep</source>
+      <comment>power row icon label</comment>
+      <translation>Suspender</translation>
+    </message>
+    <message>
+      <source>Restart</source>
+      <comment>power row icon label</comment>
+      <translation>Reiniciar</translation>
+    </message>
+    <message>
+      <source>Shut down</source>
+      <comment>power row icon label</comment>
+      <translation>Apagar</translation>
+    </message>
+    <message>
+      <source>Log out</source>
+      <comment>power row icon label</comment>
+      <translation>Cerrar sesión</translation>
+    </message>
+    <message>
+      <source>Hibernate</source>
+      <comment>power row icon label</comment>
+      <translation>Hibernar</translation>
     </message>
   </context>
   <context>
@@ -7513,8 +8080,8 @@ Las extensiones compartidas o comprimidas pueden reducir el espacio recuperado. 
       <translation>Novedades</translation>
     </message>
     <message>
-      <source>What's new in Emaki 0.11</source>
-      <translation>Novedades de Emaki 0.11</translation>
+      <source>What's new in Emaki 0.12</source>
+      <translation>Novedades de Emaki 0.12</translation>
     </message>
     <message>
       <source>Close what's new</source>
@@ -7529,44 +8096,56 @@ Las extensiones compartidas o comprimidas pueden reducir el espacio recuperado. 
       <translation>Cambiar idioma</translation>
     </message>
     <message>
-      <source>Clocks in the clock shade</source>
-      <translation>Relojes en el panel del reloj</translation>
+      <source>Emaki speaks German, French and Russian</source>
+      <translation>Emaki habla alemán, francés y ruso</translation>
     </message>
     <message>
-      <source>A timer with a Pomodoro preset, a stopwatch, alarms and world clocks are now in the clock shade.</source>
-      <translation>El panel del reloj ahora incluye un temporizador con un ajuste Pomodoro, un cronómetro, alarmas y relojes mundiales.</translation>
+      <source>German, French and Russian are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time.</source>
+      <translation>El alemán, el francés y el ruso están disponibles en todo el escritorio, Programas y actualizaciones, el instalador y Notas. Elige tu idioma en Configuración › Región y hora.</translation>
     </message>
     <message>
-      <source>Emaki speaks Spanish and Portuguese</source>
-      <translation>Emaki habla español y portugués</translation>
+      <source>A command menu and emoji</source>
+      <translation>Un menú de comandos y emojis</translation>
     </message>
     <message>
-      <source>Latin American Spanish and Brazilian Portuguese are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time, then sign out and back in.</source>
-      <translation>El español latinoamericano y el portugués de Brasil están disponibles en todo el escritorio, Programas y actualizaciones, el instalador y Notas. Elige tu idioma en Configuración › Región y hora, luego cierra sesión y vuelve a iniciarla.</translation>
+      <source>Super+K opens every system action in the launcher: settings pages, appearance, Night Light, restart and more. Super+; finds an emoji by name and copies it.</source>
+      <translation>Super+K abre todas las acciones del sistema en el lanzador: páginas de configuración, apariencia, Luz nocturna, reiniciar y más. Super+; busca un emoji por nombre y lo copia.</translation>
     </message>
     <message>
-      <source>Update reminders from Emaki</source>
-      <translation>Recordatorios de actualización de Emaki</translation>
+      <source>Copy text and QR codes from the screen</source>
+      <translation>Copia texto y códigos QR de la pantalla</translation>
     </message>
     <message>
-      <source>Emaki tells you when updates are ready and opens Programs &amp; Updates.</source>
-      <translation>Emaki te avisa cuando hay actualizaciones listas y abre Programas y actualizaciones.</translation>
+      <source>In Capture, choose Text or QR code and select an area: Emaki copies what it reads. Recognition runs on your computer.</source>
+      <translation>En Capturar, elige Texto o Código QR y selecciona un área: Emaki copia lo que lee. El reconocimiento se realiza en tu computadora.</translation>
     </message>
     <message>
-      <source>Discover is no longer part of the Rich set.</source>
-      <translation>Discover ya no forma parte del conjunto Rich.</translation>
+      <source>Developer kits and websites as apps</source>
+      <translation>Kits de desarrollo y sitios web como aplicaciones</translation>
+    </message>
+    <message>
+      <source>Programs &amp; Updates installs Python, Node.js, Rust, Go and Docker in one step, and turns a website into its own app in Firefox.</source>
+      <translation>Programas y actualizaciones instala Python, Node.js, Rust, Go y Docker en un solo paso, y convierte un sitio web en su propia aplicación en Firefox.</translation>
+    </message>
+    <message>
+      <source>Reset Emaki's settings</source>
+      <translation>Restablece la configuración de Emaki</translation>
+    </message>
+    <message>
+      <source>Settings › Updates &amp; Recovery returns Emaki's own settings to their defaults. Your files and app settings stay, and Undo brings everything back.</source>
+      <translation>Configuración › Actualizaciones y recuperación restablece la configuración propia de Emaki a sus valores predeterminados. Tus archivos y la configuración de tus aplicaciones se conservan, y Deshacer restaura todo.</translation>
     </message>
     <message>
       <source>Fixes</source>
       <translation>Correcciones</translation>
     </message>
     <message>
-      <source>• Small downloads show their real size
-• The password card no longer flashes an error while it closes
-• Install buttons stay available while the catalogue refreshes</source>
-      <translation>• Las descargas pequeñas muestran su tamaño real
-• La tarjeta de contraseña ya no muestra un error al cerrarse
-• Los botones de instalar siguen disponibles mientras se actualiza el catálogo</translation>
+      <source>• Numbers, sizes and dates follow your language
+• Translated buttons show their whole label
+• Every launcher tab stays within reach</source>
+      <translation>• Los números, tamaños y fechas siguen tu idioma
+• Los botones traducidos muestran su texto completo
+• Todas las pestañas del lanzador quedan al alcance</translation>
     </message>
   </context>
 </TS>

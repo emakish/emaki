@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "ManagerLogic.js" as Logic
 import "file:@EMAKI_DATADIR@/shell" as Shell
 import QtQuick.Layouts
 import QtQuick.Controls as C
@@ -129,7 +130,7 @@ ColumnLayout {
     ManagerLabel {
         objectName: "reviews-aur-votes"
         visible: reviews.aur
-        text: reviews.aur ? Shell.Translation.englishPlural(qsTranslate("ProgramReviews", "%1 vote(s) on the AUR · popularity %2", "", reviews.program.votes || 0), reviews.program.votes || 0).arg(Number(reviews.program.votes || 0).toLocaleString(Qt.locale("en_US"), "f", 0)).arg(Number(reviews.program.popularity || 0).toFixed(2)) : ""
+        text: reviews.aur ? Shell.Translation.englishPlural(qsTranslate("ProgramReviews", "%1 vote(s) on the AUR · popularity %2", "", reviews.program.votes || 0), reviews.program.votes || 0).arg(Logic.groupedCount(reviews.program.votes || 0)).arg(Logic.decimal(reviews.program.popularity || 0, 2)) : ""
         font.weight: Font.DemiBold
     }
     ManagerLabel {

@@ -38,6 +38,19 @@ def filesystem(identity, free):
 
 
 class Space(unittest.TestCase):
+    def test_human_sizes_follow_the_selected_language_without_changing_numbers(self):
+        cases = {'en': ('1.5 GB', '150.2 MB'), 'de': ('1,5 GB', '150,2 MB'),
+                 'fr': ('1,5\u00a0Go', '150,2\u00a0Mo'), 'es': ('1,5 GB', '150,2 MB'),
+                 'pt_BR': ('1,5 GB', '150,2 MB'), 'ru': ('1,5 GB', '150,2 MB')}
+        for language, expected in cases.items():
+            with self.subTest(language=language), patch.dict(os.environ, {
+                    'EMAKI_LANGUAGE': language, 'LC_ALL': 'C',
+                    'EMAKI_LOCALE_DIR': str(ROOT / 'i18n/locale')}), \
+                    patch.object(space, '_', space.translation('programs').gettext):
+                self.assertEqual((space.human_size(1500000000), space.human_size(150200000)), expected)
+        with patch.dict(os.environ, {'EMAKI_LANGUAGE': 'en'}), patch.object(space, '_', lambda text: text):
+            self.assertEqual(space.human_size(1234500000000), '1234.5 GB')
+
     def test_native_summary_replacements_and_rounding(self):
         download, net, installed = space.transaction_sizes(SUMMARY)
         self.assertEqual(download, 13112443)

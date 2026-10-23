@@ -1,0 +1,125 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#, python-format
+msgid "%(path)s: the folder is a broken symbolic link."
+msgstr "%(path)s: Der Ordner ist eine ungültige symbolische Verknüpfung."
+
+msgid "A note cannot be larger than 1 MiB."
+msgstr "Eine Notiz darf nicht größer als 1 MiB sein."
+
+msgid "A request must be an object."
+msgstr "Eine Anfrage muss ein Objekt sein."
+
+msgid "Action must be text."
+msgstr "Die Aktion muss Text sein."
+
+msgid "All day"
+msgstr "Ganztägig"
+
+msgid "An event identifier is required."
+msgstr "Eine Ereigniskennung ist erforderlich."
+
+msgid "Cannot watch notes"
+msgstr "Notizen können nicht überwacht werden"
+
+msgid "Duration must be a positive number of minutes."
+msgstr "Die Dauer muss eine positive Anzahl von Minuten sein."
+
+msgid "Emaki Notes needs a user runtime directory"
+msgstr "Emaki Notizen benötigt ein Laufzeitverzeichnis für den Benutzer"
+
+msgid "Enter a date as YYYY-MM-DD."
+msgstr "Geben Sie ein Datum im Format JJJJ-MM-TT ein."
+
+msgid "Enter a start time as HH:MM."
+msgstr "Geben Sie eine Startzeit im Format HH:MM ein."
+
+msgid "Enter an event title on one line."
+msgstr "Geben Sie einen Ereignistitel in einer Zeile ein."
+
+msgid "Enter one task line."
+msgstr "Geben Sie eine Aufgabenzeile ein."
+
+msgid "Invalid event identifier."
+msgstr "Ungültige Ereigniskennung."
+
+msgid "Invalid note identifier."
+msgstr "Ungültige Notizkennung."
+
+msgid "Larger than 1 MiB; open it in a text editor."
+msgstr "Größer als 1 MiB; öffnen Sie die Datei in einem Texteditor."
+
+msgid "Not a regular file."
+msgstr "Keine reguläre Datei."
+
+msgid "Note text must be text."
+msgstr "Der Notiztext muss Text sein."
+
+msgid "Open Emaki Notes as a regular user."
+msgstr "Öffnen Sie Emaki Notizen als normaler Benutzer (nicht als root)."
+
+msgid "Reminder must be minutes before the event."
+msgstr "Die Erinnerung muss in Minuten vor dem Ereignis angegeben werden."
+
+msgid "Symbolic links cannot be edited as events."
+msgstr "Symbolische Verknüpfungen können nicht als Ereignisse bearbeitet werden."
+
+msgid "Symbolic links cannot be edited as notes."
+msgstr "Symbolische Verknüpfungen können nicht als Notizen bearbeitet werden."
+
+msgid "Task line is missing."
+msgstr "Die Aufgabenzeile fehlt."
+
+msgid "The Emaki Notes window could not be shown."
+msgstr "Das Fenster von Emaki Notizen konnte nicht angezeigt werden."
+
+msgid "The notes metadata is invalid; restore it before pinning."
+msgstr "Die Metadaten der Notizen sind ungültig; stellen Sie sie vor dem Anheften wieder her."
+
+msgid "The notes metadata is not an object."
+msgstr "Die Metadaten der Notizen sind kein Objekt."
+
+msgid "This event cannot be stored; check its date and title."
+msgstr "Dieses Ereignis kann nicht gespeichert werden; prüfen Sie Datum und Titel."
+
+msgid "This event was removed elsewhere."
+msgstr "Dieses Ereignis wurde anderswo entfernt."
+
+msgid "This item changed elsewhere. Your edit has been kept; reload or save it as a new note."
+msgstr "Dieser Eintrag wurde anderswo geändert. Ihre Bearbeitung bleibt erhalten; laden Sie neu oder speichern Sie sie als neue Notiz."
+
+msgid "This line is not a task."
+msgstr "Diese Zeile ist keine Aufgabe."
+
+msgid "This note was removed elsewhere. Save your edit as a new note."
+msgstr "Diese Notiz wurde anderswo entfernt. Speichern Sie Ihre Bearbeitung als neue Notiz."
+
+msgid "Unknown action."
+msgstr "Unbekannte Aktion."
+
+msgid "Unknown notes action."
+msgstr "Unbekannte Notizaktion."
+
+msgid "Unsupported reminder trigger."
+msgstr "Nicht unterstützter Erinnerungsauslöser."
+
+msgid "Untitled note"
+msgstr "Unbenannte Notiz"
+
+msgid "Usage: backend.py {serve|remind|snapshot}"
+msgstr "Aufruf: backend.py {serve|remind|snapshot}"
+
+msgid "Usage: emaki-notes [--note ID]"
+msgstr "Aufruf: emaki-notes [--note ID]"
+
+msgid "not an object"
+msgstr "kein Objekt"

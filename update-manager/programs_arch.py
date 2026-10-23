@@ -302,11 +302,19 @@ def install_plan(target, cache=None, refresh=False, database=None):
         with private_database(cache, refresh=refresh) as private:
             return install_plan(target, database=private)
     packages, installed = inventory(database)
-    if target not in packages:
+    import programs_kits as kits
+    kit = kits.target_info(target)
+    if kit and kit['action'] != 'install':
+        return kits.remove_plan(kit['id'])
+    if kit:
+        conflict = kits.conflict_message(kit['id'], installed)
+        if conflict:
+            return dict(ok=False, code='conflict', message=conflict)
+    if not kit and target not in packages:
         return {'ok': False, 'code': 'unavailable', 'action': 'install', 'kind': 'arch', 'target': target,
                 'message': _('This repository program is no longer available.')}
     try:
-        targets = install_targets(target, packages)
+        targets = kits.targets(kit, packages) if kit else install_targets(target, packages)
     except ValueError as error:
         return {'ok': False, 'code': 'unavailable', 'action': 'install', 'kind': 'arch',
                 'target': target, 'message': str(error)}

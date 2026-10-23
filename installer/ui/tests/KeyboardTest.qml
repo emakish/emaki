@@ -12,6 +12,7 @@ import ".." as UI
 // production view: a password field takes input only while niri runs the layout it needs.
 ShellRoot {
     id: test
+    readonly property var fixtureController: controller
     property bool failed: false
     property int stage: 0
     property real stageStarted: Date.now()
@@ -92,7 +93,7 @@ ShellRoot {
         UI.InstallerView {
             id: content
             anchors.fill: parent
-            controller: controller
+            controller: test.fixtureController
         }
         TestCase {
             id: input

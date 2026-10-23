@@ -12,23 +12,11 @@ msgstr ""
 msgid " (Rich software requires emaki-apps)"
 msgstr "[ (Ŕîçĥ šöƒţŵàŕé ŕéǫûîŕéš éɱàķî-àþþš)···········]"
 
-msgid " Emaki could not check its files; its fallback loader will not be changed."
-msgstr "[ Éɱàķî çöûļð ñöţ çĥéçķ îţš ƒîļéš; îţš ƒàļļƀàçķ ļöàðéŕ ŵîļļ ñöţ ƀé çĥàñĝéð.························]"
-
-msgid " It holds another system's startup files; its fallback loader will not be changed."
-msgstr "[ Îţ ĥöļðš àñöţĥéŕ šÿšţéɱ'š šţàŕţûþ ƒîļéš; îţš ƒàļļƀàçķ ļöàðéŕ ŵîļļ ñöţ ƀé çĥàñĝéð.···························]"
-
 msgid " The Windows data partition passed post-shrink verification before loader installation. Disk changes have already been made. Do not retry installation. Save the installation log to another device and seek recovery help before changing this disk."
 msgstr "[ Ţĥé Ŵîñðöŵš ðàţà þàŕţîţîöñ þàššéð þöšţ-šĥŕîñķ ṽéŕîƒîçàţîöñ ƀéƒöŕé ļöàðéŕ îñšţàļļàţîöñ. Ðîšķ çĥàñĝéš ĥàṽé àļŕéàðÿ ƀééñ ɱàðé. Ðö ñöţ ŕéţŕÿ îñšţàļļàţîöñ. Šàṽé ţĥé îñšţàļļàţîöñ ļöĝ ţö àñöţĥéŕ ðéṽîçé àñð šééķ ŕéçöṽéŕÿ ĥéļþ ƀéƒöŕé çĥàñĝîñĝ ţĥîš ðîšķ.····················································································]"
 
-msgid " has no country."
-msgstr "[ ĥàš ñö çöûñţŕÿ.····]"
-
 msgid "(no reply)"
 msgstr "[(ñö ŕéþļÿ)··]"
-
-msgid ", encrypted (LUKS2)"
-msgstr "[, éñçŕÿþţéð (ĻÛĶŠ2)·····]"
 
 msgid "--follow combines only with --plan --yes"
 msgstr "[--ƒöļļöŵ çöɱƀîñéš öñļÿ ŵîţĥ --þļàñ --ÿéš············]"
@@ -77,6 +65,9 @@ msgstr "[À ñéŵ þàŕţîţîöñ ļîéš öûţšîðé ţĥé šþàçé 
 
 msgid "A new partition must start and end on whole MiB inside the free space."
 msgstr "[À ñéŵ þàŕţîţîöñ ɱûšţ šţàŕţ àñð éñð öñ ŵĥöļé ṀîƁ îñšîðé ţĥé ƒŕéé šþàçé.·······················]"
+
+msgid "A new partition needs at least 1 GiB."
+msgstr "[À ñéŵ þàŕţîţîöñ ñééðš àţ ļéàšţ 1 ĜîƁ.···········]"
 
 msgid "A new partition overlaps another partition."
 msgstr "[À ñéŵ þàŕţîţîöñ öṽéŕļàþš àñöţĥéŕ þàŕţîţîöñ.··············]"
@@ -253,15 +244,38 @@ msgstr "[Çàññöţ ŕûñ {value1}: {value2}.·········]"
 msgid "Cannot safely inspect the Windows hibernation file."
 msgstr "[Çàññöţ šàƒéļÿ îñšþéçţ ţĥé Ŵîñðöŵš ĥîƀéŕñàţîöñ ƒîļé.················]"
 
-msgid "Cannot verify GPT partition "
-msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ ········]"
+msgid "Cannot verify GPT partition GUID."
+msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ ĜÛÎÐ.··········]"
+
+msgid "Cannot verify GPT partition attributes."
+msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ àţţŕîƀûţéš.············]"
+
+msgid "Cannot verify GPT partition end."
+msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ éñð.··········]"
+
+msgid "Cannot verify GPT partition name."
+msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ ñàɱé.··········]"
+
+msgid "Cannot verify GPT partition start."
+msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ šţàŕţ.··········]"
+
+msgid "Cannot verify GPT partition type."
+msgstr "[Çàññöţ ṽéŕîƒÿ ĜÞŢ þàŕţîţîöñ ţÿþé.··········]"
 
 msgid "Cannot verify NTFS, hibernation state or GPT metadata: "
 msgstr "[Çàññöţ ṽéŕîƒÿ ÑŢƑŠ, ĥîƀéŕñàţîöñ šţàţé öŕ ĜÞŢ ɱéţàðàţà: ··················]"
 
 #, python-brace-format
-msgid "Cannot verify that {value1} is the only device of {value2}."
-msgstr "[Çàññöţ ṽéŕîƒÿ ţĥàţ {value1} îš ţĥé öñļÿ ðéṽîçé öƒ {value2}.···················]"
+msgid "Cannot verify that {value1} is the only device of a Btrfs filesystem."
+msgstr "[Çàññöţ ṽéŕîƒÿ ţĥàţ {value1} îš ţĥé öñļÿ ðéṽîçé öƒ à Ɓţŕƒš ƒîļéšÿšţéɱ.·······················]"
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of a RAID array."
+msgstr "[Çàññöţ ṽéŕîƒÿ ţĥàţ {value1} îš ţĥé öñļÿ ðéṽîçé öƒ à ŔÀÎÐ àŕŕàÿ.·····················]"
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of an LVM volume group."
+msgstr "[Çàññöţ ṽéŕîƒÿ ţĥàţ {value1} îš ţĥé öñļÿ ðéṽîçé öƒ àñ ĻṼṀ ṽöļûɱé ĝŕöûþ.·······················]"
 
 #, python-brace-format
 msgid "Cannot write {value1}: {value2}."
@@ -305,9 +319,6 @@ msgstr "[Çĥööšé ŵĥéţĥéŕ ţö éñçŕÿþţ ţĥé ðîšķ àñð 
 
 msgid "Cleanup failed: "
 msgstr "[Çļéàñûþ ƒàîļéð: ····]"
-
-msgid "Close it [cryptsetup close]"
-msgstr "[Çļöšé îţ [çŕÿþţšéţûþ çļöšé]········]"
 
 msgid "Config must be an object."
 msgstr "[Çöñƒîĝ ɱûšţ ƀé àñ öƀĵéçţ.·······]"
@@ -354,8 +365,12 @@ msgid "Create a new GPT partition table on {value1}; the disk is empty."
 msgstr "[Çŕéàţé à ñéŵ ĜÞŢ þàŕţîţîöñ ţàƀļé öñ {value1}; ţĥé ðîšķ îš éɱþţÿ.·····················]"
 
 #, python-brace-format
-msgid "Create partition {value1}: {value2}, {value3}{value4}; use: {value5}."
-msgstr "[Çŕéàţé þàŕţîţîöñ {value1}: {value2}, {value3}{value4}; ûšé: {value5}.·······················]"
+msgid "Create partition {value1}: {value2}, {value3}, encrypted (LUKS2); use: {value5}."
+msgstr "[Çŕéàţé þàŕţîţîöñ {value1}: {value2}, {value3}, éñçŕÿþţéð (ĻÛĶŠ2); ûšé: {value5}.··························]"
+
+#, python-brace-format
+msgid "Create partition {value1}: {value2}, {value3}; use: {value5}."
+msgstr "[Çŕéàţé þàŕţîţîöñ {value1}: {value2}, {value3}; ûšé: {value5}.····················]"
 
 msgid "Create the partitions for the new partition table."
 msgstr "[Çŕéàţé ţĥé þàŕţîţîöñš ƒöŕ ţĥé ñéŵ þàŕţîţîöñ ţàƀļé.················]"
@@ -370,9 +385,6 @@ msgstr "[ÐĶṀŠ ɱöðûļé {value1}/{value2} ƒöŕ {value3} ĥàš ñö ƀ
 #, python-brace-format
 msgid "DKMS module {value1}/{value2} for {value3} is not signed by the machine key: "
 msgstr "[ÐĶṀŠ ɱöðûļé {value1}/{value2} ƒöŕ {value3} îš ñöţ šîĝñéð ƀÿ ţĥé ɱàçĥîñé ķéÿ: ·························]"
-
-msgid "Deactivate it [lvchange -an]"
-msgstr "[Ðéàçţîṽàţé îţ [ļṽçĥàñĝé -àñ]········]"
 
 #, python-brace-format
 msgid "Delete partition {value1} ({value2}): all its files are lost."
@@ -479,6 +491,18 @@ msgstr "[Éñçŕÿþţîöñ: ĻÛĶŠ2 ŕööţ, šéþàŕàţé ðîšķ þ�
 msgid "Encryption: off."
 msgstr "[Éñçŕÿþţîöñ: öƒƒ.····]"
 
+msgid "English (Colemak)"
+msgstr "[Éñĝļîšĥ (Çöļéɱàķ)····]"
+
+msgid "English (Dvorak)"
+msgstr "[Éñĝļîšĥ (Ðṽöŕàķ)····]"
+
+msgid "English (UK)"
+msgstr "[Éñĝļîšĥ (ÛĶ)···]"
+
+msgid "English (US)"
+msgstr "[Éñĝļîšĥ (ÛŠ)···]"
+
 msgid "Erase all partitions and create a new GPT partition table."
 msgstr "[Éŕàšé àļļ þàŕţîţîöñš àñð çŕéàţé à ñéŵ ĜÞŢ þàŕţîţîöñ ţàƀļé.···················]"
 
@@ -502,11 +526,18 @@ msgid "Finding required packages (pacman)."
 msgstr "[Ƒîñðîñĝ ŕéǫûîŕéð þàçķàĝéš (þàçɱàñ).···········]"
 
 #, python-brace-format
-msgid "Format partition {value1} ({value2}, {value3}) as {value4}{value5}: its files are lost; use: {value6}."
-msgstr "[Ƒöŕɱàţ þàŕţîţîöñ {value1} ({value2}, {value3}) àš {value4}{value5}: îţš ƒîļéš àŕé ļöšţ; ûšé: {value6}.··································]"
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}, encrypted (LUKS2): its files are lost; use: {value6}."
+msgstr "[Ƒöŕɱàţ þàŕţîţîöñ {value1} ({value2}, {value3}) àš {value4}, éñçŕÿþţéð (ĻÛĶŠ2): îţš ƒîļéš àŕé ļöšţ; ûšé: {value6}.······································]"
+
+#, python-brace-format
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}: its files are lost; use: {value6}."
+msgstr "[Ƒöŕɱàţ þàŕţîţîöñ {value1} ({value2}, {value3}) àš {value4}: îţš ƒîļéš àŕé ļöšţ; ûšé: {value6}.·······························]"
 
 msgid "Freed extent overlaps another partition."
 msgstr "[Ƒŕééð éẋţéñţ öṽéŕļàþš àñöţĥéŕ þàŕţîţîöñ.············]"
+
+msgid "French"
+msgstr "[Ƒŕéñçĥ·]"
 
 #, python-brace-format
 msgid "Fresh Emaki {value1} install"
@@ -538,6 +569,9 @@ msgstr "[ĜŔÛƁ'š ŠƁÀŢ ðàţà ñàɱéš ñö ĜŔÛƁ ṽéŕšîöñ.
 msgid "GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority."
 msgstr "[ĜŔÛƁ, ļîñûẋ + ļîñûẋ-ļţš; /ƀööţ îñšîðé ŕööţ; žŕàɱ ŵîţĥ ĥîĝĥéŕ šŵàþ þŕîöŕîţÿ.·························]"
 
+msgid "German"
+msgstr "[Ĝéŕɱàñ·]"
+
 #, python-brace-format
 msgid "Graphics controller (PCI {value1:04x}:"
 msgstr "[Ĝŕàþĥîçš çöñţŕöļļéŕ (ÞÇÎ {value1:04x}:············]"
@@ -556,8 +590,8 @@ msgid "Hibernation: off."
 msgstr "[Ĥîƀéŕñàţîöñ: öƒƒ.····]"
 
 #, python-brace-format
-msgid "Hibernation: reserve {value1:,} bytes ({value2:.2f} GiB), equal to RAM."
-msgstr "[Ĥîƀéŕñàţîöñ: ŕéšéŕṽé {value1:,} ƀÿţéš ({value2:.2f} ĜîƁ), éǫûàļ ţö ŔÀṀ.·······················]"
+msgid "Hibernation: reserve {value1} bytes ({value2} GiB), equal to RAM."
+msgstr "[Ĥîƀéŕñàţîöñ: ŕéšéŕṽé {value1} ƀÿţéš ({value2} ĜîƁ), éǫûàļ ţö ŔÀṀ.·····················]"
 
 msgid "Hostname must be one DNS label (1–63 characters)."
 msgstr "[Ĥöšţñàɱé ɱûšţ ƀé öñé ÐÑŠ ļàƀéļ (1–63 çĥàŕàçţéŕš).················]"
@@ -670,6 +704,14 @@ msgstr "[Ĵöƀ îš ñöţ ŕéţàîñéð ƀÿ ţĥîš ðàéɱöñ.····
 #, python-brace-format
 msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}."
 msgstr "[Ķééþ þàŕţîţîöñ {value1} ({value2}, {value3}, {value4}) àñð îţš ƒîļéš; ûšé: {value5}.····························]"
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. Emaki could not check its files; its fallback loader will not be changed."
+msgstr "[Ķééþ þàŕţîţîöñ {value1} ({value2}, {value3}, {value4}) àñð îţš ƒîļéš; ûšé: {value5}. Éɱàķî çöûļð ñöţ çĥéçķ îţš ƒîļéš; îţš ƒàļļƀàçķ ļöàðéŕ ŵîļļ ñöţ ƀé çĥàñĝéð.······················································]"
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. It holds another system's startup files; its fallback loader will not be changed."
+msgstr "[Ķééþ þàŕţîţîöñ {value1} ({value2}, {value3}, {value4}) àñð îţš ƒîļéš; ûšé: {value5}. Îţ ĥöļðš àñöţĥéŕ šÿšţéɱ'š šţàŕţûþ ƒîļéš; îţš ƒàļļƀàçķ ļöàðéŕ ŵîļļ ñöţ ƀé çĥàñĝéð.·························································]"
 
 msgid "Kernel partition size differs after resize."
 msgstr "[Ķéŕñéļ þàŕţîţîöñ šîžé ðîƒƒéŕš àƒţéŕ ŕéšîžé.··············]"
@@ -973,8 +1015,12 @@ msgid "Partition {value1} holds {value2}. Emaki does not change it; delete the p
 msgstr "[Þàŕţîţîöñ {value1} ĥöļðš {value2}. Éɱàķî ðöéš ñöţ çĥàñĝé îţ; ðéļéţé ţĥé þàŕţîţîöñ ţö ûšé îţš šþàçé.·································]"
 
 #, python-brace-format
-msgid "Partition {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
-msgstr "[Þàŕţîţîöñ {value1}: {value2} {value3}, {value4:.2f} ĜîƁ; {value5}.······················]"
+msgid "Partition {value1}: format {value3}, {value4} GiB; {value5}."
+msgstr "[Þàŕţîţîöñ {value1}: ƒöŕɱàţ {value3}, {value4} ĜîƁ; {value5}.···················]"
+
+#, python-brace-format
+msgid "Partition {value1}: preserve {value3}, {value4} GiB; {value5}."
+msgstr "[Þàŕţîţîöñ {value1}: þŕéšéŕṽé {value3}, {value4} ĜîƁ; {value5}.····················]"
 
 msgid "Partitions not listed here are not changed."
 msgstr "[Þàŕţîţîöñš ñöţ ļîšţéð ĥéŕé àŕé ñöţ çĥàñĝéð.··············]"
@@ -984,6 +1030,12 @@ msgstr "[Þàššŵöŕð ɱûšţ ƀé ñöñéɱþţÿ àñð çöñţàîñ �
 
 msgid "Plan token expired; review a new plan."
 msgstr "[Þļàñ ţöķéñ éẋþîŕéð; ŕéṽîéŵ à ñéŵ þļàñ.············]"
+
+msgid "Portuguese"
+msgstr "[Þöŕţûĝûéšé··]"
+
+msgid "Portuguese (Brazil)"
+msgstr "[Þöŕţûĝûéšé (Ɓŕàžîļ)·····]"
 
 msgid "Preparing language support (locale-gen)."
 msgstr "[Þŕéþàŕîñĝ ļàñĝûàĝé šûþþöŕţ (ļöçàļé-ĝéñ).············]"
@@ -1067,6 +1119,9 @@ msgstr "[Ŕûñ ţĥé ŕéþàîŕ àš ŕööţ: šûðö éɱàķî-ƀööţ-
 msgid "Running package setup step {value1} of {value2} (pacman: {value3})."
 msgstr "[Ŕûññîñĝ þàçķàĝé šéţûþ šţéþ {value1} öƒ {value2} (þàçɱàñ: {value3}).······················]"
 
+msgid "Russian"
+msgstr "[Ŕûššîàñ·]"
+
 msgid "STOP: NTFS resize did not confirm success. Partition table untouched; inspect Windows before retrying."
 msgstr "[ŠŢÖÞ: ÑŢƑŠ ŕéšîžé ðîð ñöţ çöñƒîŕɱ šûççéšš. Þàŕţîţîöñ ţàƀļé ûñţöûçĥéð; îñšþéçţ Ŵîñðöŵš ƀéƒöŕé ŕéţŕÿîñĝ.··································]"
 
@@ -1142,11 +1197,14 @@ msgstr "[Šöƒţŵàŕé: ··]"
 msgid "Some packages need different versions of each other. Wait for matching packages, then try the full update again."
 msgstr "[Šöɱé þàçķàĝéš ñééð ðîƒƒéŕéñţ ṽéŕšîöñš öƒ éàçĥ öţĥéŕ. Ŵàîţ ƒöŕ ɱàţçĥîñĝ þàçķàĝéš, ţĥéñ ţŕÿ ţĥé ƒûļļ ûþðàţé àĝàîñ.······································]"
 
+msgid "Spanish"
+msgstr "[Šþàñîšĥ·]"
+
+msgid "Spanish (Latin American)"
+msgstr "[Šþàñîšĥ (Ļàţîñ Àɱéŕîçàñ)·······]"
+
 msgid "Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there."
 msgstr "[Šţàŕţ ţĥé çöɱþûţéŕ ƒŕöɱ ţĥé Éɱàķî îñšţàļļàţîöñ ÛŠƁ àñð ŕûñ šûðö éɱàķî-ƀööţ-ŕéþàîŕ ţĥéŕé.·····························]"
-
-msgid "Stop it [mdadm --stop]"
-msgstr "[Šţöþ îţ [ɱðàðɱ --šţöþ]······]"
 
 #, python-brace-format
 msgid "Stopping target process {value1}: {value2}"
@@ -1755,8 +1813,9 @@ msgstr "[Ŵàŕñîñĝ: {target} çöûļð ñöţ ƀé ûñɱöûñţéð: {er
 msgid "Wi-Fi country could not be set; continuing with the time zone."
 msgstr "[Ŵî-Ƒî çöûñţŕÿ çöûļð ñöţ ƀé šéţ; çöñţîñûîñĝ ŵîţĥ ţĥé ţîɱé žöñé.····················]"
 
-msgid "Wi-Fi country left unset: timezone "
-msgstr "[Ŵî-Ƒî çöûñţŕÿ ļéƒţ ûñšéţ: ţîɱéžöñé ···········]"
+#, python-brace-format
+msgid "Wi-Fi country left unset: timezone {timezone} has no country."
+msgstr "[Ŵî-Ƒî çöûñţŕÿ ļéƒţ ûñšéţ: ţîɱéžöñé {timezone} ĥàš ñö çöûñţŕÿ.····················]"
 
 msgid "Wi-Fi was not copied; join it again after restarting."
 msgstr "[Ŵî-Ƒî ŵàš ñöţ çöþîéð; ĵöîñ îţ àĝàîñ àƒţéŕ ŕéšţàŕţîñĝ.·················]"
@@ -1820,8 +1879,8 @@ msgid "Windows is encrypted with BitLocker, so Emaki cannot make room next to it
 msgstr "[Ŵîñðöŵš îš éñçŕÿþţéð ŵîţĥ ƁîţĻöçķéŕ, šö Éɱàķî çàññöţ ɱàķé ŕööɱ ñéẋţ ţö îţ. Ŵîñðöŵš ŵàš ñöţ çĥàñĝéð. Îñ Ŵîñðöŵš, ţûŕñ öƒƒ ƁîţĻöçķéŕ àñð ŵàîţ ûñţîļ îţ ƒîñîšĥéš, ţĥéñ šĥûţ ðöŵñ àñð šţàŕţ ƒŕöɱ ţĥé ÛŠƁ šţîçķ àĝàîñ. Îƒ Ŵîñðöŵš šţöþþéð šţàŕţîñĝ àƒţéŕ ÿöû çĥàñĝéð Šéçûŕé Ɓööţ, çĥàñĝé îţ ƀàçķ. Ñéṽéŕ ðéļéţé öŕ ŕéšéţ ţĥé ƒîŕɱŵàŕé ķéÿš.················································································································]"
 
 #, python-brace-format
-msgid "Windows keeps {value1:.2f} GB, Emaki gets {value2:.2f} GB; back up your files first."
-msgstr "[Ŵîñðöŵš ķééþš {value1:.2f} ĜƁ, Éɱàķî ĝéţš {value2:.2f} ĜƁ; ƀàçķ ûþ ÿöûŕ ƒîļéš ƒîŕšţ.····························]"
+msgid "Windows keeps {value1} GB, Emaki gets {value2} GB; back up your files first."
+msgstr "[Ŵîñðöŵš ķééþš {value1} ĜƁ, Éɱàķî ĝéţš {value2} ĜƁ; ƀàçķ ûþ ÿöûŕ ƒîļéš ƒîŕšţ.·························]"
 
 msgid "Windows must retain its minimum size plus 2 GiB."
 msgstr "[Ŵîñðöŵš ɱûšţ ŕéţàîñ îţš ɱîñîɱûɱ šîžé þļûš 2 ĜîƁ.···············]"
@@ -1871,15 +1930,6 @@ msgstr "[Ŵŕöñĝ ƒîļéšÿšţéɱ ÛÛÎÐ àţ {value1}.········
 msgid "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
 msgstr "[Ÿöûŕ îñšţàļļàţîöñ îš šàƒé. Îƒ ţĥé çöɱþûţéŕ ĥàš ñöţ ŕéšţàŕţéð ƀÿ îţšéļƒ, ĥöļð ţĥé þöŵéŕ ƀûţţöñ ţö ţûŕñ îţ öƒƒ, ţĥéñ šţàŕţ îţ àĝàîñ.············································]"
 
-msgid "a Btrfs filesystem"
-msgstr "[à Ɓţŕƒš ƒîļéšÿšţéɱ·····]"
-
-msgid "a RAID array"
-msgstr "[à ŔÀÎÐ àŕŕàÿ···]"
-
-msgid "an LVM volume group"
-msgstr "[àñ ĻṼṀ ṽöļûɱé ĝŕöûþ·····]"
-
 msgid "another system"
 msgstr "[àñöţĥéŕ šÿšţéɱ···]"
 
@@ -1915,15 +1965,6 @@ msgstr "[éɱàķî-îñšţàļļéŕð ɱûšţ ŕûñ àš ŕööţ öñ ţĥ
 msgid "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
 msgstr "[éɱàķî-šĥîɱ-šîĝñéð ðöéš ñöţ ĥöļð šĥîɱẋ64.éƒî àñð ɱɱẋ64.éƒî.···················]"
 
-msgid "encrypted Linux system (LUKS)"
-msgstr "[éñçŕÿþţéð Ļîñûẋ šÿšţéɱ (ĻÛĶŠ)·········]"
-
-msgid "encrypted Windows drive (BitLocker)"
-msgstr "[éñçŕÿþţéð Ŵîñðöŵš ðŕîṽé (ƁîţĻöçķéŕ)···········]"
-
-msgid "encrypted macOS disk (FileVault 2)"
-msgstr "[éñçŕÿþţéð ɱàçÖŠ ðîšķ (ƑîļéṼàûļţ 2)··········]"
-
 msgid "enterprise (802.1X) networks are not copied."
 msgstr "[éñţéŕþŕîšé (802.1Ẋ) ñéţŵöŕķš àŕé ñöţ çöþîéð.··············]"
 
@@ -1948,9 +1989,6 @@ msgstr "[ƒîļéš öƒ ûšéŕ {value1} ķééþ ţĥàţ öŵñéŕ (ñöţ 
 #, python-brace-format
 msgid "files of user {value1} now belong to {value2} ({value3})"
 msgstr "[ƒîļéš öƒ ûšéŕ {value1} ñöŵ ƀéļöñĝ ţö {value2} ({value3})··················]"
-
-msgid "format"
-msgstr "[ƒöŕɱàţ·]"
 
 #, python-brace-format
 msgid "fstab filesystem or UUID missing at {value1}."
@@ -2000,13 +2038,6 @@ msgstr "[ĵöîñéð öñ ţĥé Ñéţŵöŕķ þàĝé; ñö Ŵî-Ƒî îš �
 msgid "key management {value1} is not supported."
 msgstr "[ķéÿ ɱàñàĝéɱéñţ {value1} îš ñöţ šûþþöŕţéð.·············]"
 
-#, python-brace-format
-msgid "locked {description}"
-msgstr "[ļöçķéð {description}·····]"
-
-msgid "macOS disk (APFS)"
-msgstr "[ɱàçÖŠ ðîšķ (ÀÞƑŠ)····]"
-
 msgid "missing PF2 data"
 msgstr "[ɱîššîñĝ ÞƑ2 ðàţà····]"
 
@@ -2047,9 +2078,6 @@ msgstr "[öñļîñé_ûþðàţé ɱûšţ ƀé ƀööļéàñ.········
 
 msgid "pacman returned no details"
 msgstr "[þàçɱàñ ŕéţûŕñéð ñö ðéţàîļš········]"
-
-msgid "preserve"
-msgstr "[þŕéšéŕṽé·]"
 
 msgid "recovery discarded."
 msgstr "[ŕéçöṽéŕÿ ðîšçàŕðéð.·····]"
@@ -2196,8 +2224,20 @@ msgid "{value1} carries no signature."
 msgstr "[{value1} çàŕŕîéš ñö šîĝñàţûŕé.·········]"
 
 #, python-brace-format
-msgid "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
-msgstr "[{value1} çöñţàîñš à {value2}. Ţĥé îñšţàļļéŕ çàññöţ çĥéçķ îţš çöñţéñţš; ţĥéÿ ɱàÿ ƀéļöñĝ ţö à šéţ öƒ šéṽéŕàļ ðîšķš.······································]"
+msgid "{value1} contains a locked encrypted Linux system (LUKS). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "[{value1} çöñţàîñš à ļöçķéð éñçŕÿþţéð Ļîñûẋ šÿšţéɱ (ĻÛĶŠ). Ţĥé îñšţàļļéŕ çàññöţ çĥéçķ îţš çöñţéñţš; ţĥéÿ ɱàÿ ƀéļöñĝ ţö à šéţ öƒ šéṽéŕàļ ðîšķš.················································]"
+
+#, python-brace-format
+msgid "{value1} contains a locked encrypted Windows drive (BitLocker). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "[{value1} çöñţàîñš à ļöçķéð éñçŕÿþţéð Ŵîñðöŵš ðŕîṽé (ƁîţĻöçķéŕ). Ţĥé îñšţàļļéŕ çàññöţ çĥéçķ îţš çöñţéñţš; ţĥéÿ ɱàÿ ƀéļöñĝ ţö à šéţ öƒ šéṽéŕàļ ðîšķš.··················································]"
+
+#, python-brace-format
+msgid "{value1} contains a locked encrypted macOS disk (FileVault 2). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "[{value1} çöñţàîñš à ļöçķéð éñçŕÿþţéð ɱàçÖŠ ðîšķ (ƑîļéṼàûļţ 2). Ţĥé îñšţàļļéŕ çàññöţ çĥéçķ îţš çöñţéñţš; ţĥéÿ ɱàÿ ƀéļöñĝ ţö à šéţ öƒ šéṽéŕàļ ðîšķš.··················································]"
+
+#, python-brace-format
+msgid "{value1} contains a macOS disk (APFS). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "[{value1} çöñţàîñš à ɱàçÖŠ ðîšķ (ÀÞƑŠ). Ţĥé îñšţàļļéŕ çàññöţ çĥéçķ îţš çöñţéñţš; ţĥéÿ ɱàÿ ƀéļöñĝ ţö à šéţ öƒ šéṽéŕàļ ðîšķš.·········································]"
 
 #, python-brace-format
 msgid "{value1} could not be read back after it was written."
@@ -2244,8 +2284,16 @@ msgid "{value1} is a symbolic link."
 msgstr "[{value1} îš à šÿɱƀöļîç ļîñķ.········]"
 
 #, python-brace-format
-msgid "{value1} is active [{value2}]. {value3}, then try again."
-msgstr "[{value1} îš àçţîṽé [{value2}]. {value3}, ţĥéñ ţŕÿ àĝàîñ.··················]"
+msgid "{value1} is active [{value2}]. Close it [cryptsetup close], then try again."
+msgstr "[{value1} îš àçţîṽé [{value2}]. Çļöšé îţ [çŕÿþţšéţûþ çļöšé], ţĥéñ ţŕÿ àĝàîñ.·························]"
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. Deactivate it [lvchange -an], then try again."
+msgstr "[{value1} îš àçţîṽé [{value2}]. Ðéàçţîṽàţé îţ [ļṽçĥàñĝé -àñ], ţĥéñ ţŕÿ àĝàîñ.·························]"
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. Stop it [mdadm --stop], then try again."
+msgstr "[{value1} îš àçţîṽé [{value2}]. Šţöþ îţ [ɱðàðɱ --šţöþ], ţĥéñ ţŕÿ àĝàîñ.·······················]"
 
 #, python-brace-format
 msgid "{value1} is held by {value2} [device mapper or RAID]. Deactivate that volume or stop that array before trying again."
@@ -2256,8 +2304,16 @@ msgid "{value1} is not a directory."
 msgstr "[{value1} îš ñöţ à ðîŕéçţöŕÿ.········]"
 
 #, python-brace-format
-msgid "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
-msgstr "[{value1} îš öñé öƒ {value2} ðéṽîçéš öƒ {value3}; éŕàšîñĝ îţ ŵöûļð ðàɱàĝé ţĥé öţĥéŕ ðéṽîçéš.······························]"
+msgid "{value1} is one of {value2} devices of a Btrfs filesystem; erasing it would damage the other devices."
+msgstr "[{value1} îš öñé öƒ {value2} ðéṽîçéš öƒ à Ɓţŕƒš ƒîļéšÿšţéɱ; éŕàšîñĝ îţ ŵöûļð ðàɱàĝé ţĥé öţĥéŕ ðéṽîçéš.··································]"
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of a RAID array; erasing it would damage the other devices."
+msgstr "[{value1} îš öñé öƒ {value2} ðéṽîçéš öƒ à ŔÀÎÐ àŕŕàÿ; éŕàšîñĝ îţ ŵöûļð ðàɱàĝé ţĥé öţĥéŕ ðéṽîçéš.································]"
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of an LVM volume group; erasing it would damage the other devices."
+msgstr "[{value1} îš öñé öƒ {value2} ðéṽîçéš öƒ àñ ĻṼṀ ṽöļûɱé ĝŕöûþ; éŕàšîñĝ îţ ŵöûļð ðàɱàĝé ţĥé öţĥéŕ ðéṽîçéš.··································]"
 
 #, python-brace-format
 msgid "{value1} is open at {value2} [mount]. Close files there, then unmount it [umount]."
@@ -2278,3 +2334,7 @@ msgstr "[{value1}: ûðéṽ šéţţļé ðîð ñöţ çöɱþļéţé; çĥé
 #, python-brace-format
 msgid "{value1}: {value2}: retry deadline reached."
 msgstr "[{value1}: {value2}: ŕéţŕÿ ðéàðļîñé ŕéàçĥéð.··············]"
+
+#, python-brace-format
+msgid "{value} GiB"
+msgstr "[{value} ĜîƁ··]"

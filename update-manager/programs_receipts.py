@@ -55,7 +55,7 @@ def changes(before, after):
     return added, upgraded
 
 
-def record(kind, key, name, target, before, after, snapshot='', refs=(), directory=None, snapshot_token=''):
+def record(kind, key, name, target, before, after, snapshot='', refs=(), directory=None, snapshot_token='', kit=None):
     """Record only the install delta from its post-update baseline, atomically."""
     if kind not in KINDS:
         raise ValueError(_('Invalid receipt kind'))
@@ -68,6 +68,8 @@ def record(kind, key, name, target, before, after, snapshot='', refs=(), directo
                  removed={name: version for name, version in before.items() if name not in after},
                  snapshotToken=snapshot_token,
                  snapshot=str(snapshot or ''), refs=list(refs), undone='')
+    if kit is not None:
+        value['kit'] = kit
     write(directory / (identity + '.json'), value)
     prune(directory)
     return value
@@ -124,6 +126,21 @@ def valid(value):
             for name in list(value['added']) + list(value['upgraded']) + list(value.get('removed', {})):
                 removal.valid_name(name)
         except ValueError:
+            return False
+    if 'kit' in value:
+        try:
+            import programs_kits as kits
+            data = value['kit']
+            row = kits.definition(data['id'])
+            if value['key'] != 'development:' + row['id'] or value['target'] != row['packages'][0]:
+                return False
+            if 'docker' in data:
+                state = data['docker']
+                if (row['id'] != 'docker' or type(state['uid']) is not int or state['uid'] <= 0
+                        or not isinstance(state['user'], str) or not state['user']
+                        or type(state['enabled']) is not bool or type(state['member']) is not bool):
+                    return False
+        except (KeyError, TypeError, ValueError):
             return False
     return all(isinstance(version, str) for version in value['added'].values())
 
@@ -186,7 +203,10 @@ def parse_reasons(text):
 
 
 def needs_restore(value):
-    return value['kind'] != 'flatpak' and bool(value.get('removed') or value.get('upgraded'))
+    kit = value.get('kit', {})
+    return value['kind'] != 'flatpak' and bool(
+        value.get('removed') or value.get('upgraded') or kit.get('id') == 'docker'
+        or (kit and not value.get('added')))
 
 
 def snapshot_plan(value):
@@ -208,7 +228,7 @@ def snapshot_plan(value):
                 target=value['target'], restoreToken=token, token=digest, remove=[], keep={}, gone=[],
                 removed=sorted(value.get('removed', {})), upgraded=sorted(value['upgraded']),
                 snapshot=value['snapshot'],
-                message=_('This install changed existing packages. Undo restores the whole system to the snapshot before the install and discards system changes made since then. Restart to use it. Your /home files stay untouched.'))
+                message=(_('Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched.') if value.get('kit') else _('This install changed existing packages. Undo restores the whole system to the snapshot before the install and discards system changes made since then. Restart to use it. Your /home files stay untouched.')))
 
 
 def undo_plan(value, pacman):
@@ -231,6 +251,10 @@ def undo_plan(value, pacman):
         raise RuntimeError(_('Installed packages could not be read'))
     installed = dict(line.split(maxsplit=1) for line in query.stdout.splitlines())
     target = value['target']
+    kit_packages = set()
+    if value.get('kit'):
+        import programs_kits as kits
+        kit_packages = set(kits.definition(value['kit']['id'])['packages'])
     if target not in installed:
         return dict(ok=False, code='not-installed')
     present = sorted(name for name in value['added'] if name in installed)
@@ -241,7 +265,7 @@ def undo_plan(value, pacman):
             keep[name] = 'system'
         elif removal.is_emaki(name) and name not in removal.OPTIONAL:
             keep[name] = 'emaki'
-        elif name != target and reasons.get(name) == 'Explicitly installed':
+        elif name != target and name not in kit_packages and reasons.get(name) == 'Explicitly installed':
             keep[name] = 'explicit'
     if target in keep:
         return dict(ok=False, code=keep[target], keep=keep)

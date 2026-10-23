@@ -601,7 +601,10 @@ try:
     action(q,'profile','power-saver');assert (root/'profile').read_text()=='power-saver'
     ipc(q,'system','power');ipc(q,'session','reboot');assert not (root/'session').exists()
     ipc(q,'close');assert state(q)['session_confirmation']==''
-    ipc(q,'system','power');ipc(q,'session','reboot');ipc(q,'confirmSession');wait(q,lambda s:s['services']['action']=='requested')
+    # A question asked from elsewhere (the command menu) settles: an immediate answer is ignored.
+    ipc(q,'system','power');ipc(q,'session','reboot');ipc(q,'confirmSession')
+    assert state(q)['session_confirmation']=='reboot' and not (root/'session').exists()
+    time.sleep(.7);ipc(q,'confirmSession');wait(q,lambda s:s['services']['action']=='requested')
     assert (root/'session').read_text()=='reboot'
     # Real Qt Tab/Return/Space on all six power buttons and the confirmation actions.
     buttons = json.loads(ipc(q, 'powerButtons'))
@@ -627,7 +630,7 @@ try:
     # Lock and Sleep from the panel: Sleep asks first, then locks, then suspends.
     action(q,'lock',None,'locked');assert (root/'locked').exists();(root/'locked').unlink()
     ipc(q,'session','suspend');assert state(q)['session_confirmation']=='suspend' and (root/'session').read_text()=='reboot'
-    ipc(q,'confirmSession');wait(q,lambda s:s['services']['action']=='requested' and (root/'session').read_text()=='suspend');assert (root/'locked').exists()
+    time.sleep(.7);ipc(q,'confirmSession');wait(q,lambda s:s['services']['action']=='requested' and (root/'session').read_text()=='suspend');assert (root/'locked').exists()
     ipc(q,'close');ipc(q,'battery',9,'false');wait(q,lambda s:s['notifications']['count']==1)
     ipc(q,'battery',8,'false');time.sleep(.15);assert state(q)['notifications']['count']==1
     ipc(q,'dnd','true');ipc(q,'environment','false','true')

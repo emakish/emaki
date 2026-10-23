@@ -207,7 +207,8 @@ ShellRoot {
             locale.mkdir()
             compiler = shutil.which('lrelease6') or shutil.which('lrelease')
             self.assertIsNotNone(compiler)
-            for language, translated in [('en', 'First'), ('es', 'Primero'), ('pt_BR', 'Primeiro')]:
+            for language, translated in [('en', 'First'), ('es', 'Primero'), ('pt_BR', 'Primeiro'),
+                                         ('de', 'Erste'), ('fr', 'Premier'), ('ru', 'Первый')]:
                 source = base / (language + '.ts')
                 source.write_text('<TS version="2.1" language="' + language + '"><context>'
                                   '<name>RuntimeTest</name><message><source>First</source><translation>'
@@ -239,12 +240,12 @@ ShellRoot {
     property string entered: "retained account"
     property string translated: qsTranslate("RuntimeTest", "First")
     property int phase: 0
-    property var choices: ["es_MX.UTF-8", "pt_BR.UTF-8", "en_US.UTF-8"]
-    property var expected: ["First", "Primero", "Primeiro", "First"]
+    property var choices: ["es_MX.UTF-8", "pt_BR.UTF-8", "de_DE.UTF-8", "fr_FR.UTF-8", "ru_RU.UTF-8", "en_US.UTF-8"]
+    property var expected: ["First", "Primero", "Primeiro", "Erste", "Premier", "Первый", "First"]
     Timer { interval: 10; running: true; repeat: true; onTriggered: {
         const enabled = Quickshell.env("EMAKI_INSTALLER_UI") === "1";
         if (root.translated !== root.expected[root.phase] || root.entered !== "retained account" ||
-            InstallerLanguage.setLanguage("fr_FR.UTF-8")) {
+            InstallerLanguage.setLanguage("nl_NL.UTF-8")) {
             console.error("SWITCH_STATE_FAILED", root.phase, root.translated); Qt.exit(1); return;
         }
         if (!enabled) {
@@ -253,7 +254,7 @@ ShellRoot {
             }
             console.log("SWITCH_GUARD_PASS"); Qt.quit(); return;
         }
-        if (root.phase === 3) { console.log("SWITCH_STATE_PASS"); Qt.quit(); return; }
+        if (root.phase === root.choices.length) { console.log("SWITCH_STATE_PASS"); Qt.quit(); return; }
         if (!InstallerLanguage.setLanguage(root.choices[root.phase])) {
             console.error("SWITCH_REFUSED"); Qt.exit(1); return;
         }

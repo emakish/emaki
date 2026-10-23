@@ -321,10 +321,16 @@ impl Default for Document {
 #[derive(Clone, Copy, Debug)]
 struct Error {
     reason: &'static str,
+    /// A refused change whose live session effects may still stand: compensation failed or
+    /// was deferred, and the durable live record waits for the next settings change or login.
+    live_pending: bool,
 }
 type Result<T> = std::result::Result<T, Error>;
 fn err(reason: &'static str) -> Error {
-    Error { reason }
+    Error {
+        reason,
+        live_pending: false,
+    }
 }
 
 fn chord(value: &str) -> Result<String> {
@@ -1498,7 +1504,14 @@ impl Reply {
 pub fn run(operation: Operation<'_>, root: Option<&Path>, timeout: Duration) -> Reply {
     match storage::run(operation, root, timeout) {
         Ok(reply) => reply,
-        Err(error) => Reply::rejected(error.reason),
+        Err(error) => {
+            let mut reply = Reply::rejected(error.reason);
+            if error.live_pending {
+                // Not proof that nothing changed: the running session may still show the change.
+                reply.recovery.push("session_recovery_pending".into());
+            }
+            reply
+        }
     }
 }
 

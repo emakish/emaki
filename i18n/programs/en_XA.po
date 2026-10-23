@@ -127,12 +127,20 @@ msgstr "[ÀþþŠţŕéàɱ éẋþàñðéð îñþûţ éẋçééðš ţĥé 
 msgid "AppStream input exceeds the file limit."
 msgstr "[ÀþþŠţŕéàɱ îñþûţ éẋçééðš ţĥé ƒîļé ļîɱîţ.············]"
 
+#, python-brace-format
+msgid "AppStream metadata could not be parsed (parser unavailable): {path}: {error}"
+msgstr "[ÀþþŠţŕéàɱ ɱéţàðàţà çöûļð ñöţ ƀé þàŕšéð (þàŕšéŕ ûñàṽàîļàƀļé): {path}: {error}·························]"
+
 msgid "AppStream metadata could not be read."
 msgstr "[ÀþþŠţŕéàɱ ɱéţàðàţà çöûļð ñöţ ƀé ŕéàð.···········]"
 
 #, python-brace-format
-msgid "AppStream metadata {reason}: {path}: {error}"
-msgstr "[ÀþþŠţŕéàɱ ɱéţàðàţà {reason}: {path}: {error}··············]"
+msgid "AppStream metadata is invalid: {path}: {error}"
+msgstr "[ÀþþŠţŕéàɱ ɱéţàðàţà îš îñṽàļîð: {path}: {error}···············]"
+
+#, python-brace-format
+msgid "AppStream metadata is unreadable: {path}: {error}"
+msgstr "[ÀþþŠţŕéàɱ ɱéţàðàţà îš ûñŕéàðàƀļé: {path}: {error}················]"
 
 msgid "Applying Flatpak transaction."
 msgstr "[Àþþļÿîñĝ Ƒļàţþàķ ţŕàñšàçţîöñ.·········]"
@@ -178,8 +186,14 @@ msgstr "[Çĥööšé à ƒîẋéð ûþðàţé öþéŕàţîöñ öŕ --ŕé
 msgid "Choose a restore point from the current list."
 msgstr "[Çĥööšé à ŕéšţöŕé þöîñţ ƒŕöɱ ţĥé çûŕŕéñţ ļîšţ.··············]"
 
+msgid "Choose a shorter name without control characters."
+msgstr "[Çĥööšé à šĥöŕţéŕ ñàɱé ŵîţĥöûţ çöñţŕöļ çĥàŕàçţéŕš.················]"
+
 msgid "Choose list or restore with an exact restore point."
 msgstr "[Çĥööšé ļîšţ öŕ ŕéšţöŕé ŵîţĥ àñ éẋàçţ ŕéšţöŕé þöîñţ.················]"
+
+msgid "Close this website app before removing it."
+msgstr "[Çļöšé ţĥîš ŵéƀšîţé àþþ ƀéƒöŕé ŕéɱöṽîñĝ îţ.·············]"
 
 msgid "Could not check updates."
 msgstr "[Çöûļð ñöţ çĥéçķ ûþðàţéš.·······]"
@@ -190,8 +204,17 @@ msgstr "[Çöûļð ñöţ çĥéçķ ûþðàţéš. Ţĥé ļîšţ îš ƒŕ�
 msgid "Delete unneeded files or clear the package cache in Settings > Storage, then try again."
 msgstr "[Ðéļéţé ûññééðéð ƒîļéš öŕ çļéàŕ ţĥé þàçķàĝé çàçĥé îñ Šéţţîñĝš > Šţöŕàĝé, ţĥéñ ţŕÿ àĝàîñ.·····························]"
 
+msgid "Development kits need system snapshots. This system does not support them."
+msgstr "[Ðéṽéļöþɱéñţ ķîţš ñééð šÿšţéɱ šñàþšĥöţš. Ţĥîš šÿšţéɱ ðöéš ñöţ šûþþöŕţ ţĥéɱ.························]"
+
+msgid "Docker setup did not finish. Review the transaction details."
+msgstr "[Ðöçķéŕ šéţûþ ðîð ñöţ ƒîñîšĥ. Ŕéṽîéŵ ţĥé ţŕàñšàçţîöñ ðéţàîļš.···················]"
+
 msgid "Empty AUR metadata archive"
 msgstr "[Éɱþţÿ ÀÛŔ ɱéţàðàţà àŕçĥîṽé········]"
+
+msgid "Enter a complete http:// or https:// website address."
+msgstr "[Éñţéŕ à çöɱþļéţé ĥţţþ:// öŕ ĥţţþš:// ŵéƀšîţé àððŕéšš.·················]"
 
 msgid "Exclusive snapshot usage is unavailable."
 msgstr "[Éẋçļûšîṽé šñàþšĥöţ ûšàĝé îš ûñàṽàîļàƀļé.············]"
@@ -235,8 +258,11 @@ msgid "Flatpak updates could not be checked. Check again before updating applica
 msgstr "[Ƒļàţþàķ ûþðàţéš çöûļð ñöţ ƀé çĥéçķéð. Çĥéçķ àĝàîñ ƀéƒöŕé ûþðàţîñĝ àþþļîçàţîöñš.··························]"
 
 #, python-brace-format
-msgid "Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable."
-msgstr "[Îñðîṽîðûàļ šñàþšĥöţš ĥöļð àţ ļéàšţ {bytes} éẋçļûšîṽé ƀÿţéš; šþàçé šĥàŕéð ƀéţŵééñ šñàþšĥöţš îš ûñàṽàîļàƀļé.····································]"
+msgid "Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable."
+msgstr "[Îñðîṽîðûàļ šñàþšĥöţš ĥöļð àţ ļéàšţ {size} öƒ éẋçļûšîṽé šþàçé; šþàçé šĥàŕéð ƀéţŵééñ šñàþšĥöţš îš ûñàṽàîļàƀļé.····································]"
+
+msgid "Install the Rust packages before finishing setup."
+msgstr "[Îñšţàļļ ţĥé Ŕûšţ þàçķàĝéš ƀéƒöŕé ƒîñîšĥîñĝ šéţûþ.················]"
 
 msgid "Installed dependencies could not be checked"
 msgstr "[Îñšţàļļéð ðéþéñðéñçîéš çöûļð ñöţ ƀé çĥéçķéð··············]"
@@ -258,6 +284,9 @@ msgstr "[Îñšţàļļéð þàçķàĝéš çöûļð ñöţ ƀé ŕéàð··
 
 msgid "Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change."
 msgstr "[Îñšţàļļîñĝ àļšö ûþðàţéš àļļ ŕéþöšîţöŕÿ þàçķàĝéš. Ţĥé ûþĝŕàðé çĥéçķš ƒŕéšĥ ɱéţàðàţà; ţĥé ƒîñàļ þàçķàĝé ļîšţ àñð šîžéš ɱàÿ çĥàñĝé.···········································]"
+
+msgid "Installing the stable Rust toolchain for your user."
+msgstr "[Îñšţàļļîñĝ ţĥé šţàƀļé Ŕûšţ ţööļçĥàîñ ƒöŕ ÿöûŕ ûšéŕ.················]"
 
 msgid "Installing what the build needs from Arch."
 msgstr "[Îñšţàļļîñĝ ŵĥàţ ţĥé ƀûîļð ñééðš ƒŕöɱ Àŕçĥ.·············]"
@@ -318,6 +347,9 @@ msgstr "[Îñṽàļîð çàţàļöĝ šçöþé······]"
 
 msgid "Invalid consent"
 msgstr "[Îñṽàļîð çöñšéñţ····]"
+
+msgid "Invalid development kit."
+msgstr "[Îñṽàļîð ðéṽéļöþɱéñţ ķîţ.·······]"
 
 msgid "Invalid discovery option"
 msgstr "[Îñṽàļîð ðîšçöṽéŕÿ öþţîöñ·······]"
@@ -437,11 +469,17 @@ msgstr "[ÑṼÎÐÎÀ šûþþöŕţ ĥàš ñö Ûñðö ƀûţţöñ ƀéçà
 msgid "No Flathub programs are available in the cached catalog: {scope}"
 msgstr "[Ñö Ƒļàţĥûƀ þŕöĝŕàɱš àŕé àṽàîļàƀļé îñ ţĥé çàçĥéð çàţàļöĝ: {scope}·····················]"
 
+msgid "No development kit installation receipt is available."
+msgstr "[Ñö ðéṽéļöþɱéñţ ķîţ îñšţàļļàţîöñ ŕéçéîþţ îš àṽàîļàƀļé.·················]"
+
 msgid "No enabled, verified Flathub remote is configured."
 msgstr "[Ñö éñàƀļéð, ṽéŕîƒîéð Ƒļàţĥûƀ ŕéɱöţé îš çöñƒîĝûŕéð.················]"
 
 msgid "No matching after-update snapshot is available."
 msgstr "[Ñö ɱàţçĥîñĝ àƒţéŕ-ûþðàţé šñàþšĥöţ îš àṽàîļàƀļé.···············]"
+
+msgid "No removable development kit packages are installed."
+msgstr "[Ñö ŕéɱöṽàƀļé ðéṽéļöþɱéñţ ķîţ þàçķàĝéš àŕé îñšţàļļéð.·················]"
 
 msgid "No retained snapshots were found."
 msgstr "[Ñö ŕéţàîñéð šñàþšĥöţš ŵéŕé ƒöûñð.··········]"
@@ -467,6 +505,9 @@ msgstr "[Öþéñ Þŕöĝŕàɱš & Ûþðàţéš àš à ŕéĝûļàŕ ûš�
 
 msgid "Open the AUR section and accept its warning before installing."
 msgstr "[Öþéñ ţĥé ÀÛŔ šéçţîöñ àñð àççéþţ îţš ŵàŕñîñĝ ƀéƒöŕé îñšţàļļîñĝ.····················]"
+
+msgid "Other installed software needs this development kit, so it stays."
+msgstr "[Öţĥéŕ îñšţàļļéð šöƒţŵàŕé ñééðš ţĥîš ðéṽéļöþɱéñţ ķîţ, šö îţ šţàÿš.·····················]"
 
 msgid "Other installed software needs this program, so it stays."
 msgstr "[Öţĥéŕ îñšţàļļéð šöƒţŵàŕé ñééðš ţĥîš þŕöĝŕàɱ, šö îţ šţàÿš.··················]"
@@ -624,6 +665,12 @@ msgstr "[Ŕéšţöŕé-þöîñţ þŕöţéçţîöñ ƒöŕ šÿšţéɱ çĥ
 msgid "Reviews cannot contain the “<” sign. Remove it and send again."
 msgstr "[Ŕéṽîéŵš çàññöţ çöñţàîñ ţĥé “<” šîĝñ. Ŕéɱöṽé îţ àñð šéñð àĝàîñ.····················]"
 
+msgid "Rust packages are installed, but the stable toolchain did not finish. Choose Finish setup to retry."
+msgstr "[Ŕûšţ þàçķàĝéš àŕé îñšţàļļéð, ƀûţ ţĥé šţàƀļé ţööļçĥàîñ ðîð ñöţ ƒîñîšĥ. Çĥööšé Ƒîñîšĥ šéţûþ ţö ŕéţŕÿ.·································]"
+
+msgid "Select a signed-in user for Docker access."
+msgstr "[Šéļéçţ à šîĝñéð-îñ ûšéŕ ƒöŕ Ðöçķéŕ àççéšš.·············]"
+
 msgid "Select one AUR program and its reviewed install."
 msgstr "[Šéļéçţ öñé ÀÛŔ þŕöĝŕàɱ àñð îţš ŕéṽîéŵéð îñšţàļļ.···············]"
 
@@ -719,6 +766,9 @@ msgstr "[Ţĥé ÑṼÎÐÎÀ šûþþöŕţ þàçķàĝéš àŕé ñöţ à�
 msgid "The Programs & Updates window could not be shown: {0}"
 msgstr "[Ţĥé Þŕöĝŕàɱš & Ûþðàţéš ŵîñðöŵ çöûļð ñöţ ƀé šĥöŵñ: {0}·················]"
 
+msgid "The Rust toolchain must be installed as your user, not as administrator."
+msgstr "[Ţĥé Ŕûšţ ţööļçĥàîñ ɱûšţ ƀé îñšţàļļéð àš ÿöûŕ ûšéŕ, ñöţ àš àðɱîñîšţŕàţöŕ.························]"
+
 msgid "The available package list could not be read."
 msgstr "[Ţĥé àṽàîļàƀļé þàçķàĝé ļîšţ çöûļð ñöţ ƀé ŕéàð.··············]"
 
@@ -731,6 +781,18 @@ msgstr "[Ţĥé ðàţé öƒ ţĥé ļàšţ ƒûļļ ûþðàţé îš ûñķ�
 
 msgid "The desktop will change. Save your work, sign out and sign in again after updating."
 msgstr "[Ţĥé ðéšķţöþ ŵîļļ çĥàñĝé. Šàṽé ÿöûŕ ŵöŕķ, šîĝñ öûţ àñð šîĝñ îñ àĝàîñ àƒţéŕ ûþðàţîñĝ.····························]"
+
+msgid "The development kit packages are unavailable. Refresh the catalog and try again."
+msgstr "[Ţĥé ðéṽéļöþɱéñţ ķîţ þàçķàĝéš àŕé ûñàṽàîļàƀļé. Ŕéƒŕéšĥ ţĥé çàţàļöĝ àñð ţŕÿ àĝàîñ.··························]"
+
+msgid "The development kit receipt could not be saved. Review the system restore point before retrying."
+msgstr "[Ţĥé ðéṽéļöþɱéñţ ķîţ ŕéçéîþţ çöûļð ñöţ ƀé šàṽéð. Ŕéṽîéŵ ţĥé šÿšţéɱ ŕéšţöŕé þöîñţ ƀéƒöŕé ŕéţŕÿîñĝ.································]"
+
+msgid "The development kit removal did not finish. Review the transaction details."
+msgstr "[Ţĥé ðéṽéļöþɱéñţ ķîţ ŕéɱöṽàļ ðîð ñöţ ƒîñîšĥ. Ŕéṽîéŵ ţĥé ţŕàñšàçţîöñ ðéţàîļš.·························]"
+
+msgid "The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged."
+msgstr "[Ţĥé ðéṽéļöþɱéñţ ķîţ ŵàš ŕéɱöṽéð. Ðöçķéŕ îɱàĝéš àñð çöñţàîñéŕš, þéŕšöñàļ þŕöĵéçţš àñð Ŕûšţ ţööļçĥàîñš àŕé ûñçĥàñĝéð.·······································]"
 
 msgid "The free-space check could not finish. The update was not started."
 msgstr "[Ţĥé ƒŕéé-šþàçé çĥéçķ çöûļð ñöţ ƒîñîšĥ. Ţĥé ûþðàţé ŵàš ñöţ šţàŕţéð.······················]"
@@ -746,6 +808,10 @@ msgstr "[Ţĥé îñšţàļļéð þàçķàĝé ļîšţ çöûļð ñöţ ƀ�
 
 msgid "The installed package versions could not be read."
 msgstr "[Ţĥé îñšţàļļéð þàçķàĝé ṽéŕšîöñš çöûļð ñöţ ƀé ŕéàð.················]"
+
+#, python-format
+msgid "The installed packages %(packages)s conflict with this development kit; remove them first if you want to use this kit."
+msgstr "[Ţĥé îñšţàļļéð þàçķàĝéš %(packages)s çöñƒļîçţ ŵîţĥ ţĥîš ðéṽéļöþɱéñţ ķîţ; ŕéɱöṽé ţĥéɱ ƒîŕšţ îƒ ÿöû ŵàñţ ţö ûšé ţĥîš ķîţ.········································]"
 
 msgid "The kernel will change. Restart the computer after updating."
 msgstr "[Ţĥé ķéŕñéļ ŵîļļ çĥàñĝé. Ŕéšţàŕţ ţĥé çöɱþûţéŕ àƒţéŕ ûþðàţîñĝ.···················]"
@@ -861,6 +927,9 @@ msgstr "[Ţĥé šéŕṽîçé ŕéšûļţ çöûļð ñöţ ƀé öƀšéŕ�
 msgid "The snapshot check could not be cleaned up. Nothing was installed."
 msgstr "[Ţĥé šñàþšĥöţ çĥéçķ çöûļð ñöţ ƀé çļéàñéð ûþ. Ñöţĥîñĝ ŵàš îñšţàļļéð.······················]"
 
+msgid "The stable Rust toolchain is ready. Use cargo +stable for this toolchain."
+msgstr "[Ţĥé šţàƀļé Ŕûšţ ţööļçĥàîñ îš ŕéàðÿ. Ûšé çàŕĝö +šţàƀļé ƒöŕ ţĥîš ţööļçĥàîñ.························]"
+
 msgid "The system restore connection ended. Check the restore status before trying again."
 msgstr "[Ţĥé šÿšţéɱ ŕéšţöŕé çöññéçţîöñ éñðéð. Çĥéçķ ţĥé ŕéšţöŕé šţàţûš ƀéƒöŕé ţŕÿîñĝ àĝàîñ.···························]"
 
@@ -933,8 +1002,17 @@ msgstr "[Ţĥé ûþðàţé ŵàš ñöţ šţàŕţéð.········]"
 msgid "The upgrade checks the repositories again. Its final package list and download size may change."
 msgstr "[Ţĥé ûþĝŕàðé çĥéçķš ţĥé ŕéþöšîţöŕîéš àĝàîñ. Îţš ƒîñàļ þàçķàĝé ļîšţ àñð ðöŵñļöàð šîžé ɱàÿ çĥàñĝé.································]"
 
+msgid "The website app files have changed. Nothing was removed."
+msgstr "[Ţĥé ŵéƀšîţé àþþ ƒîļéš ĥàṽé çĥàñĝéð. Ñöţĥîñĝ ŵàš ŕéɱöṽéð.··················]"
+
+msgid "The website app folder is not safe to change."
+msgstr "[Ţĥé ŵéƀšîţé àþþ ƒöļðéŕ îš ñöţ šàƒé ţö çĥàñĝé.··············]"
+
 msgid "There is no recorded install of this program to take back."
 msgstr "[Ţĥéŕé îš ñö ŕéçöŕðéð îñšţàļļ öƒ ţĥîš þŕöĝŕàɱ ţö ţàķé ƀàçķ.···················]"
+
+msgid "These development kit packages will be removed. Shared system packages stay installed."
+msgstr "[Ţĥéšé ðéṽéļöþɱéñţ ķîţ þàçķàĝéš ŵîļļ ƀé ŕéɱöṽéð. Šĥàŕéð šÿšţéɱ þàçķàĝéš šţàÿ îñšţàļļéð.·····························]"
 
 #, python-brace-format
 msgid "These installed packages were not found in AUR: {packages}."
@@ -994,8 +1072,17 @@ msgstr "[Ţĥîš ŕéšţöŕé þöîñţ çĥàñĝéð öŕ îš ñö ļöñ
 msgid "This review cannot be sent. Choose the stars and write a title and a few words."
 msgstr "[Ţĥîš ŕéṽîéŵ çàññöţ ƀé šéñţ. Çĥööšé ţĥé šţàŕš àñð ŵŕîţé à ţîţļé àñð à ƒéŵ ŵöŕðš.··························]"
 
+msgid "This website app is invalid."
+msgstr "[Ţĥîš ŵéƀšîţé àþþ îš îñṽàļîð.········]"
+
+msgid "This website app no longer exists."
+msgstr "[Ţĥîš ŵéƀšîţé àþþ ñö ļöñĝéŕ éẋîšţš.··········]"
+
 msgid "Truncated AUR metadata archive"
 msgstr "[Ţŕûñçàţéð ÀÛŔ ɱéţàðàţà àŕçĥîṽé·········]"
+
+msgid "Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched."
+msgstr "[Ûñðö ŕéšţöŕéš ţĥé ŵĥöļé šÿšţéɱ ţö ţĥé šñàþšĥöţ ƀéƒöŕé ţĥîš ðéṽéļöþɱéñţ ķîţ ŵàš îñšţàļļéð, îñçļûðîñĝ Ðöçķéŕ àççéšš àñð šöçķéţ šéţţîñĝš, àñð ðîšçàŕðš šÿšţéɱ çĥàñĝéš ɱàðé šîñçé ţĥéñ. Ŕéšţàŕţ ţö ûšé îţ. Ÿöûŕ ĥöɱé ƒîļéš àñð Ŕûšţ ţööļçĥàîñš šţàÿ ûñţöûçĥéð.······················································································]"
 
 msgid "Unexpected popularity redirect"
 msgstr "[Ûñéẋþéçţéð þöþûļàŕîţÿ ŕéðîŕéçţ·········]"
@@ -1040,6 +1127,15 @@ msgstr "[Ŵàîţîñĝ ƒöŕ þéŕɱîššîöñ ţö ûþðàţé…····
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "[Ŵàŕñîñĝ: ţĥé ûþðàţé šþàçé çĥéçķ îš ûñàṽàîļàƀļé; ţĥé þàçķàĝé ţŕàñšàçţîöñ ŵîļļ çöñţîñûé.·····························]"
 
+msgid "Website app added. Find it in the launcher."
+msgstr "[Ŵéƀšîţé àþþ àððéð. Ƒîñð îţ îñ ţĥé ļàûñçĥéŕ.··············]"
+
+msgid "Website app added. Its name or icon could not be fetched; a generated icon is used when needed."
+msgstr "[Ŵéƀšîţé àþþ àððéð. Îţš ñàɱé öŕ îçöñ çöûļð ñöţ ƀé ƒéţçĥéð; à ĝéñéŕàţéð îçöñ îš ûšéð ŵĥéñ ñééðéð.································]"
+
+msgid "Website app removed."
+msgstr "[Ŵéƀšîţé àþþ ŕéɱöṽéð.·····]"
+
 msgid "What the undo removes changed. Review it again."
 msgstr "[Ŵĥàţ ţĥé ûñðö ŕéɱöṽéš çĥàñĝéð. Ŕéṽîéŵ îţ àĝàîñ.···············]"
 
@@ -1053,17 +1149,8 @@ msgstr "[Ÿöûŕ þàçķàĝé šéţţîñĝš ĥöļð ƀàçķ ţĥéšé �
 msgid "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
 msgstr "[Ÿöûŕ šÿšţéɱ îš ŕéàðÿ ţö ŕéţûŕñ ţö îţš šţàţé ƀéƒöŕé ţĥîš îñšţàļļ. Ŕéšţàŕţ ţö ƒîñîšĥ. Ƒîļéš îñ ÿöûŕ ĥöɱé ƒöļðéŕ àŕé ûñçĥàñĝéð.··········································]"
 
-msgid "invalid"
-msgstr "[îñṽàļîð·]"
-
 msgid "open the update manager as a regular user"
 msgstr "[öþéñ ţĥé ûþðàţé ɱàñàĝéŕ àš à ŕéĝûļàŕ ûšéŕ·············]"
-
-msgid "parser unavailable"
-msgstr "[þàŕšéŕ ûñàṽàîļàƀļé·····]"
-
-msgid "unreadable"
-msgstr "[ûñŕéàðàƀļé··]"
 
 #, python-brace-format
 msgid "{command} failed with status {status}"
@@ -1076,3 +1163,15 @@ msgstr "[{error} Ţĥé ûñûšéð šñàþšĥöţ ŵîļļ ƀé ŕéɱöṽ�
 #, python-brace-format
 msgid "{package} was built but could not be installed."
 msgstr "[{package} ŵàš ƀûîļţ ƀûţ çöûļð ñöţ ƀé îñšţàļļéð.···············]"
+
+#, python-brace-format
+msgid "{value} B"
+msgstr "[{value} Ɓ··]"
+
+#, python-brace-format
+msgid "{value} GB"
+msgstr "[{value} ĜƁ··]"
+
+#, python-brace-format
+msgid "{value} MB"
+msgstr "[{value} ṀƁ··]"

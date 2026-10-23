@@ -1,0 +1,747 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ru\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "\nThe change could not be confirmed. Settings shows the current accounts."
+msgstr "\nНе удалось подтвердить изменение. Настройки показывают текущие учётные записи."
+
+msgid "### Steps to reproduce"
+msgstr "### Шаги для воспроизведения"
+
+msgid "### System"
+msgstr "### Система"
+
+msgid "### What I expected"
+msgstr "### Ожидаемое поведение"
+
+msgid "### What happened"
+msgstr "### Что произошло"
+
+msgid "1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it"
+msgstr "от 1 до 4 разных раскладок XKB через запятую (us,ru); layout(variant) как в списке правил XKB"
+
+msgid "<!-- Nothing else was collected from your computer. Logs help, but add them only if you choose to: Settings > About can save a diagnostics file for you to review first. -->"
+msgstr "<!-- Больше никаких данных с компьютера не собрано. Журналы помогают, но добавляйте их, только если сами захотите: в разделе «Настройки > О системе» можно сохранить файл диагностики и сначала просмотреть его. -->"
+
+msgid "A previous display change needs recovery. Reopen Displays and try again."
+msgstr "Предыдущее изменение экранов требует восстановления. Откройте страницу «Экраны» заново и повторите попытку."
+
+msgid "A startup entry could not be read. Check its contents and try again."
+msgstr "Не удалось прочитать запись автозапуска. Проверьте её содержимое и повторите попытку."
+
+msgid "Alarm was not found"
+msgstr "Будильник не найден"
+
+msgid "An interrupted display change from an earlier session was discarded."
+msgstr "Прерванное изменение экранов из прежнего сеанса отброшено."
+
+msgid "An interrupted display change was reverted."
+msgstr "Прерванное изменение экранов отменено."
+
+msgid "An interrupted display reset was reverted."
+msgstr "Прерванный сброс экранов отменён."
+
+msgid "Another display change is waiting for confirmation."
+msgstr "Другое изменение экранов ожидает подтверждения."
+
+msgid "Apps could not be read or changed. Refresh the page and try again."
+msgstr "Не удалось прочитать или изменить приложения. Обновите страницу и повторите попытку."
+
+msgid "Automatic locking and blanking are unavailable because required session components are missing."
+msgstr "Автоматическая блокировка и гашение экрана недоступны: отсутствуют необходимые компоненты сеанса."
+
+msgid "Battery, profiles and session"
+msgstr "Батарея, профили и сеанс"
+
+msgid "Block devices"
+msgstr "Блочные устройства"
+
+msgid "Bluetooth"
+msgstr "Bluetooth"
+
+msgid "Brightness and night light"
+msgstr "Яркость и ночной свет"
+
+msgid "Browser"
+msgstr "Браузер"
+
+msgid "Choose None, Automatic or Manual proxy settings."
+msgstr "Выберите настройки прокси: «Нет», «Автоматически» или «Вручную»."
+
+msgid "Choose a charge limit from 50 to 100 percent."
+msgstr "Выберите предел заряда от 50 до 100 процентов."
+
+msgid "Choose a local VPN configuration file."
+msgstr "Выберите локальный файл конфигурации VPN."
+
+msgid "Choose a readable VPN configuration file."
+msgstr "Выберите доступный для чтения файл конфигурации VPN."
+
+msgid "Choose a saved connection."
+msgstr "Выберите сохранённое соединение."
+
+msgid "Choose a supported network settings action."
+msgstr "Выберите поддерживаемое действие с настройками сети."
+
+msgid "Choose a valid VPN type."
+msgstr "Выберите допустимый тип VPN."
+
+msgid "Choose a valid display setting."
+msgstr "Выберите допустимую настройку экрана."
+
+msgid "Choose a wallpaper"
+msgstr "Выберите обои"
+
+msgid "Choose one of the available delays."
+msgstr "Выберите одну из доступных задержек."
+
+msgid "Choose whether the app starts automatically."
+msgstr "Выберите, запускать ли приложение автоматически."
+
+msgid "Choose your picture"
+msgstr "Выберите изображение"
+
+msgid "Clipboard history"
+msgstr "История буфера обмена"
+
+msgid "Clock command is too large"
+msgstr "Команда часов слишком велика"
+
+msgid "Clock state directory must not be writable by others"
+msgstr "Каталог состояния часов не должен быть доступен для записи другим пользователям"
+
+msgid "Clock state is too large"
+msgstr "Состояние часов слишком велико"
+
+msgid "Clock tools are already running in another session."
+msgstr "Часы уже открыты в другом сеансе."
+
+msgid "Clock tools could not read or save their settings. Check access and available space."
+msgstr "Часы не смогли прочитать или сохранить настройки. Проверьте доступ и свободное место."
+
+msgid "Clock tools could not read that data. Please try again."
+msgstr "Часы не смогли прочитать эти данные. Повторите попытку."
+
+msgid "Close window"
+msgstr "Закрыть окно"
+
+msgid "Confirm password: "
+msgstr "Подтвердите пароль: "
+
+msgid "Connection changed."
+msgstr "Соединение изменено."
+
+msgid "Could not check the screen timers."
+msgstr "Не удалось проверить таймеры экрана."
+
+msgid "Cycle column widths"
+msgstr "Переключить ширину столбца"
+
+msgid "Disabled"
+msgstr "Отключено"
+
+msgid "Disabled displays are session-only and cannot be saved."
+msgstr "Отключение экранов действует только в сеансе и не может быть сохранено."
+
+msgid "Display information could not be read."
+msgstr "Не удалось прочитать сведения об экранах."
+
+msgid "Display settings changed elsewhere. Reopen Displays and try again."
+msgstr "Настройки экранов изменены извне. Откройте страницу «Экраны» заново и повторите попытку."
+
+msgid "Display settings could not be saved. Check the available space and try again."
+msgstr "Не удалось сохранить настройки экранов. Проверьте свободное место и повторите попытку."
+
+msgid "Emaki landscape"
+msgstr "Пейзаж Emaki"
+
+msgid "Emaki problem report"
+msgstr "Отчёт о проблеме Emaki"
+
+msgid "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+msgstr "Введите пароль без переводов строк, табуляций и других управляющих символов (не более 1024 байтов UTF-8)."
+
+msgid "Enter a proxy address as host:port."
+msgstr "Введите адрес прокси в виде host:port."
+
+msgid "Enter an HTTP or HTTPS proxy configuration URL."
+msgstr "Введите URL конфигурации прокси HTTP или HTTPS."
+
+msgid "Enter between one and sixteen DNS server addresses."
+msgstr "Введите от одного до шестнадцати адресов серверов DNS."
+
+msgid "Enter valid DNS server addresses."
+msgstr "Введите допустимые адреса серверов DNS."
+
+msgid "Expected a clock command"
+msgstr "Ожидалась команда часов"
+
+msgid "Expected a whole number"
+msgstr "Ожидалось целое число"
+
+msgid "Expected true or false"
+msgstr "Ожидалось true или false"
+
+msgid "Failed system units"
+msgstr "Системные юниты с ошибками"
+
+msgid "Failed user units"
+msgstr "Пользовательские юниты с ошибками"
+
+msgid "Files"
+msgstr "Файлы"
+
+msgid "Float or tile window"
+msgstr "Переключить плавающий или мозаичный режим окна"
+
+msgid "Focus dock"
+msgstr "Перевести фокус на док"
+
+msgid "Focus left column"
+msgstr "Перевести фокус на левый столбец"
+
+msgid "Focus newest notification"
+msgstr "Перевести фокус на последнее уведомление"
+
+msgid "Focus right column"
+msgstr "Перевести фокус на правый столбец"
+
+msgid "Focus top bar"
+msgstr "Перевести фокус на верхнюю панель"
+
+msgid "Focus window or workspace above"
+msgstr "Перевести фокус на окно или рабочий стол выше"
+
+msgid "Focus window or workspace below"
+msgstr "Перевести фокус на окно или рабочий стол ниже"
+
+#, python-brace-format
+msgid "Go to workspace {number}"
+msgstr "Перейти на рабочий стол {number}"
+
+msgid "Image viewer"
+msgstr "Просмотр изображений"
+
+msgid "Installation"
+msgstr "Установка"
+
+#, python-brace-format
+msgid "Installed with Emaki {value1}; current release matches"
+msgstr "Установлен выпуск Emaki {value1}; он же текущий"
+
+#, python-brace-format
+msgid "Installed with Emaki {value1}; now on {value2}"
+msgstr "Установлен выпуск Emaki {value1}; сейчас {value2}"
+
+msgid "Invalid alarm identifier"
+msgstr "Недопустимый идентификатор будильника"
+
+msgid "Invalid alarm label"
+msgstr "Недопустимое название будильника"
+
+msgid "Invalid application identifier."
+msgstr "Недопустимый идентификатор приложения."
+
+msgid "Invalid clock state"
+msgstr "Недопустимое состояние часов"
+
+msgid "Invalid duration"
+msgstr "Недопустимая длительность"
+
+msgid "Invalid laps"
+msgstr "Недопустимые круги"
+
+msgid "Invalid notice"
+msgstr "Недопустимое уведомление"
+
+msgid "Invalid repeat days"
+msgstr "Недопустимые дни повтора"
+
+msgid "Invalid time zone search"
+msgstr "Недопустимый поиск часового пояса"
+
+msgid "Invalid timer state"
+msgstr "Недопустимое состояние таймера"
+
+msgid "Keep at least one display turned on."
+msgstr "Оставьте включённым хотя бы один экран."
+
+msgid "Keep or revert the current display change first."
+msgstr "Сначала сохраните или отмените текущее изменение экранов."
+
+msgid "Keyboard layouts"
+msgstr "Раскладки клавиатуры"
+
+msgid "Lid behavior is managed by the system."
+msgstr "Действие при закрытии крышки управляется системой."
+
+msgid "Linux kernel"
+msgstr "Ядро Linux"
+
+msgid "Lock screen"
+msgstr "Заблокировать экран"
+
+msgid "Lower volume"
+msgstr "Уменьшить громкость"
+
+msgid "Make column narrower"
+msgstr "Сузить столбец"
+
+msgid "Make column wider"
+msgstr "Расширить столбец"
+
+msgid "Make keyboard brighter"
+msgstr "Увеличить яркость клавиатуры"
+
+msgid "Make keyboard dimmer"
+msgstr "Уменьшить яркость клавиатуры"
+
+msgid "Make screen brighter"
+msgstr "Увеличить яркость экрана"
+
+msgid "Make screen dimmer"
+msgstr "Уменьшить яркость экрана"
+
+msgid "Maximize column"
+msgstr "Развернуть столбец"
+
+msgid "Move column left"
+msgstr "Переместить столбец влево"
+
+msgid "Move column right"
+msgstr "Переместить столбец вправо"
+
+msgid "Move column to left monitor"
+msgstr "Переместить столбец на левый монитор"
+
+msgid "Move column to monitor above"
+msgstr "Переместить столбец на монитор выше"
+
+msgid "Move column to monitor below"
+msgstr "Переместить столбец на монитор ниже"
+
+msgid "Move column to right monitor"
+msgstr "Переместить столбец на правый монитор"
+
+#, python-brace-format
+msgid "Move column to workspace {number}"
+msgstr "Переместить столбец на рабочий стол {number}"
+
+msgid "Move window down or to workspace below"
+msgstr "Переместить окно вниз или на рабочий стол ниже"
+
+msgid "Move window into or out of left column"
+msgstr "Переместить окно в левый столбец или из него"
+
+msgid "Move window into or out of right column"
+msgstr "Переместить окно в правый столбец или из него"
+
+msgid "Move window up or to workspace above"
+msgstr "Переместить окно вверх или на рабочий стол выше"
+
+msgid "Mute or unmute microphone"
+msgstr "Включить или выключить микрофон"
+
+msgid "Mute or unmute sound"
+msgstr "Включить или выключить звук"
+
+msgid "Network settings could not be reached. Try again."
+msgstr "Не удалось обратиться к настройкам сети. Повторите попытку."
+
+msgid "Network settings could not be read. Try again."
+msgstr "Не удалось прочитать настройки сети. Повторите попытку."
+
+msgid "Network settings took too long. Try again."
+msgstr "Настройки сети не ответили вовремя. Повторите попытку."
+
+msgid "NetworkManager could not complete this change. Check your connection and permissions."
+msgstr "NetworkManager не смог завершить изменение. Проверьте соединение и права доступа."
+
+msgid "NetworkManager is not available."
+msgstr "NetworkManager недоступен."
+
+#, python-brace-format
+msgid "New password for {value1}: "
+msgstr "Новый пароль для {value1}: "
+
+msgid "Next track"
+msgstr "Следующая композиция"
+
+msgid "Not recorded (please say whether this is a fresh installation or an updated one)"
+msgstr "Не записано (укажите, установлена ли система заново или обновлена с прежнего выпуска)"
+
+msgid "Notifications, calendar and music"
+msgstr "Уведомления, календарь и музыка"
+
+msgid "Open files"
+msgstr "Открыть файловый менеджер"
+
+msgid "Open launcher"
+msgstr "Открыть меню запуска"
+
+msgid "Open terminal"
+msgstr "Открыть терминал"
+
+msgid "Open terminal (works without Super)"
+msgstr "Открыть терминал (работает без Super)"
+
+msgid "Password changed."
+msgstr "Пароль изменён."
+
+msgid "Password not changed."
+msgstr "Пароль не изменён."
+
+msgid "Pictures"
+msgstr "Изображения"
+
+msgid "Play or pause media"
+msgstr "Воспроизвести или приостановить"
+
+msgid "Power menu"
+msgstr "Меню питания"
+
+msgid "Press Enter to close this window. "
+msgstr "Нажмите Enter, чтобы закрыть это окно. "
+
+msgid "Previous track"
+msgstr "Предыдущая композиция"
+
+msgid "Privacy and capture activity"
+msgstr "Конфиденциальность и активный захват"
+
+msgid "Raise volume"
+msgstr "Увеличить громкость"
+
+msgid "Recent journal errors"
+msgstr "Последние ошибки из журнала"
+
+msgid "Record screen"
+msgstr "Записать экран"
+
+msgid "Review this file before sharing. It may contain private information."
+msgstr "Проверьте файл перед передачей. Он может содержать личные данные."
+
+msgid "Saved display settings cannot be read. Restore the managed display file to continue."
+msgstr "Не удалось прочитать сохранённые настройки экранов. Чтобы продолжить, восстановите файл настроек экранов, которым управляет Emaki."
+
+msgid "Search keyboard shortcuts"
+msgstr "Поиск сочетаний клавиш"
+
+msgid "Settings were saved. Reconnect this connection to apply them."
+msgstr "Настройки сохранены. Переподключите это соединение, чтобы применить их."
+
+msgid "Show shortcut overview"
+msgstr "Показать обзор сочетаний"
+
+msgid "Show that the password window is real"
+msgstr "Показать, что окно пароля настоящее"
+
+msgid "Sound and app volume"
+msgstr "Звук и громкость приложений"
+
+msgid "Stop media"
+msgstr "Остановить воспроизведение"
+
+msgid "Switch keyboard layout"
+msgstr "Переключить раскладку клавиатуры"
+
+msgid "Switch windows"
+msgstr "Переключить окна"
+
+msgid "Switch windows backwards"
+msgstr "Переключить окна в обратном порядке"
+
+msgid "Switch windows of the same app"
+msgstr "Переключить окна одного приложения"
+
+msgid "Switch windows of the same app backwards"
+msgstr "Переключить окна одного приложения в обратном порядке"
+
+msgid "System details"
+msgstr "Сведения о системе"
+
+msgid "Take an interactive screenshot"
+msgstr "Сделать интерактивный снимок экрана"
+
+msgid "Terminal"
+msgstr "Терминал"
+
+msgid "Text editor"
+msgstr "Текстовый редактор"
+
+msgid "That resolution or refresh rate is not available on this display."
+msgstr "Это разрешение или частота обновления недоступны на этом экране."
+
+msgid "The account is ready."
+msgstr "Учётная запись готова."
+
+msgid "The account was not created."
+msgstr "Учётная запись не создана."
+
+msgid "The alarm limit is 64"
+msgstr "Допускается не более 64 будильников"
+
+msgid "The application entry is too large."
+msgstr "Запись приложения слишком велика."
+
+msgid "The confirmation time expired. The previous settings were restored."
+msgstr "Время подтверждения истекло. Прежние настройки восстановлены."
+
+msgid "The connected displays changed. Reopen Displays and try again."
+msgstr "Подключённые экраны изменились. Откройте страницу «Экраны» заново и повторите попытку."
+
+msgid "The display configuration could not be loaded."
+msgstr "Не удалось загрузить конфигурацию экранов."
+
+msgid "The display configuration reload was not confirmed."
+msgstr "Повторная загрузка конфигурации экранов не подтверждена."
+
+msgid "The display did not confirm the requested settings."
+msgstr "Экран не подтвердил запрошенные настройки."
+
+msgid "The display name is invalid."
+msgstr "Недопустимое имя экрана."
+
+msgid "The display request is invalid."
+msgstr "Недопустимый запрос экрана."
+
+msgid "The display request is too large."
+msgstr "Запрос экрана слишком велик."
+
+msgid "The display service could not apply the change."
+msgstr "Служба экранов не смогла применить изменение."
+
+msgid "The display service is unavailable."
+msgstr "Служба экранов недоступна."
+
+msgid "The display service returned an invalid response."
+msgstr "Служба экранов вернула недопустимый ответ."
+
+msgid "The display settings lock is not safe to use."
+msgstr "Файл блокировки настроек экранов небезопасен для использования."
+
+msgid "The idle policy stopped unexpectedly."
+msgstr "Таймеры экрана неожиданно остановились."
+
+msgid "The inherited configuration does not enable this display. Its settings were restored."
+msgstr "Унаследованная конфигурация не включает этот экран. Его настройки восстановлены."
+
+msgid "The installed application is unavailable."
+msgstr "Установленное приложение недоступно."
+
+msgid "The managed display directory is not safe to use."
+msgstr "Каталог настроек экранов Emaki небезопасен для использования."
+
+msgid "The managed display file is not safe to use."
+msgstr "Файл настроек экранов Emaki небезопасен для использования."
+
+msgid "The new display size would separate or overlap screens. Adjust their positions first."
+msgstr "Новый размер экрана приведёт к разрыву или перекрытию экранов. Сначала измените их расположение."
+
+msgid "The passwords do not match."
+msgstr "Пароли не совпадают."
+
+msgid "The pending display change cannot be recovered."
+msgstr "Невозможно восстановить ожидающее изменение экранов."
+
+msgid "The personal configuration directory is not owned by you."
+msgstr "Личный каталог конфигурации принадлежит не вам."
+
+msgid "The personal configuration directory must be absolute."
+msgstr "Путь к личному каталогу конфигурации должен быть абсолютным."
+
+msgid "The previous display settings could not be fully restored. Reconnect the display and try again."
+msgstr "Не удалось полностью восстановить прежние настройки экранов. Подключите экран заново и повторите попытку."
+
+msgid "The previous display settings have been restored."
+msgstr "Прежние настройки экранов восстановлены."
+
+msgid "The remaining display was turned back on."
+msgstr "Оставшийся экран снова включён."
+
+msgid "The saved lid setting is not valid."
+msgstr "Сохранённая настройка крышки недопустима."
+
+msgid "The saved power settings are not valid."
+msgstr "Сохранённые настройки питания недопустимы."
+
+msgid "The screen timers are not running. Apply a setting to try again."
+msgstr "Таймеры экрана не работают. Примените настройку для повторной попытки."
+
+msgid "The selected display is no longer connected."
+msgstr "Выбранный экран больше не подключён."
+
+msgid "The startup directory is not owned by you."
+msgstr "Каталог автозапуска принадлежит не вам."
+
+msgid "The startup entry is not a personal regular file."
+msgstr "Запись автозапуска не является личным обычным файлом."
+
+msgid "The startup entry is not an application."
+msgstr "Запись автозапуска не является приложением."
+
+msgid "The startup entry is too large."
+msgstr "Запись автозапуска слишком велика."
+
+msgid "The stopwatch has 100 laps; reset to record more"
+msgstr "В секундомере уже 100 кругов; сбросьте его, чтобы записывать новые"
+
+msgid "The system could not apply the power setting."
+msgstr "Система не смогла применить настройку питания."
+
+msgid "The world clock limit is 24"
+msgstr "Допускается не более 24 мировых часов"
+
+msgid "Their login wallet may still use the previous password."
+msgstr "Хранилище паролей входа этого пользователя может всё ещё использовать прежний пароль."
+
+msgid "There is no display change to keep."
+msgstr "Нет изменения экранов для сохранения."
+
+msgid "This VPN type needs its NetworkManager plugin."
+msgstr "Для этого типа VPN нужен соответствующий модуль NetworkManager."
+
+msgid "This app already has a personal startup entry. Check it before adding the app again."
+msgstr "У приложения уже есть личная запись автозапуска. Проверьте её перед повторным добавлением."
+
+msgid "This battery does not expose a charge limit."
+msgstr "Эта батарея не предоставляет настройку предела заряда."
+
+msgid "This connection is no longer available."
+msgstr "Это соединение больше недоступно."
+
+msgid "This display change applies until the session ends."
+msgstr "Это изменение экранов действует до окончания сеанса."
+
+msgid "This file has not been uploaded."
+msgstr "Этот файл никуда не отправлялся."
+
+msgid "Toggle fullscreen"
+msgstr "Переключить полноэкранный режим"
+
+msgid "Toggle overview"
+msgstr "Открыть или закрыть обзор"
+
+msgid "Too many clock entries"
+msgstr "Слишком много записей часов"
+
+msgid "Tray applications"
+msgstr "Приложения системного лотка"
+
+msgid "Turn this display on before changing its settings."
+msgstr "Включите этот экран перед изменением его настроек."
+
+msgid "Unavailable"
+msgstr "Недоступно"
+
+msgid "Unexpected startup argument."
+msgstr "Неожиданный аргумент запуска."
+
+msgid "Unknown clock command"
+msgstr "Неизвестная команда часов"
+
+msgid "Unknown power setting."
+msgstr "Неизвестная настройка питания."
+
+msgid "Unknown startup action."
+msgstr "Неизвестное действие автозапуска."
+
+msgid "Unknown time zone"
+msgstr "Неизвестный часовой пояс"
+
+msgid "Unknown user"
+msgstr "Неизвестный пользователь"
+
+msgid "Unsafe clock state file"
+msgstr "Небезопасный файл состояния часов"
+
+msgid "Unsafe clock state lock"
+msgstr "Небезопасный файл блокировки состояния часов"
+
+msgid "Unsupported clock state version"
+msgstr "Неподдерживаемая версия состояния часов"
+
+msgid "Update channel"
+msgstr "Канал обновлений"
+
+msgid "Use only letters, digits and symbols of the English (US) keyboard."
+msgstr "Используйте только буквы, цифры и символы английской раскладки (США)."
+
+msgid "Use status, add, set or reset with --json."
+msgstr "Используйте status, add, set или reset с --json."
+
+msgid "VPN imported."
+msgstr "VPN импортирован."
+
+msgid "Video player"
+msgstr "Видеопроигрыватель"
+
+msgid "Welcome to Emaki"
+msgstr "Добро пожаловать в Emaki"
+
+msgid "Wi-Fi and VPN"
+msgstr "Wi-Fi и VPN"
+
+msgid "Your saved clocks could not be read. Start over to keep a backup and reset them."
+msgstr "Не удалось прочитать сохранённые часы. Нажмите «Начать заново»: прежние данные сохранятся в резервной копии, а часы будут сброшены."
+
+msgid "Your startup entries could not be accessed. Check their permissions and try again."
+msgstr "Не удалось получить доступ к записям автозапуска. Проверьте их права доступа и повторите попытку."
+
+msgid "a time zone name of the tz database (Europe/Berlin, UTC)"
+msgstr "имя часового пояса из базы tz (Europe/Berlin, UTC)"
+
+msgid "an installed UTF-8 locale (en_US.UTF-8)"
+msgstr "установленная локаль UTF-8 (en_US.UTF-8)"
+
+msgid "an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language"
+msgstr "установленная локаль UTF-8 для чисел, дат, валюты, единиц и бумаги; пустое значение — по языку системы"
+
+msgid "emaki-settings-wallpaper: wallpaper apply or verification failed"
+msgstr "emaki-settings-wallpaper: ошибка применения или проверки обоев"
+
+msgid "invalid block tree"
+msgstr "недопустимое дерево блоков"
+
+msgid "missing or unsafe runtime directory"
+msgstr "каталог среды выполнения отсутствует или небезопасен"
+
+#, python-brace-format
+msgid "read the machine: emaki-machine-settings get {value1} --json"
+msgstr "прочитайте настройки компьютера: emaki-machine-settings get {value1} --json"
+
+msgid "set the before value again to go back once that read shows the change; do not repeat the change blindly"
+msgstr "после того как чтение подтвердит изменение, задайте прежнее значение для возврата; не повторяйте изменение вслепую"
+
+msgid "unsafe lock directory"
+msgstr "небезопасный каталог блокировки"
+
+msgid "unsafe lock file"
+msgstr "небезопасный файл блокировки"
+
+#, python-brace-format
+msgid "{total} GiB · {free} GiB free"
+msgstr "{total} GiB · свободно {free} GiB"
+
+msgid "Command menu"
+msgstr "Меню команд"
+
+msgid "Emoji"
+msgstr "Эмодзи"
+
+msgid "Copy text from screen"
+msgstr "Скопировать текст с экрана"
+
+msgid "Read QR code"
+msgstr "Прочитать QR-код"
+
+#, python-brace-format
+msgid "{amount} GiB"
+msgstr "{amount} GiB"

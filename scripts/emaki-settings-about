@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_paths
 from emaki_report_redact import Redactor
 
-from emaki_i18n import translation
+from emaki_i18n import format_number, translation
 
 _ = translation('shell').gettext
 
@@ -99,13 +99,15 @@ def details():
                    if line.startswith('MemTotal:')), UNKNOWN)
     try:
         amount, unit = memory.split()
-        memory = f'{int(amount) / 2**20:.1f} GiB' if unit == 'kB' and int(amount) > 0 else UNKNOWN
+        memory = (_('{amount} GiB').format(amount=format_number(int(amount) / 2**20, 1))
+                  if unit == 'kB' and int(amount) > 0 else UNKNOWN)
     except ValueError:
         memory = UNKNOWN
     graphics = graphics_names(command(['lspci', '-mm']))
     try:
         disk = shutil.disk_usage('/')
-        storage = _('{total:.1f} GiB · {free:.1f} GiB free').format(total=disk.total / 2**30, free=disk.free / 2**30)
+        storage = _('{total} GiB · {free} GiB free').format(
+            total=format_number(disk.total / 2**30, 1), free=format_number(disk.free / 2**30, 1))
     except OSError:
         storage = UNKNOWN
     firmware = ' '.join(filter(None, [read('/sys/class/dmi/id/bios_vendor'),

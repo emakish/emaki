@@ -34,11 +34,15 @@ Scope {
     property bool completed: false
     property bool receivedEvent: false
     property var pendingRequest: null
+    property var linkOffers: ({})
+    property int nextLinkOffer: 0
     property var helperCommand: [Platform.python, "-I", "-B", Qt.resolvedUrl("helpers/capture.py").toString().replace(/^file:\/\//, "")]
     readonly property var screen: screens.find(s => s.name === outputName) ?? screens.find(s => s.name === preferredOutput) ?? screens[0] ?? null
     readonly property var selectedOutput: outputs.find(o => o.name === outputName) ?? null
+    readonly property bool recognizing: mode === "text" || mode === "qr"
     readonly property bool canCapture: enabled && !locked && opened && ready && !busy && !!selectedOutput && (target !== "window" || windows.some(w => w.id === windowId)) && (target !== "area" || area.width >= 2 && area.height >= 2)
     signal opening
+    signal linkRequested(string url)
 
     function open(): bool {
         if (!enabled || locked || busy || inventory.running)
@@ -71,13 +75,22 @@ Scope {
         return selectMode("recording");
     }
     function selectMode(value: string): bool {
-        if (busy || !["picture", "recording"].includes(value))
+        if (busy || !["picture", "recording", "text", "qr"].includes(value))
             return false;
         mode = value;
+        if (recognizing)
+            target = "area";
         return true;
     }
+    function recognize(value: string): bool {
+        if (!["text", "qr"].includes(value) || !enabled || locked || busy)
+            return false;
+        if (!opened && !open())
+            return false;
+        return selectMode(value);
+    }
     function selectTarget(value: string): bool {
-        if (busy || !["area", "window", "screen"].includes(value))
+        if (busy || !["area", "window", "screen"].includes(value) || (recognizing && value !== "area"))
             return false;
         target = value;
         return true;
@@ -124,6 +137,7 @@ Scope {
         stopping = false;
         completed = false;
         receivedEvent = false;
+        lastPath = "";
         error = "";
         reason = "";
         // Unmap the controls before requesting pixels on the compositor connection.
@@ -141,18 +155,62 @@ Scope {
             stopping = false;
             return true;
         }
-        if (worker.running)
-            worker.write("stop\n");
+        if (worker.running) {
+            if (recognizing)
+                worker.signal(15);
+            else
+                worker.write("stop\n");
+        }
         finishDeadline.restart();
         return true;
     }
     function fail(code: string): void {
         reason = code;
-        error = CaptureText.failed();
+        error = code === "tesseract_missing" ? CaptureText.missingTesseract() : code === "zbar_missing" ? CaptureText.missingZbar() : CaptureText.failed();
         if (opened)
             ready = false;
+        else if (recognizing)
+            notificationStore?.transientLocal("Emaki", error, "", []);
         else
-            notificationStore?.local("Emaki", CaptureText.failed(), "");
+            notificationStore?.local("Emaki", error, "");
+    }
+    function webLinkHost(value: string): string {
+        const match = value.match(/^https?:\/\/([^\s\/?#\\]+)(?:[\/?#][^\s\\]*)?$/i);
+        // The authority ends before the path; credentials never identify the host.
+        return match ? match[1].slice(match[1].lastIndexOf("@") + 1) : "";
+    }
+    function isWebLink(value: string): bool {
+        return !!webLinkHost(value) && !/[\u0000-\u001f\u007f\u061c\u200e-\u200f\u202a-\u202e\u2066-\u2069]/.test(value);
+    }
+    function activateLink(action: string): bool {
+        const url = linkOffers[action];
+        if (!enabled || locked || typeof url !== "string" || !isWebLink(url))
+            return false;
+        delete linkOffers[action];
+        linkRequested(url);
+        return true;
+    }
+    function recognized(result): void {
+        if (!recognizing || result.kind !== mode || typeof result.text !== "string" || !result.text)
+            throw new Error("invalid_recognition_reply");
+        completed = true;
+        const text = result.text;
+        const title = !result.clipboard ? CaptureText.clipboardUnavailable() : mode === "text" ? CaptureText.copiedText() : CaptureText.copiedCode();
+        const link = mode === "qr" && isWebLink(text);
+        const display = link ? webLinkHost(text) + " — " + text : text;
+        const firstLine = display.split(/[\r\n\u2028\u2029]/, 1)[0].match(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S]/g) || [];
+        const preview = firstLine.length > 80 ? firstLine.slice(0, 79).join("") + "…" : firstLine.join("");
+        if (link && notificationStore) {
+            const action = "capture:open-link:" + (++nextLinkOffer);
+            // Bound in-memory offers; old or repeated actions stay inert.
+            const keys = Object.keys(linkOffers);
+            if (keys.length >= 200)
+                delete linkOffers[keys[0]];
+            linkOffers[action] = text;
+            notificationStore.transientLocal("Emaki", title, preview, [{id: action, text: CaptureText.openLink()}]);
+        } else {
+            notificationStore?.transientLocal("Emaki", title, preview, []);
+        }
     }
     function sampleInventory(data: string): void {
         if (!opened)
@@ -183,6 +241,8 @@ Scope {
         try {
             const result = JSON.parse(data);
             receivedEvent = true;
+            if (recognizing && stopping)
+                return;
             if (result.event === "stream") {
                 streamNode = Number.isInteger(result.node) && result.node >= 0 ? result.node : -1;
             } else if (result.event === "recording") {
@@ -195,6 +255,13 @@ Scope {
                 recording = false;
                 lastPath = result.path;
                 notificationStore?.local("Emaki", mode === "recording" ? CaptureText.savedRecording() : result.clipboard ? CaptureText.savedPicture() : CaptureText.savedPictureNoClipboard(), lastPath);
+            } else if (result.event === "recognized") {
+                recognized(result);
+            } else if (result.event === "empty") {
+                if (!recognizing || result.kind !== mode)
+                    throw new Error("invalid_recognition_reply");
+                completed = true;
+                notificationStore?.transientLocal("Emaki", mode === "text" ? CaptureText.noText() : CaptureText.noCode(), "", []);
             } else if (result.event === "error") {
                 completed = true;
                 recording = false;
@@ -244,6 +311,12 @@ Scope {
         if (opened && !screens.some(s => s.name === outputName))
             close();
     }
+    Connections {
+        target: controller.notificationStore
+        function onLocalActionRequested(action: string): void {
+            controller.activateLink(action);
+        }
+    }
     Timer {
         id: unmapDelay
         interval: 180
@@ -252,7 +325,8 @@ Scope {
                 controller.busy = false;
                 return;
             }
-            worker.command = controller.helperCommand.concat([controller.mode === "recording" ? "--record" : "--picture", JSON.stringify(controller.pendingRequest)]);
+            const operation = controller.recognizing ? "--" + controller.mode : controller.mode === "recording" ? "--record" : "--picture";
+            worker.command = controller.helperCommand.concat([operation, JSON.stringify(controller.pendingRequest)]);
             worker.launched = false;
             worker.running = true;
             startDeadline.restart();
@@ -270,7 +344,7 @@ Scope {
     Timer {
         id: startDeadline
         // Inventory, stream, portal and recorder startup each have their own bounds.
-        interval: controller.mode === "recording" ? 90000 : 20000
+        interval: controller.mode === "recording" || controller.recognizing ? 90000 : 20000
         onTriggered: {
             controller.fail("capture_timeout");
             controller.stop();
@@ -338,7 +412,7 @@ Scope {
             startDeadline.stop();
             finishDeadline.stop();
             controller.streamNode = -1;
-            if (!controller.completed && !controller.error)
+            if (!controller.completed && !controller.error && !(controller.recognizing && controller.stopping))
                 controller.fail("capture_failed");
             controller.busy = false;
             controller.recording = false;

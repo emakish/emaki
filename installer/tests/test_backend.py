@@ -483,7 +483,7 @@ class ConsoleFileTests(unittest.TestCase):
         from emaki_installer.arch_backend import Backend
         from emaki_installer.render import console_keymap, vconsole_conf
         for layouts, font in ((layouts, font) for layouts in (['cz', 'ru'], ['dvorak', 'ua'], ['us'])
-                              for font in (None, 'ter-124b')):
+                              for font in (None, 'ter-v24b', 'ter-v32b')):
             with self.subTest(layouts=layouts), tempfile.TemporaryDirectory() as temp:
                 settings = config()
                 settings['layouts'] = layouts

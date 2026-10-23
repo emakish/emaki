@@ -12,6 +12,11 @@ Scope {
     property var values: []
     property int applyEpoch: 0
     property var controller: null
+    // Settings > Updates "Reset Emaki settings" (and its Undo) rewrote the shell's own
+    // preference files: the stores that keep them in memory read them again. Hold comes first:
+    // until the reload the stores save nothing, so a pending save cannot undo the reset.
+    signal storesHoldRequested
+    signal storesReloadRequested
     // The core holds its transaction lock here. Applying must stay synchronous
     // and must never call back into the core before acknowledging the values.
     IpcHandler {

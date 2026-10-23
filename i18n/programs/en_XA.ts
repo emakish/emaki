@@ -4,6 +4,57 @@
 SPDX-License-Identifier: GPL-3.0-or-later -->
 <TS version="2.1" language="en_US" sourcelanguage="en">
     <context>
+        <name>ManagerDevelopment</name>
+        <message>
+            <source>Development kits</source>
+            <translation>[Ðéṽéļöþɱéñţ ķîţš····]</translation>
+        </message>
+        <message>
+            <source>Tools for building software, installed together from Arch.</source>
+            <translation>[Ţööļš ƒöŕ ƀûîļðîñĝ šöƒţŵàŕé, îñšţàļļéð ţöĝéţĥéŕ ƒŕöɱ Àŕçĥ.···················]</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>[Ļöàðîñĝ…·]</translation>
+        </message>
+        <message>
+            <source>Installed</source>
+            <translation>[Îñšţàļļéð··]</translation>
+        </message>
+        <message>
+            <source>The stable Rust toolchain is downloaded for your account after the packages are installed. Toolchains in your home folder stay when you remove the kit.</source>
+            <translation>[Ţĥé šţàƀļé Ŕûšţ ţööļçĥàîñ îš ðöŵñļöàðéð ƒöŕ ÿöûŕ àççöûñţ àƒţéŕ ţĥé þàçķàĝéš àŕé îñšţàļļéð. Ţööļçĥàîñš îñ ÿöûŕ ĥöɱé ƒöļðéŕ šţàÿ ŵĥéñ ÿöû ŕéɱöṽé ţĥé ķîţ.···················································]</translation>
+        </message>
+        <message>
+            <source>Installing enables the Docker socket. Removing restores the previous socket and group settings. Images and containers stay on this computer.</source>
+            <translation>[Îñšţàļļîñĝ éñàƀļéš ţĥé Ðöçķéŕ šöçķéţ. Ŕéɱöṽîñĝ ŕéšţöŕéš ţĥé þŕéṽîöûš šöçķéţ àñð ĝŕöûþ šéţţîñĝš. Îɱàĝéš àñð çöñţàîñéŕš šţàÿ öñ ţĥîš çöɱþûţéŕ.···············································]</translation>
+        </message>
+        <message>
+            <source>Allow Docker without an administrator password</source>
+            <translation>[Àļļöŵ Ðöçķéŕ ŵîţĥöûţ àñ àðɱîñîšţŕàţöŕ þàššŵöŕð···············]</translation>
+        </message>
+        <message>
+            <source>Members of the Docker group can control this computer as root.</source>
+            <translation>[Ṁéɱƀéŕš öƒ ţĥé Ðöçķéŕ ĝŕöûþ çàñ çöñţŕöļ ţĥîš çöɱþûţéŕ àš ŕööţ.····················]</translation>
+        </message>
+        <message>
+            <source>Install</source>
+            <translation>[Îñšţàļļ·]</translation>
+        </message>
+        <message>
+            <source>Finish setup</source>
+            <translation>[Ƒîñîšĥ šéţûþ···]</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>[Ŕéɱöṽé·]</translation>
+        </message>
+        <message>
+            <source>Undo this install</source>
+            <translation>[Ûñðö ţĥîš îñšţàļļ····]</translation>
+        </message>
+    </context>
+    <context>
         <name>ManagerLogic</name>
         <message>
             <source>Internet</source>
@@ -106,27 +157,32 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[šţàÿš]</translation>
         </message>
         <message numerus="yes">
-            <source>%1 need(s) what it added.</source>
+            <source>This install can no longer be taken back as it was. %1 need(s) what it added.</source>
             <translation>
-                <numerusform>[%1 ñééðš ŵĥàţ îţ àððéð.·······]</numerusform>
-                <numerusform>[%1 ñééð ŵĥàţ îţ àððéð.······]</numerusform>
+                <numerusform>[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš. %1 ñééðš ŵĥàţ îţ àððéð.·························]</numerusform>
+                <numerusform>[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš. %1 ñééð ŵĥàţ îţ àððéð.························]</numerusform>
             </translation>
         </message>
         <message>
-            <source>It is now part of the system.</source>
-            <translation>[Îţ îš ñöŵ þàŕţ öƒ ţĥé šÿšţéɱ.·········]</translation>
+            <source>This install can no longer be taken back as it was. It is now part of the system.</source>
+            <translation>[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš. Îţ îš ñöŵ þàŕţ öƒ ţĥé šÿšţéɱ.···························]</translation>
         </message>
         <message>
-            <source>It is now part of Emaki.</source>
-            <translation>[Îţ îš ñöŵ þàŕţ öƒ Éɱàķî.·······]</translation>
+            <source>This install can no longer be taken back as it was. It is now part of Emaki.</source>
+            <translation>[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš. Îţ îš ñöŵ þàŕţ öƒ Éɱàķî.·························]</translation>
         </message>
         <message>
-            <source>You installed it yourself since.</source>
-            <translation>[Ÿöû îñšţàļļéð îţ ÿöûŕšéļƒ šîñçé.··········]</translation>
+            <source>This install can no longer be taken back as it was. You installed it yourself since.</source>
+            <translation>[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš. Ÿöû îñšţàļļéð îţ ÿöûŕšéļƒ šîñçé.····························]</translation>
         </message>
         <message>
-            <source>It is no longer installed.</source>
-            <translation>[Îţ îš ñö ļöñĝéŕ îñšţàļļéð.········]</translation>
+            <source>This install can no longer be taken back as it was. It is no longer installed.</source>
+            <translation>[Ţĥîš îñšţàļļ çàñ ñö ļöñĝéŕ ƀé ţàķéñ ƀàçķ àš îţ ŵàš. Îţ îš ñö ļöñĝéŕ îñšţàļļéð.··························]</translation>
+        </message>
+        <message>
+            <source>d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern for an installation date. Keep the time in 24-hour form.</extracomment>
+            <translation>[ð ṀṀṀ ÿÿÿÿ, ĤĤ:ɱɱ····]</translation>
         </message>
         <message>
             <source>0 MB</source>
@@ -386,8 +442,8 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>ManagerUpdates</name>
         <message>
-            <source>installing %1 of %2</source>
-            <translation>[îñšţàļļîñĝ %1 öƒ %2·····]</translation>
+            <source>Installing %1 of %2</source>
+            <translation>[Îñšţàļļîñĝ %1 öƒ %2·····]</translation>
         </message>
         <message>
             <source>Getting ready…</source>
@@ -450,6 +506,15 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Emaki desktop settings</source>
             <translation>[Éɱàķî ðéšķţöþ šéţţîñĝš······]</translation>
+        </message>
+        <message>
+            <source>ddd d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern for a restore point. Keep the time in 24-hour form.</extracomment>
+            <translation>[ððð ð ṀṀṀ ÿÿÿÿ, ĤĤ:ɱɱ······]</translation>
+        </message>
+        <message>
+            <source>Restore the system as it was before this removal (snapshot %1)</source>
+            <translation>[Ŕéšţöŕé ţĥé šÿšţéɱ àš îţ ŵàš ƀéƒöŕé ţĥîš ŕéɱöṽàļ (šñàþšĥöţ %1)····················]</translation>
         </message>
         <message>
             <source>Restore the system as it was before the install of %1</source>
@@ -694,6 +759,7 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
         <message>
             <source>Installed</source>
+            <comment>list of installed programs</comment>
             <translation>[Îñšţàļļéð··]</translation>
         </message>
         <message>
@@ -862,6 +928,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Îñšţàļļîñĝ…··]</translation>
         </message>
         <message>
+            <source>Development kits</source>
+            <translation>[Ðéṽéļöþɱéñţ ķîţš····]</translation>
+        </message>
+        <message>
+            <source>Websites as apps</source>
+            <translation>[Ŵéƀšîţéš àš àþþš····]</translation>
+        </message>
+        <message>
             <source>Our picks are not available right now. Try Refresh.</source>
             <translation>[Öûŕ þîçķš àŕé ñöţ àṽàîļàƀļé ŕîĝĥţ ñöŵ. Ţŕÿ Ŕéƒŕéšĥ.················]</translation>
         </message>
@@ -880,6 +954,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Emaki’s own extras. Each installs with one button.</source>
             <translation>[Éɱàķî’š öŵñ éẋţŕàš. Éàçĥ îñšţàļļš ŵîţĥ öñé ƀûţţöñ.················]</translation>
+        </message>
+        <message>
+            <source>Installed</source>
+            <translation>[Îñšţàļļéð··]</translation>
         </message>
         <message>
             <source>Install</source>
@@ -949,6 +1027,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Ŕéɱöṽé %1?··]</translation>
         </message>
         <message>
+            <source>Finish setting up %1?</source>
+            <translation>[Ƒîñîšĥ šéţţîñĝ ûþ %1?······]</translation>
+        </message>
+        <message>
             <source>Undo the install of %1?</source>
             <translation>[Ûñðö ţĥé îñšţàļļ öƒ %1?·······]</translation>
         </message>
@@ -963,6 +1045,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Install %1?</source>
             <translation>[Îñšţàļļ %1?··]</translation>
+        </message>
+        <message>
+            <source>Adding you to the Docker group gives you root-level control of this computer.</source>
+            <translation>[Àððîñĝ ÿöû ţö ţĥé Ðöçķéŕ ĝŕöûþ ĝîṽéš ÿöû ŕööţ-ļéṽéļ çöñţŕöļ öƒ ţĥîš çöɱþûţéŕ.·························]</translation>
+        </message>
+        <message>
+            <source>The group takes effect after you sign out and sign back in.</source>
+            <translation>[Ţĥé ĝŕöûþ ţàķéš éƒƒéçţ àƒţéŕ ÿöû šîĝñ öûţ àñð šîĝñ ƀàçķ îñ.···················]</translation>
         </message>
         <message>
             <source>Nobody checked how these programs are built, neither Emaki nor Arch. Their build instructions run on this computer while the program is built. Building also brings the system up to date first.</source>
@@ -1055,6 +1145,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Çàñçéļ·]</translation>
         </message>
         <message>
+            <source>Finish setup</source>
+            <translation>[Ƒîñîšĥ šéţûþ···]</translation>
+        </message>
+        <message>
             <source>Restore and restart later</source>
             <translation>[Ŕéšţöŕé àñð ŕéšţàŕţ ļàţéŕ·······]</translation>
         </message>
@@ -1105,6 +1199,65 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Got it, open the AUR</source>
             <translation>[Ĝöţ îţ, öþéñ ţĥé ÀÛŔ·····]</translation>
+        </message>
+    </context>
+    <context>
+        <name>ManagerWebApps</name>
+        <message>
+            <source>Websites as apps</source>
+            <translation>[Ŵéƀšîţéš àš àþþš····]</translation>
+        </message>
+        <message>
+            <source>Add a website as an app in Firefox. It has its own profile and launcher entry, which you can pin in the dock.</source>
+            <translation>[Àðð à ŵéƀšîţé àš àñ àþþ îñ Ƒîŕéƒöẋ. Îţ ĥàš îţš öŵñ þŕöƒîļé àñð ļàûñçĥéŕ éñţŕÿ, ŵĥîçĥ ÿöû çàñ þîñ îñ ţĥé ðöçķ.·····································]</translation>
+        </message>
+        <message>
+            <source>Links to other sites open in this app too. Point at the top edge or press Ctrl+L to see the address.</source>
+            <translation>[Ļîñķš ţö öţĥéŕ šîţéš öþéñ îñ ţĥîš àþþ ţöö. Þöîñţ àţ ţĥé ţöþ éðĝé öŕ þŕéšš Çţŕļ+Ļ ţö šéé ţĥé àððŕéšš.·································]</translation>
+        </message>
+        <message>
+            <source>Website address</source>
+            <translation>[Ŵéƀšîţé àððŕéšš····]</translation>
+        </message>
+        <message>
+            <source>Name (optional)</source>
+            <translation>[Ñàɱé (öþţîöñàļ)····]</translation>
+        </message>
+        <message>
+            <source>When you press Add, Emaki loads the page and its icon to read the site name and save its icon.</source>
+            <translation>[Ŵĥéñ ÿöû þŕéšš Àðð, Éɱàķî ļöàðš ţĥé þàĝé àñð îţš îçöñ ţö ŕéàð ţĥé šîţé ñàɱé àñð šàṽé îţš îçöñ.·······························]</translation>
+        </message>
+        <message>
+            <source>Adding…</source>
+            <translation>[Àððîñĝ…·]</translation>
+        </message>
+        <message>
+            <source>Add</source>
+            <translation>[Àðð]</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>[Ļöàðîñĝ…·]</translation>
+        </message>
+        <message>
+            <source>No website apps yet.</source>
+            <translation>[Ñö ŵéƀšîţé àþþš ÿéţ.·····]</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>[Ŕéɱöṽé·]</translation>
+        </message>
+        <message>
+            <source>Close the app first. Removing deletes its launcher, profile, sign-ins and saved site data.</source>
+            <translation>[Çļöšé ţĥé àþþ ƒîŕšţ. Ŕéɱöṽîñĝ ðéļéţéš îţš ļàûñçĥéŕ, þŕöƒîļé, šîĝñ-îñš àñð šàṽéð šîţé ðàţà.······························]</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>[Çàñçéļ·]</translation>
+        </message>
+        <message>
+            <source>Remove app and its data</source>
+            <translation>[Ŕéɱöṽé àþþ àñð îţš ðàţà·······]</translation>
         </message>
     </context>
     <context>

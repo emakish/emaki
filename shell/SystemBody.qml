@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Layouts
 import "Keyboard.js" as Keyboard
 import Quickshell
 import "SystemIcons.js" as SystemIcons
@@ -35,6 +36,16 @@ Item {
     signal settingsRequested(string page)
     property bool opened: false
     property string confirmation: ""
+    // A question asked from elsewhere (the command menu's Restart, session()) settles first: the
+    // Enter or click that asked it, held, repeated or doubled, never answers it.
+    property bool confirmationSettling: false
+    onConfirmationChanged: if (!confirmation)
+        confirmationSettling = false
+    Timer {
+        id: confirmationSettle
+        interval: 600
+        onTriggered: body.confirmationSettling = false
+    }
     property string selectedNetwork: ""
     property string layoutState: ""
     property string pairTarget: ""
@@ -124,8 +135,18 @@ Item {
         scroller.contentY = 0;
     }
     function session(value: string): void {
-        if (["reboot", "poweroff", "suspend", "logout"].includes(value) || (value === "hibernate" && service.canHibernate))
+        if (["reboot", "poweroff", "suspend", "logout"].includes(value) || (value === "hibernate" && service.canHibernate)) {
             confirmation = value;
+            confirmationSettling = true;
+            confirmationSettle.restart();
+        }
+    }
+    // The open question takes the keyboard on Cancel (SystemPanel.takeFocus); false when none.
+    function focusConfirmation(): bool {
+        if (!confirmation || !confirmNo.visible)
+            return false;
+        confirmNo.forceActiveFocus(Qt.TabFocusReason);
+        return true;
     }
     // The mic meter runs only while the sound page is open (PwNodePeakMonitor costs a stream),
     // the Wi-Fi scanner only while the Wi-Fi page is (unsaved networks are listed only then).
@@ -180,6 +201,8 @@ Item {
     }
     onStreamGroupsChanged: wake()
     function confirmSession(): void {
+        if (confirmationSettling)
+            return;
         const value = confirmation;
         confirmation = "";
         if (value)
@@ -1097,8 +1120,21 @@ Item {
         required property string kind
         required property string text
         signal clicked
-        width: body.inner / (body.service.canHibernate ? 6 : 5)
-        height: 90
+        Layout.fillWidth: true
+        Layout.preferredWidth: body.inner / (body.service.canHibernate ? 6 : 5)
+        // Keep whole words readable at the label's minimum size; shorter actions
+        // lend their spare width to longer translations.
+        Layout.minimumWidth: {
+            labelMetrics.font;
+            return Math.max(52, ...text.split(/\s+/).map(word => Math.ceil(labelMetrics.advanceWidth(word)) + 4));
+        }
+        height: 104
+        FontMetrics {
+            id: labelMetrics
+            font.family: ShellPalette.uiFont
+            font.pixelSize: 10
+            font.weight: Font.Medium
+        }
         GlassTarget {
             glass: body.glass
             key: round.key
@@ -1125,9 +1161,17 @@ Item {
             }
         }
         Label {
+            objectName: "power-label-" + round.key
+            x: 2
             y: 58
-            width: round.width
-            height: 20
+            width: round.width - 4
+            height: implicitHeight
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            lineHeight: 0.9
+            fontSizeMode: Text.HorizontalFit
+            minimumPixelSize: 10
             horizontalAlignment: Text.AlignHCenter
             text: round.text
         }
@@ -1667,13 +1711,14 @@ Item {
                 Section {
                     text: qsTranslate("SystemBody", "Power")
                 }
-                Row {
+                RowLayout {
                     width: body.inner
+                    spacing: 0
                     Round {
                         visible: Quickshell.env("EMAKI_LIVE_SESSION") !== "1"
                         key: "act-lock"
                         kind: "lock"
-                        text: qsTranslate("SystemBody", "Lock")
+                        text: qsTranslate("SystemBody", "Lock", "power row icon label")
                         onClicked: {
                             body.confirmation = "";
                             body.service.act("lock", null);
@@ -1682,32 +1727,32 @@ Item {
                     Round {
                         key: "act-sleep"
                         kind: "sleep"
-                        text: qsTranslate("SystemBody", "Sleep")
+                        text: qsTranslate("SystemBody", "Sleep", "power row icon label")
                         onClicked: body.confirmation = body.confirmation === "suspend" ? "" : "suspend"
                     }
                     Round {
                         key: "act-reboot"
                         kind: "restart"
-                        text: qsTranslate("SystemBody", "Restart")
+                        text: qsTranslate("SystemBody", "Restart", "power row icon label")
                         onClicked: body.confirmation = body.confirmation === "reboot" ? "" : "reboot"
                     }
                     Round {
                         key: "act-off"
                         kind: "shutdown"
-                        text: qsTranslate("SystemBody", "Shut down")
+                        text: qsTranslate("SystemBody", "Shut down", "power row icon label")
                         onClicked: body.confirmation = body.confirmation === "poweroff" ? "" : "poweroff"
                     }
                     Round {
                         key: "act-logout"
                         kind: "logout"
-                        text: qsTranslate("SystemBody", "Log out")
+                        text: qsTranslate("SystemBody", "Log out", "power row icon label")
                         onClicked: body.confirmation = body.confirmation === "logout" ? "" : "logout"
                     }
                     Round {
                         visible: body.service.canHibernate
                         key: "act-hibernate"
                         kind: "hibernate"
-                        text: qsTranslate("SystemBody", "Hibernate")
+                        text: qsTranslate("SystemBody", "Hibernate", "power row icon label")
                         onClicked: body.confirmation = body.confirmation === "hibernate" ? "" : "hibernate"
                     }
                 }
@@ -1715,28 +1760,39 @@ Item {
                 Item {
                     id: confirmBlock
                     width: body.inner
-                    height: 48
+                    height: Math.max(48, confirmHint.y + confirmHint.height + 12, confirmButtons.y + confirmButtons.height + 12)
                     visible: body.confirmation !== ""
                     readonly property string action: body.confirmation === "reboot" ? qsTranslate("SystemBody", "Restart") : body.confirmation === "suspend" ? qsTranslate("SystemBody", "Sleep") : body.confirmation === "logout" ? qsTranslate("SystemBody", "Log out") : body.confirmation === "hibernate" ? qsTranslate("SystemBody", "Hibernate") : qsTranslate("SystemBody", "Shut down")
+                    readonly property string question: body.confirmation === "reboot" ? qsTranslate("SystemBody", "Restart now?\nSave your work first.") : body.confirmation === "suspend" ? qsTranslate("SystemBody", "Sleep now?\nThe screen locks first.") : body.confirmation === "logout" ? qsTranslate("SystemBody", "Log out now?\nSave your work first.") : body.confirmation === "hibernate" ? qsTranslate("SystemBody", "Hibernate now?\nThe screen locks first.") : qsTranslate("SystemBody", "Shut down now?\nSave your work first.")
+                    readonly property bool stacked: confirmQuestion.implicitWidth + confirmButtons.width + 12 > width
+                    readonly property var parts: question.split("\n")
                     Label {
+                        id: confirmQuestion
                         y: -4
-                        width: body.inner - 180
-                        height: 20
-                        text: qsTranslate("SystemBody", "%1 now?").arg(confirmBlock.action)
+                        width: confirmBlock.stacked ? body.inner : body.inner - confirmButtons.width - 12
+                        height: implicitHeight
+                        text: confirmBlock.parts[0]
+                        elide: Text.ElideNone
+                        wrapMode: Text.WordWrap
                         font.pixelSize: 14
                         color: body.ink
                     }
                     Label {
-                        y: 16
-                        width: body.inner - 180
-                        height: 18
-                        text: ["suspend", "hibernate"].includes(body.confirmation) ? qsTranslate("SystemBody", "The screen locks first.") : qsTranslate("SystemBody", "Save your work first.")
+                        id: confirmHint
+                        y: confirmQuestion.y + confirmQuestion.height
+                        width: confirmQuestion.width
+                        height: implicitHeight
+                        text: confirmBlock.parts.slice(1).join("\n")
+                        elide: Text.ElideNone
+                        wrapMode: Text.WordWrap
                     }
                     Row {
+                        id: confirmButtons
                         x: body.inner - width
-                        y: 2
+                        y: confirmBlock.stacked ? confirmHint.y + confirmHint.height + 6 : 2
                         spacing: 4
                         Word {
+                            id: confirmNo
                             key: "confirm-no"
                             label: qsTranslate("SystemBody", "Cancel")
                             onClicked: body.confirmation = ""

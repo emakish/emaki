@@ -2,6 +2,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise package adoption and service history on scratch install roots."""
+import contextlib
+import io
 import importlib.machinery
 import importlib.util
 import ctypes.util
@@ -155,7 +157,7 @@ class DesktopApplicationMigrationTests(unittest.TestCase):
         self.apply()
         self.assertEqual(self.explicit(), {'emaki-desktop', *migration.FORMER_DESKTOP_DEPENDENCIES})
         self.assertEqual(lock.read_text(), 'held by the package transaction\n')
-        self.assertEqual(json.loads(self.state.read_text())['version'], 6)
+        self.assertEqual(json.loads(self.state.read_text())['version'], 7)
 
     def test_removed_applications_stay_removed_and_later_reason_changes_stay(self):
         self.package('firefox')
@@ -170,7 +172,7 @@ class DesktopApplicationMigrationTests(unittest.TestCase):
         self.package('firefox')
         self.apply(fresh=True)
         self.assertEqual(self.explicit(), {'emaki-desktop'})
-        self.assertEqual(json.loads(self.state.read_text())['version'], 6)
+        self.assertEqual(json.loads(self.state.read_text())['version'], 7)
 
     def test_without_desktop_package_does_not_change_package_reasons(self):
         shutil.rmtree(self.database / 'local/emaki-desktop-1-1')
@@ -569,7 +571,7 @@ class MigrationTests(unittest.TestCase):
         result = self.as_root('--transaction')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(directory.stat().st_mode & 0o7777, 0o750)
-        self.assertEqual(json.loads(state.read_text())['version'], 6)
+        self.assertEqual(json.loads(state.read_text())['version'], 7)
         # Once only: an administrator's later choice stays.
         directory.chmod(0o755)
         self.assertEqual(self.as_root('--transaction').returncode, 0)
@@ -643,7 +645,7 @@ class MigrationTests(unittest.TestCase):
         # The files directory itself is libflatpak's in a partial (Locale) checkout.
         self.assertEqual(mode(deployment / 'files'), 0o755)
         self.assertEqual(mode(deployment / 'metadata'), 0o644)
-        self.assertEqual(json.loads(state.read_text())['version'], 6)
+        self.assertEqual(json.loads(state.read_text())['version'], 7)
         # Once only: a later root-only choice stays.
         exports.chmod(0o700)
         self.assertEqual(self.as_root('--transaction').returncode, 0)
@@ -806,7 +808,7 @@ class MigrationTests(unittest.TestCase):
 
 
 class LanguageMigrationTests(unittest.TestCase):
-    """Updated systems get Spanish and Portuguese in /etc/locale.gen, so Settings can offer them."""
+    """Updated systems generate every shipped language, so Settings can offer them."""
     STOCK = ('# Uncomment the locales you need.\n#en_US.UTF-8 UTF-8  \nen_US.UTF-8 UTF-8\n'
              '#es_MX.UTF-8 UTF-8  \n#es_MX ISO-8859-1  \n#pt_BR.UTF-8 UTF-8  \n#pt_BR ISO-8859-1  \n')
 
@@ -822,14 +824,16 @@ class LanguageMigrationTests(unittest.TestCase):
         self.gen.chmod(0o644)
         self.assertTrue(migration.enable_languages(self.root))
         self.assertEqual(self.gen.read_text(), self.STOCK.replace('#es_MX.UTF-8 UTF-8  \n', 'es_MX.UTF-8 UTF-8\n')
-                         .replace('#pt_BR.UTF-8 UTF-8  \n', 'pt_BR.UTF-8 UTF-8\n'))
+                         .replace('#pt_BR.UTF-8 UTF-8  \n', 'pt_BR.UTF-8 UTF-8\n')
+                         + 'de_DE.UTF-8 UTF-8\nfr_FR.UTF-8 UTF-8\nru_RU.UTF-8 UTF-8\n')
         self.assertEqual(self.gen.stat().st_mode & 0o777, 0o644)
         self.assertFalse(migration.enable_languages(self.root))
 
     def test_missing_lines_are_appended_once(self):
         self.gen.write_text('en_US.UTF-8 UTF-8')
         self.assertTrue(migration.enable_languages(self.root))
-        self.assertEqual(self.gen.read_text(), 'en_US.UTF-8 UTF-8\nes_MX.UTF-8 UTF-8\npt_BR.UTF-8 UTF-8\n')
+        self.assertEqual(self.gen.read_text(), 'en_US.UTF-8 UTF-8\n' + ''.join(
+            language + ' UTF-8\n' for language in migration.EMAKI_LANGUAGES))
         self.assertFalse(migration.enable_languages(self.root))
 
     def test_missing_or_linked_file_is_left_alone(self):
@@ -876,6 +880,254 @@ class LanguageMigrationTests(unittest.TestCase):
                 mock.patch.object(migration.subprocess, 'run') as run:
             self.assertTrue(migration.generate_languages(Path('/'), build=False))
         run.assert_not_called()
+
+    def test_previous_language_migration_is_extended_once(self):
+        state = self.root / 'var/lib/emaki/migrations/state.json'
+        state.parent.mkdir(parents=True)
+        state.write_text('{"version": 6}\n')
+        self.gen.write_text('en_US.UTF-8 UTF-8\nes_MX.UTF-8 UTF-8\npt_BR.UTF-8 UTF-8\n')
+        with mock.patch.object(migration, 'reclaim_defaults'), \
+                mock.patch.object(migration, 'services'), \
+                mock.patch('emaki_boot_defaults.apply'), \
+                mock.patch.object(migration, 'generate_languages', wraps=migration.generate_languages) as generate:
+            migration.apply(self.root)
+            self.assertEqual(json.loads(state.read_text())['version'], 7)
+            self.assertTrue(all(locale + ' UTF-8\n' in self.gen.read_text()
+                                for locale in migration.EMAKI_LANGUAGES))
+            migration.apply(self.root)
+            self.assertEqual(generate.call_count, 1)
+
+
+    def apply(self):
+        with mock.patch.object(migration, 'reclaim_defaults'), \
+                mock.patch.object(migration, 'services'), \
+                mock.patch('emaki_boot_defaults.apply'):
+            migration.apply(self.root)
+
+    def state(self, version):
+        path = self.root / 'var/lib/emaki/migrations/state.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({'version': version}) + '\n')
+        return path
+
+    def test_each_upgrade_only_enables_languages_introduced_after_its_version(self):
+        source = ('en_US.UTF-8 UTF-8\n#es_MX.UTF-8 UTF-8  # disabled\n'
+                  '#pt_BR.UTF-8 UTF-8\n#de_DE.UTF-8 UTF-8\n#fr_FR.UTF-8 UTF-8\n'
+                  '#ru_RU.UTF-8 UTF-8  # not needed\nuk_UA.UTF-8 UTF-8\n')
+        for version in (5, 6, 7):
+            with self.subTest(version=version):
+                state = self.state(version)
+                self.gen.write_text(source)
+                with mock.patch.object(migration, 'generate_languages', wraps=migration.generate_languages) as generate:
+                    self.apply()
+                    result = self.gen.read_text()
+                    self.assertEqual(json.loads(state.read_text())['version'], 7)
+                    self.assertEqual(generate.call_args_list, [
+                        mock.call(self.root, build=True, languages=languages)
+                        for step, languages in migration.LANGUAGE_MIGRATIONS.items() if step > version])
+                    self.apply()
+                    self.assertEqual(self.gen.read_text(), result)
+                self.assertIn('uk_UA.UTF-8 UTF-8\n', result)
+                for step, languages in migration.LANGUAGE_MIGRATIONS.items():
+                    for language in languages:
+                        expected = ('' if step > version else '#') + language + ' UTF-8'
+                        self.assertTrue(any(line.startswith(expected) for line in result.splitlines()))
+                if version == 7:
+                    self.assertEqual(result, source)
+                else:
+                    self.assertEqual(result.count('ru_RU.UTF-8'), 1)
+                    self.assertIn('ru_RU.UTF-8 UTF-8  # not needed\n', result)
+
+    def test_active_trailing_comments_are_not_duplicated_or_rewritten(self):
+        source = 'ru_RU.UTF-8\tUTF-8  # enabled\n#ru_RU.UTF-8 UTF-8\n'
+        self.gen.write_text(source)
+        self.assertFalse(migration.enable_languages(self.root, ('ru_RU.UTF-8',)))
+        self.assertEqual(self.gen.read_text(), source)
+
+    def test_failure_retains_exact_step_and_retry_does_not_reenable_prior_set(self):
+        for failed_step in (6, 7):
+            with self.subTest(step=failed_step):
+                state = self.state(5)
+                self.gen.write_text(self.STOCK)
+                def generate(root, build, languages):
+                    migration.enable_languages(root, languages)
+                    return languages != migration.LANGUAGE_MIGRATIONS[failed_step]
+                with mock.patch.object(migration, 'generate_languages', side_effect=generate):
+                    self.apply()
+                self.assertEqual(json.loads(state.read_text())['version'], failed_step - 1)
+                if failed_step == 7:
+                    self.gen.write_text(self.gen.read_text().replace('es_MX.UTF-8 UTF-8\n', '#es_MX.UTF-8 UTF-8\n'))
+                with mock.patch.object(migration, 'generate_languages', wraps=migration.generate_languages) as generate:
+                    self.apply()
+                self.assertEqual(json.loads(state.read_text())['version'], 7)
+                self.assertEqual(generate.call_args_list[0].kwargs['languages'],
+                                 migration.LANGUAGE_MIGRATIONS[failed_step])
+                if failed_step == 7:
+                    self.assertIn('#es_MX.UTF-8 UTF-8\n', self.gen.read_text())
+
+    def test_generated_check_uses_only_the_requested_set(self):
+        available = mock.Mock(stdout='de_DE.utf8 fr_FR.utf8 ru_RU.utf8\n')
+        with mock.patch.object(migration.subprocess, 'run', return_value=available):
+            self.assertTrue(migration.languages_generated(migration.LANGUAGE_MIGRATIONS[7]))
+            self.assertFalse(migration.languages_generated(migration.LANGUAGE_MIGRATIONS[6]))
+        languages = migration.LANGUAGE_MIGRATIONS[7]
+        with mock.patch.object(migration, 'enable_languages', return_value=False) as enable, \
+                mock.patch.object(migration, 'languages_generated', return_value=True) as generated, \
+                mock.patch.object(migration.subprocess, 'run') as run:
+            self.assertTrue(migration.generate_languages(Path('/'), languages=languages))
+        enable.assert_called_once_with(Path('/'), languages)
+        generated.assert_called_once_with(languages)
+        run.assert_not_called()
+
+    def test_warning_identifies_the_failed_language_set(self):
+        for languages in migration.LANGUAGE_MIGRATIONS.values():
+            output = io.StringIO()
+            with mock.patch.object(migration, 'enable_languages', side_effect=OSError('failed')), \
+                    contextlib.redirect_stderr(output):
+                self.assertFalse(migration.generate_languages(Path('/'), languages=languages))
+            self.assertIn(', '.join(languages), output.getvalue())
+            self.assertIn('the next update retries', output.getvalue())
+
+    def test_installer_live_image_and_migration_have_the_same_languages(self):
+        source = runpy.run_path(str(ROOT / 'installer/emaki_installer/i18n.py'))
+        self.assertEqual(set(source['LOCALES']), {'en_US.UTF-8', *migration.EMAKI_LANGUAGES})
+        live = (ROOT / 'iso/profile/airootfs/etc/locale.gen').read_text().splitlines()
+        self.assertEqual({line.split()[0] for line in live if line and not line.startswith('#')},
+                         set(source['LOCALES']))
+
+
+class ConsoleFontMigrationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.console = self.root / 'etc/vconsole.conf'
+        self.console.parent.mkdir()
+        self.locale = self.root / 'etc/locale.conf'
+        self.locale.write_text('LANG=ru_RU.UTF-8\n')
+
+    def test_old_font_is_replaced_for_all_languages_without_other_changes(self):
+        for locale in ('en_US.UTF-8', 'es_MX.UTF-8', 'fr_FR.UTF-8', 'ru_RU.UTF-8'):
+            for font in ('ter-124b', '"ter-124b"', "'ter-124b'"):
+                with self.subTest(locale=locale, font=font):
+                    self.locale.write_text('LANG=' + locale + '\n')
+                    source = 'KEYMAP=us\nXKBLAYOUT=us,ru\nFONT=' + font + ' # default\n'
+                    self.console.write_text(source)
+                    self.console.chmod(0o640)
+                    migration.repair_console_font(self.root)
+                    self.assertEqual(self.console.read_text(), source.replace('ter-124b', 'ter-v24b'))
+                    self.assertEqual(self.console.stat().st_mode & 0o777, 0o640)
+
+    def test_russian_unset_font_uses_large_unicode_font_and_keeps_keyboard(self):
+        source = 'KEYMAP=us\nXKBLAYOUT=us,ru'
+        self.console.write_text(source)
+        migration.repair_console_font(self.root)
+        self.assertEqual(self.console.read_text(), source + '\nFONT=ter-v32b\n')
+        migration.repair_console_font(self.root)
+        self.assertEqual(self.console.read_text(), source + '\nFONT=ter-v32b\n')
+
+    def test_custom_empty_and_ambiguous_fonts_are_preserved(self):
+        for font in ('FONT=latarcyrheb-sun32', 'FONT=', 'FONT=""',
+                     'FONT=ter-124b\nFONT=custom', 'FONT=ter-v32b'):
+            with self.subTest(font=font):
+                self.console.write_text('KEYMAP=us\n' + font + '\n')
+                original = self.console.read_bytes()
+                with mock.patch('emaki_boot_defaults.queue_presets') as queue:
+                    migration.repair_console_font(self.root)
+                queue.assert_not_called()
+                self.assertEqual(self.console.read_bytes(), original)
+
+    def test_font_changes_queue_both_images_before_changing_the_input(self):
+        from emaki_boot_defaults import KERNELS, queue_presets
+        pending = self.root / 'var/lib/emaki/migrations/initramfs-pending'
+        for source, selected in (('FONT=ter-124b\n', 'ter-v24b'), ('KEYMAP=us\n', 'ter-v32b')):
+            with self.subTest(font=selected):
+                self.console.write_text(source)
+                def queue(root, kernels):
+                    self.assertEqual(self.console.read_text(), source)
+                    queue_presets(root, kernels)
+                with mock.patch('emaki_boot_defaults.queue_presets', side_effect=queue) as request:
+                    migration.repair_console_font(self.root)
+                request.assert_called_once_with(self.root, KERNELS)
+                self.assertEqual(pending.read_text(), 'linux\nlinux-lts\n')
+                self.assertIn('FONT=' + selected + '\n', self.console.read_text())
+                with mock.patch('emaki_boot_defaults.queue_presets') as request:
+                    migration.repair_console_font(self.root)
+                request.assert_not_called()
+
+    def test_queue_failure_preserves_console_and_write_failure_retains_queue(self):
+        source = 'FONT=ter-124b\n'
+        self.console.write_text(source)
+        with mock.patch('emaki_boot_defaults.queue_presets', side_effect=OSError('queue failed')):
+            with self.assertRaises(OSError):
+                migration.repair_console_font(self.root)
+        self.assertEqual(self.console.read_text(), source)
+        with mock.patch.object(migration, 'write', side_effect=OSError('write failed')):
+            with self.assertRaises(OSError):
+                migration.repair_console_font(self.root)
+        self.assertEqual(self.console.read_text(), source)
+        pending = self.root / 'var/lib/emaki/migrations/initramfs-pending'
+        self.assertEqual(pending.read_text(), 'linux\nlinux-lts\n')
+
+    def test_missing_linked_and_non_russian_unset_configs_are_preserved(self):
+        migration.repair_console_font(self.root)
+        self.assertFalse(self.console.exists())
+        self.console.symlink_to(self.locale)
+        migration.repair_console_font(self.root)
+        self.assertEqual(self.locale.read_text(), 'LANG=ru_RU.UTF-8\n')
+        self.console.unlink()
+        self.console.write_text('KEYMAP=us\n')
+        self.locale.write_text('LANG=en_US.UTF-8\n')
+        with mock.patch('emaki_boot_defaults.queue_presets') as queue:
+            migration.repair_console_font(self.root)
+        queue.assert_not_called()
+        self.assertEqual(self.console.read_text(), 'KEYMAP=us\n')
+        self.locale.unlink()
+        migration.repair_console_font(self.root)
+        self.assertEqual(self.console.read_text(), 'KEYMAP=us\n')
+
+    def test_ambiguous_locale_and_linked_locale_leave_unset_font_alone(self):
+        self.console.write_text('KEYMAP=us\n')
+        for value in ('LANG=ru_RU.UTF-8\nLANG=en_US.UTF-8\n', 'LANG="ru_RU.UTF-8\n'):
+            with self.subTest(value=value):
+                self.locale.write_text(value)
+                migration.repair_console_font(self.root)
+                self.assertEqual(self.console.read_text(), 'KEYMAP=us\n')
+        target = self.root / 'locale-copy'
+        target.write_text('LANG=ru_RU.UTF-8\n')
+        self.locale.unlink()
+        self.locale.symlink_to(target)
+        migration.repair_console_font(self.root)
+        self.assertEqual(self.console.read_text(), 'KEYMAP=us\n')
+
+    def test_migration_is_once_even_for_an_already_current_language_version(self):
+        state = self.root / 'var/lib/emaki/migrations/state.json'
+        state.parent.mkdir(parents=True)
+        state.write_text('{"version": 7}\n')
+        self.console.write_text('FONT=ter-124b\n')
+        with mock.patch.object(migration, 'reclaim_defaults'), \
+                mock.patch.object(migration, 'services'), mock.patch('emaki_boot_defaults.apply'):
+            migration.apply(self.root)
+            self.assertEqual(self.console.read_text(), 'FONT=ter-v24b\n')
+            self.assertTrue(json.loads(state.read_text())['unicode_console_font'])
+            self.console.write_text('FONT=ter-124b\n')
+            migration.apply(self.root)
+            self.assertEqual(self.console.read_text(), 'FONT=ter-124b\n')
+
+    def test_failed_font_write_is_retried(self):
+        state = self.root / 'var/lib/emaki/migrations/state.json'
+        state.parent.mkdir(parents=True)
+        state.write_text('{"version": 7}\n')
+        self.console.write_text('FONT=ter-124b\n')
+        with mock.patch.object(migration, 'reclaim_defaults'), \
+                mock.patch.object(migration, 'services'), mock.patch('emaki_boot_defaults.apply'):
+            with mock.patch.object(migration, 'write', side_effect=OSError('write failed')):
+                with self.assertRaises(OSError):
+                    migration.apply(self.root)
+            self.assertNotIn('unicode_console_font', json.loads(state.read_text()))
+            migration.apply(self.root)
+        self.assertEqual(self.console.read_text(), 'FONT=ter-v24b\n')
+
 
 
 if __name__ == '__main__':

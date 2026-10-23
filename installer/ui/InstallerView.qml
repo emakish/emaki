@@ -50,14 +50,18 @@ Item {
     readonly property var phaseNames: [qsTranslate("InstallerView", "Prepare the disk"), qsTranslate("InstallerView", "Copy Emaki from the USB"), qsTranslate("InstallerView", "Set up the boot menu"), qsTranslate("InstallerView", "Create your account"), qsTranslate("InstallerView", "Apply your settings"), qsTranslate("InstallerView", "Create the first snapshot"), qsTranslate("InstallerView", "Check for updates"), qsTranslate("InstallerView", "Finish installation")]
     readonly property var tips: [qsTranslate("InstallerView", "Super+D opens the app launcher."), qsTranslate("InstallerView", "Super+Left / Right moves between columns."), qsTranslate("InstallerView", "Super+Up / Down moves between windows and workspaces."), qsTranslate("InstallerView", "Super+Shift+Left / Right moves a column."), qsTranslate("InstallerView", "Super+Space switches keyboard layouts."), qsTranslate("InstallerView", "Super+O opens the overview."), qsTranslate("InstallerView", "Super+R changes the column width."), qsTranslate("InstallerView", "Super+Shift+Slash shows all keyboard shortcuts.")]
     property string wallpaperTexture: ""
+    function number(value: real, decimals: int): string {
+        const locale = Qt.locale(controller.language.startsWith("es") ? "es" : controller.language);
+        return value.toLocaleString(locale, "f", decimals).split(locale.groupSeparator).join("");
+    }
     function size(bytes: real): string {
-        return qsTranslate("InstallerView", "%1 GiB").arg((bytes / 1073741824).toFixed(1));
+        return qsTranslate("InstallerView", "%1 GiB").arg(number(bytes / 1073741824, 1));
     }
     function duration(seconds: int): string {
         return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
     }
     function diskLabel(): string {
-        return controller.selectedDisk ? controller.selectedDisk.model + ", " + size(controller.selectedDisk.size_bytes) : qsTranslate("InstallerView", "the selected disk");
+        return controller.selectedDisk ? controller.selectedDisk.model + " (" + size(controller.selectedDisk.size_bytes) + ")" : "";
     }
     function diskReason(disk: var): string {
         return controller.diskReasons[disk.id] || Protocol.diskReason(disk);
@@ -651,8 +655,7 @@ Item {
         spacing: 30
         ColumnLayout {
             visible: view.height >= 600
-            Layout.preferredWidth: Math.max(192, view.controller.steps.reduce((width, step) =>
-                Math.max(width, stepFont.advanceWidth(view.titles[step] || "") + 60), 0))
+            Layout.preferredWidth: Math.max(192, view.controller.steps.reduce((width, step) => Math.max(width, stepFont.advanceWidth(view.titles[step] || "") + 60), 0))
             Layout.fillHeight: true
             spacing: 4
             FontMetrics {
@@ -674,11 +677,11 @@ Item {
                 model: view.controller.steps
                 delegate: C.AbstractButton {
                     id: stepButton
+                    objectName: "stepButton_" + modelData
                     required property string modelData
                     required property int index
                     Layout.fillWidth: true
-                    implicitHeight: Math.max(view.height < 680 ? 30 : view.height < 740 ? 36 : 44,
-                                             stepLabel.lineCount > 1 ? stepLabel.implicitHeight + 4 : 0)
+                    implicitHeight: Math.max(view.height < 680 ? 30 : view.height < 740 ? 36 : 44, stepLabel.lineCount > 1 ? stepLabel.implicitHeight + 4 : 0)
                     Layout.fillHeight: true
                     Layout.minimumHeight: 30
                     Layout.preferredHeight: implicitHeight
@@ -705,6 +708,7 @@ Item {
                         }
                         Copy {
                             id: stepLabel
+                            objectName: "stepLabel_" + stepButton.modelData
                             Layout.fillWidth: true
                             text: view.titles[stepButton.modelData]
                             color: view.controller.step === stepButton.modelData ? view.ink : view.dim
@@ -741,7 +745,7 @@ Item {
                 }
                 Action {
                     implicitHeight: 34
-                    implicitWidth: 78
+                    implicitWidth: Math.max(78, Math.ceil(contentItem.implicitWidth) + 32)
                     text: qsTranslate("InstallerView", "Hide")
                     onClicked: view.hideRequested()
                 }
@@ -836,7 +840,7 @@ Item {
                 objectName: "agreementCheck"
                 Layout.fillWidth: true
                 visible: view.controller.step === "review" && !!view.controller.session.plan?.token && view.controller.needsAgreement
-                text: view.controller.mode === "alongside" ? qsTranslate("InstallerView", "I have backed up my files and understand Windows will be resized") : view.controller.mode === "manual" ? qsTranslate("InstallerView", "I understand the deleted partitions lose all their files") : qsTranslate("InstallerView", "I understand %1 will be erased").arg(view.diskLabel())
+                text: view.controller.mode === "alongside" ? qsTranslate("InstallerView", "I have backed up my files and understand Windows will be resized") : view.controller.mode === "manual" ? qsTranslate("InstallerView", "I understand the deleted partitions lose all their files") : (view.diskLabel() ? qsTranslate("InstallerView", "I understand %1 will be erased").arg(view.diskLabel()) : qsTranslate("InstallerView", "I understand the selected disk will be erased"))
                 checked: view.controller.agreed
                 onToggled: view.controller.agreed = checked
             }
@@ -1056,6 +1060,7 @@ Item {
                         text: (index === 0 ? qsTranslate("InstallerView", "%1 · default") : qsTranslate("InstallerView", "%1 · make default")).arg(modelData)
                         implicitHeight: 40
                         primary: index === 0
+                        enabled: modelData !== "ru"
                         onClicked: view.controller.defaultLayout(modelData)
                     }
                 }
@@ -1069,18 +1074,19 @@ Item {
             }
             ListView {
                 id: layoutList
+                objectName: "layoutList"
                 width: parent.width
                 height: Math.max(view.controller.catalog.trial ? 170 : 245, Math.floor(scroll.availableHeight - keyboardColumn.otherHeight()))
                 clip: true
                 spacing: 6
-                model: view.controller.catalog.layouts.filter(x => !x.variant && (x.label + " " + x.layout).toLowerCase().indexOf(layoutSearch.text.toLowerCase()) >= 0)
+                model: view.controller.catalog.layouts.filter(x => !x.variant && (view.controller.layoutLabel(x.layout) + " " + x.label + " " + x.layout).toLowerCase().indexOf(layoutSearch.text.toLowerCase()) >= 0)
                 C.ScrollBar.vertical: C.ScrollBar {
                     policy: C.ScrollBar.AlwaysOn
                 }
                 delegate: Choice {
                     required property var modelData
                     width: layoutList.width - 14
-                    text: modelData.label
+                    text: view.controller.layoutLabel(modelData.layout)
                     detail: modelData.layout
                     enabled: view.controller.layouts.indexOf(modelData.layout) >= 0 || view.controller.layouts.length < 4
                     chosen: view.controller.layouts.indexOf(modelData.layout) >= 0
@@ -1543,7 +1549,7 @@ Item {
             }
             Lead {
                 width: parent.width
-                text: view.controller.manualAssignments && view.controller.mode === "manual" ? view.diskLabel() : qsTranslate("InstallerView", "Choose a disk. The live USB and unavailable disks cannot be selected.")
+                text: view.controller.manualAssignments && view.controller.mode === "manual" ? (view.diskLabel() || qsTranslate("InstallerView", "the selected disk")) : qsTranslate("InstallerView", "Choose a disk. The live USB and unavailable disks cannot be selected.")
             }
             Copy {
                 objectName: "uefiRefusal"
@@ -1685,7 +1691,7 @@ Item {
                 visible: view.controller.mode === "alongside" && view.controller.canAlongside
                 Copy {
                     width: parent.width
-                    text: Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes)
+                    text: Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes, view.controller.language)
                 }
                 C.Slider {
                     objectName: "alongsideSlider"
@@ -1700,7 +1706,7 @@ Item {
                 }
                 Hint {
                     width: parent.width
-                    text: qsTranslate("InstallerView", "At least %1 GiB for Emaki. Windows retains its verified minimum plus 2 GiB. Windows will run chkdsk on its first boot; let it finish.").arg((view.controller.alongsideMinimum / 1073741824).toFixed(2))
+                    text: qsTranslate("InstallerView", "At least %1 GiB for Emaki. Windows retains its verified minimum plus 2 GiB. Windows will run chkdsk on its first boot; let it finish.").arg(view.number(view.controller.alongsideMinimum / 1073741824, 2))
                 }
             }
             Copy {
@@ -1834,7 +1840,7 @@ Item {
                         Copy {
                             width: parent.width
                             visible: partitionRow.modelData.kind === "partition"
-                            text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 · %2").arg(partitionRow.part.number).arg(Protocol.partitionText(partitionRow.part)) : ""
+                            text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 · %2").arg(partitionRow.part.number).arg(Protocol.partitionText(partitionRow.part, view.controller.language)) : ""
                         }
                         RowLayout {
                             width: parent.width
@@ -1954,7 +1960,7 @@ Item {
                             Copy {
                                 Layout.fillWidth: true
                                 color: view.danger
-                                text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 · %2 will be deleted.").arg(partitionRow.part.number).arg(Protocol.partitionText(partitionRow.part)) : ""
+                                text: partitionRow.part ? qsTranslate("InstallerView", "Partition %1 · %2 will be deleted.").arg(partitionRow.part.number).arg(Protocol.partitionText(partitionRow.part, view.controller.language)) : ""
                             }
                             Action {
                                 objectName: "keepPartition-" + partitionRow.modelData.id
@@ -2632,7 +2638,7 @@ Item {
             }
             Lead {
                 width: parent.width
-                text: qsTranslate("InstallerView", "Review the installation plan for %1.").arg(view.diskLabel())
+                text: view.diskLabel() ? qsTranslate("InstallerView", "Review the installation plan for %1.").arg(view.diskLabel()) : qsTranslate("InstallerView", "Review the installation plan for the selected disk.")
             }
             // The keyboard line first: it names the layouts the login screen will use, and the
             // planner puts it near the end, below the fold of a 768-pixel screen.
@@ -2705,7 +2711,7 @@ Item {
                     Copy {
                         width: parent.width
                         color: view.danger
-                        text: view.controller.mode === "erase" ? qsTranslate("InstallerView", "Everything on this disk will be deleted. This cannot be undone.") : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes) : qsTranslate("InstallerView", "Deleted and formatted partitions lose their files. Emaki writes system and account files to the partitions it uses. Nothing on the disk changes until you press Install.")
+                        text: view.controller.mode === "erase" ? qsTranslate("InstallerView", "Everything on this disk will be deleted. This cannot be undone.") : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes, view.controller.language) : qsTranslate("InstallerView", "Deleted and formatted partitions lose their files. Emaki writes system and account files to the partitions it uses. Nothing on the disk changes until you press Install.")
                     }
                 }
             }
@@ -2798,7 +2804,7 @@ Item {
                         Hint {
                             objectName: phaseRow.current ? "phaseStatus" : phaseRow.skipped ? "phaseSkipped-" + phaseRow.modelData : ""
                             visible: phaseRow.current || phaseRow.skipped
-                            text: phaseRow.skipped ? Protocol.skippedPhaseText(phaseRow.modelData) : view.controller.session.indeterminate ? Protocol.activityText(view.controller.session.activity) || qsTranslate("InstallerView", "Working…") : view.controller.session.phasePct === null ? qsTranslate("InstallerView", "Skipped") : Math.round(view.controller.session.phasePct) + "%"
+                            text: phaseRow.skipped ? Protocol.skippedPhaseText(phaseRow.modelData) : view.controller.session.indeterminate ? Protocol.activityText(view.controller.session.activity) || qsTranslate("InstallerView", "Working…") : view.controller.session.phasePct === null ? qsTranslate("InstallerView", "Skipped") : qsTranslate("InstallerView", "%1%").arg(Math.round(view.controller.session.phasePct))
                         }
                     }
                 }
@@ -2890,7 +2896,7 @@ Item {
                 Heading {
                     objectName: "secureBootPassword"
                     text: view.controller.session.secureBoot?.password || ""
-                    font.family: "monospace"
+                    font.family: "Noto Sans Mono"
                 }
                 // An EFI partition the installer formatted (also Emaki's own one next to Windows)
                 // is listed by its label; a kept one has a label Emaki does not know.
@@ -2994,7 +3000,7 @@ Item {
                     wrapMode: TextEdit.Wrap
                     color: view.ink
                     selectionColor: view.accent
-                    font.family: "monospace"
+                    font.family: "Noto Sans Mono"
                     font.pixelSize: 14
                     text: [errorColumn.words.details, view.controller.session.logs.join("\n")].filter(part => part !== "").join("\n\n")
                     background: Rectangle {

@@ -36,6 +36,7 @@ class Report(unittest.TestCase):
         self.root = Path(self.temp.name)
         paths = types.ModuleType('emaki_paths')
         paths.LIBDIR = str(self.root / 'lib/emaki')
+        paths.DATADIR = str(self.root / 'share/emaki')
         paths.LOCALSTATEDIR = str(self.root / 'state')
         loader = importlib.machinery.SourceFileLoader('report_test_helper', str(ROOT / 'scripts/emaki-report'))
         spec = importlib.util.spec_from_loader(loader.name, loader)

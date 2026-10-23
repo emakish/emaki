@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Generate the launcher's emoji names (shell/emoji/<language>.json) from Unicode data.
+
+Sources are the Arch packages unicode-emoji (emoji-test.txt: the emoji, their order and Unicode
+version) and unicode-cldr-annotations plus unicode-cldr (CLDR annotations and annotationsDerived:
+names and search words per language), all under the Unicode License v3. They are read at build
+time only; the shell reads the small generated files and needs neither package.
+
+Kept: fully-qualified emoji without skin-tone modifiers, outside the "Component" group. With
+--font, an emoji the font does not draw as one glyph is left out (HarfBuzz through GObject
+introspection). Each file is {"format", "unicode", "language", "emoji": [[emoji, name,
+"keyword|keyword"], ...]} in emoji-test order; English has every kept emoji, other languages only
+those CLDR names.
+
+  scripts/build-emoji-data                    write shell/emoji/ from the XDG_DATA_DIRS copies
+  scripts/build-emoji-data --check            fail if shell/emoji/ differs from the sources
+  scripts/build-emoji-data --emoji-test F --annotations D --derived D [--font F]
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parent.parent
+TARGET = ROOT / 'shell/emoji'
+# Shell language -> CLDR locales, later ones override earlier ones. Emaki's Spanish is Latin
+# American (es_419); CLDR's pt is Brazilian Portuguese.
+LANGUAGES = {
+    'en': ['en'],
+    'es': ['es', 'es_419'],
+    'pt': ['pt'],
+    'de': ['de'],
+    'fr': ['fr'],
+    'ru': ['ru'],
+}
+TONES = {chr(c) for c in range(0x1F3FB, 0x1F400)}
+VS16, ZWJ = chr(0xFE0F), chr(0x200D)
+LINE = re.compile(r'^([0-9A-F ]+?)\s*;\s*fully-qualified\s*#\s*\S+\s+E(\d+\.\d+)\s+(.+)$')
+
+
+def data_file(relative):
+    for base in (os.environ.get('XDG_DATA_DIRS') or '').split(':'):
+        if base and (Path(base) / relative).exists():
+            return Path(base) / relative
+    return None
+
+
+def read_emoji_test(path):
+    version, rows, group = None, [], None
+    for line in path.read_text(encoding='utf-8').splitlines():
+        if line.startswith('# Version:'):
+            version = line.split(':', 1)[1].strip()
+        elif line.startswith('# group:'):
+            group = line.split(':', 1)[1].strip()
+        match = LINE.match(line)
+        if not match or group == 'Component':
+            continue
+        emoji = ''.join(chr(int(code, 16)) for code in match.group(1).split())
+        if TONES & set(emoji):
+            continue
+        rows.append((emoji, match.group(3).strip()))
+    if not version or len(rows) < 1000:
+        raise SystemExit(f'{path}: not an emoji-test.txt')
+    return version, rows
+
+
+def read_annotations(paths):
+    names, keywords = {}, {}
+    for path in paths:
+        if not path.exists():
+            continue
+        for node in ET.parse(path).getroot().iter('annotation'):
+            text = (node.text or '').strip()
+            if not text or text == '↑↑↑':
+                continue
+            if node.get('type') == 'tts':
+                names[node.get('cp')] = text
+            else:
+                keywords[node.get('cp')] = [word.strip() for word in text.split('|') if word.strip()]
+    return names, keywords
+
+
+def font_check(path):
+    import gi
+    gi.require_version('HarfBuzz', '0.0')
+    from gi.repository import HarfBuzz as hb
+    font = hb.font_create(hb.face_create(hb.blob_create_from_file(str(path)), 0))
+
+    def drawn(text):
+        buffer = hb.buffer_create()
+        hb.buffer_add_utf8(buffer, text.encode(), 0, -1)
+        hb.buffer_guess_segment_properties(buffer)
+        hb.shape(font, buffer, None)
+        if any(info.codepoint == 0 for info in hb.buffer_get_glyph_infos(buffer)):
+            return False
+        return sum(1 for pos in hb.buffer_get_glyph_positions(buffer) if pos.x_advance) == 1
+    if drawn('A' + ZWJ + 'B') or not drawn('\U0001F600'):
+        raise SystemExit(f'{path}: not a colour emoji font, or HarfBuzz misreads it')
+    return drawn
+
+
+def generate(emoji_test, annotations, derived, font=None):
+    version, rows = read_emoji_test(emoji_test)
+    drawn = font_check(font) if font else None
+    if drawn:
+        missing = [emoji for emoji, _ in rows if not drawn(emoji)]
+        if missing:
+            print(f'left out, not drawn by {font.name}: {" ".join(missing)}', file=sys.stderr)
+        rows = [row for row in rows if row[0] not in missing]
+    files = {}
+    for language, locales in LANGUAGES.items():
+        paths = []
+        for locale in locales:
+            paths += [annotations / f'{locale}.xml', derived / f'{locale}.xml']
+        if not paths[0].exists():
+            raise SystemExit(f'{paths[0]}: missing')
+        names, keywords = read_annotations(paths)
+        entries = []
+        for emoji, english in rows:
+            key = emoji.replace(VS16, '')
+            name = names.get(key) or names.get(emoji) or (english if language == 'en' else None)
+            if not name:
+                continue
+            words = [word for word in keywords.get(key) or keywords.get(emoji) or [] if word.casefold() != name.casefold()]
+            entries.append([emoji, name, '|'.join(words)])
+        files[language] = {'format': 1, 'unicode': version, 'language': language, 'emoji': entries}
+    return files
+
+
+def encode(value):
+    return json.dumps(value, ensure_ascii=False, separators=(',', ':')) + '\n'
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--emoji-test', type=Path, default=data_file('unicode/emoji/emoji-test.txt'))
+    parser.add_argument('--annotations', type=Path, default=data_file('unicode/cldr/common/annotations'))
+    parser.add_argument('--derived', type=Path, default=data_file('unicode/cldr/common/annotationsDerived'))
+    parser.add_argument('--font', type=Path)
+    parser.add_argument('--out', type=Path, default=TARGET)
+    parser.add_argument('--check', action='store_true')
+    args = parser.parse_args()
+    for name in ('emoji_test', 'annotations', 'derived'):
+        if getattr(args, name) is None:
+            parser.error(f'--{name.replace("_", "-")} not given and not found in XDG_DATA_DIRS')
+    files = generate(args.emoji_test, args.annotations, args.derived, args.font)
+    stale = []
+    for language, value in files.items():
+        path = args.out / f'{language}.json'
+        text = encode(value)
+        if args.check:
+            if not path.exists() or path.read_text(encoding='utf-8') != text:
+                stale.append(str(path))
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding='utf-8')
+        print(f'{path}: {len(value["emoji"])} emoji, {len(text.encode())} bytes')
+    if stale:
+        raise SystemExit('stale emoji data, run scripts/build-emoji-data:\n' + '\n'.join(stale))
+
+
+if __name__ == '__main__':
+    main()

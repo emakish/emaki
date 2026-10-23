@@ -35,6 +35,7 @@ CalendarMonth 1.0 CalendarMonth.qml
 ClockBody 1.0 ClockBody.qml
 PrivateJob 1.0 PrivateJob.qml
 ClipboardHistory 1.0 ClipboardHistory.qml
+EmojiCatalog 1.0 EmojiCatalog.qml
 singleton ShellTools 1.0 ShellTools.qml
 MediaBlock 1.0 MediaBlock.qml
 SettingsCatalog 1.0 SettingsCatalog.qml
@@ -143,6 +144,7 @@ SettingsAboutPage 1.0 SettingsAboutPage.qml
 SettingsMaintenancePage 1.0 SettingsMaintenancePage.qml
 SettingsPageDefinition 1.0 SettingsPageDefinition.qml
 SettingsPageRegistry 1.0 SettingsPageRegistry.qml
+SettingsReset 1.0 SettingsReset.qml
 PolkitAdapter 1.0 PolkitAdapter.qml
 PolkitExpander 1.0 PolkitExpander.qml
 PolkitPromptController 1.0 PolkitPromptController.qml

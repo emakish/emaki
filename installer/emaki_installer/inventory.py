@@ -274,10 +274,18 @@ def parse_gpt_info(text):
         'attributes': r'^Attribute flags: ([0-9A-Fa-f]{16})$',
         'name': r"^Partition name: '(.*)'$",
     }
+    errors = {
+        'guid': _('Cannot verify GPT partition GUID.'),
+        'type': _('Cannot verify GPT partition type.'),
+        'start': _('Cannot verify GPT partition start.'),
+        'end': _('Cannot verify GPT partition end.'),
+        'attributes': _('Cannot verify GPT partition attributes.'),
+        'name': _('Cannot verify GPT partition name.'),
+    }
     result = {}
     for key, pattern in patterns.items():
         values = re.findall(pattern, text, re.M)
-        require(len(values) == 1, Code.UNSAFE_DISK, _('Cannot verify GPT partition ') + key + '.')
+        require(len(values) == 1, Code.UNSAFE_DISK, errors[key])
         result[key] = values[0]
     for key in ('guid', 'type'):
         require(re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', result[key]),
@@ -415,19 +423,17 @@ def efi_loaders(root):
 
 EFI = Path("/sys/firmware/efi")
 BUSY_REASON = N_('This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again.')
-ENCRYPTED_TYPES = {
-    "crypto_LUKS": N_("encrypted Linux system (LUKS)"),
-    "BitLocker": N_("encrypted Windows drive (BitLocker)"),
-    "cs_fvault2": N_("encrypted macOS disk (FileVault 2)"),
-    "apfs": N_("macOS disk (APFS)"),
-}
+ENCRYPTED_TYPES = {'crypto_LUKS', 'BitLocker', 'cs_fvault2', 'apfs'}
 
 
 def encrypted_warning(path, kind):
-    description = translate(ENCRYPTED_TYPES[kind])
-    if kind != "apfs":
-        description = _('locked {description}').format(description=description)
-    return (_('{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks.').format(value1=path, value2=description)
+    messages = {
+        'crypto_LUKS': _('{value1} contains a locked encrypted Linux system (LUKS). The installer cannot check its contents; they may belong to a set of several disks.'),
+        'BitLocker': _('{value1} contains a locked encrypted Windows drive (BitLocker). The installer cannot check its contents; they may belong to a set of several disks.'),
+        'cs_fvault2': _('{value1} contains a locked encrypted macOS disk (FileVault 2). The installer cannot check its contents; they may belong to a set of several disks.'),
+        'apfs': _('{value1} contains a macOS disk (APFS). The installer cannot check its contents; they may belong to a set of several disks.'),
+    }
+    return (messages[kind].format(value1=path)
             + ' ' + _('Type ERASE to confirm that this volume and any connected data can be erased.'))
 
 
@@ -583,8 +589,13 @@ def busy_reason(nodes, holders):
             details.append(_('{value1} is held by {value2} [device mapper or RAID]. Deactivate that volume or stop that array before trying again.').format(value1=path, value2=', '.join(('/dev/' + item for item in held))))
         elif node.get('type') not in {'disk', 'part'}:
             kind = node.get('type')
-            action = _('Close it [cryptsetup close]') if kind == 'crypt' else (_('Deactivate it [lvchange -an]') if kind == 'lvm' else _('Stop it [mdadm --stop]'))
-            details.append(_('{value1} is active [{value2}]. {value3}, then try again.').format(value1=path, value2=kind, value3=action))
+            if kind == 'crypt':
+                message = _('{value1} is active [{value2}]. Close it [cryptsetup close], then try again.')
+            elif kind == 'lvm':
+                message = _('{value1} is active [{value2}]. Deactivate it [lvchange -an], then try again.')
+            else:
+                message = _('{value1} is active [{value2}]. Stop it [mdadm --stop], then try again.')
+            details.append(message.format(value1=path, value2=kind))
     return ' '.join(details) or translate(BUSY_REASON)
 
 
@@ -880,8 +891,18 @@ class Inventory:
         if count == 1:
             return None
         if not count:
-            return _('Cannot verify that {value1} is the only device of {value2}.').format(value1=path, value2=kind)
-        return _('{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices.').format(value1=path, value2=count, value3=kind)
+            messages = {
+                'btrfs': _('Cannot verify that {value1} is the only device of a Btrfs filesystem.'),
+                'LVM2_member': _('Cannot verify that {value1} is the only device of an LVM volume group.'),
+                'linux_raid_member': _('Cannot verify that {value1} is the only device of a RAID array.'),
+            }
+            return messages[kind].format(value1=path)
+        messages = {
+            'btrfs': _('{value1} is one of {value2} devices of a Btrfs filesystem; erasing it would damage the other devices.'),
+            'LVM2_member': _('{value1} is one of {value2} devices of an LVM volume group; erasing it would damage the other devices.'),
+            'linux_raid_member': _('{value1} is one of {value2} devices of a RAID array; erasing it would damage the other devices.'),
+        }
+        return messages[kind].format(value1=path, value2=count)
 
     def _member_reason(self, path, fs):
         """Why erasing this device could damage another disk; None when it cannot.
@@ -891,12 +912,12 @@ class Inventory:
         if not fs or fs in SINGLE_DEVICE or fs in ENCRYPTED_TYPES:
             return None
         if fs == "btrfs":
-            return self._set_reason(path, _('a Btrfs filesystem'), self._btrfs_devices(path))
+            return self._set_reason(path, 'btrfs', self._btrfs_devices(path))
         if fs == "LVM2_member":
-            return self._set_reason(path, _('an LVM volume group'), self._count(
+            return self._set_reason(path, 'LVM2_member', self._count(
                 ["pvs", "--readonly", "--noheadings", "--options", "pv_count", path], r"^\s*(\d+)\s*$"))
         if fs == "linux_raid_member":
-            return self._set_reason(path, _('a RAID array'), self._count(
+            return self._set_reason(path, 'linux_raid_member', self._count(
                 ["mdadm", "--examine", "--export", path], r"^MD_DEVICES=(\d+)$"))
         return _('{value1} carries a {value2} signature and may be part of a multi-device set.').format(value1=path, value2=fs)
 
@@ -925,7 +946,7 @@ class Inventory:
             if part["_btrfs_devices"] != 1:
                 # An unverified volume could be a member of a multi-device
                 # filesystem. Erasing one member would also damage other disks.
-                self._refuse(disk, self._set_reason(part["path"], _('a Btrfs filesystem'), part["_btrfs_devices"]))
+                self._refuse(disk, self._set_reason(part["path"], 'btrfs', part["_btrfs_devices"]))
                 return
         options = {"vfat": "ro", "ext4": "ro,noload",
                    "btrfs": "ro,nologreplay,subvolid=5",

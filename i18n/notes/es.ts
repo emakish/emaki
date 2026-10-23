@@ -206,6 +206,11 @@ Crea tu primera nota.</translation>
       <source>Open in Emaki Notes</source>
       <translation>Abrir en Notas de Emaki</translation>
     </message>
+    <message>
+      <source>MMM d, yyyy</source>
+            <extracomment>Qt date pattern: MMM, d and yyyy are fields; put literal words in single quotes.</extracomment>
+      <translation>d 'de' MMM 'de' yyyy</translation>
+    </message>
   </context>
   <context>
     <name>shell</name>

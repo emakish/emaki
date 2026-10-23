@@ -63,6 +63,14 @@ def run(mode, mutation=None):
         browser.write_text('#!/bin/sh\nprintf "%s\\n" "$1" > "$REPORT_PROFILE/opened"\n'
                            '[ "$(cat "$REPORT_PROFILE/mode")" != nobrowser ]\n')
         browser.chmod(0o700)
+        # Keep the helper and browser isolated without removing their interpreters
+        # or the shell used by the argument-size mutation.
+        runner = shutil.which('qs')
+        assert runner, 'qs is required for the report window fixture'
+        for name, executable in {'python3': sys.executable, 'cat': shutil.which('cat'),
+                                 'sh': shutil.which('sh')}.items():
+            assert executable, f'{name} is required for the report window fixture'
+            (base / 'bin' / name).symlink_to(executable)
         env = dict(os.environ, HOME=str(base / 'home'), XDG_CONFIG_HOME=str(base / 'config'),
                    XDG_DATA_HOME=str(base / 'data'), XDG_CACHE_HOME=str(base / 'cache'),
                    XDG_STATE_HOME=str(base / 'state'), XDG_RUNTIME_DIR=str(base / 'runtime'),
@@ -70,13 +78,12 @@ def run(mode, mutation=None):
                    QT_QUICK_CONTROLS_STYLE='Basic', QML_DISABLE_DISK_CACHE='1',
                    QS_DISABLE_CRASH_HANDLER='1', REPORT_MODE=mode, REPORT_PROFILE=str(base / 'profile'),
                    REPORT_SHOTS=str(SHOTS) if mutation is None else '',
-                   PATH=os.pathsep.join([str(base / 'bin')] + [d for d in os.environ['PATH'].split(os.pathsep)
-                                                               if d and not (Path(d) / 'emaki-report').exists()]),
+                   PATH=str(base / 'bin'),
                    DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-bus'),
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(base / 'no-system-bus'))
         for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QT_LOGGING_RULES'):
             env.pop(key, None)
-        result = subprocess.run(['qs', '-p', str(base / 'shell/ReportTest.qml'), '--no-color'], env=env,
+        result = subprocess.run([runner, '-p', str(base / 'shell/ReportTest.qml'), '--no-color'], env=env,
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         output = result.stdout
         passed = result.returncode == 0 and 'REPORT_PASS' in output

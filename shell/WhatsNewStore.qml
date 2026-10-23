@@ -20,7 +20,7 @@ Scope {
     readonly property bool available: Content.available(installedVersion)
     readonly property bool pending: initialized && !futureState && available && newerThanSeen()
 
-    // Pages are per release series (0.11 for every 0.11.x), so a patch release of a series already seen is not news.
+    // Pages are per release series, so a patch release of a series already seen is not news.
     function newerThanSeen(): bool {
         if (!seenVersion)
             return true;

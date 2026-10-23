@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Target file generation and verification, independent of archinstall."""
-from .i18n import _
+from .i18n import _, message_language
 import hashlib
 import io
 import json
@@ -105,19 +105,27 @@ def validate_xkb_layouts(layouts, rules):
 
 
 def keyboard_summary(layouts, rules=''):
-    """The review line: the chosen layouts by their evdev.lst names, codes where unknown."""
-    labels, section = {}, None
+    """Translate known layouts, preserving external English names only in English."""
+    labels = {
+        'us': _('English (US)'), 'gb': _('English (UK)'),
+        'de': _('German'), 'fr': _('French'), 'ru': _('Russian'),
+        'es': _('Spanish'), 'latam': _('Spanish (Latin American)'),
+        'br': _('Portuguese (Brazil)'), 'pt': _('Portuguese'),
+        'dvorak': _('English (Dvorak)'), 'colemak': _('English (Colemak)'),
+    }
+    evdev, section = {}, None
     for line in rules.splitlines():
         if line.startswith('!'):
             section = line[1:].strip()
         elif section == 'layout' and line.strip():
             code, ignored, label = line.strip().partition(' ')
-            labels[code] = label.strip()
+            evdev[code] = label.strip()
         elif section == 'variant' and line.strip():
             match = re.fullmatch(r'\s*(\S+)\s+us:\s*(.+)', line)
             if match and match[1] in US_VARIANTS:
-                labels[match[1]] = match[2].strip()
-    names = [labels.get(x) or x for x in layouts]
+                evdev[match[1]] = match[2].strip()
+    english = message_language() == 'en'
+    names = [labels.get(x) or (evdev.get(x) if english else None) or x for x in layouts]
     if len(names) == 1:
         return _('Keyboard: {value1}.').format(value1=names[0])
     return _('Keyboard: {value1} (default), {value2}. Super+Space switches.').format(value1=names[0], value2=', '.join(names[1:]))

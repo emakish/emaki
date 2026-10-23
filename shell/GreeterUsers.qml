@@ -133,6 +133,7 @@ Item {
                         width: tile.width
                         text: tile.modelData.name
                         color: tile.selected ? LiquidPalette.ink : LiquidPalette.plateDim
+                        font.family: ShellPalette.uiFont
                         font.pixelSize: 13
                         font.weight: tile.selected ? Font.DemiBold : Font.Medium
                         horizontalAlignment: Text.AlignHCenter

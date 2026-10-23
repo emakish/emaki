@@ -100,7 +100,7 @@ Column {
         id: editor
         property bool recording: page.shortcutRecorder === editor
         property string previousText: ""
-        rightPadding: 76
+        rightPadding: recordButton.width + 4
         readOnly: recording
         function cancelRecording() {
             if (recording) {
@@ -194,11 +194,12 @@ Column {
                 event.accepted = true;
         }
         SettingsButton {
+            id: recordButton
             objectName: "shortcut-record-button"
             focusPolicy: Qt.TabFocus
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            width: 72
+            width: Math.max(72, implicitWidth)
             text: editor.recording ? qsTranslate("KeyboardSettingsPage", "Cancel") : qsTranslate("KeyboardSettingsPage", "Record")
             Accessible.name: editor.recording ? qsTranslate("KeyboardSettingsPage", "Cancel shortcut recording") : qsTranslate("KeyboardSettingsPage", "Record shortcut")
             onClicked: editor.recording ? editor.cancelRecording() : editor.startRecording()

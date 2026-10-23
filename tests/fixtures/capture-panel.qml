@@ -3,6 +3,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import "CaptureText.js" as CaptureText
 
 ShellRoot {
     id: fixture
@@ -28,7 +29,34 @@ ShellRoot {
         for (const child of item.children)
             visibleLabels(child);
     }
+    function findButton(item, text) {
+        if (item.text === text && item.clicked !== undefined)
+            return item;
+        for (const child of item.children) {
+            const found = findButton(child, text);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+    function exerciseRecognition(mode, label) {
+        const button = findButton(panel, label);
+        check(button !== null, label + " button exists");
+        if (!button)
+            return;
+        check(button.enabled && button.visible && button.activeFocusOnTab, label + " is keyboard accessible");
+        button.forceActiveFocus();
+        check(button.activeFocus, label + " receives focus");
+        button.clicked();
+        check(controller.mode === mode && controller.target === "area" && controller.canCapture, label + " activation");
+        check(!controller.selectTarget("window") && !controller.selectTarget("screen"), label + " limits target to area");
+        const before = controller.area.x;
+        panel.moveSelection(Qt.Key_Right, false);
+        check(controller.area.x === before + 1, label + " keyboard area movement");
+    }
     function exerciseArea() {
+        if (["es", "pt_BR"].indexOf(Quickshell.env("EMAKI_LANGUAGE")) >= 0)
+            check(CaptureText.text() !== "Text" && CaptureText.qr() !== "QR code", "recognition labels use compiled translations");
         controller.opened = true;
         controller.ready = true;
         controller.selectOutput("Virtual-1");
@@ -102,7 +130,7 @@ ShellRoot {
                 return;
             }
             fixture.visibleLabels(panel);
-            const name = ["", "area", "window", "screen"][fixture.stage];
+            const name = ["", "area", "window", "screen", "text", "qr"][fixture.stage];
             panel.grabToImage(result => {
                 fixture.check(result.saveToFile(fixture.destination + "/" + fixture.viewportWidth + "x" + fixture.viewportHeight + "-" + name + ".png"), "save " + name);
                 if (fixture.stage === 1) {
@@ -114,6 +142,10 @@ ShellRoot {
                     controller.selectOutput("Virtual-2");
                     controller.selectMode("recording");
                     fixture.check(controller.outputName === "Virtual-2" && controller.target === "screen" && controller.canCapture, "screen selection");
+                } else if (fixture.stage === 3) {
+                    fixture.exerciseRecognition("text", CaptureText.text());
+                } else if (fixture.stage === 4) {
+                    fixture.exerciseRecognition("qr", CaptureText.qr());
                 } else {
                     controller.close();
                     fixture.check(!controller.opened && !controller.canCapture, "close cancels selection");

@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import select
 import signal
+import shutil
 import stat
 import struct
 import subprocess
@@ -369,6 +370,117 @@ def picture(selected):
                 partial.unlink(missing_ok=True)
 
 
+def recognition_languages(environment=None):
+    """Prefer the current message locale, with English as the shared fallback."""
+    environment = os.environ if environment is None else environment
+    locale = (environment.get('LC_ALL') or environment.get('LC_MESSAGES')
+              or environment.get('LANG') or 'en')
+    language = re.split(r'[_\-.@]', locale.lower())[0]
+    preferred = {'en': 'eng', 'es': 'spa', 'pt': 'por', 'de': 'deu',
+                 'fr': 'fra', 'ru': 'rus'}.get(language, 'eng')
+    return preferred if preferred == 'eng' else preferred + '+eng'
+
+
+def cleanup_recognition():
+    """Reap abandoned private images without following runtime-directory links."""
+    descriptor = None
+    try:
+        descriptor = os.open(runtime_directory(), os.O_RDONLY | os.O_DIRECTORY
+                             | os.O_CLOEXEC | os.O_NOFOLLOW)
+        info = os.fstat(descriptor)
+        if info.st_uid != os.getuid() or info.st_mode & 0o077:
+            return
+        cutoff = time.time() - 60
+        for name in os.listdir(descriptor):
+            if not name.startswith('emaki-recognize-'):
+                continue
+            try:
+                info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+                if (stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                        and not info.st_mode & 0o077 and info.st_mtime < cutoff):
+                    shutil.rmtree(name, dir_fd=descriptor)
+            except OSError:
+                # Another helper may have reaped the same abandoned directory.
+                continue
+    except (CaptureError, OSError):
+        # Cleanup must not prevent inventory or another capture mode from starting.
+        pass
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def recognize_image(path, kind):
+    program = 'tesseract' if kind == 'text' else 'zbarimg'
+    try:
+        if kind == 'text':
+            listing = subprocess.run([program, '--list-langs'], stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL, timeout=8,
+                                     env=child_environment(), close_fds=True)
+            if listing.returncode:
+                raise CaptureError('capture_failed')
+            installed = set(listing.stdout.decode('utf-8', errors='replace').splitlines())
+            languages = [language for language in recognition_languages().split('+')
+                         if language in installed]
+            if not languages:
+                raise CaptureError('capture_failed')
+            argv = [program, str(path), 'stdout', '-l', '+'.join(languages)]
+        else:
+            argv = [program, '--quiet', '--nodbus', '--raw', str(path)]
+        result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                timeout=30, env=child_environment(), close_fds=True)
+    except FileNotFoundError as error:
+        raise CaptureError('tesseract_missing' if kind == 'text' else 'zbar_missing') from error
+    except subprocess.TimeoutExpired as error:
+        raise CaptureError('capture_timeout') from error
+    # zbar uses status 4 for a readable image containing no symbols.
+    if kind == 'qr' and result.returncode == 4:
+        return ''
+    if result.returncode:
+        raise CaptureError('capture_failed')
+    decoded = result.stdout.decode('utf-8', errors='replace')
+    return decoded.strip() if kind == 'text' else decoded.removesuffix('\n')
+
+
+def recognition(selected, kind):
+    """Recognize only the selection and leave no image in the picture library."""
+    if kind not in ('text', 'qr') or selected['target'] != 'area':
+        raise CaptureError('selection_invalid')
+    program = 'tesseract' if kind == 'text' else 'zbarimg'
+    if shutil.which(program) is None:
+        raise CaptureError('tesseract_missing' if kind == 'text' else 'zbar_missing')
+    guard()
+    old_handlers = {}
+    def cancelled(*_):
+        raise CaptureError('capture_cancelled')
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            old_handlers[sig] = signal.signal(sig, cancelled)
+        with tempfile.TemporaryDirectory(prefix='emaki-recognize-', dir=runtime_directory()) as temporary:
+            descriptor, filename = tempfile.mkstemp(suffix='.png', dir=temporary)
+            os.close(descriptor)
+            source = Path(filename)
+            command(['grim', '-o', selected['output']['name'], '-s',
+                     str(selected['output']['scale']), str(source)])
+            image = png_ready(source, time.monotonic() + 8)
+            image = image.crop(crop_box(selected, *image.size))
+            guard()
+            image.save(source, format='PNG')
+            text = recognize_image(source, kind)
+            guard()
+            copied = False
+            if text:
+                try:
+                    command(['wl-copy', '--type', 'text/plain;charset=utf-8'], data=text.encode('utf-8'))
+                    copied = True
+                except CaptureError:
+                    pass
+            return dict(kind=kind, text=text, clipboard=copied)
+    finally:
+        for sig, handler in old_handlers.items():
+            signal.signal(sig, handler)
+
+
 def copy_picture(path):
     try:
         command(['wl-copy', '--type', 'image/png'], data=path.read_bytes())
@@ -697,10 +809,13 @@ def main():
     mode.add_argument('--inventory', action='store_true')
     mode.add_argument('--picture')
     mode.add_argument('--record')
+    mode.add_argument('--text')
+    mode.add_argument('--qr')
     mode.add_argument('--record-worker', help=argparse.SUPPRESS)
     parser.add_argument('--owner-fd', type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
+        cleanup_recognition()
         if args.record is not None:
             return launch_record(args.record)
         if args.record_worker is not None:
@@ -714,11 +829,20 @@ def main():
         if args.inventory:
             emit('inventory', **available)
             return 0
-        request = json.loads(args.picture if args.picture is not None else args.record_worker)
+        payload = next(value for value in (args.picture, args.text, args.qr, args.record_worker)
+                       if value is not None)
+        request = json.loads(payload)
         selected = selection(request, available)
         emit('starting')
-        result = picture(selected) if args.picture is not None else record(selected)
-        emit('saved', **result)
+        if args.text is not None or args.qr is not None:
+            result = recognition(selected, 'text' if args.text is not None else 'qr')
+            if result['text']:
+                emit('recognized', **result)
+            else:
+                emit('empty', kind=result['kind'])
+        else:
+            result = picture(selected) if args.picture is not None else record(selected)
+            emit('saved', **result)
         return 0
     except CaptureError as error:
         emit('error', reason=str(error))

@@ -36,6 +36,25 @@ class LanguageTests(unittest.TestCase):
             with self.assertRaises(InstallError):
                 validate_config(value)
 
+    def test_new_language_regional_defaults_and_safe_keyboards(self):
+        for language, locale in [('de_AT.UTF-8', 'de_DE.UTF-8'), ('fr_CA.UTF-8', 'fr_FR.UTF-8'),
+                                 ('ru', 'ru_RU.UTF-8')]:
+            with self.subTest(language=language), patch.dict(os.environ, {'LANG': language}, clear=True):
+                self.assertEqual(system_locale(), locale)
+                value = config()
+                value.pop('layouts', None)
+                parsed = validate_config(value)
+                self.assertEqual(parsed['layouts'], ['us', 'ru'] if language == 'ru' else ['us'])
+        for layouts in (['ru'], ['ru', 'us'], ['ru', 'de']):
+            value = config()
+            value.update(language='ru_RU.UTF-8', layouts=layouts)
+            with self.subTest(layouts=layouts), self.assertRaises(InstallError):
+                validate_config(value)
+        for layouts in (['us', 'ru'], ['de', 'ru'], ['fr', 'ru']):
+            value = config()
+            value.update(language='ru_RU.UTF-8', layouts=layouts)
+            self.assertEqual(validate_config(value)['layouts'], layouts)
+
     def test_portuguese_environment_selects_brazilian_target_locale(self):
         for language in ('pt', 'pt.UTF-8', 'pt_BR.UTF-8', 'pt_PT.UTF-8'):
             with self.subTest(language=language):
@@ -61,7 +80,7 @@ class RuntimeLanguageTests(unittest.TestCase):
     def setUpClass(cls):
         cls.directory = tempfile.TemporaryDirectory(prefix='installer-runtime-language-')
         root = Path(__file__).resolve().parents[2]
-        for language in ('es', 'pt_BR'):
+        for language in ('es', 'pt_BR', 'de', 'fr', 'ru'):
             target = Path(cls.directory.name) / language / 'LC_MESSAGES' / 'installer.mo'
             target.parent.mkdir(parents=True)
             subprocess.run(['msgfmt', '--check', '-o', str(target),
@@ -87,7 +106,7 @@ class RuntimeLanguageTests(unittest.TestCase):
         from emaki_installer.network_profiles import UNAVAILABLE, WifiNotCopied
         from emaki_installer.protocol import Controller
         controller = Controller(None, None)
-        for language in ('es_MX.UTF-8', 'pt_BR.UTF-8', 'en_US.UTF-8'):
+        for language in LOCALES:
             with self.subTest(language=language):
                 reply = controller.handle(dict(type='unknown', id='test', language=language))[0]
                 self.assertEqual(reply['msg'], self.expected(language, 'Unknown request type.'))
@@ -102,7 +121,7 @@ class RuntimeLanguageTests(unittest.TestCase):
         from support import FakeInventory
         controller = Controller(FakeInventory(), None)
         source = 'Erase all partitions and create a new GPT partition table.'
-        for language in ('es_MX.UTF-8', 'pt_BR.UTF-8', 'en_US.UTF-8'):
+        for language in LOCALES:
             value = config()
             value['language'] = language
             reply = controller.handle(dict(type='plan', id='review', language=language, config=value))[0]
@@ -155,7 +174,7 @@ class RuntimeLanguageTests(unittest.TestCase):
         from types import SimpleNamespace
         from emaki_installer.i18n import _
         from emaki_installer.protocol import Controller, Job
-        for language in ('es_MX.UTF-8', 'pt_BR.UTF-8', 'en_US.UTF-8'):
+        for language in LOCALES:
             started, finish = threading.Event(), threading.Event()
             messages = []
             class Worker:
@@ -195,7 +214,7 @@ class RuntimeLanguageTests(unittest.TestCase):
         import sys
         helper = Path(__file__).resolve().parents[1] / 'ui/ui-helper.py'
         source = 'This operation is unavailable. Please try again.'
-        for language in ('es_MX.UTF-8', 'pt_BR.UTF-8', 'en_US.UTF-8'):
+        for language in LOCALES:
             result = subprocess.run([sys.executable, '-I', '-B', str(helper)],
                                     input=json.dumps(dict(op='invalid', language=language)),
                                     capture_output=True, text=True, check=True)

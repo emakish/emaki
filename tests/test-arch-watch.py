@@ -241,6 +241,34 @@ class WatchTests(unittest.TestCase):
         self.assertIn('BREAK testing: shell depends [libseat.so=1-64]', result.stdout)
         self.assertIn('provides libseat.so=2-64', result.stdout)
 
+    def test_icu_soname_change_breaks_config_without_a_qt_minor_change(self):
+        fences, _ = watch.discover(ROOT / 'packaging', 'x86_64')
+        locked = sorted(f.value for f in fences if f.package == 'emaki-config'
+                        and f.value.startswith(('libicui18n.so=', 'libicuuc.so=')))
+        self.assertEqual(locked, ['libicui18n.so=78-64', 'libicuuc.so=78-64'])
+        self.recipe('emaki-config', "depends=('icu' 'qt6-base>=6.12.0' 'qt6-base<6.13' "
+                    + ' '.join(repr(value) for value in locked) + ')')
+        self.recipe('shell', "depends=('qt6-base>=6.12.0' 'qt6-base<6.13')")
+        self.write_db('extra', [('qt6-base', '6.12.0-1', [])])
+        self.write_db('extra-testing', [('qt6-base', '6.12.0-2', [])])
+        self.write_db('core', [('pacman', '7.1.0-1', []), ('icu', '78.3-1', locked)])
+        healthy = self.run_watch()
+        self.assertEqual(healthy.returncode, 0, healthy.stderr + healthy.stdout)
+        for repo, label in (('core-testing', 'testing'), ('core', 'stable')):
+            with self.subTest(repo=repo):
+                self.write_db('core-testing', [])
+                records = [('icu', '79.1-1', ['libicui18n.so=79-64', 'libicuuc.so=79-64'])]
+                if repo == 'core':
+                    records.append(('pacman', '7.1.0-1', []))
+                self.write_db(repo, records)
+                result = self.run_watch()
+                self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+                for value in locked:
+                    self.assertIn(f'BREAK {label}: emaki-config depends [{value}]', result.stdout)
+                self.assertNotIn('depends [qt6-base', result.stdout)
+                if label == 'testing':
+                    self.assertNotIn('BREAK stable', result.stdout)
+
     def test_package_moving_between_repositories_shadows_stable(self):
         self.write_db('core-testing', [('qt6-base', '6.12.0-1', [])])
         result = self.run_watch()
@@ -708,11 +736,12 @@ package_shell-tools() {
         expected = {
             'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki=26.04-28', 'quickshell-emaki>=0.3.1-13', 'kwallet>=6.30', 'systemd>=256',
                              # Emaki.I18n is built against Qt 6.12 (0.11).
-                             'qt6-declarative>=6.12', 'qt6-base>=6.12.0', 'qt6-base<6.13'},
+                             'qt6-declarative>=6.12', 'qt6-base>=6.12.0', 'qt6-base<6.13',
+                             'libicui18n.so=78-64', 'libicuuc.so=78-64'},
             'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12'},
-            'emaki-installer': {'archinstall=4.5-1', 'emaki-config>=0.11.0-6'},
+            'emaki-installer': {'archinstall=4.5-1', 'emaki-config>=0.12.0-1'},
             'emaki-sudo-key': {'emaki-config>=0.9.0-1'},
-            'emaki': {'emaki-config=0.11.0-6', 'emaki-desktop=0.9.0-1', 'emaki-keyring>=0.9.0-1',
+            'emaki': {'emaki-config=0.12.0-2', 'emaki-desktop=0.9.0-1', 'emaki-keyring>=0.9.0-1',
                       'emaki-mirrorlist>=0.9.0-1', 'niri-emaki=26.04-28', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},
@@ -733,7 +762,7 @@ package_shell-tools() {
                                 for bound in (f'>={lower}', f'<{upper}')}
         self.assertEqual({(f.package, f.kind, f.value) for f in fences}, expected_fences)
         # The translation plugin replaces two Wayland fences with two base fences.
-        self.assertEqual(len(fences), 42 if activated else 38)
+        self.assertEqual(len(fences), 44 if activated else 40)
         self.assertTrue(set(expected) <= names)
 
 

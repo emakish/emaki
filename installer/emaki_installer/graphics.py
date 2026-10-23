@@ -6,7 +6,8 @@ import re
 import tarfile
 
 
-CONSOLE_FONT = 'ter-124b'
+CONSOLE_FONT = 'ter-v24b'
+CYRILLIC_LARGE_CONSOLE_FONT = 'ter-v32b'
 NVIDIA = 0x10de
 HEADERS = ('linux-headers', 'linux-lts-headers')
 PREBUILT = ('nvidia-open', 'nvidia-open-lts')
@@ -101,10 +102,13 @@ def console_font(plan, sysfs_root=Path('/sys')):
     every connected display must be known and below the kernel's 16x32 threshold.
     NVIDIA with resume may keep the GRUB/GOP framebuffer during initramfs; a
     hybrid system may instead use its integrated GPU. Preserve automatic selection
-    because the live mode cannot establish the installed early framebuffer.
+    because the live mode cannot establish the installed early framebuffer. Russian
+    instead needs a Unicode font; use 16x32 when that framebuffer size is unknown.
     """
+    fallback = (CYRILLIC_LARGE_CONSOLE_FONT
+                if plan.config.get('language') == 'ru_RU.UTF-8' else None)
     if 'emaki-nvidia' in plan.graphics_packages and plan.config.get('hibernation'):
-        return None
+        return fallback
     panels, external = [], []
     for connector in sorted((Path(sysfs_root) / 'class/drm').glob('card*-*')):
         try:
@@ -130,5 +134,5 @@ def console_font(plan, sysfs_root=Path('/sys')):
     # must not force a smaller font onto a high-resolution framebuffer.
     if not modes or any(mode is None or (mode[0] // 8) * (mode[1] // 16) // 1000 >= 22
                         for mode in modes):
-        return None
+        return fallback
     return CONSOLE_FONT

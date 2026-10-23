@@ -3,13 +3,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Verify complete Brazilian Portuguese catalogues and their compiled fallbacks."""
 import ast
-from collections import Counter
 import gettext
 import importlib.util
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import tempfile
 import unittest
@@ -17,18 +15,6 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAINS = ('shell', 'programs', 'installer', 'notes', 'cli')
-# Technical names, units and words whose Portuguese spelling is identical.
-UNCHANGED = {
-    '%1 %2', '%1 B', '%1 Hz', '%1 h %2 min', '1 min', '15 min', '25 min', '5 min',
-    'Bluetooth', 'Command', 'command', 'Coral', 'Dock', 'Firmware', 'Internet', 'Layouts',
-    'Login', 'Mouse', 'Normal', 'Pomodoro · 25 / 5', 'Secure Boot', 'Snapshot %1',
-    'Snapshots', 'Software', 'Terminal', 'VPN', 'Volume', 'Web', 'Wi-Fi', 'WireGuard',
-    '%1 GB', '%1 MB', '%1%', '%1k', '0 MB', '< 0.1 MB', 'Download', 'Flatpak ({scope})',
-    '%n min', '%n h', '%n d', '%1 GiB', 'Manual', 'Windows', 'Software: ', 'Wi-Fi: ',
-}
-FIELDS = re.compile(r'%(?:L?\d+|L?n|\([^)]+\)[#0 +\-]*\d*(?:\.\d+)?[a-zA-Z]|[sdf]|%)|\{[^{}]*\}')
-TAGS = re.compile(r'</?[A-Za-z][^>]*>')
-
 
 def po_entries(path):
     entries, entry, key = [], {}, None
@@ -72,60 +58,16 @@ def environment(base, language):
 
 
 class Portuguese(unittest.TestCase):
-    def contract(self, source, target):
-        self.assertTrue(target.strip(), source)
-        self.assertEqual(Counter(FIELDS.findall(source)), Counter(FIELDS.findall(target)), (source, target))
-        self.assertEqual(TAGS.findall(source), TAGS.findall(target), (source, target))
-        self.assertEqual(source.count('\n'), target.count('\n'), (source, target))
-        self.assertEqual(len(source) - len(source.lstrip('\n')), len(target) - len(target.lstrip('\n')))
-        self.assertEqual(len(source) - len(source.rstrip('\n')), len(target) - len(target.rstrip('\n')))
-        # key={value} status lines keep their English field names.
-        if re.search('[A-Za-z]', source) and source not in UNCHANGED and '={' not in source:
-            self.assertNotEqual(source, target, 'Untranslated: ' + source)
-
-    def test_qt_complete(self):
-        for domain in DOMAINS[:-1]:
-            path = ROOT / 'i18n' / domain / 'pt_BR.ts'
-            self.assertEqual(ET.parse(path).getroot().get('language'), 'pt_BR')
-            source = qt_entries(path.with_name('en.ts'))
-            target = qt_entries(path)
-            self.assertEqual(source.keys(), target.keys(), domain)
-            for key, original in source.items():
-                with self.subTest(domain=domain, message=key):
-                    message = target[key]
-                    self.assertEqual(original.get('numerus'), message.get('numerus'))
-                    translated = message.find('translation')
-                    self.assertNotIn(translated.get('type'), ('unfinished', 'vanished', 'obsolete'))
-                    forms = translated.findall('numerusform')
-                    self.assertEqual(len(forms), 2 if original.get('numerus') == 'yes' else 0)
-                    for form in forms or [translated]:
-                        self.contract(key[1], form.text or '')
-
-    def test_gettext_complete_and_compiled(self):
+    def test_shared_completeness_contract(self):
+        spec = importlib.util.spec_from_file_location('catalogue_contract', ROOT / 'i18n/check_catalogues.py')
+        check = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(check)
+        unchanged = json.loads((ROOT / 'i18n/pt_BR-unchanged.json').read_text())['messages']
         for domain in DOMAINS:
             base = ROOT / 'i18n' / domain
-            source = {entry['msgid']: entry for entry in po_entries(base / (domain + '.pot')) if entry['msgid']}
-            entries = po_entries(base / 'pt_BR.po')
-            header = entries[0]['msgstr']
-            self.assertIn('Language: pt_BR\n', header)
-            self.assertIn('nplurals=2; plural=(n > 1);', header)
-            target = {entry['msgid']: entry for entry in entries if entry['msgid']}
-            self.assertEqual(source.keys(), target.keys(), domain)
-            compiled = gettext.translation(domain, ROOT / 'i18n/locale', ['pt_BR'])
-            for message, original in source.items():
-                with self.subTest(domain=domain, message=message):
-                    entry = target[message]
-                    self.assertNotIn('fuzzy', entry.get('flags', ''))
-                    self.assertEqual(original.get('msgid_plural'), entry.get('msgid_plural'))
-                    if 'msgid_plural' in original:
-                        self.assertEqual({key for key in entry if key.startswith('msgstr')}, {'msgstr[0]', 'msgstr[1]'})
-                        for n in (0, 1, 2, 21):
-                            value = entry['msgstr[' + str(int(n > 1)) + ']']
-                            self.contract(message if n <= 1 else original['msgid_plural'], value)
-                            self.assertEqual(compiled.ngettext(message, original['msgid_plural'], n), value)
-                    else:
-                        self.contract(message, entry['msgstr'])
-                        self.assertEqual(compiled.gettext(message), entry['msgstr'])
+            if domain != 'cli':
+                check.check_qt(base / 'en.ts', base / 'pt_BR.ts', 'pt_BR', unchanged)
+            check.check_po(base / (domain + '.pot'), base / 'pt_BR.po', 'pt_BR', unchanged)
 
     def test_plain_portuguese_aliases(self):
         base = ROOT / 'i18n/locale'

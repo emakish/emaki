@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import "settings"
+import "NumberLocale.js" as Numbers
 
 Column {
     id: root
@@ -29,7 +30,7 @@ Column {
             }))
     readonly property var rates: modes.filter(mode => mode.width + "x" + mode.height === resolution).map(mode => ({
                 value: wireMode(mode),
-                label: qsTranslate("DisplaysSettingsPage", "%1 Hz").arg((mode.refresh_rate / 1000).toFixed(2))
+                label: qsTranslate("DisplaysSettingsPage", "%1 Hz").arg((mode.refresh_rate / 1000).toLocaleString(Numbers.numberLocale(), "f", 2))
             }))
     spacing: 16
     signal confirmationNeeded

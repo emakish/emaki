@@ -579,6 +579,52 @@ fn failed_shell_compensation_does_not_block_reads_or_a_later_retry() {
 }
 
 #[test]
+fn a_refusal_after_live_apply_says_whether_the_session_was_put_back() {
+    // The session takes the change, the source is edited meanwhile (a conflict), then the
+    // compensation is accepted or refused.
+    for accept in [true, false] {
+        let f = Fixture::new();
+        installed_helper(&f, "emaki-shell", "print('applied')\n");
+        let (out, reply) = installed_run(&f, &["set", "bar.autohide", "true"]);
+        assert!(out.status.success(), "{reply}");
+        installed_helper(
+            &f,
+            "emaki-shell",
+            &format!(
+                "import os\nfrom pathlib import Path\n\
+                 marker = Path(os.environ['XDG_CONFIG_HOME']) / 'shell-applied'\n\
+                 if marker.exists() and not {accept}:\n    raise SystemExit(1)\n\
+                 if not marker.exists():\n    marker.write_text('')\n    \
+                 source = Path(os.environ['XDG_CONFIG_HOME']) / 'emaki/settings.toml'\n    \
+                 source.write_text(source.read_text() + '# my edit\\n')\n\
+                 print('applied')\n",
+                accept = if accept { "True" } else { "False" }
+            ),
+        );
+        let out = f
+            .fake("ok")
+            .env("XDG_CURRENT_DESKTOP", "niri")
+            .env("WAYLAND_DISPLAY", "settings-test-session")
+            .args(["settings", "reset", "all", "--json", "--timeout-ms"])
+            .arg(SLOW_MACHINE_TIMEOUT_MS)
+            .guarded_output()
+            .unwrap();
+        let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "settings_conflict");
+        let pending = f.root.join("state/emaki/history/live-pending.json");
+        assert_eq!(pending.exists(), !accept);
+        let notes = reply["recovery"].as_array().unwrap();
+        assert_eq!(
+            notes.contains(&Value::from("session_recovery_pending")),
+            !accept,
+            "{reply}"
+        );
+        assert_no_transaction_candidate(&f);
+    }
+}
+
+#[test]
 fn session_start_after_failed_apply_preserves_the_persons_later_edit() {
     let f = Fixture::new();
     installed_helper(&f, "emaki-shell", "print('applied')\n");
@@ -2908,6 +2954,46 @@ fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
     assert!(!out.status.success(), "{rejected}");
     assert_eq!(rejected["reason"], "undo_conflict");
     assert_eq!(tree(&f.root), before);
+}
+
+#[test]
+fn reset_all_clears_every_override_in_one_undoable_entry() {
+    let f = Fixture::new();
+    f.set("appearance.accent", "blue");
+    f.set("appearance.gaps", "4");
+    f.set("bar.clock_24_hour", "false");
+    f.set("dock.auto_hide", "false");
+    let (out, reset) = f.run(&["reset", "all"]);
+    assert!(out.status.success(), "{reset}");
+    for key in [
+        "appearance.accent",
+        "appearance.gaps",
+        "bar.clock_24_hour",
+        "dock.auto_hide",
+    ] {
+        assert!(row(&reset, key)["override_value"].is_null(), "{key}");
+    }
+    let history = f.run(&["history"]).1;
+    let entry = history["history"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == reset["change_id"])
+        .cloned()
+        .unwrap();
+    assert_eq!(entry["changes"].as_array().unwrap().len(), 4);
+    let (out, undone) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
+    assert!(out.status.success(), "{undone}");
+    assert_eq!(row(&undone, "appearance.accent")["value"], "blue");
+    assert_eq!(row(&undone, "appearance.gaps")["value"], 4);
+    assert_eq!(row(&undone, "bar.clock_24_hour")["value"], false);
+    assert_eq!(row(&undone, "dock.auto_hide")["value"], false);
+    // Nothing left to reset: no new history entry.
+    let (out, again) = f.run(&["reset", "all"]);
+    assert!(out.status.success(), "{again}");
+    let (out, unchanged) = f.run(&["reset", "all"]);
+    assert!(out.status.success(), "{unchanged}");
+    assert_eq!(unchanged["status"], "unchanged");
 }
 
 /// A fake terminal stopped however the test ends.

@@ -438,12 +438,12 @@ def components(paths=None):
             except Exception as exc:
                 # GI file errors have their own GLib exception type.
                 if isinstance(exc, OSError) or getattr(exc, "domain", "") == "g-io-error-quark":
-                    reason = _("unreadable")
+                    message = _("AppStream metadata is unreadable: {path}: {error}")
                 elif isinstance(exc, ImportError):
-                    reason = _("parser unavailable")
+                    message = _("AppStream metadata could not be parsed (parser unavailable): {path}: {error}")
                 else:
-                    reason = _("invalid")
-                warnings.append(_('AppStream metadata {reason}: {path}: {error}').format(reason=reason, path=path, error=exc))
+                    message = _("AppStream metadata is invalid: {path}: {error}")
+                warnings.append(message.format(path=path, error=exc))
     except Exception as exc:
         warnings.append(_('AppStream discovery unavailable: {error}').format(error=exc))
     return records, clean_display(warnings)

@@ -6,6 +6,13 @@
 #include <QQmlEngine>
 #include <QQmlExtensionPlugin>
 #include <QTranslator>
+#include <QTimeZone>
+#include <QHash>
+#include <unicode/tznames.h>
+#include <unicode/locid.h>
+#include <unicode/timezone.h>
+#include <unicode/strenum.h>
+#include <unicode/ucal.h>
 #include <QPlatformSurfaceEvent>
 #include <QPointer>
 #include <QWindow>
@@ -102,6 +109,9 @@ public:
         if (locale == QStringLiteral("en_US.UTF-8")) language = QStringLiteral("en");
         else if (locale == QStringLiteral("es_MX.UTF-8")) language = QStringLiteral("es");
         else if (locale == QStringLiteral("pt_BR.UTF-8")) language = QStringLiteral("pt_BR");
+        else if (locale == QStringLiteral("de_DE.UTF-8")) language = QStringLiteral("de");
+        else if (locale == QStringLiteral("fr_FR.UTF-8")) language = QStringLiteral("fr");
+        else if (locale == QStringLiteral("ru_RU.UTF-8")) language = QStringLiteral("ru");
         else return false;
         const auto directory = qEnvironmentVariable("EMAKI_LOCALE_DIR", QStringLiteral(EMAKI_LOCALE_DIR));
         std::vector<std::unique_ptr<QTranslator>> replacement;
@@ -132,6 +142,67 @@ private:
     std::vector<std::unique_ptr<QTranslator>> *translators;
 };
 
+// City names come from the same locale data as dates and numbers. IDs remain
+// untouched in settings and commands; only the presentation is localized.
+class TimeZones final : public QObject {
+    Q_OBJECT
+public:
+    Q_INVOKABLE QString label(const QString &id, const QString &language) {
+        const QLocale locale(language);
+        const auto fallback = QString(id).replace('_', ' ');
+        if (locale.language() == QLocale::English || locale.language() == QLocale::C)
+            return fallback;
+        if (locale.name() != cachedLocale) {
+            cachedLocale = locale.name();
+            labels.clear();
+            UErrorCode status = U_ZERO_ERROR;
+            names.reset(icu::TimeZoneNames::createInstance(
+                icu::Locale(cachedLocale.toUtf8().constData()), status));
+            if (U_FAILURE(status)) names.reset();
+        }
+        if (!names) return fallback;
+        if (labels.contains(id)) return labels.value(id);
+        const auto zone = icu::UnicodeString::fromUTF8(id.toStdString());
+        icu::UnicodeString canonical;
+        UErrorCode status = U_ZERO_ERROR;
+        icu::TimeZone::getCanonicalID(zone, canonical, status);
+        if (U_FAILURE(status)) return fallback;
+        icu::UnicodeString city;
+        names->getExemplarLocationName(canonical, city);
+        std::string utf8;
+        city.toUTF8String(utf8);
+        const auto result = utf8.empty() ? fallback : QString::fromStdString(utf8);
+        labels.insert(id, result);
+        return result;
+    }
+    Q_INVOKABLE QStringList search(const QString &query, const QString &language) {
+        const auto needle = query.trimmed();
+        const QLocale locale(language);
+        if (needle.isEmpty() || locale.language() == QLocale::English || locale.language() == QLocale::C)
+            return {};
+        QStringList result;
+        UErrorCode status = U_ZERO_ERROR;
+        std::unique_ptr<icu::StringEnumeration> zones(icu::TimeZone::createTimeZoneIDEnumeration(
+            UCAL_ZONE_TYPE_CANONICAL_LOCATION, nullptr, nullptr, status));
+        if (U_FAILURE(status) || !zones) return {};
+        for (auto *zone = zones->snext(status); zone && U_SUCCESS(status); zone = zones->snext(status)) {
+            std::string utf8;
+            zone->toUTF8String(utf8);
+            if (!QTimeZone::isTimeZoneIdAvailable(QByteArray(utf8.c_str()))) continue;
+            const auto id = QString::fromStdString(utf8);
+            if (label(id, language).contains(needle, Qt::CaseInsensitive)) {
+                result.append(id);
+                if (result.size() == 20) break;
+            }
+        }
+        return result;
+    }
+private:
+    QString cachedLocale;
+    QHash<QString, QString> labels;
+    std::unique_ptr<icu::TimeZoneNames> names;
+};
+
 // Quickshell creates QQmlEngine, not QQmlApplicationEngine. Loading on import
 // installs translators before any component bindings evaluate their qsTr calls.
 class TranslationPlugin final : public QQmlExtensionPlugin {
@@ -139,6 +210,8 @@ class TranslationPlugin final : public QQmlExtensionPlugin {
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 public:
     void registerTypes(const char *uri) override {
+        qmlRegisterSingletonType<TimeZones>(uri, 1, 0, "TimeZones",
+            [](QQmlEngine *, QJSEngine *) -> QObject * { return new TimeZones; });
         qmlRegisterSingletonType<WindowIdentity>(uri, 1, 0, "WindowIdentity",
             [](QQmlEngine *, QJSEngine *) -> QObject * { return new WindowIdentity; });
         qmlRegisterSingletonType<InstallerLanguage>(uri, 1, 0, "InstallerLanguage",

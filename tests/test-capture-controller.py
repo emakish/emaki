@@ -40,10 +40,31 @@ else:
     if scenario == 'error':
         emit({'event':'error','reason':'fixture_refused'})
         sys.exit(1)
-    if scenario == 'held-picture':
+    if scenario in ('held-picture', 'held-recognition'):
         release = Path(os.environ['CAPTURE_EVENTS']).with_name('release')
         while not release.exists():
             time.sleep(.02)
+    if operation in ('--text', '--qr'):
+        kind = operation[2:]
+        if scenario == 'missing-recognizer':
+            emit({'event':'error', 'reason':'tesseract_missing' if kind == 'text' else 'zbar_missing'})
+            sys.exit(1)
+        if scenario == 'empty':
+            emit({'event':'empty', 'kind':kind})
+        else:
+            value = {'https':'https://example.org/path?q=hello', 'http':'http://example.org/',
+                     'file':'file:///private/document', 'script':'javascript:alert(1)',
+                     'ftp':'ftp://example.org/', 'invalid-http':'https://',
+                     'multiline':'first line\nprivate second line',
+                     'long-text':'x' * 100, 'long-unicode':'😀' * 100,
+                     'long-link':'https://user:secret@example.org:8443/' + 'x' * 200,
+                     'ipv6':'http://[::1]:8080/path',
+                     'plain':'hello from the screen', 'spaces':'  '}.get(scenario, 'hello from the screen')
+            if scenario.startswith('bidi-'):
+                value = 'https://exa' + chr(int(scenario[5:], 16)) + 'mple.org/'
+            emit({'event':'recognized', 'kind':kind, 'text':value,
+                  'clipboard':scenario != 'clipboard-failed'})
+        sys.exit(0)
     if operation == '--record':
         if scenario == 'slow-start':
             time.sleep(.6)
@@ -65,6 +86,8 @@ def production_handler(source):
     handler = handlers[0]
     assert re.search(r'target:\s*"capture"', handler), 'Missing capture IPC target'
     assert re.search(r'function record\(\): bool\s*\{\s*return controller\.record\(\);\s*\}', handler), 'Missing recording IPC route'
+    for mode in ('text', 'qr'):
+        assert re.search(r'function ' + mode + r'\(\): bool\s*\{\s*return controller\.recognize\("' + mode + r'"\);\s*\}', handler), 'Missing recognition IPC route: ' + mode
     return handler
 
 
@@ -73,19 +96,21 @@ def check_routing():
     handler = production_handler(source)
     for changed in (source.replace('function record()', 'function removed()'),
                     source.replace('return controller.record();', 'return false;'),
-                    source.replace('target: "capture"', 'target: "wrong"')):
+                    source.replace('target: "capture"', 'target: "wrong"'),
+                    source.replace('return controller.recognize("text");', 'return false;'),
+                    source.replace('return controller.recognize("qr");', 'return false;')):
         try:
             production_handler(changed)
         except AssertionError:
             continue
-        raise AssertionError('Broken production recording route passed the check')
+        raise AssertionError('Broken production capture route passed the check')
     return handler
 
 
 def main():
     handler = check_routing()
     if sys.argv[1:] == ['--check-routing']:
-        print('Capture routing: production handler and three regression mutations passed')
+        print('Capture routing: production handler and five regression mutations passed')
         return
     qs = shutil.which('qs')
     assert qs, 'qs is required'
@@ -118,7 +143,7 @@ def main():
         with (profile / 'output.log').open('w') as log:
             process = subprocess.Popen([qs, '-p', str(qml), '--no-color'], env=env, stdout=log, stderr=subprocess.STDOUT)
             def call(method, *args):
-                target = 'capture' if method == 'record' else 'tests'
+                target = 'capture' if method in ('record', 'text', 'qr') else 'tests'
                 result = subprocess.run([qs, 'ipc', '--pid', str(process.pid), 'call', target, method,
                                          *[str(arg).lower() if isinstance(arg, bool) else str(arg) for arg in args]],
                                         env=env, text=True, capture_output=True, timeout=5)
@@ -248,7 +273,90 @@ def main():
                 (profile / 'release').touch()
                 state = wait(lambda s: not s['busy'], timeout=8)
                 assert state['notices'][-1]['title'] == 'Screenshot saved and copied', state
-                print('Capture controller: selection, recording stop, notifications, lock races, errors, missing helpers and inventory closure, record key passed')
+                recognition_cases = 0
+                for mode in ('text', 'qr'):
+                    for scenario, title in (
+                            ('normal', 'Text copied' if mode == 'text' else 'Code copied'),
+                            ('empty', 'No text found' if mode == 'text' else 'No QR code or barcode found'),
+                            ('clipboard-failed', 'Clipboard unavailable'),
+                            ('missing-recognizer', None)):
+                        assert call('configure', scenario)
+                        assert call('mode', 'picture') and call('targetKind', 'screen')
+                        assert call(mode), 'recognition IPC opens the panel'
+                        state = wait(lambda s: s['ready'])
+                        assert state['opened'] and state['mode'] == mode and state['target'] == 'area', state
+                        assert not call('targetKind', 'screen') and not call('targetKind', 'window')
+                        begin()
+                        assert not call('text') and not call('qr'), 'busy capture rejects recognition IPC'
+                        state = wait(lambda s: not s['busy'])
+                        assert len(state['notices']) == 1 and not state['links'], state
+                        assert state['notices'][0].get('transient'), 'recognition notices must not enter history'
+                        if title:
+                            assert state['notices'][0]['title'] == title, state
+                        else:
+                            reason = 'tesseract_missing' if mode == 'text' else 'zbar_missing'
+                            message = 'Text recognition requires tesseract.' if mode == 'text' else 'QR code recognition requires zbarimg.'
+                            assert state['reason'] == reason and state['notices'][0]['title'] == message, state
+                        event = json.loads(events.read_text().splitlines()[-1])
+                        assert event['operation'] == '--' + mode and event['request']['target'] == 'area', event
+                        recognition_cases += 1
+                for scenario, expected in (('multiline', 'first line'),
+                                           ('long-text', 'x' * 79 + '…'),
+                                           ('long-unicode', '😀' * 79 + '…')):
+                    prepare(scenario, mode='text', target='area')
+                    begin()
+                    state = wait(lambda s: not s['busy'])
+                    notice = state['notices'][-1]
+                    assert notice.get('transient') and notice['body'] == expected, notice
+                    assert len(notice['body']) <= 80 and '\n' not in notice['body'], notice
+                    recognition_cases += 1
+                for mode in ('text', 'qr'):
+                    for cancellation in ('stop', 'lock'):
+                        (profile / 'release').unlink(missing_ok=True)
+                        prepare('held-recognition', mode=mode, target='area')
+                        count = len(events.read_text().splitlines())
+                        begin()
+                        wait(lambda s: len(events.read_text().splitlines()) > count)
+                        if cancellation == 'lock':
+                            call('lock', True)
+                        else:
+                            assert call('finish')
+                        state = wait(lambda s: not s['busy'])
+                        assert not state['notices'] and not state['links'], state
+                        call('lock', False)
+                        recognition_cases += 1
+                web_links = {
+                    'https': ('https://example.org/path?q=hello', 'example.org'),
+                    'http': ('http://example.org/', 'example.org'),
+                    'long-link': ('https://user:secret@example.org:8443/' + 'x' * 200, 'example.org:8443'),
+                    'ipv6': ('http://[::1]:8080/path', '[::1]:8080'),
+                }
+                bidi_cases = ['bidi-' + hex(code)[2:] for code in
+                              (0x061c, 0x200e, 0x200f, *range(0x202a, 0x202f), *range(0x2066, 0x206a))]
+                for scenario in [*web_links, 'file', 'script', 'ftp', 'invalid-http', 'plain', 'spaces', *bidi_cases]:
+                    prepare(scenario, mode='qr', target='area')
+                    begin()
+                    state = wait(lambda s: not s['busy'])
+                    assert not state['links'], 'recognition must not open a link automatically'
+                    notice = state['notices'][-1]
+                    assert notice['title'] == 'Code copied', notice
+                    assert notice.get('transient') and len(notice['body']) <= 80, notice
+                    if scenario == 'spaces':
+                        assert notice['body'] == '  ', notice
+                    call('action', 'unrelated-action')
+                    assert not call('state')['links'], 'unrelated actions must be inert'
+                    if scenario in web_links:
+                        url, host = web_links[scenario]
+                        assert notice['body'].startswith(host + ' — '), notice
+                        assert notice['label'] == 'Open link' and notice['action'], notice
+                        call('action', notice['action'])
+                        assert call('state')['links'] == [url], call('state')
+                        call('action', notice['action'])
+                        assert call('state')['links'] == [url], 'consumed action must be inert'
+                    else:
+                        assert not notice.get('action'), notice
+                    recognition_cases += 1
+                print('Capture controller: existing capture cases and %d recognition scenarios passed' % recognition_cases)
             finally:
                 process.terminate()
                 try:

@@ -132,11 +132,17 @@ msgstr "[Çļöçķ ţööļš çöûļð ñöţ ŕéàð ţĥàţ ðàţà. Þ�
 msgid "Close window"
 msgstr "[Çļöšé ŵîñðöŵ···]"
 
+msgid "Command menu"
+msgstr "[Çöɱɱàñð ɱéñû···]"
+
 msgid "Confirm password: "
 msgstr "[Çöñƒîŕɱ þàššŵöŕð: ·····]"
 
 msgid "Connection changed."
 msgstr "[Çöññéçţîöñ çĥàñĝéð.·····]"
+
+msgid "Copy text from screen"
+msgstr "[Çöþÿ ţéẋţ ƒŕöɱ šçŕééñ······]"
 
 msgid "Could not check the screen timers."
 msgstr "[Çöûļð ñöţ çĥéçķ ţĥé šçŕééñ ţîɱéŕš.··········]"
@@ -164,6 +170,9 @@ msgstr "[Éɱàķî ļàñðšçàþé····]"
 
 msgid "Emaki problem report"
 msgstr "[Éɱàķî þŕöƀļéɱ ŕéþöŕţ·····]"
+
+msgid "Emoji"
+msgstr "[Éɱöĵî]"
 
 msgid "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
 msgstr "[Éñţéŕ à þàššŵöŕð ŵîţĥöûţ ļîñé ƀŕéàķš, ţàƀš öŕ öţĥéŕ çöñţŕöļ çĥàŕàçţéŕš (àţ ɱöšţ 1024 ÛŢƑ-8 ƀÿţéš).·································]"
@@ -418,6 +427,9 @@ msgstr "[Þŕîṽàçÿ àñð çàþţûŕé àçţîṽîţÿ········
 
 msgid "Raise volume"
 msgstr "[Ŕàîšé ṽöļûɱé···]"
+
+msgid "Read QR code"
+msgstr "[Ŕéàð ǪŔ çöðé···]"
 
 msgid "Recent journal errors"
 msgstr "[Ŕéçéñţ ĵöûŕñàļ éŕŕöŕš······]"
@@ -727,5 +739,9 @@ msgid "unsafe lock file"
 msgstr "[ûñšàƒé ļöçķ ƒîļé····]"
 
 #, python-brace-format
-msgid "{total:.1f} GiB · {free:.1f} GiB free"
-msgstr "[{total:.1f} ĜîƁ · {free:.1f} ĜîƁ ƒŕéé···········]"
+msgid "{amount} GiB"
+msgstr "[{amount} ĜîƁ···]"
+
+#, python-brace-format
+msgid "{total} GiB · {free} GiB free"
+msgstr "[{total} ĜîƁ · {free} ĜîƁ ƒŕéé·········]"

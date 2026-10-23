@@ -77,9 +77,74 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>This operation is unavailable. Please try again.</source>
             <translation>Esta operação está indisponível. Tente novamente.</translation>
         </message>
+
+        <message>
+            <source>English (US)</source>
+            <translation>Inglês (EUA)</translation>
+        </message>
+        <message>
+            <source>English (UK)</source>
+            <translation>Inglês (Reino Unido)</translation>
+        </message>
+        <message>
+            <source>German</source>
+            <translation>Alemão</translation>
+        </message>
+        <message>
+            <source>French</source>
+            <translation>Francês</translation>
+        </message>
+        <message>
+            <source>Russian</source>
+            <translation>Russo</translation>
+        </message>
+        <message>
+            <source>Spanish</source>
+            <translation>Espanhol</translation>
+        </message>
+        <message>
+            <source>Spanish (Latin American)</source>
+            <translation>Espanhol (América Latina)</translation>
+        </message>
+        <message>
+            <source>Portuguese (Brazil)</source>
+            <translation>Português (Brasil)</translation>
+        </message>
+        <message>
+            <source>Portuguese</source>
+            <translation>Português</translation>
+        </message>
+        <message>
+            <source>English (Dvorak)</source>
+            <translation>Inglês (Dvorak)</translation>
+        </message>
+        <message>
+            <source>English (Colemak)</source>
+            <translation>Inglês (Colemak)</translation>
+        </message>
+        <message>
+            <source>%1 and %2</source>
+            <translation>%1 e %2</translation>
+        </message>
+        <message>
+            <source>%1, %2</source>
+            <translation>%1, %2</translation>
+        </message>
     </context>
     <context>
         <name>InstallerView</name>
+        <message>
+            <source>I understand the selected disk will be erased</source>
+            <translation>Entendo que o disco selecionado será apagado</translation>
+        </message>
+        <message>
+            <source>Review the installation plan for the selected disk.</source>
+            <translation>Confira o plano de instalação para o disco selecionado.</translation>
+        </message>
+        <message>
+            <source>%1%</source>
+            <translation>%1%</translation>
+        </message>
         <message>
             <source>Welcome</source>
             <translation>Boas-vindas</translation>
@@ -199,10 +264,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>%1 GiB</source>
             <translation>%1 GiB</translation>
-        </message>
-        <message>
-            <source>the selected disk</source>
-            <translation>o disco selecionado</translation>
         </message>
         <message>
             <source>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</source>
@@ -1050,6 +1111,11 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Show details</source>
             <translation>Mostrar detalhes</translation>
+        </message>
+
+        <message>
+            <source>the selected disk</source>
+            <translation>o disco selecionado</translation>
         </message>
     </context>
     <context>

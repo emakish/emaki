@@ -4,6 +4,8 @@ niri/local.kdl
 work/
 out/
 /.cache/
+# Local rehearsal diagnostics, external-harness patches and captured evidence.
+/.night/
 /tmp/
 /target/
 __pycache__/

@@ -13,8 +13,12 @@ const managerDir = fileURLToPath(new URL('../update-manager/', import.meta.url))
 const source = fs.readFileSync(new URL('ui/ManagerLogic.js', `file://${managerDir}`), 'utf8')
     .split('\n').filter(line => !/^\s*\.(pragma|import)\b/.test(line)).join('\n');
 const Logic = {};
+const Numbers = {};
+const Qt = {uiLanguage: "en", locale: () => ({name: "en_US", decimalPoint: "."})};
+vm.runInNewContext(fs.readFileSync(new URL('../shell/NumberLocale.js', import.meta.url), 'utf8')
+    + '\nObject.assign(Numbers, {numberLocale});', {Numbers, Qt});
 vm.runInNewContext(`String.prototype.arg = function(value) { return this.replace(/%1/g, () => String(value)); };\n` + source + '\nObject.assign(Logic, {installedRows, merge, edition, identity, consolidate, removalStatus, updateProgress, progressEvent, aurBuilds, undoRefusal, downloadText});',
-                   {Logic, Qt: {}, qsTranslate: (context, text, hint, count) => text.replace("need(s)", count === 1 ? "needs" : "need")});
+                   {Logic, Numbers, Qt, qsTranslate: (context, text, hint, count) => text.replace("need(s)", count === 1 ? "needs" : "need")});
 
 const python = `
 import json, sys
@@ -214,5 +218,5 @@ for (const [name, blockers, protectedRow, reason] of [
 assert.equal(Logic.progressEvent(Logic.updateProgress(''), {phase: 'flatpak', message: '[Translated progress]'}).step, 4);
 assert.equal(Logic.updateProgress('Updating Flatpak applications').step, 0);
 assert.equal(Logic.aurBuilds({transaction: {kind: 'aur', builds: [{orphan: true}]}})[0].orphan, true);
-assert.equal(Logic.undoRefusal({code: 'cannot-undo', requiredBy: ['one']}), ' one needs what it added.');
-assert.equal(Logic.undoRefusal({code: 'cannot-undo', requiredBy: ['one', 'two']}), ' one, two need what it added.');
+assert.equal(Logic.undoRefusal({code: 'cannot-undo', requiredBy: ['one']}), 'This install can no longer be taken back as it was. one needs what it added.');
+assert.equal(Logic.undoRefusal({code: 'cannot-undo', requiredBy: ['one', 'two']}), 'This install can no longer be taken back as it was. one, two need what it added.');

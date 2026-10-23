@@ -1296,7 +1296,7 @@ class Worker:
         if regdom:
             self.files.write('/etc/conf.d/wireless-regdom', regdom)
         else:
-            self.log(_('Wi-Fi country left unset: timezone ') + c['timezone'] + _(' has no country.'))
+            self.log(_('Wi-Fi country left unset: timezone {timezone} has no country.').format(timezone=c['timezone']))
         if self.wifi_profile is not None:
             uuid = getattr(self, 'wifi_uuid', None) or c['wifi_uuid']
             try:

@@ -1,5 +1,6 @@
 // Copyright (C) 2026 Artur Yakymenko
 // SPDX-License-Identifier: GPL-3.0-or-later
+.import "file:@EMAKI_DATADIR@/shell/NumberLocale.js" as Numbers
 
 function identity(row) {
     if (String(row.package || '').endsWith('-git')) return 'package:' + row.package;
@@ -168,24 +169,32 @@ function undoRefusal(event) {
     // Why an undo was refused, in the words of its preview.
     if (!event || event.code !== 'cannot-undo') return '';
     const blockers = event.requiredBy || [];
-    if (blockers.length) return " " + qsTranslate("ManagerLogic", "%1 need(s) what it added.", "", blockers.length).replace("need(s)", blockers.length === 1 ? "needs" : "need").arg(blockers.join(", "));
-    const reasons = {system: qsTranslate("ManagerLogic", 'It is now part of the system.'), emaki: qsTranslate("ManagerLogic", 'It is now part of Emaki.'),
-                     explicit: qsTranslate("ManagerLogic", 'You installed it yourself since.'), 'not-installed': qsTranslate("ManagerLogic", 'It is no longer installed.')};
-    return reasons[event.reason] ? ' ' + reasons[event.reason] : '';
+    if (blockers.length) return qsTranslate("ManagerLogic", "This install can no longer be taken back as it was. %1 need(s) what it added.", "", blockers.length).replace("need(s)", blockers.length === 1 ? "needs" : "need").arg(blockers.join(", "));
+    const reasons = {system: qsTranslate("ManagerLogic", 'This install can no longer be taken back as it was. It is now part of the system.'), emaki: qsTranslate("ManagerLogic", 'This install can no longer be taken back as it was. It is now part of Emaki.'),
+                     explicit: qsTranslate("ManagerLogic", 'This install can no longer be taken back as it was. You installed it yourself since.'), 'not-installed': qsTranslate("ManagerLogic", 'This install can no longer be taken back as it was. It is no longer installed.')};
+    return reasons[event.reason] || '';
+}
+function numericLocale() {
+    return Numbers.numberLocale();
+}
+function decimal(value, digits) {
+    // Preserve ungrouped sizes and the existing rounding, including English output.
+    return Number(value).toFixed(digits).replace(".", numericLocale().decimalPoint);
 }
 function groupedCount(value) {
-    return Number(value).toLocaleString(Qt.locale("en_US"), "f", 0);
+    return Number(value).toLocaleString(numericLocale(), "f", 0);
 }
 function day(value) {
     const parsed = new Date(value);
-    return isNaN(parsed.getTime()) ? '' : parsed.toLocaleString(Qt.locale(), 'd MMM yyyy, HH:mm');
+    //: Qt date/time pattern for an installation date. Keep the time in 24-hour form.
+    return isNaN(parsed.getTime()) ? '' : parsed.toLocaleString(Qt.locale(), qsTranslate("ManagerLogic", 'd MMM yyyy, HH:mm'));
 }
 function downloadText(value) {
     // pacman reports 0 for a package already in its cache; a few kilobytes must not read as zero.
     if (value === null || value === undefined) return '—';
     if (value === 0) return qsTranslate("ManagerLogic", "0 MB");
     if (value < 50000) return qsTranslate("ManagerLogic", "< 0.1 MB");
-    return value >= 1000000000 ? qsTranslate("ManagerLogic", "%1 GB").arg((value / 1000000000).toFixed(1)) : qsTranslate("ManagerLogic", "%1 MB").arg((value / 1000000).toFixed(1));
+    return value >= 1000000000 ? qsTranslate("ManagerLogic", "%1 GB").arg(decimal(value / 1000000000, 1)) : qsTranslate("ManagerLogic", "%1 MB").arg(decimal(value / 1000000, 1));
 }
 function launchIds(row) {
     return Array.from(new Set((row.ids || []).concat([row.id || ''])

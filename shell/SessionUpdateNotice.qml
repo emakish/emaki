@@ -18,7 +18,7 @@ Scope {
     function show(): void {
         if (!live && pending && ready && !shown) {
             shown = true;
-            store.localNotice("Desktop update", qsTranslate("SessionUpdateNotice", "Sign out and sign in again to finish updating the desktop."), qsTranslate("SessionUpdateNotice", "Save your work first [Emaki]."), false, true);
+            store.localNotice("Desktop update", qsTranslate("SessionUpdateNotice", "Sign out and sign in again to finish updating the desktop."), qsTranslate("SessionUpdateNotice", "Save your work first."), false, true);
         }
     }
     onPendingChanged: show()

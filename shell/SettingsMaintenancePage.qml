@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import Quickshell.Io
 import "settings"
 
@@ -13,6 +14,61 @@ Column {
     property string message: ""
     property bool pending: false
     property string reply: ""
+    // Reset Emaki settings: the controller's SettingsReset (it keeps Undo after the page closes).
+    property var resetter: SettingsBridge.controller?.settingsReset ?? null
+    property bool resetReview: false
+    // A reset started on this page: its outcome shows here. Undo shows whenever the controller
+    // holds an undoable reset, also on a page opened later (after a failed Undo, for example).
+    property bool resetHere: false
+    // What the reset returns to defaults, and what it never touches (docs: Reset Emaki settings).
+    readonly property var resetItems: [qsTranslate("SettingsMaintenancePage", "Theme, accent, wallpaper choice and window gaps"), qsTranslate("SettingsMaintenancePage", "Top bar, dock and when they hide"), qsTranslate("SettingsMaintenancePage", "Apps pinned to the dock"), qsTranslate("SettingsMaintenancePage", "Mouse, touchpad, key repeat and shortcuts"), qsTranslate("SettingsMaintenancePage", "Default apps"), qsTranslate("SettingsMaintenancePage", "Notification rules and Do Not Disturb"), qsTranslate("SettingsMaintenancePage", "System sounds and Night Light"), qsTranslate("SettingsMaintenancePage", "Screen blanking and lock delay")]
+    readonly property var keptItems: [qsTranslate("SettingsMaintenancePage", "Your files, notes, pictures and wallpapers"), qsTranslate("SettingsMaintenancePage", "Settings inside your apps"), qsTranslate("SettingsMaintenancePage", "Your own niri configuration"), qsTranslate("SettingsMaintenancePage", "Displays, keyboard layouts, language and time zone"), qsTranslate("SettingsMaintenancePage", "Clipboard and notification history")]
+    function reviewReset(): void {
+        if (!resetter || resetter.busy)
+            return;
+        resetReview = true;
+        Qt.callLater(() => {
+            const cancel = root.findNamed("settings-reset-cancel");
+            if (cancel)
+                cancel.forceActiveFocus(Qt.TabFocusReason);
+        });
+    }
+    function findNamed(name: string, from: var): var {
+        const stack = [from || resetReviewCard];
+        while (stack.length) {
+            const item = stack.pop();
+            if (item.objectName === name)
+                return item;
+            for (const child of item.children || [])
+                stack.push(child);
+        }
+        return null;
+    }
+    function confirmReset(): void {
+        if (!resetter || resetter.busy)
+            return;
+        resetReview = false;
+        resetHere = resetter.start();
+    }
+    function cancelReset(): void {
+        resetReview = false;
+        focusResetButton();
+    }
+    // The row's button (Reset… or Undo) takes the focus back from the closed review.
+    function focusResetButton(): void {
+        Qt.callLater(() => {
+            const row = root.findNamed("settings-reset-emaki", resetCard);
+            if (row?.controlItem?.enabled)
+                row.controlItem.forceActiveFocus(Qt.TabFocusReason);
+        });
+    }
+    Connections {
+        target: root.resetter
+        function onBusyChanged(): void {
+            if (!root.resetter.busy && root.resetHere)
+                root.focusResetButton();
+        }
+    }
     spacing: 16
     function readChannel(): void {
         if (pending)
@@ -39,6 +95,8 @@ Column {
     }
     onPageChanged: {
         message = "";
+        resetReview = false;
+        resetHere = false;
         if (page === "updates")
             readChannel();
     }
@@ -159,6 +217,118 @@ Column {
         }
     }
     SettingsCard {
+        id: resetCard
+        objectName: "settings-reset"
+        width: parent.width
+        visible: root.page === "updates" && root.resetter !== null
+        title: qsTranslate("SettingsMaintenancePage", "Reset")
+        SettingsRow {
+            objectName: "settings-reset-emaki"
+            width: parent.width
+            title: qsTranslate("SettingsMaintenancePage", "Reset Emaki settings")
+            explanation: ((root.resetHere || root.resetter?.undoable) && root.resetter?.message) || qsTranslate("SettingsMaintenancePage", "Return Emaki's own settings to their defaults. Your files and app settings are not touched.")
+            busy: root.resetter?.busy ?? false
+            controlWidth: 150
+            control: Component {
+                SettingsButton {
+                    objectName: root.resetter?.undoable ? "settings-reset-undo" : "settings-reset-start"
+                    text: root.resetter?.undoable ? qsTranslate("SettingsMaintenancePage", "Undo") : qsTranslate("SettingsMaintenancePage", "Reset…")
+                    enabled: !(root.resetter?.busy ?? true) && !root.resetReview
+                    onClicked: {
+                        if (root.resetter.undoable)
+                            root.resetter.undo("");
+                        else
+                            root.reviewReset();
+                    }
+                }
+            }
+        }
+    }
+    SettingsCard {
+        id: resetReviewCard
+        objectName: "settings-reset-review"
+        width: parent.width
+        visible: root.page === "updates" && root.resetReview
+        title: qsTranslate("SettingsMaintenancePage", "Review reset")
+        Text {
+            width: parent.width
+            text: qsTranslate("SettingsMaintenancePage", "These return to their defaults:")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: SettingsTheme.ink
+            font.family: SettingsTheme.fontFamily
+            font.pixelSize: 13
+            font.weight: Font.Medium
+        }
+        Repeater {
+            model: root.resetItems
+            delegate: Text {
+                objectName: "settings-reset-item"
+                required property string modelData
+                width: parent.width
+                text: "• " + modelData
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                color: SettingsTheme.dim
+                font.family: SettingsTheme.fontFamily
+                font.pixelSize: 13
+                topPadding: 4
+            }
+        }
+        Text {
+            width: parent.width
+            text: qsTranslate("SettingsMaintenancePage", "These are not touched:")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: SettingsTheme.ink
+            font.family: SettingsTheme.fontFamily
+            font.pixelSize: 13
+            font.weight: Font.Medium
+            topPadding: 12
+        }
+        Repeater {
+            model: root.keptItems
+            delegate: Text {
+                objectName: "settings-reset-kept"
+                required property string modelData
+                width: parent.width
+                text: "• " + modelData
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                color: SettingsTheme.dim
+                font.family: SettingsTheme.fontFamily
+                font.pixelSize: 13
+                topPadding: 4
+            }
+        }
+        Text {
+            width: parent.width
+            text: qsTranslate("SettingsMaintenancePage", "A copy of your current Emaki settings is kept, so you can undo the reset.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: SettingsTheme.dim
+            font.family: SettingsTheme.fontFamily
+            font.pixelSize: 13
+            topPadding: 12
+        }
+        footer: Component {
+            Row {
+                spacing: 8
+                SettingsButton {
+                    objectName: "settings-reset-cancel"
+                    text: qsTranslate("SettingsMaintenancePage", "Cancel")
+                    onClicked: root.cancelReset()
+                }
+                SettingsButton {
+                    objectName: "settings-reset-confirm"
+                    text: qsTranslate("SettingsMaintenancePage", "Reset settings")
+                    enabled: !(root.resetter?.busy ?? true)
+                    onClicked: root.confirmReset()
+                }
+            }
+        }
+    }
+    SettingsCard {
         width: parent.width
         visible: root.page === "lock"
         title: qsTranslate("SettingsMaintenancePage", "Password")
@@ -171,7 +341,10 @@ Column {
             controlWidth: 150
             control: Component {
                 SettingsButton {
-                    text: qsTranslate("SettingsMaintenancePage", "Change password")
+                    text: qsTranslate("SettingsMaintenancePage", "Change…")
+                    Accessible.name: qsTranslate("SettingsMaintenancePage", "Change password")
+                    ToolTip.text: qsTranslate("SettingsMaintenancePage", "Change password")
+                    ToolTip.visible: hovered || activeFocus
                     onClicked: {
                         root.message = qsTranslate("SettingsMaintenancePage", "Enter your current and new password in the terminal.");
                         passwordProcess.completed = false;

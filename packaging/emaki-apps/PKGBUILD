@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-apps
-pkgver=0.11.0
+pkgver=0.12.0
 pkgrel=1
 pkgdesc='Emaki Rich application set and multimedia codecs'
 arch=('any')
@@ -10,7 +10,7 @@ license=('GPL-3.0-or-later')
 install=emaki-apps.install
 source=('45-emaki-apps.preset' 'emaki-printers.desktop')
 sha256sums=('770e6c1ed6e2c0d22d19062218e794769043423d419b618938fcd746be5958ec'
-            '25121a219abd52a49a6901a118d2a8fe2290094222c44764e66dd67cd727e4ab')
+            'eb8c6da9d700529caaa3339458fc695d1bcdf129502c5cbbfd8db0031ef7751b')
 depends=(
     'emaki-desktop'
     # Archive formats for Ark and the file manager.

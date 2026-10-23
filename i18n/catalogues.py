@@ -24,7 +24,9 @@ WRAPPERS = {'notes': 'notes/emaki-notes', 'programs': 'update-manager/emaki-upda
             'installer': 'installer/ui/emaki-install'}
 HEADER = 'Copyright (C) 2026 Artur Yakymenko\nSPDX-License-Identifier: GPL-3.0-or-later'
 ENGLISH_NUMERUS = {
-    '%1 need(s) what it added.': ('%1 needs what it added.', '%1 need what it added.'),
+    'This install can no longer be taken back as it was. %1 need(s) what it added.': (
+        'This install can no longer be taken back as it was. %1 needs what it added.',
+        'This install can no longer be taken back as it was. %1 need what it added.'),
     '%n update(s) are ready to install.': ('%n update is ready to install.', '%n updates are ready to install.'),
 }
 ACCENTS = str.maketrans('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',

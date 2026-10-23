@@ -99,7 +99,29 @@ for line in sys.stdin:
         log.write(json.dumps(request) + '\n')
     method, params = request['method'], request['params']
     value = dict(version=1, id=request['id'], type='result', ok=True)
-    if method == 'catalog' and params.get('scope') == 'packages':
+    if method == 'development':
+        value.update(kits=[dict(id='docker', name='Docker', packages=['docker'], installed=installed, actions=['remove', 'undo'] if installed else ['install'])])
+    elif method == 'development-plan':
+        value.update(key='development:' + params['id'], action=params['action'], token='d' * 64,
+                     transaction=dict(packages=['docker']))
+    elif method == 'development-execute':
+        assert params['token'] == 'd' * 64
+        if params['action'] == 'remove':
+            assert params['dockerAccess'] is False
+            value.update(ok=False, restoreToken='restore-kit', snapshot='23', message='Removal failed', signOut=True)
+        else:
+            assert params['dockerAccess'] is True
+            installed = True
+            value.update(message='Installed tools', signOut=True)
+        print(json.dumps(dict(version=1, id=request['id'], type='progress', message='Preparing tools', percent=50)), flush=True)
+    elif method == 'websites':
+        value.update(apps=[])
+    elif method == 'website-add':
+        value.update(apps=[dict(id='site-one', name=params['name'], url=params['url'])])
+    elif method == 'website-remove':
+        assert params['id'] == 'site-one'
+        value.update(apps=[])
+    elif method == 'catalog' and params.get('scope') == 'packages':
         query = params.get('query', '')
         if query == 'old': time.sleep(.4)
         rows = [package_row(i) for i in range(505)]
@@ -241,7 +263,7 @@ def run(scenario):
         if scenario == 'missing-preview':
             controller = controller.replace('? [' + json.dumps(str(backend)) + ', "preview"', '? ["/missing-program-service", "preview"')
         (root / 'ProgramsController.qml').write_text(controller)
-        shutil.copyfile(UI / 'ManagerLogic.js', root / 'ManagerLogic.js')
+        (root / 'ManagerLogic.js').write_text(renderer['substitute']((UI / 'ManagerLogic.js').read_text(), values))
         fixture = (UI / 'tests/ProgramsControllerTest.qml').read_text()
         present = re.search(r'function present\(\): void \{([^}]+)\}', (UI / 'ManagerView.qml').read_text())
         assert present, 'window presentation hook exists'
@@ -308,6 +330,12 @@ def run(scenario):
             launches(root, ['local-editor'])
             print('PASS programs controller', scenario)
             return
+        if scenario == 'development-websites':
+            changes = [item for item in requests if item['method'] in ('development-execute', 'website-add', 'website-remove')]
+            assert [item['method'] for item in changes] == ['development-execute', 'development-execute', 'website-add', 'website-remove']
+            assert changes[0]['params']['dockerAccess'] is True
+            print('PASS programs controller', scenario)
+            return
         if scenario.startswith('plan-'):
             assert any(item['method'] == 'plan' for item in requests)
             assert not any(item['method'] == 'execute' for item in requests), 'failed plans cannot execute'
@@ -372,5 +400,5 @@ def run(scenario):
 if __name__ == '__main__':
     # A real catalog replays only where one was dumped (pages.jsonl and list.json of the engine).
     replay = ('replay',) if os.environ.get('EMAKI_PROGRAMS_REPLAY') else ()
-    for scenario in replay + ('large', 'plan-refused', 'plan-refresh', 'plan-disconnect', 'plan-malformed', 'launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'aur', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent', 'failed', 'not-authorized', 'metadata-unavailable'):
+    for scenario in replay + ('development-websites', 'large', 'plan-refused', 'plan-refresh', 'plan-disconnect', 'plan-malformed', 'launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'aur', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent', 'failed', 'not-authorized', 'metadata-unavailable'):
         run(scenario)

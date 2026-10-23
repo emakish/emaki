@@ -349,6 +349,7 @@ def main():
             assert state_file.read_bytes() == newer
             if scale == 1:
                 state_file.unlink()
+                (state_file.parent / 'whatsnew.json').unlink(missing_ok=True)
                 state_file.parent.rmdir()
                 state_file.parent.write_text('blocked parent')
                 ipc_cases(base, env, expected_seen=True, expected_opened=True, save_failed=True)

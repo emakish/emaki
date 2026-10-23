@@ -38,6 +38,58 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Reading the disk again…</translation>
         </message>
         <message>
+            <source>English (US)</source>
+            <translation>English (US)</translation>
+        </message>
+        <message>
+            <source>English (UK)</source>
+            <translation>English (UK)</translation>
+        </message>
+        <message>
+            <source>German</source>
+            <translation>German</translation>
+        </message>
+        <message>
+            <source>French</source>
+            <translation>French</translation>
+        </message>
+        <message>
+            <source>Russian</source>
+            <translation>Russian</translation>
+        </message>
+        <message>
+            <source>Spanish</source>
+            <translation>Spanish</translation>
+        </message>
+        <message>
+            <source>Spanish (Latin American)</source>
+            <translation>Spanish (Latin American)</translation>
+        </message>
+        <message>
+            <source>Portuguese (Brazil)</source>
+            <translation>Portuguese (Brazil)</translation>
+        </message>
+        <message>
+            <source>Portuguese</source>
+            <translation>Portuguese</translation>
+        </message>
+        <message>
+            <source>English (Dvorak)</source>
+            <translation>English (Dvorak)</translation>
+        </message>
+        <message>
+            <source>English (Colemak)</source>
+            <translation>English (Colemak)</translation>
+        </message>
+        <message>
+            <source>%1 and %2</source>
+            <translation>%1 and %2</translation>
+        </message>
+        <message>
+            <source>%1, %2</source>
+            <translation>%1, %2</translation>
+        </message>
+        <message>
             <source>Wait until the installer is ready.</source>
             <translation>Wait until the installer is ready.</translation>
         </message>
@@ -201,10 +253,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>%1 GiB</translation>
         </message>
         <message>
-            <source>the selected disk</source>
-            <translation>the selected disk</translation>
-        </message>
-        <message>
             <source>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</source>
             <translation>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</translation>
         </message>
@@ -347,6 +395,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>I understand %1 will be erased</source>
             <translation>I understand %1 will be erased</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased</source>
+            <translation>I understand the selected disk will be erased</translation>
         </message>
         <message>
             <source>Try again</source>
@@ -543,6 +595,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Where should Emaki go?</source>
             <translation>Where should Emaki go?</translation>
+        </message>
+        <message>
+            <source>the selected disk</source>
+            <translation>the selected disk</translation>
         </message>
         <message>
             <source>Choose a disk. The live USB and unavailable disks cannot be selected.</source>
@@ -928,6 +984,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Review the installation plan for %1.</translation>
         </message>
         <message>
+            <source>Review the installation plan for the selected disk.</source>
+            <translation>Review the installation plan for the selected disk.</translation>
+        </message>
+        <message>
             <source>Edit disk settings</source>
             <translation>Edit disk settings</translation>
         </message>
@@ -974,6 +1034,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Skipped</source>
             <translation>Skipped</translation>
+        </message>
+        <message>
+            <source>%1%</source>
+            <translation>%1%</translation>
         </message>
         <message>
             <source>MAKE YOURSELF AT HOME</source>

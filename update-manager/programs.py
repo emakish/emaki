@@ -131,7 +131,8 @@ def remove(name, expected):
 
 def main(argv):
     if argv and argv[0] in ('catalog', 'search', 'details', 'related', 'plan', 'execute', 'updates', 'aur',
-                            'popular', 'serve'):
+                            'popular', 'serve', 'development', 'development-plan', 'development-execute',
+                            'websites', 'website-add', 'website-remove'):
         import programs_engine
         return programs_engine.main(argv, sys.modules[__name__])
     if os.geteuid() == 0:

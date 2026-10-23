@@ -322,6 +322,10 @@ binds {
     // Without a shell: cliphist in fuzzel; Esc (nothing picked) leaves the clipboard alone.
     Mod+V hotkey-overlay-title="Clipboard history" { spawn-sh "emaki-shell call launcher open && emaki-shell call launcher mode Clipboard || { pick=$(cliphist -config-path /dev/null -db-path \"${XDG_RUNTIME_DIR:?}/emaki-cliphist.db\" list | fuzzel --config \"$(emaki-config-path fuzzel fuzzel.ini)\" --dmenu) && [ -n \"$pick\" ] && printf %s \"$pick\" | cliphist -config-path /dev/null -db-path \"${XDG_RUNTIME_DIR:?}/emaki-cliphist.db\" decode | wl-copy; }"; }
 
+    // The command menu and the emoji picker — the launcher's Commands and Emoji modes.
+    Mod+K hotkey-overlay-title="Command menu" { spawn-sh "emaki-shell call launcher open && emaki-shell call launcher mode Commands"; }
+    Mod+Semicolon hotkey-overlay-title="Emoji" { spawn-sh "emaki-shell call launcher open && emaki-shell call launcher mode Emoji"; }
+
     // The lock supervisor serializes requests and confirms compositor coverage.
     // It runs independently of the shell and optional idle policy. Works when locked:
     // if the lockers crashed for good, niri keeps the session locked on its plain
@@ -337,6 +341,8 @@ binds {
     Print { screenshot; }
     // Emaki's picture/recording overlay, set to recording; pressed again it stops the recording.
     Mod+Alt+R hotkey-overlay-title="Record screen" { spawn "emaki-shell" "call" "capture" "record"; }
+    Mod+Alt+T hotkey-overlay-title="Copy text from screen" { spawn "emaki-shell" "call" "capture" "text"; }
+    Mod+Alt+Q hotkey-overlay-title="Read QR code" { spawn "emaki-shell" "call" "capture" "qr"; }
 
     // Show all key bindings on screen instead of digging through the config.
     Mod+Shift+Slash { show-hotkey-overlay; }

@@ -3,13 +3,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise local diagnostics without reading a real journal or changing devices."""
 import contextlib
+from concurrent.futures import ThreadPoolExecutor
+import gettext
 import importlib.machinery
 import importlib.util
 import io
 import json
+import locale
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import types
@@ -258,6 +262,67 @@ class About(unittest.TestCase):
         for value in ('', 'MemTotal: unknown kB', 'MemTotal: 10 bytes', 'MemTotal: -1 kB'):
             with self.subTest(value=value), patch.object(self.about, 'read', return_value=value), patch.object(self.about, 'command', return_value='Unavailable'):
                 self.assertEqual(self.about.details()['memory'], 'Unavailable')
+
+    def test_size_numbers_and_units_use_compiled_session_catalogues(self):
+        expected = {
+            'en': ('15.5 GiB', '476.9 GiB · 120.3 GiB free'),
+            'es': ('15,5 GiB', '476,9 GiB · 120,3 GiB libres'),
+            'pt_BR': ('15,5 GiB', '476,9 GiB · 120,3 GiB livres'),
+            'de': ('15,5 GiB', '476,9 GiB · 120,3 GiB frei'),
+            'fr': ('15,5\u00a0Gio', '476,9\u00a0Gio · 120,3\u00a0Gio libres'),
+            'ru': ('15,5 GiB', '476,9 GiB · свободно 120,3 GiB'),
+        }
+        disk = types.SimpleNamespace(total=476.9 * 2**30, free=120.3 * 2**30)
+        def read(path):
+            return 'MemTotal: 16252928 kB' if path == '/proc/meminfo' else ''
+        for language, values in expected.items():
+            with self.subTest(language=language):
+                compiled = self.root / (language + '.mo')
+                subprocess.run(['msgfmt', '-o', str(compiled),
+                                str(ROOT / 'i18n/shell' / (language + '.po'))], check=True)
+                with compiled.open('rb') as stream:
+                    catalogue = gettext.GNUTranslations(stream)
+                with patch.dict(os.environ, EMAKI_LANGUAGE=language), \
+                        patch.object(self.about, '_', catalogue.gettext), \
+                        patch.object(self.about, 'read', side_effect=read), \
+                        patch.object(self.about, 'command', return_value='Unavailable'), \
+                        patch.object(self.about, 'identity', return_value={}), \
+                        patch.object(self.about.shutil, 'disk_usage', return_value=disk):
+                    details = self.about.details()
+                self.assertEqual((details['memory'], details['disk']), values)
+                if language == 'en':
+                    self.assertEqual(details['memory'], f'{16252928 / 2**20:.1f} GiB')
+                    self.assertEqual(details['disk'],
+                                     f'{disk.total / 2**30:.1f} GiB · {disk.free / 2**30:.1f} GiB free')
+
+    def test_number_precision_grouping_and_request_isolation(self):
+        number = self.about.format_number
+        cases = [('en_US.UTF-8', '12,345.67'), ('es_MX.UTF-8', '12.345,67'),
+                 ('pt_BR.UTF-8', '12.345,67'), ('de_DE.UTF-8', '12.345,67'),
+                 ('fr_FR.UTF-8', '12\u202f345,67'), ('ru_RU.UTF-8', '12\u00a0345,67')]
+        before = locale.setlocale(locale.LC_NUMERIC)
+        with patch.object(locale, 'setlocale', side_effect=AssertionError('Locale mutation')):
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                futures = [executor.submit(number, 12345.67, 2, language=language, grouping=True)
+                           for language, _ in cases * 8]
+                self.assertEqual([future.result() for future in futures],
+                                 [expected for _, expected in cases * 8])
+            self.assertEqual(number(9007199254740993, language='fr', grouping=True),
+                             '9\u202f007\u202f199\u202f254\u202f740\u202f993')
+            self.assertEqual(number(-1.25, 1, language='de'), '-1,2')
+            self.assertEqual(number(1, 2, language='fr'), '1,00')
+            self.assertEqual(number(12345.67, 1, language='en'), '12345.7')
+        self.assertEqual(locale.setlocale(locale.LC_NUMERIC), before)
+
+    def test_number_language_follows_message_preferences(self):
+        cases = [({'EMAKI_LANGUAGE': 'de', 'LC_ALL': 'C'}, '1,5'),
+                 ({'LANG': 'fr_FR.UTF-8'}, '1,5'),
+                 ({'LC_ALL': 'C', 'LANGUAGE': 'de'}, '1.5'),
+                 ({'LANG': 'en_US.UTF-8', 'LANGUAGE': 'xx:ru'}, '1,5'),
+                 ({'EMAKI_LANGUAGE': 'en_XA'}, '1.5')]
+        for environment, expected in cases:
+            with self.subTest(environment=environment), patch.dict(os.environ, environment, clear=True):
+                self.assertEqual(self.about.format_number(1.5, 1), expected)
 
 
 if __name__ == '__main__':

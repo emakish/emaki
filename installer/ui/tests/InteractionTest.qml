@@ -10,6 +10,7 @@ import ".." as UI
 
 ShellRoot {
     id: test
+    readonly property var fixtureController: controller
     property bool failed: false
     property int stage: 0
     property string selected: ""
@@ -334,7 +335,7 @@ ShellRoot {
         UI.InstallerView {
             id: content
             anchors.fill: parent
-            controller: controller
+            controller: test.fixtureController
         }
         TestCase {
             id: input
@@ -1402,7 +1403,7 @@ ShellRoot {
                 if (!list)
                     return test.check(false, "keyboard layout list found");
                 test.check(list.count === 6 && list.height >= minimum, "the layout list keeps its minimum (" + where + ")");
-                const search = test.findItem(content, "layoutSearch");
+                const search = test.findItem(content, "layoutSearch") as C.TextField;
                 search.text = "ru";
                 input.wait(40);
                 test.check(list.count === 1 && list.model[0].layout === "ru" && !list.model[0].variant, "layout search shows only the supported base layout");

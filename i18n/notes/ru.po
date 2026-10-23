@@ -1,0 +1,125 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ru\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#, python-format
+msgid "%(path)s: the folder is a broken symbolic link."
+msgstr "%(path)s: папка является повреждённой символической ссылкой."
+
+msgid "A note cannot be larger than 1 MiB."
+msgstr "Заметка не может быть больше 1 MiB."
+
+msgid "A request must be an object."
+msgstr "Запрос должен быть объектом."
+
+msgid "Action must be text."
+msgstr "Действие должно быть текстом."
+
+msgid "All day"
+msgstr "Весь день"
+
+msgid "An event identifier is required."
+msgstr "Требуется идентификатор события."
+
+msgid "Cannot watch notes"
+msgstr "Не удалось отслеживать заметки"
+
+msgid "Duration must be a positive number of minutes."
+msgstr "Длительность должна быть положительным числом минут."
+
+msgid "Emaki Notes needs a user runtime directory"
+msgstr "Заметкам Emaki нужен пользовательский каталог среды выполнения"
+
+msgid "Enter a date as YYYY-MM-DD."
+msgstr "Введите дату в формате YYYY-MM-DD."
+
+msgid "Enter a start time as HH:MM."
+msgstr "Введите время начала в формате HH:MM."
+
+msgid "Enter an event title on one line."
+msgstr "Введите название события в одну строку."
+
+msgid "Enter one task line."
+msgstr "Введите одну строку задачи."
+
+msgid "Invalid event identifier."
+msgstr "Недопустимый идентификатор события."
+
+msgid "Invalid note identifier."
+msgstr "Недопустимый идентификатор заметки."
+
+msgid "Larger than 1 MiB; open it in a text editor."
+msgstr "Больше 1 MiB; откройте в текстовом редакторе."
+
+msgid "Not a regular file."
+msgstr "Не является обычным файлом."
+
+msgid "Note text must be text."
+msgstr "Содержимое заметки должно быть текстом."
+
+msgid "Open Emaki Notes as a regular user."
+msgstr "Откройте Заметки Emaki от имени обычного пользователя."
+
+msgid "Reminder must be minutes before the event."
+msgstr "Напоминание должно быть задано в минутах до события."
+
+msgid "Symbolic links cannot be edited as events."
+msgstr "Символические ссылки нельзя редактировать как события."
+
+msgid "Symbolic links cannot be edited as notes."
+msgstr "Символические ссылки нельзя редактировать как заметки."
+
+msgid "Task line is missing."
+msgstr "Строка задачи отсутствует."
+
+msgid "The Emaki Notes window could not be shown."
+msgstr "Не удалось показать окно Заметок Emaki."
+
+msgid "The notes metadata is invalid; restore it before pinning."
+msgstr "Метаданные заметок недопустимы; восстановите их перед закреплением."
+
+msgid "The notes metadata is not an object."
+msgstr "Метаданные заметок не являются объектом."
+
+msgid "This event cannot be stored; check its date and title."
+msgstr "Это событие нельзя сохранить; проверьте дату и название."
+
+msgid "This event was removed elsewhere."
+msgstr "Это событие удалено в другом месте."
+
+msgid "This item changed elsewhere. Your edit has been kept; reload or save it as a new note."
+msgstr "Этот элемент изменён в другом месте. Ваша правка не потеряна: перечитайте данные или сохраните её как новую заметку."
+
+msgid "This line is not a task."
+msgstr "Эта строка не является задачей."
+
+msgid "This note was removed elsewhere. Save your edit as a new note."
+msgstr "Эта заметка удалена в другом месте. Сохраните правку как новую заметку."
+
+msgid "Unknown action."
+msgstr "Неизвестное действие."
+
+msgid "Unknown notes action."
+msgstr "Неизвестное действие заметок."
+
+msgid "Unsupported reminder trigger."
+msgstr "Неподдерживаемый триггер напоминания."
+
+msgid "Untitled note"
+msgstr "Заметка без названия"
+
+msgid "Usage: backend.py {serve|remind|snapshot}"
+msgstr "Использование: backend.py {serve|remind|snapshot}"
+
+msgid "Usage: emaki-notes [--note ID]"
+msgstr "Использование: emaki-notes [--note ID]"
+
+msgid "not an object"
+msgstr "не является объектом"

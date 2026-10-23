@@ -13,6 +13,7 @@ ShellRoot {
     readonly property bool translationsReady: Shell.Translation.initialize()
     property bool failed: false
     property int restoreResults: 0
+    property var websiteActions: []
     property var lastRestore: null
     property bool sawInitialLoading: false
     property int quietReadLines: 0
@@ -22,11 +23,13 @@ ShellRoot {
             if (foregroundBusy && phase === "catalog" && !catalogLoaded) test.sawInitialLoading = true;
             if (foregroundBusy && phase === "related") test.quietReadLines++;
         }
+        onWebsiteChanged: action => test.websiteActions = test.websiteActions.concat([action])
         onRestoreFinished: result => { test.restoreResults++; test.lastRestore = result; }
     }
     Item {
         id: windowHook
         property var programs: controller
+        property string page: "browse"
         function resetScroll(): void {}
         function present(): void { /* PRESENT_BODY */ }
     }
@@ -164,8 +167,8 @@ ShellRoot {
         check(!controller.aurEnabled && controller.aurRows.length === 0 && controller.aurPopular.length === 0 && !controller.aurPopularLoaded, "closing the section forgets its results");
         controller.readPopular(); settle();
         check(controller.aurPopular.length === 0 && controller.aurPopularLoaded && controller.message === "The AUR section is off.", "a closed section gets no popular list");
-        check(Logic.undoRefusal({code: "cannot-undo", requiredBy: ["base-devel"]}) === " base-devel needs what it added."
-              && Logic.undoRefusal({code: "cannot-undo", reason: "explicit"}) === " You installed it yourself since."
+        check(Logic.undoRefusal({code: "cannot-undo", requiredBy: ["base-devel"]}) === "This install can no longer be taken back as it was. base-devel needs what it added."
+              && Logic.undoRefusal({code: "cannot-undo", reason: "explicit"}) === "This install can no longer be taken back as it was. You installed it yourself since."
               && Logic.undoRefusal({code: "changed"}) === "", "a refused undo says what blocks it");
     }
     TestCase { id: input; when: false; name: "ProgramsProcess" }
@@ -327,6 +330,36 @@ ShellRoot {
               "late Programs response cannot enter All packages scope");
         check(controller.allRows.length === 4 && controller.allPrograms.length === 3, "package browsing preserves Programs catalog");
     }
+    function developmentWebsitesScenario(): void {
+        controller.readDevelopment(); settle();
+        check(controller.developmentKits.length === 1 && !controller.developmentKits[0].installed, "development inventory comes from engine data");
+        controller.externalBusy = true;
+        controller.prepareKit(controller.developmentKits[0], "install", true);
+        check(!controller.previewOpen, "external updates block kit planning");
+        controller.externalBusy = false;
+        controller.prepareKit(controller.developmentKits[0], "install", true); settle();
+        check(controller.previewOpen && controller.planTarget === "docker" && controller.dockerAccess, "kit preview retains explicit Docker consent");
+        check(controller.plan.key === "development:docker", "kit plan binds its exact identity");
+        controller.executePlan(); settle(); input.wait(250); settle();
+        check(controller.succeeded && controller.developmentKits[0].installed, "kit transaction refreshes installed state");
+        check(controller.output.includes("Preparing tools"), "kit setup progress remains available");
+        check(controller.message.includes("sign out"), "Docker success retains sign-out notice after refresh");
+        controller.prepareKit(controller.developmentKits[0], "remove", false); settle();
+        controller.executePlan(); settle(); input.wait(250); settle();
+        check(!controller.succeeded && controller.recoveryPoint?.id === "restore-kit"
+              && controller.recoveryPoint.operation === "remove" && controller.recoveryPoint.snapshot === "23",
+              "failed kit removal retains its recovery point after refresh");
+        check(controller.message.includes("Removal failed") && controller.message.includes("sign out"),
+              "failed Docker removal preserves error and group session notice");
+        controller.readWebsites(); settle();
+        check(controller.websiteApps.length === 0, "website listing starts empty");
+        controller.addWebsite("https://example.com", "Example"); settle();
+        check(controller.websiteApps[0].name === "Example", "explicit Add publishes website result");
+        check(test.websiteActions.join() === "add", "successful Add tells the page to clear its form");
+        controller.removeWebsite("site-one"); settle();
+        check(controller.websiteApps.length === 0, "website removal updates list");
+        check(test.websiteActions.join() === "add,remove", "successful removal tells the page to restore focus");
+    }
     Timer {
         interval: 25; running: true
         onTriggered: {
@@ -342,6 +375,11 @@ ShellRoot {
             test.check(controller.allPrograms.length === 3, "source editions merged");
             test.check(!controller.installedPrograms.some(row => row.package === "emaki-config"), "protected catalog programs do not become removable rows");
             const scenario = Quickshell.env("TEST_SCENARIO");
+            if (scenario === "development-websites") {
+                test.developmentWebsitesScenario();
+                if (!test.failed) console.log("PROGRAMS_OK");
+                Qt.quit(); return;
+            }
             if (scenario.startsWith("plan-")) {
                 const aur = {key: "aur:editor-tools", id: "editor-tools", name: "Editor tools", kind: "aur", installed: false, actions: ["install"]};
                 controller.openProgram(aur);

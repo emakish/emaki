@@ -12,23 +12,11 @@ msgstr ""
 msgid " (Rich software requires emaki-apps)"
 msgstr " (Rich software requires emaki-apps)"
 
-msgid " Emaki could not check its files; its fallback loader will not be changed."
-msgstr " Emaki could not check its files; its fallback loader will not be changed."
-
-msgid " It holds another system's startup files; its fallback loader will not be changed."
-msgstr " It holds another system's startup files; its fallback loader will not be changed."
-
 msgid " The Windows data partition passed post-shrink verification before loader installation. Disk changes have already been made. Do not retry installation. Save the installation log to another device and seek recovery help before changing this disk."
 msgstr " The Windows data partition passed post-shrink verification before loader installation. Disk changes have already been made. Do not retry installation. Save the installation log to another device and seek recovery help before changing this disk."
 
-msgid " has no country."
-msgstr " has no country."
-
 msgid "(no reply)"
 msgstr "(no reply)"
-
-msgid ", encrypted (LUKS2)"
-msgstr ", encrypted (LUKS2)"
 
 msgid "--follow combines only with --plan --yes"
 msgstr "--follow combines only with --plan --yes"
@@ -77,6 +65,9 @@ msgstr "A new partition lies outside the space this disk's partition table lets 
 
 msgid "A new partition must start and end on whole MiB inside the free space."
 msgstr "A new partition must start and end on whole MiB inside the free space."
+
+msgid "A new partition needs at least 1 GiB."
+msgstr "A new partition needs at least 1 GiB."
 
 msgid "A new partition overlaps another partition."
 msgstr "A new partition overlaps another partition."
@@ -253,15 +244,38 @@ msgstr "Cannot run {value1}: {value2}."
 msgid "Cannot safely inspect the Windows hibernation file."
 msgstr "Cannot safely inspect the Windows hibernation file."
 
-msgid "Cannot verify GPT partition "
-msgstr "Cannot verify GPT partition "
+msgid "Cannot verify GPT partition GUID."
+msgstr "Cannot verify GPT partition GUID."
+
+msgid "Cannot verify GPT partition attributes."
+msgstr "Cannot verify GPT partition attributes."
+
+msgid "Cannot verify GPT partition end."
+msgstr "Cannot verify GPT partition end."
+
+msgid "Cannot verify GPT partition name."
+msgstr "Cannot verify GPT partition name."
+
+msgid "Cannot verify GPT partition start."
+msgstr "Cannot verify GPT partition start."
+
+msgid "Cannot verify GPT partition type."
+msgstr "Cannot verify GPT partition type."
 
 msgid "Cannot verify NTFS, hibernation state or GPT metadata: "
 msgstr "Cannot verify NTFS, hibernation state or GPT metadata: "
 
 #, python-brace-format
-msgid "Cannot verify that {value1} is the only device of {value2}."
-msgstr "Cannot verify that {value1} is the only device of {value2}."
+msgid "Cannot verify that {value1} is the only device of a Btrfs filesystem."
+msgstr "Cannot verify that {value1} is the only device of a Btrfs filesystem."
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of a RAID array."
+msgstr "Cannot verify that {value1} is the only device of a RAID array."
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of an LVM volume group."
+msgstr "Cannot verify that {value1} is the only device of an LVM volume group."
 
 #, python-brace-format
 msgid "Cannot write {value1}: {value2}."
@@ -305,9 +319,6 @@ msgstr "Choose whether to encrypt the disk and which password to use."
 
 msgid "Cleanup failed: "
 msgstr "Cleanup failed: "
-
-msgid "Close it [cryptsetup close]"
-msgstr "Close it [cryptsetup close]"
 
 msgid "Config must be an object."
 msgstr "Config must be an object."
@@ -354,8 +365,12 @@ msgid "Create a new GPT partition table on {value1}; the disk is empty."
 msgstr "Create a new GPT partition table on {value1}; the disk is empty."
 
 #, python-brace-format
-msgid "Create partition {value1}: {value2}, {value3}{value4}; use: {value5}."
-msgstr "Create partition {value1}: {value2}, {value3}{value4}; use: {value5}."
+msgid "Create partition {value1}: {value2}, {value3}, encrypted (LUKS2); use: {value5}."
+msgstr "Create partition {value1}: {value2}, {value3}, encrypted (LUKS2); use: {value5}."
+
+#, python-brace-format
+msgid "Create partition {value1}: {value2}, {value3}; use: {value5}."
+msgstr "Create partition {value1}: {value2}, {value3}; use: {value5}."
 
 msgid "Create the partitions for the new partition table."
 msgstr "Create the partitions for the new partition table."
@@ -370,9 +385,6 @@ msgstr "DKMS module {value1}/{value2} for {value3} has no built modules."
 #, python-brace-format
 msgid "DKMS module {value1}/{value2} for {value3} is not signed by the machine key: "
 msgstr "DKMS module {value1}/{value2} for {value3} is not signed by the machine key: "
-
-msgid "Deactivate it [lvchange -an]"
-msgstr "Deactivate it [lvchange -an]"
 
 #, python-brace-format
 msgid "Delete partition {value1} ({value2}): all its files are lost."
@@ -479,6 +491,18 @@ msgstr "Encryption: LUKS2 root, separate disk password."
 msgid "Encryption: off."
 msgstr "Encryption: off."
 
+msgid "English (Colemak)"
+msgstr "English (Colemak)"
+
+msgid "English (Dvorak)"
+msgstr "English (Dvorak)"
+
+msgid "English (UK)"
+msgstr "English (UK)"
+
+msgid "English (US)"
+msgstr "English (US)"
+
 msgid "Erase all partitions and create a new GPT partition table."
 msgstr "Erase all partitions and create a new GPT partition table."
 
@@ -502,11 +526,18 @@ msgid "Finding required packages (pacman)."
 msgstr "Finding required packages (pacman)."
 
 #, python-brace-format
-msgid "Format partition {value1} ({value2}, {value3}) as {value4}{value5}: its files are lost; use: {value6}."
-msgstr "Format partition {value1} ({value2}, {value3}) as {value4}{value5}: its files are lost; use: {value6}."
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}, encrypted (LUKS2): its files are lost; use: {value6}."
+msgstr "Format partition {value1} ({value2}, {value3}) as {value4}, encrypted (LUKS2): its files are lost; use: {value6}."
+
+#, python-brace-format
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}: its files are lost; use: {value6}."
+msgstr "Format partition {value1} ({value2}, {value3}) as {value4}: its files are lost; use: {value6}."
 
 msgid "Freed extent overlaps another partition."
 msgstr "Freed extent overlaps another partition."
+
+msgid "French"
+msgstr "French"
 
 #, python-brace-format
 msgid "Fresh Emaki {value1} install"
@@ -538,6 +569,9 @@ msgstr "GRUB's SBAT data names no GRUB version."
 msgid "GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority."
 msgstr "GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority."
 
+msgid "German"
+msgstr "German"
+
 #, python-brace-format
 msgid "Graphics controller (PCI {value1:04x}:"
 msgstr "Graphics controller (PCI {value1:04x}:"
@@ -556,8 +590,8 @@ msgid "Hibernation: off."
 msgstr "Hibernation: off."
 
 #, python-brace-format
-msgid "Hibernation: reserve {value1:,} bytes ({value2:.2f} GiB), equal to RAM."
-msgstr "Hibernation: reserve {value1:,} bytes ({value2:.2f} GiB), equal to RAM."
+msgid "Hibernation: reserve {value1} bytes ({value2} GiB), equal to RAM."
+msgstr "Hibernation: reserve {value1} bytes ({value2} GiB), equal to RAM."
 
 msgid "Hostname must be one DNS label (1–63 characters)."
 msgstr "Hostname must be one DNS label (1–63 characters)."
@@ -670,6 +704,14 @@ msgstr "Job is not retained by this daemon."
 #, python-brace-format
 msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}."
 msgstr "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}."
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. Emaki could not check its files; its fallback loader will not be changed."
+msgstr "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. Emaki could not check its files; its fallback loader will not be changed."
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. It holds another system's startup files; its fallback loader will not be changed."
+msgstr "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. It holds another system's startup files; its fallback loader will not be changed."
 
 msgid "Kernel partition size differs after resize."
 msgstr "Kernel partition size differs after resize."
@@ -973,8 +1015,12 @@ msgid "Partition {value1} holds {value2}. Emaki does not change it; delete the p
 msgstr "Partition {value1} holds {value2}. Emaki does not change it; delete the partition to use its space."
 
 #, python-brace-format
-msgid "Partition {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
-msgstr "Partition {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
+msgid "Partition {value1}: format {value3}, {value4} GiB; {value5}."
+msgstr "Partition {value1}: format {value3}, {value4} GiB; {value5}."
+
+#, python-brace-format
+msgid "Partition {value1}: preserve {value3}, {value4} GiB; {value5}."
+msgstr "Partition {value1}: preserve {value3}, {value4} GiB; {value5}."
 
 msgid "Partitions not listed here are not changed."
 msgstr "Partitions not listed here are not changed."
@@ -984,6 +1030,12 @@ msgstr "Password must be nonempty and contain no control characters (line breaks
 
 msgid "Plan token expired; review a new plan."
 msgstr "Plan token expired; review a new plan."
+
+msgid "Portuguese"
+msgstr "Portuguese"
+
+msgid "Portuguese (Brazil)"
+msgstr "Portuguese (Brazil)"
 
 msgid "Preparing language support (locale-gen)."
 msgstr "Preparing language support (locale-gen)."
@@ -1067,6 +1119,9 @@ msgstr "Run the repair as root: sudo emaki-boot-repair"
 msgid "Running package setup step {value1} of {value2} (pacman: {value3})."
 msgstr "Running package setup step {value1} of {value2} (pacman: {value3})."
 
+msgid "Russian"
+msgstr "Russian"
+
 msgid "STOP: NTFS resize did not confirm success. Partition table untouched; inspect Windows before retrying."
 msgstr "STOP: NTFS resize did not confirm success. Partition table untouched; inspect Windows before retrying."
 
@@ -1142,11 +1197,14 @@ msgstr "Software: "
 msgid "Some packages need different versions of each other. Wait for matching packages, then try the full update again."
 msgstr "Some packages need different versions of each other. Wait for matching packages, then try the full update again."
 
+msgid "Spanish"
+msgstr "Spanish"
+
+msgid "Spanish (Latin American)"
+msgstr "Spanish (Latin American)"
+
 msgid "Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there."
 msgstr "Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there."
-
-msgid "Stop it [mdadm --stop]"
-msgstr "Stop it [mdadm --stop]"
 
 #, python-brace-format
 msgid "Stopping target process {value1}: {value2}"
@@ -1755,8 +1813,9 @@ msgstr "Warning: {target} could not be unmounted: {error}"
 msgid "Wi-Fi country could not be set; continuing with the time zone."
 msgstr "Wi-Fi country could not be set; continuing with the time zone."
 
-msgid "Wi-Fi country left unset: timezone "
-msgstr "Wi-Fi country left unset: timezone "
+#, python-brace-format
+msgid "Wi-Fi country left unset: timezone {timezone} has no country."
+msgstr "Wi-Fi country left unset: timezone {timezone} has no country."
 
 msgid "Wi-Fi was not copied; join it again after restarting."
 msgstr "Wi-Fi was not copied; join it again after restarting."
@@ -1820,8 +1879,8 @@ msgid "Windows is encrypted with BitLocker, so Emaki cannot make room next to it
 msgstr "Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys."
 
 #, python-brace-format
-msgid "Windows keeps {value1:.2f} GB, Emaki gets {value2:.2f} GB; back up your files first."
-msgstr "Windows keeps {value1:.2f} GB, Emaki gets {value2:.2f} GB; back up your files first."
+msgid "Windows keeps {value1} GB, Emaki gets {value2} GB; back up your files first."
+msgstr "Windows keeps {value1} GB, Emaki gets {value2} GB; back up your files first."
 
 msgid "Windows must retain its minimum size plus 2 GiB."
 msgstr "Windows must retain its minimum size plus 2 GiB."
@@ -1871,15 +1930,6 @@ msgstr "Wrong filesystem UUID at {value1}."
 msgid "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
 msgstr "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
 
-msgid "a Btrfs filesystem"
-msgstr "a Btrfs filesystem"
-
-msgid "a RAID array"
-msgstr "a RAID array"
-
-msgid "an LVM volume group"
-msgstr "an LVM volume group"
-
 msgid "another system"
 msgstr "another system"
 
@@ -1915,15 +1965,6 @@ msgstr "emaki-installerd must run as root on the live ISO."
 msgid "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
 msgstr "emaki-shim-signed does not hold shimx64.efi and mmx64.efi."
 
-msgid "encrypted Linux system (LUKS)"
-msgstr "encrypted Linux system (LUKS)"
-
-msgid "encrypted Windows drive (BitLocker)"
-msgstr "encrypted Windows drive (BitLocker)"
-
-msgid "encrypted macOS disk (FileVault 2)"
-msgstr "encrypted macOS disk (FileVault 2)"
-
 msgid "enterprise (802.1X) networks are not copied."
 msgstr "enterprise (802.1X) networks are not copied."
 
@@ -1948,9 +1989,6 @@ msgstr "files of user {value1} keep that owner (not a regular account)"
 #, python-brace-format
 msgid "files of user {value1} now belong to {value2} ({value3})"
 msgstr "files of user {value1} now belong to {value2} ({value3})"
-
-msgid "format"
-msgstr "format"
 
 #, python-brace-format
 msgid "fstab filesystem or UUID missing at {value1}."
@@ -2000,13 +2038,6 @@ msgstr "joined on the Network page; no Wi-Fi is active now"
 msgid "key management {value1} is not supported."
 msgstr "key management {value1} is not supported."
 
-#, python-brace-format
-msgid "locked {description}"
-msgstr "locked {description}"
-
-msgid "macOS disk (APFS)"
-msgstr "macOS disk (APFS)"
-
 msgid "missing PF2 data"
 msgstr "missing PF2 data"
 
@@ -2047,9 +2078,6 @@ msgstr "online_update must be boolean."
 
 msgid "pacman returned no details"
 msgstr "pacman returned no details"
-
-msgid "preserve"
-msgstr "preserve"
 
 msgid "recovery discarded."
 msgstr "recovery discarded."
@@ -2196,8 +2224,20 @@ msgid "{value1} carries no signature."
 msgstr "{value1} carries no signature."
 
 #, python-brace-format
-msgid "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
-msgstr "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
+msgid "{value1} contains a locked encrypted Linux system (LUKS). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contains a locked encrypted Linux system (LUKS). The installer cannot check its contents; they may belong to a set of several disks."
+
+#, python-brace-format
+msgid "{value1} contains a locked encrypted Windows drive (BitLocker). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contains a locked encrypted Windows drive (BitLocker). The installer cannot check its contents; they may belong to a set of several disks."
+
+#, python-brace-format
+msgid "{value1} contains a locked encrypted macOS disk (FileVault 2). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contains a locked encrypted macOS disk (FileVault 2). The installer cannot check its contents; they may belong to a set of several disks."
+
+#, python-brace-format
+msgid "{value1} contains a macOS disk (APFS). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contains a macOS disk (APFS). The installer cannot check its contents; they may belong to a set of several disks."
 
 #, python-brace-format
 msgid "{value1} could not be read back after it was written."
@@ -2244,8 +2284,16 @@ msgid "{value1} is a symbolic link."
 msgstr "{value1} is a symbolic link."
 
 #, python-brace-format
-msgid "{value1} is active [{value2}]. {value3}, then try again."
-msgstr "{value1} is active [{value2}]. {value3}, then try again."
+msgid "{value1} is active [{value2}]. Close it [cryptsetup close], then try again."
+msgstr "{value1} is active [{value2}]. Close it [cryptsetup close], then try again."
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. Deactivate it [lvchange -an], then try again."
+msgstr "{value1} is active [{value2}]. Deactivate it [lvchange -an], then try again."
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. Stop it [mdadm --stop], then try again."
+msgstr "{value1} is active [{value2}]. Stop it [mdadm --stop], then try again."
 
 #, python-brace-format
 msgid "{value1} is held by {value2} [device mapper or RAID]. Deactivate that volume or stop that array before trying again."
@@ -2256,8 +2304,16 @@ msgid "{value1} is not a directory."
 msgstr "{value1} is not a directory."
 
 #, python-brace-format
-msgid "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
-msgstr "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
+msgid "{value1} is one of {value2} devices of a Btrfs filesystem; erasing it would damage the other devices."
+msgstr "{value1} is one of {value2} devices of a Btrfs filesystem; erasing it would damage the other devices."
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of a RAID array; erasing it would damage the other devices."
+msgstr "{value1} is one of {value2} devices of a RAID array; erasing it would damage the other devices."
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of an LVM volume group; erasing it would damage the other devices."
+msgstr "{value1} is one of {value2} devices of an LVM volume group; erasing it would damage the other devices."
 
 #, python-brace-format
 msgid "{value1} is open at {value2} [mount]. Close files there, then unmount it [umount]."
@@ -2278,3 +2334,7 @@ msgstr "{value1}: udev settle did not complete; checking the kernel directly."
 #, python-brace-format
 msgid "{value1}: {value2}: retry deadline reached."
 msgstr "{value1}: {value2}: retry deadline reached."
+
+#, python-brace-format
+msgid "{value} GiB"
+msgstr "{value} GiB"

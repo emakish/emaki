@@ -6,6 +6,7 @@ import QtQuick.Layouts
 import QtQuick.Controls as C
 import QtTest
 import Quickshell
+import Emaki.I18n
 import ".." as UI
 import "file:@EMAKI_DATADIR@/shell" as Shell
 
@@ -62,7 +63,7 @@ ShellRoot {
         const content = parent instanceof Flickable && parent.contentItem === item;
         const inList = !!parent && parent.parent instanceof Flickable && parent.parent.contentItem === parent;
         // A progress fill slides through its clipped track.
-        if (parent && !content && shown(item) && item.objectName !== "progress-fill") {
+        if (parent && !content && shown(item) && !["progress-fill", "development-progress-fill"].includes(item.objectName)) {
             checked++;
             // A control's label is measured against the control, whose padding it may use.
             const control = !!parent.parent && !(parent.parent instanceof Flickable) && parent.parent.contentItem === parent ? parent.parent : null;
@@ -178,6 +179,28 @@ ShellRoot {
         if (!view.popularMeasured || view.fresh.length <= 4) fail("the fixture shows New and updated with See all and Popular with its note");
         if (!find(view, item => item.objectName === "card-rating" && item.visible)) fail("the fixture shows ratings on cards");
         inspect("browse");
+        if (!shotsOnly) {
+            view.navigate("development"); inspect("development");
+            for (const kit of ["rust", "docker"]) {
+                programs.planTarget = kit; programs.mutating = true; programs.phase = "installing";
+                programs.percent = 50; programs.output = "Preparing tools";
+                inspect("development-progress-" + kit);
+                if (!named("development-progress").visible || !named("development-output").visible)
+                    fail("development progress and output must remain visible during setup");
+            }
+            programs.planTarget = ""; programs.mutating = false; programs.phase = "idle"; programs.output = "";
+            programs.recoveryPoint = {id:"restore-kit", snapshot:"23", operation:"remove"};
+            settle(30);
+            named("program-recovery").clicked();
+            inspect("development-removal-restore", false);
+            if (updates.selectedRestore?.operation !== "remove") fail("kit removal opens the exact restore point");
+            cancel();
+            programs.recoveryPoint = null; updates.selectedRestore = null;
+            view.navigate("websites"); inspect("websites");
+            const removeWebsite = find(view, item => item.visible && item.text === "Remove" && typeof item.clicked === "function");
+            removeWebsite.clicked(); inspect("website-removal-confirmation", false); cancel();
+            reset();
+        }
         view.showCategory(view.categoryRows[2]); inspect("category");
         view.query = "k"; view.page = "search"; programs.search("k"); named("program-search").text = "k"; inspect("search");
         reset(); view.showList("popular"); inspect("list");

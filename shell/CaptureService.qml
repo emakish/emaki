@@ -15,6 +15,7 @@ Scope {
         preferredOutput: service.outputs.focusedScreen?.name ?? ""
         notificationStore: service.outputs.shared.notifications
         onOpening: service.outputs.closeAll()
+        onLinkRequested: url => Qt.openUrlExternally(url)
     }
     // The privacy pill leaves the shell's own recording to its Stop control.
     Binding {
@@ -64,6 +65,12 @@ Scope {
         }
         function record(): bool {
             return controller.record();
+        }
+        function text(): bool {
+            return controller.recognize("text");
+        }
+        function qr(): bool {
+            return controller.recognize("qr");
         }
         function status(): string {
             return controller.status();

@@ -561,18 +561,35 @@ fn apply(
             Some(entry.id),
         )),
         Err(e) => {
-            if profile.installed && live::pending(profile)? {
-                // Keep failed live compensation for a later session retry, but release
-                // the uncommitted storage transaction so reads remain available.
-                let _ = live::recover(profile, timeout, false);
-            }
+            // Only a finished compensation (or none needed) proves the running session no
+            // longer shows the refused change; the reply says so otherwise.
+            let live_pending = profile.installed
+                && match live::pending(profile) {
+                    Ok(false) => false,
+                    Ok(true) => {
+                        // Keep failed live compensation for a later session retry, but release
+                        // the uncommitted storage transaction so reads remain available.
+                        let _ = live::recover(profile, timeout, false);
+                        live::pending(profile).unwrap_or(true)
+                    }
+                    Err(error) => {
+                        return Err(Error {
+                            live_pending: true,
+                            ..error
+                        });
+                    }
+                };
+            let tag = |error: Error| Error {
+                live_pending: live_pending || error.live_pending,
+                ..error
+            };
             // This process knows rename did not happen; preserve a racing manual edit.
             // On cleanup failure retain pending so the next invocation cannot ignore it.
-            journal::remove_file(&temporary_path)?;
-            journal::remove_generation(&destination)?;
-            journal::remove_file(&profile.pending())?;
-            sync_dir(&profile.history())?;
-            Err(e)
+            journal::remove_file(&temporary_path).map_err(tag)?;
+            journal::remove_generation(&destination).map_err(tag)?;
+            journal::remove_file(&profile.pending()).map_err(tag)?;
+            sync_dir(&profile.history()).map_err(tag)?;
+            Err(tag(e))
         }
     }
 }
@@ -725,6 +742,15 @@ pub(super) fn run(
                 // Clear the schedule together before validating its distinct times.
                 for key in [THEME, ACCENT, LIGHT_TIME, DARK_TIME] {
                     document.clear(key)?;
+                }
+            } else if key == "all" {
+                // Every override of the person's Emaki settings in one commit, so one
+                // history entry undoes it. Keyboard layouts and the switch key are the
+                // machine's (localed); they stay as they are.
+                for (key, value) in original.overrides() {
+                    if !value.is_null() && key != LAYOUTS && key != SWITCH_KEY {
+                        document.clear(&key)?;
+                    }
                 }
             } else {
                 document.clear(key)?;

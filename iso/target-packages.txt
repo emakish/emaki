@@ -65,7 +65,15 @@ spectacle
 sudo
 swayidle
 terminus-font
+tesseract
+tesseract-data-deu
+tesseract-data-eng
+tesseract-data-fra
+tesseract-data-por
+tesseract-data-rus
+tesseract-data-spa
 thunderbird
 wireless-regdb
 wpa_supplicant
+zbar
 zram-generator

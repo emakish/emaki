@@ -4,19 +4,21 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.11.0
-pkgrel=6
+pkgver=0.12.0
+pkgrel=2
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later' 'Bitstream-Vera' 'OFL-1.1' 'GPL-2.0-or-later')  # GPL-2.0-or-later: Plymouth's prompt pictures
 depends=(
     'pacman' 'pacman-contrib' 'fakeroot' 'reflector' 'polkit'
-    'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative>=6.12' 'qt6-base>=6.12.0' 'qt6-base<6.13'
+    'glibc' 'libgcc' 'icu' 'libicui18n.so=78-64' 'libicuuc.so=78-64' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative>=6.12' 'qt6-base>=6.12.0' 'qt6-base<6.13'
     'niri-emaki=26.04-28' 'quickshell-emaki>=0.3.1-13'
     'python' 'python-gobject' 'python-pillow' 'gtk3' 'libnotify'
     'appstream' 'archlinux-appstream-data' 'kimageformats' 'libjxl'
     'wpaperd' 'wl-clipboard' 'cliphist' 'udiskie'
+    'tesseract' 'tesseract-data-eng' 'tesseract-data-spa' 'tesseract-data-por'
+    'tesseract-data-deu' 'tesseract-data-fra' 'tesseract-data-rus' 'zbar'
     'grim' 'gstreamer' 'gst-plugin-pipewire' 'gst-plugins-base'
     'gst-plugins-base-libs' 'gst-plugins-good' 'gst-plugins-bad' 'libglvnd' 'ffmpeg'
     'kitty' 'fastfetch>=2.68.1' 'imagemagick' 'hyprlock' 'playerctl' 'fuzzel' 'qt6ct' 'noto-fonts' 'breeze-icons' 'adwaita-icon-theme'

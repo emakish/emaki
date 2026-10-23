@@ -17,6 +17,20 @@ ROOT = Path(__file__).resolve().parents[1]
 SHOTS = ROOT / '.cache/evidence/whatsnew'
 
 
+def release_contract():
+    script = (ROOT / 'tests/qml-translation.js').read_text() + '\n' + (ROOT / 'shell/WhatsNewContent.js').read_text().replace('.pragma library', '')
+    versions = ['0.12', '0.12.0', '0.12.19', '0.11', '0.11.9', '0.13.0', '', '0.120.0', '0.12.0-beta']
+    script += '\nconsole.log(JSON.stringify({title: title(), pages: pages(), available: ' + json.dumps(versions) + '.map(available)}));'
+    content = json.loads(subprocess.check_output(['node', '-e', script], text=True))
+    assert content['title'] == "What's new in Emaki 0.12"
+    assert content['available'] == [True, True, True, False, False, False, False, False, False]
+    pages = content['pages']
+    assert len(pages) == 6 and all(page['id'] == 'release' for page in pages)
+    assert [page.get('action') for page in pages] == ['language', None, None, None, None, None]
+    assert pages[-1]['title'] == 'Fixes' and len(pages[-1]['text'].splitlines()) == 3
+    print('PASS: six release pages, language action and 0.12 series boundary', flush=True)
+
+
 def prepare(base):
     shutil.copytree(ROOT / 'shell', base / 'shell')
     fixture = (ROOT / 'tests/fixtures/WhatsNewTest.qml').read_text()
@@ -25,7 +39,7 @@ def prepare(base):
     for name in ('home', 'config', 'data', 'cache', 'state', 'runtime'):
         (base / name).mkdir(mode=0o700)
     (base / 'state/emaki').mkdir()
-    (base / 'release').write_text('VERSION=0.11.0\n')
+    (base / 'release').write_text('VERSION=0.12.0\n')
     env = dict(os.environ, HOME=str(base / 'home'), XDG_CONFIG_HOME=str(base / 'config'),
                XDG_CONFIG_DIRS=str(base / 'config'), XDG_DATA_HOME=str(base / 'data'),
                XDG_DATA_DIRS=str(base / 'data'), XDG_CACHE_HOME=str(base / 'cache'),
@@ -58,7 +72,7 @@ def run(base, env, case, label):
         record = json.loads(line.split('WHATSNEW_CONTENT ', 1)[1])
         (SHOTS / (record['name'] + '.json')).write_text(json.dumps(record, ensure_ascii=False, indent=2) + '\n')
         with Image.open(SHOTS / (record['name'] + '.png')) as frame:
-            assert frame.size == (800, 660), frame.size
+            assert frame.size == (int(env.get('WHATSNEW_WIDTH', '800')), int(env.get('WHATSNEW_HEIGHT', '660'))), frame.size
             for region in record['regions']:
                 box = tuple(round(value) for value in (region['x'], region['y'], region['x'] + region['width'], region['y'] + region['height']))
                 histogram = frame.crop(box).convert('L').histogram()
@@ -73,40 +87,42 @@ def state(base):
 
 
 def main():
+    release_contract()
     SHOTS.mkdir(parents=True, exist_ok=True)
     assert (ROOT / '.cache/i18n-native/qml/Emaki/I18n/qmldir').exists(), 'Run make build-i18n first'
-    for language in ('es', 'pt_BR'):
+    for language in ('es', 'pt_BR', 'de', 'fr', 'ru'):
         assert (ROOT / 'i18n/locale' / ('shell_' + language + '.qm')).exists(), 'Compile translation catalogues first'
     with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
         base = Path(temporary)
         env = prepare(base)
         run(base, env, 'fresh', 'fresh-install')
-        assert state(base)['seenVersion'] == '0.11.0'
+        assert state(base)['seenVersion'] == '0.12.0'
         run(base, env, 'second', 'fresh-second-login')
     with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
         base = Path(temporary)
         env = prepare(base)
         (base / 'state/emaki/welcome.json').write_text('{"version":1,"seen":true}\n')
+        (base / 'state/emaki/whatsnew.json').write_text('{"version":1,"seenVersion":"0.11.0"}\n')
         run(base, env, 'update', 'first-update-escape')
-        assert state(base)['seenVersion'] == '0.11.0'
+        assert state(base)['seenVersion'] == '0.12.0'
         run(base, env, 'second', 'second-login-after-escape')
-        (base / 'release').write_text('VERSION=0.11.1\n')
+        (base / 'release').write_text('VERSION=0.12.1\n')
         run(base, env, 'patch', 'patch-release')
         # The same series was already seen: quiet, and the record stays on the series.
-        assert state(base)['seenVersion'] == '0.11.0'
+        assert state(base)['seenVersion'] == '0.12.0'
         run(base, env, 'patch', 'patch-second-login')
 
-    # Someone who skips 0.11.0 and lands on 0.11.1 from 0.10 still sees the 0.11 pages once.
+    # Someone who skips 0.12.0 and lands on 0.12.1 from 0.11 still sees the 0.12 pages once.
     with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
         base = Path(temporary)
         env = prepare(base)
         (base / 'state/emaki/welcome.json').write_text('{"version":1,"seen":true}\n')
-        (base / 'release').write_text('VERSION=0.11.1\n')
-        run(base, env, 'update', 'skipped-0.11.0-update')
-        assert state(base)['seenVersion'] == '0.11.1'
+        (base / 'release').write_text('VERSION=0.12.1\n')
+        run(base, env, 'update', 'skipped-0.12.0-update')
+        assert state(base)['seenVersion'] == '0.12.1'
     for label, saved, release in (
-            ('future-schema', {'version': 2, 'seenVersion': '0.11.0', 'future': True}, '0.11.0'),
-            ('rollback', {'version': 1, 'seenVersion': '0.12.0'}, '0.11.0'),
+            ('future-schema', {'version': 2, 'seenVersion': '0.12.0', 'future': True}, '0.12.0'),
+            ('rollback', {'version': 1, 'seenVersion': '0.13.0'}, '0.12.0'),
             ('missing-release', None, None)):
         with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
             base = Path(temporary)
@@ -120,16 +136,19 @@ def main():
             original = path.read_bytes() if path.exists() else None
             run(base, env, 'suppressed', label)
             assert (path.read_bytes() if path.exists() else None) == original
-    for language in ('en', 'es', 'pt_BR'):
+    for language in ('en', 'es', 'pt_BR', 'de', 'fr', 'ru'):
         for theme in ('light', 'dark'):
-            with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
-                base = Path(temporary)
-                env = prepare(base)
-                env.update(EMAKI_LANGUAGE=language, WHATSNEW_THEME=theme)
-                (base / 'state/emaki/welcome.json').write_text('{"version":1,"seen":true}\n')
-                run(base, env, 'render', language + '-' + theme)
-                assert state(base)['seenVersion'] == '0.11.0'
-                run(base, env, 'second', language + '-' + theme + '-after-done')
+            for size, width, height in (('normal', 800, 660), ('small', 560, 420)):
+                with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
+                    base = Path(temporary)
+                    env = prepare(base)
+                    env.update(EMAKI_LANGUAGE=language, WHATSNEW_THEME=theme,
+                               WHATSNEW_SIZE=size, WHATSNEW_WIDTH=str(width), WHATSNEW_HEIGHT=str(height))
+                    (base / 'state/emaki/welcome.json').write_text('{"version":1,"seen":true}\n')
+                    label = language + '-' + theme + '-' + size
+                    run(base, env, 'render', label)
+                    assert state(base)['seenVersion'] == '0.12.0'
+                    run(base, env, 'second', label + '-after-done')
     print('Screenshots and clipping diagnostics:', SHOTS)
 
 

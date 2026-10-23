@@ -106,7 +106,11 @@ Rectangle {
                 flick.contentY = Math.min(scrollEnd(flick), rect.y + rect.height - flick.height + 8);
         }
     }
-    function present(): void { resetScroll(); programs.refresh(); }
+    function present(): void {
+        resetScroll(); programs.refresh();
+        if (page === "development") programs.readDevelopment();
+        if (page === "websites") programs.readWebsites();
+    }
     function clearTransactionMessage(): void {
         if (!programs.mutating) { programs.message = ""; programs.messageIsError = true; }
     }
@@ -126,6 +130,8 @@ Rectangle {
         programs.selectCategory(""); resetScroll();
         if (name === "updates") controller.refreshRestorePoints();
         if (name === "aur") enterAur();
+        if (name === "development") programs.readDevelopment();
+        if (name === "websites") programs.readWebsites();
     }
     function closeAur(): void { programs.setAur(false, true); aurSearch.text = ""; aurAcknowledged = false; navigate("browse"); }
     function enterAur(): void {
@@ -138,7 +144,7 @@ Rectangle {
         if (page === "search") return {page: page, query: query, label: qsTranslate("ManagerView", "Results"), tab: "browse"};
         if (page === "list") return {page: page, listId: listId, label: lists[listId]?.title || qsTranslate("ManagerView", "Browse"), tab: "browse"};
         if (page === "aur") return {page: page, label: "AUR", tab: "aur"};
-        if (page === "installed") return {page: page, label: qsTranslate("ManagerView", "Installed"), tab: "installed"};
+        if (page === "installed") return {page: page, label: qsTranslate("ManagerView", "Installed", "list of installed programs"), tab: "installed"};
         if (page === "program") return returnTo;
         return {page: "browse", label: qsTranslate("ManagerView", "Browse"), tab: "browse"};
     }
@@ -201,7 +207,7 @@ Rectangle {
         } else if (event.key === Qt.Key_Escape) {
             if (programs.previewOpen && !programs.busy) programs.cancelPlan();
             else if (page === "program" && !programs.mutating) goBack();
-            else if (page === "search" || page === "category" || page === "list") navigate("browse");
+            else if (["search", "category", "list", "development", "websites"].includes(page)) navigate("browse");
             event.accepted = true;
         } else {
             const flick = scroller();
@@ -241,7 +247,7 @@ Rectangle {
                 anchors { left: parent.left; leftMargin: view.width < 300 ? 6 : view.gutter - 6; right: parent.right; rightMargin: view.width < 300 ? 6 : view.gutter - 6; verticalCenter: parent.verticalCenter }
                 spacing: 4
                 Repeater {
-                    model: [{id: "browse", name: qsTranslate("ManagerView", "Browse")}, {id: "aur", name: "AUR"}, {id: "installed", name: qsTranslate("ManagerView", "Installed")}, {id: "updates", name: qsTranslate("ManagerView", "Updates")}]
+                    model: [{id: "browse", name: qsTranslate("ManagerView", "Browse")}, {id: "aur", name: "AUR"}, {id: "installed", name: qsTranslate("ManagerView", "Installed", "list of installed programs")}, {id: "updates", name: qsTranslate("ManagerView", "Updates")}]
                     TabButton {
                         required property var modelData
                         objectName: "tab-" + modelData.id
@@ -362,7 +368,7 @@ Rectangle {
             BackLink {
                 Layout.topMargin: 10
                 objectName: "back"
-                visible: view.page === "program" || view.page === "category" || view.page === "list"
+                visible: ["program", "category", "list", "development", "websites"].includes(view.page)
                 text: "‹  " + (view.page === "program" ? view.returnTo.label || qsTranslate("ManagerView", "Browse") : qsTranslate("ManagerView", "Browse"))
                 onClicked: view.page === "program" ? view.goBack() : view.navigate("browse")
             }
@@ -378,7 +384,8 @@ Rectangle {
                 // A window narrower than the label shortens it.
                 Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
                 squeezed: parent.width < implicitWidth
-                text: qsTranslate("ManagerView", "Restore before this install…")
+                objectName: "program-recovery"
+                text: view.programs.recoveryPoint?.operation === "remove" ? qsTranslate("ManagerUpdates", "Restore…") : qsTranslate("ManagerView", "Restore before this install…")
                 visible: !!view.programs.recoveryPoint && view.page !== "updates"
                 enabled: !view.programs.busy && !view.controller.busy && !view.controller.restorePending
                 onClicked: updatesPage.confirmRestore(view.programs.recoveryPoint)
@@ -534,7 +541,7 @@ Rectangle {
                     spacing: 0
                     ManagerLabel { visible: view.programs.inventoryError !== ""; text: view.programs.inventoryError; color: Shell.ShellPalette.managerError }
                     ManagerLabel { visible: view.programs.inventoryLoading && !view.programs.installedPrograms.length; text: qsTranslate("ManagerView", "Loading programs…"); color: Shell.ShellPalette.managerDim }
-                    Heading { title: qsTranslate("ManagerView", "Installed"); note: Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 program(s)", "", view.installedList.length), view.installedList.length).arg(Logic.groupedCount(view.installedList.length)) }
+                    Heading { title: qsTranslate("ManagerView", "Installed", "list of installed programs"); note: Shell.Translation.englishPlural(qsTranslate("ManagerView", "%1 program(s)", "", view.installedList.length), view.installedList.length).arg(Logic.groupedCount(view.installedList.length)) }
                 }
                 ManagerLabel {
                     visible: view.page === "search" && !view.regularResults.length && !view.programs.busy
@@ -695,6 +702,22 @@ Rectangle {
                         objectName: "category-strip-page"
                         visible: view.programs.scope === "programs" && view.narrow
                     }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        ManagerButton {
+                            objectName: "open-development"
+                            text: qsTranslate("ManagerView", "Development kits")
+                            width: Math.min(implicitWidth, parent.width); squeezed: parent.width > 0 && parent.width < implicitWidth
+                            onClicked: view.navigate("development")
+                        }
+                        ManagerButton {
+                            objectName: "open-websites"
+                            text: qsTranslate("ManagerView", "Websites as apps")
+                            width: Math.min(implicitWidth, parent.width); squeezed: parent.width > 0 && parent.width < implicitWidth
+                            onClicked: view.navigate("websites")
+                        }
+                    }
                     Shelf {
                         objectName: "shelf-picked"
                         title: view.storefront.featured?.title || ""
@@ -805,6 +828,8 @@ Rectangle {
                     }
                     ManagerButton { objectName: "refresh"; text: qsTranslate("ManagerView", "Refresh"); quiet: true; enabled: !view.programs.busy; onClicked: view.programs.refresh() }
                 }
+                ManagerDevelopment { visible: view.page === "development"; Layout.fillWidth: true; controller: view.programs }
+                ManagerWebApps { visible: view.page === "websites"; Layout.fillWidth: true; controller: view.programs }
                 ManagerProgram { visible: view.page === "program"; Layout.fillWidth: true; controller: view.programs }
                 ManagerUpdates { id: updatesPage; visible: view.page === "updates"; Layout.fillWidth: true; controller: view.controller; programs: view.programs.allRows; launchEntries: view.programs.launchEntries || []; transactionBusy: view.programs.mutating; aurKnown: view.programs.aurKnown; aurEnabled: view.programs.aurEnabled }
                 Item { implicitHeight: 24; Layout.fillWidth: true }
@@ -1224,11 +1249,31 @@ Rectangle {
                     spacing: 14
                     ManagerLabel {
                         text: previewColumn.action === "remove" ? qsTranslate("ManagerView", "Remove %1?").arg(previewColumn.programName)
+                            : previewColumn.action === "finish" ? qsTranslate("ManagerView", "Finish setting up %1?").arg(previewColumn.programName)
                             : previewColumn.action === "undo" ? qsTranslate("ManagerView", "Undo the install of %1?").arg(previewColumn.programName)
                             : previewColumn.aurPlan ? qsTranslate("ManagerView", "Build %1 from the AUR?").arg(previewColumn.programName)
                             : view.programs.selectedEdition?.kind === "arch" ? qsTranslate("ManagerView", "Installing also brings the system up to date.")
                             : qsTranslate("ManagerView", "Install %1?").arg(previewColumn.programName)
                         font.pixelSize: 21; font.weight: Font.DemiBold
+                    }
+                    ManagerLabel {
+                        visible: !!view.programs.planTarget && previewColumn.action === "install"
+                        text: qsTranslate("ManagerView", "Installing also brings the system up to date.")
+                        color: Shell.ShellPalette.managerDim
+                    }
+                    ManagerLabel {
+                        visible: previewColumn.action === "finish" && !!view.programs.plan
+                        text: view.programs.plan?.transaction?.message || ""
+                        color: Shell.ShellPalette.managerDim
+                    }
+                    ManagerLabel {
+                        visible: view.programs.planTarget === "docker" && previewColumn.action === "install" && view.programs.dockerAccess
+                        text: qsTranslate("ManagerView", "Adding you to the Docker group gives you root-level control of this computer.")
+                        color: Shell.ShellPalette.managerError
+                    }
+                    ManagerLabel {
+                        visible: view.programs.planTarget === "docker" && previewColumn.action === "install" && view.programs.dockerAccess
+                        text: qsTranslate("ManagerView", "The group takes effect after you sign out and sign back in.")
                     }
                     ManagerLabel { objectName: "program-preview-error"; text: view.programs.message; visible: text !== ""; color: Shell.ShellPalette.managerError }
                     ManagerLabel {
@@ -1237,7 +1282,7 @@ Rectangle {
                         font.pixelSize: 13
                     }
                     ManagerLabel {
-                        visible: !previewColumn.snapshotUndo && (previewColumn.planning || !!view.programs.plan && !previewColumn.aurPlan)
+                        visible: previewColumn.action !== "finish" && !previewColumn.snapshotUndo && (previewColumn.planning || !!view.programs.plan && !previewColumn.aurPlan)
                         text: previewColumn.planning ? (previewColumn.aurPlan ? qsTranslate("ManagerView", "Reading the build instructions and what they need…") : qsTranslate("ManagerView", "Checking what will change…"))
                             : previewColumn.action === "remove" || previewColumn.action === "undo" ? (view.programs.planRows.length === 1 ? qsTranslate("ManagerView", "This goes:") : qsTranslate("ManagerView", "These %n packages go:", "", view.programs.planRows.length))
                             : view.programs.planRows.length === 1 ? qsTranslate("ManagerView", "This changes:") : qsTranslate("ManagerView", "These %n packages change:", "", view.programs.planRows.length)
@@ -1249,7 +1294,7 @@ Rectangle {
                     }
                     C.ScrollView {
                         Layout.fillWidth: true
-                        visible: !previewColumn.snapshotUndo
+                        visible: previewColumn.action !== "finish" && !previewColumn.snapshotUndo
                         Layout.preferredHeight: Math.min(previewColumn.aurPlan ? 300 : 210, previewRows.implicitHeight)
                         contentWidth: availableWidth
                         clip: true
@@ -1354,11 +1399,11 @@ Rectangle {
                 ManagerButton { text: qsTranslate("ManagerView", "Cancel"); enabled: !view.programs.busy; onClicked: view.programs.cancelPlan() }
                 ManagerButton {
                     objectName: "confirm-program-operation"
-                    text: previewColumn.snapshotUndo ? qsTranslate("ManagerView", "Restore and restart later") : previewColumn.action === "remove" ? qsTranslate("ManagerView", "Remove") : previewColumn.action === "undo" ? qsTranslate("ManagerView", "Undo install") : previewColumn.aurPlan ? qsTranslate("ManagerView", "Build and install") : qsTranslate("ManagerView", "Install")
+                    text: previewColumn.action === "finish" ? qsTranslate("ManagerView", "Finish setup") : previewColumn.snapshotUndo ? qsTranslate("ManagerView", "Restore and restart later") : previewColumn.action === "remove" ? qsTranslate("ManagerView", "Remove") : previewColumn.action === "undo" ? qsTranslate("ManagerView", "Undo install") : previewColumn.aurPlan ? qsTranslate("ManagerView", "Build and install") : qsTranslate("ManagerView", "Install")
                     primary: true; danger: previewColumn.action === "remove" || previewColumn.action === "undo"
                     enabled: !view.programs.busy && !view.programs.externalBusy && view.programs.plan?.ok === true && !!view.programs.plan?.token
                     onClicked: {
-                        if (view.programs.planAction !== "remove" && view.page !== "program") {
+                        if (!view.programs.planTarget && view.programs.planAction !== "remove" && view.page !== "program") {
                             view.returnTo = view.place(); view.page = "program"; view.resetScroll();
                         }
                         view.programs.executePlan();

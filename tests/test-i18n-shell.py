@@ -39,6 +39,12 @@ ShellRoot {
             && !notices.peekAllowed(before) && !notices.peekAllowed(after)
             && notices.entries.length === count && display !== legacy.appName
             && display.startsWith("[") && display.endsWith("]")
+            && notices.displayApp("Settings") === qsTranslate("NotificationStore", "Settings")
+            && notices.displayApp("Settings").startsWith("[")
+            && notices.displayApp("Desktop update") === qsTranslate("NotificationStore", "Desktop update")
+            && notices.displayApp("Desktop update").startsWith("[")
+            && notices.applicationId({appName: "Settings", desktopEntry: ""}) === "name:Settings"
+            && notices.applicationId({appName: "Desktop update", desktopEntry: ""}) === "name:Desktop update"
             && notices.applicationId({appName: "Other", desktopEntry: "other.app"}) === "desktop:other.app";
     }
     property int checked: 0

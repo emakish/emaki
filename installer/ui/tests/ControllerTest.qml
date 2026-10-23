@@ -8,6 +8,7 @@ import ".." as UI
 
 ShellRoot {
     id: test
+    readonly property var fixtureController: controller
     property string scenario: Quickshell.env("EMAKI_INSTALLER_SCENARIO")
     property int plans: 0
     property int probes: 0
@@ -399,7 +400,10 @@ ShellRoot {
         onClearPasswords: ++test.clears
         onOutbound: message => {
             if (message.type === "plan") {
-                test.check(JSON.stringify(message.config.output_scales) === JSON.stringify(controller.catalog.output_scales), "plan keeps both fractional session output scales");
+                const scales = message.config.output_scales;
+                const expectedScales = controller.catalog.output_scales;
+                const scaleNames = Object.keys(expectedScales).sort();
+                test.check(JSON.stringify(Object.keys(scales).sort()) === JSON.stringify(scaleNames) && scaleNames.every(name => scales[name] === expectedScales[name]), "plan keeps both fractional session output scales");
                 test.check(message.config.software === (test.scenario === "choices" ? "minimal" : "rich"), "plan carries software selection");
                 test.check(message.config.encryption === (test.scenario === "choices" ? "separate" : "none"), "plan carries explicit encryption choice");
                 test.check(message.config.hibernation === false, "every UI plan explicitly disables hibernation");
@@ -440,7 +444,7 @@ ShellRoot {
             active: test.withView
             sourceComponent: Component {
                 UI.InstallerView {
-                    controller: controller
+                    controller: test.fixtureController
                 }
             }
         }

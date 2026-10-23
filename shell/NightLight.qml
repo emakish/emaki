@@ -124,6 +124,36 @@ Scope {
     onEndTimeChanged: if (restored)
         saveTimer.restart()
     Component.onCompleted: {
+        load();
+        if (enabled)
+            check.start({
+                op: "night-light-check"
+            });
+    }
+    // The settings reset removed or restored the file: read it again, without saving.
+    Connections {
+        target: SettingsBridge
+        function onStoresHoldRequested(): void {
+            saveTimer.stop();
+            night.restored = false;
+        }
+        function onStoresReloadRequested(): void {
+            saveTimer.stop();
+            night.restored = false;
+            night.foreign = false;
+            night.on = false;
+            night.warmth = 50;
+            night.schedule = "always";
+            night.startTime = "20:00";
+            night.endTime = "07:00";
+            // A fresh load: reload() keeps the old text when the file was removed.
+            stateFile.path = "";
+            stateFile.path = Qt.binding(() => night.statePath);
+            night.load();
+            night.changed();
+        }
+    }
+    function load(): void {
         try {
             const file = JSON.parse(stateFile.text() || "{}");
             foreign = file.version !== undefined && file.version !== 1;
@@ -141,10 +171,6 @@ Scope {
             // Missing or damaged file: defaults, the next save replaces it.
         }
         restored = true;
-        if (enabled)
-            check.start({
-                op: "night-light-check"
-            });
     }
     FileView {
         id: stateFile

@@ -666,6 +666,15 @@ Item {
             systemWarmup.restart();
         return true;
     }
+    // Log out, Restart or Shut down from the command menu: the power panel's own question, with
+    // Cancel focused (SystemBody.session settles it so the asking Enter or click never answers).
+    function confirmSession(action: string, keyboard): bool {
+        if (!(systemOpen && systemPage === "power") && !openSystem("power", keyboard === true))
+            return false;
+        systemBody.session(action);
+        systemPanel.takeFocus(keyboard === true);
+        return true;
+    }
     function closeSystem(): void {
         keyboardReturnTarget = null;
         systemWarming = false;
@@ -1397,6 +1406,8 @@ Item {
             onDismissed: scene.closeAll()
             onOpenFailed: reason => scene.notifications.local("Launcher", reason, "")
             onSettingsRequested: scene.context.settingsController.openOn(scene, "")
+            onSettingsPageRequested: page => scene.context.settingsController.openOn(scene, page)
+            onSessionRequested: action => scene.confirmSession(action, launcherBody.keyboardMode)
         }
     }
     // Each output mirrors the shared snapshot, including outputs added later.

@@ -129,7 +129,9 @@
       "texts": [
         "English",
         "Español (Latinoamérica)",
-        "Português (Brasil)"
+        "Português (Brasil)",
+        "Deutsch",
+        "Français"
       ],
       "reason": "Native language names remain recognizable before the installer language is chosen."
     }

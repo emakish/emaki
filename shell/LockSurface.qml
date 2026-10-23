@@ -212,6 +212,7 @@ Item {
                 text: surface.auth.usernameMode ? qsTranslate("LockSurface", "Username") : ["Password", qsTranslate("AuthController", "Password"), qsTranslate("LockAuth", "Password"), qsTranslate("GreeterAuth", "Password")].includes(surface.auth.prompt) ? qsTranslate("LockSurface", "Password") : qsTranslate("LockSurface", "Response")
                 visible: surface.auth.dotCount === 0
                 color: LiquidPalette.plateDim
+                font.family: ShellPalette.uiFont
                 font.pixelSize: 15
                 font.weight: Font.Medium
                 textFormat: Text.PlainText
@@ -223,6 +224,7 @@ Item {
                 text: surface.auth.usernameMode || input.revealed ? surface.auth.buffer : ""
                 visible: (surface.auth.usernameMode || input.revealed) && surface.auth.dotCount > 0
                 color: LiquidPalette.ink
+                font.family: ShellPalette.uiFont
                 font.pixelSize: 15
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideLeft
@@ -258,6 +260,7 @@ Item {
             text: surface.auth.usernameMode || ["Password", qsTranslate("AuthController", "Password"), qsTranslate("LockAuth", "Password"), qsTranslate("GreeterAuth", "Password")].includes(surface.auth.prompt) ? "" : surface.auth.prompt
             opacity: surface.life
             color: LiquidPalette.plateDim
+            font.family: ShellPalette.uiFont
             font.pixelSize: 12
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
@@ -281,6 +284,7 @@ Item {
             text: surface.auth.displayMessage || (surface.environment.capsLock ? qsTranslate("LockSurface", "Caps Lock is on") : "")
             opacity: surface.life
             color: ["technical", "pam-error", "wrong", "username"].indexOf(surface.auth.messageKind) >= 0 ? LiquidPalette.danger : LiquidPalette.plateDim
+            font.family: ShellPalette.uiFont
             font.pixelSize: surface.auth._lockoutUntil > 0 ? 16 : 13
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
@@ -292,6 +296,7 @@ Item {
             text: surface.environment.layout
             color: LiquidPalette.plateDim
             opacity: surface.life
+            font.family: ShellPalette.uiFont
             font.pixelSize: 12
             textFormat: Text.PlainText
         }

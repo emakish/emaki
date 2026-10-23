@@ -42,6 +42,8 @@ REQUIRED = {
     "Mod+Ctrl+Shift+Up": ["move-column-to-monitor-up"],
     "Mod+Ctrl+Shift+Down": ["move-column-to-monitor-down"],
     "Mod+Alt+R": ["spawn", "emaki-shell", "call", "capture", "record"],
+    "Mod+Alt+T": ["spawn", "emaki-shell", "call", "capture", "text"],
+    "Mod+Alt+Q": ["spawn", "emaki-shell", "call", "capture", "qr"],
 }
 
 # Every one of them has a title for niri's hotkey overlay and the shortcut search.
@@ -61,6 +63,8 @@ TITLED = {
     "Mod+Ctrl+Shift+Up": "Move column to monitor above",
     "Mod+Ctrl+Shift+Down": "Move column to monitor below",
     "Mod+Alt+R": "Record screen",
+    "Mod+Alt+T": "Copy text from screen",
+    "Mod+Alt+Q": "Read QR code",
 }
 
 

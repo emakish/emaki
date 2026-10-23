@@ -117,14 +117,14 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(line(['us', 'ru', 'cz']),
                          'Keyboard: English (US) (default), Russian, Czech. Super+Space switches.')
         # One layout: nothing to switch, nothing to call the default.
-        self.assertEqual(line(['ru']), 'Keyboard: Russian.')
+        self.assertEqual(line(['cz']), 'Keyboard: Czech.')
         self.assertEqual(line(['dvorak', 'ru']), 'Keyboard: English (Dvorak) (default), Russian. Super+Space switches.')
-        # Without the rules file the codes are still shown.
-        self.assertEqual(line(['cz', 'us'], ''), 'Keyboard: cz (default), us. Super+Space switches.')
+        # Known labels are translated even when the external rules file is absent.
+        self.assertEqual(line(['cz', 'us'], ''), 'Keyboard: cz (default), English (US). Super+Space switches.')
 
     def test_latin_first_layout_rule_is_a_switch(self):
-        # Off: any first layout. On: a first layout outside the Latin list is refused.
-        for layouts in (['ru', 'us'], ['ua'], ['cz', 'ru'], ['dvorak', 'ru']):
+        # Russian always needs Latin first. The switch extends that rule to other layouts.
+        for layouts in (['us', 'ru'], ['ua'], ['cz', 'ru'], ['dvorak', 'ru']):
             make_plan(dict(config(), layouts=layouts), inventory())
         with patch('emaki_installer.planner.REQUIRE_LATIN_FIRST', True):
             for layouts in (['cz', 'ru'], ['fr'], ['dvorak', 'ru'], ['us', 'ua']):
@@ -373,7 +373,7 @@ class PlannerTests(unittest.TestCase):
         bad = ('пароль', 'passé', 'ümlaut')
         # The account password also needs English (US) first (the test below).
         for encryption, layout_lists in (('account', (['us'], ['us', 'ru'])),
-                                         ('separate', (['us'], ['ru', 'us'], ['de'], ['dvorak', 'ua']))):
+                                         ('separate', (['us'], ['us', 'ru'], ['de'], ['dvorak', 'ua']))):
             for layouts in layout_lists:
                 for password in good:
                     validate_config(self.encrypted(encryption, password, layouts))
@@ -437,7 +437,7 @@ class PlannerTests(unittest.TestCase):
         # when the two agree (InstallerController.accountUnlocks); a plan given to the CLI too.
         for layouts in (['us'], ['us', 'ru'], ['us', 'de', 'cz']):
             validate_config(self.encrypted('account', 'Zebra-Yacht1', layouts))
-        for layouts in (['de'], ['cz', 'us'], ['ru', 'us'], ['dvorak', 'ua']):
+        for layouts in (['de'], ['cz', 'us'], ['ua', 'us'], ['dvorak', 'ua']):
             with self.subTest(layouts=layouts):
                 with self.assertRaises(InstallError) as raised:
                     validate_config(self.encrypted('account', 'Zebra-Yacht1', layouts))

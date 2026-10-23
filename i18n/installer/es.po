@@ -12,23 +12,12 @@ msgstr ""
 msgid " (Rich software requires emaki-apps)"
 msgstr " (La selección completa de software requiere emaki-apps)"
 
-msgid " Emaki could not check its files; its fallback loader will not be changed."
-msgstr " Emaki no pudo comprobar sus archivos; no se cambiará su cargador de respaldo."
-
-msgid " It holds another system's startup files; its fallback loader will not be changed."
-msgstr " Contiene archivos de arranque de otro sistema; no se cambiará su cargador de respaldo."
-
 msgid " The Windows data partition passed post-shrink verification before loader installation. Disk changes have already been made. Do not retry installation. Save the installation log to another device and seek recovery help before changing this disk."
 msgstr " La partición de datos de Windows pasó la verificación posterior a la reducción antes de instalar el cargador. Ya se hicieron cambios en el disco. No vuelvas a intentar la instalación. Guarda el registro de instalación en otro dispositivo y busca ayuda para la recuperación antes de modificar este disco."
 
-msgid " has no country."
-msgstr " no tiene país."
 
 msgid "(no reply)"
 msgstr "(sin respuesta)"
-
-msgid ", encrypted (LUKS2)"
-msgstr ", cifrada (LUKS2)"
 
 msgid "--follow combines only with --plan --yes"
 msgstr "--follow solo se combina con --plan --yes"
@@ -237,15 +226,8 @@ msgstr "No se puede ejecutar {value1}: {value2}."
 msgid "Cannot safely inspect the Windows hibernation file."
 msgstr "No se puede inspeccionar de forma segura el archivo de hibernación de Windows."
 
-msgid "Cannot verify GPT partition "
-msgstr "No se puede verificar la partición GPT "
-
 msgid "Cannot verify NTFS, hibernation state or GPT metadata: "
 msgstr "No se pueden verificar NTFS, el estado de hibernación o los metadatos GPT: "
-
-#, python-brace-format
-msgid "Cannot verify that {value1} is the only device of {value2}."
-msgstr "No se puede verificar que {value1} sea el único dispositivo de {value2}."
 
 #, python-brace-format
 msgid "Cannot write {value1}: {value2}."
@@ -289,9 +271,6 @@ msgstr "Elige si deseas cifrar el disco y qué contraseña usar."
 
 msgid "Cleanup failed: "
 msgstr "Falló la limpieza: "
-
-msgid "Close it [cryptsetup close]"
-msgstr "Ciérralo [cryptsetup close]"
 
 msgid "Config must be an object."
 msgstr "La configuración debe ser un objeto."
@@ -337,10 +316,6 @@ msgstr "Crear la partición de arranque propia de Emaki (1 GiB) y su raíz en el
 msgid "Create a new GPT partition table on {value1}; the disk is empty."
 msgstr "Crear una tabla de particiones GPT nueva en {value1}; el disco está vacío."
 
-#, python-brace-format
-msgid "Create partition {value1}: {value2}, {value3}{value4}; use: {value5}."
-msgstr "Crear la partición {value1}: {value2}, {value3}{value4}; uso: {value5}."
-
 msgid "Create the partitions for the new partition table."
 msgstr "Crear las particiones para la tabla de particiones nueva."
 
@@ -354,9 +329,6 @@ msgstr "El módulo DKMS {value1}/{value2} para {value3} no tiene módulos compil
 #, python-brace-format
 msgid "DKMS module {value1}/{value2} for {value3} is not signed by the machine key: "
 msgstr "El módulo DKMS {value1}/{value2} para {value3} no está firmado por la clave de la máquina: "
-
-msgid "Deactivate it [lvchange -an]"
-msgstr "Desactívalo [lvchange -an]"
 
 #, python-brace-format
 msgid "Delete partition {value1} ({value2}): all its files are lost."
@@ -485,10 +457,6 @@ msgstr "La configuración de raíz existente de snapper apunta a un subvolumen d
 msgid "Finding required packages (pacman)."
 msgstr "Buscando los paquetes necesarios (pacman)."
 
-#, python-brace-format
-msgid "Format partition {value1} ({value2}, {value3}) as {value4}{value5}: its files are lost; use: {value6}."
-msgstr "Formatear la partición {value1} ({value2}, {value3}) como {value4}{value5}: se perderán sus archivos; uso: {value6}."
-
 msgid "Freed extent overlaps another partition."
 msgstr "El espacio liberado se superpone con otra partición."
 
@@ -538,10 +506,6 @@ msgstr "La hibernación escribe la memoria sin cifrar en el disco, incluidas las
 
 msgid "Hibernation: off."
 msgstr "Hibernación: desactivada."
-
-#, python-brace-format
-msgid "Hibernation: reserve {value1:,} bytes ({value2:.2f} GiB), equal to RAM."
-msgstr "Hibernación: reservar {value1:,} bytes ({value2:.2f} GiB), equivalentes a la RAM."
 
 msgid "Hostname must be one DNS label (1–63 characters)."
 msgstr "El nombre de la computadora debe ser una etiqueta DNS (entre 1 y 63 caracteres)."
@@ -956,10 +920,6 @@ msgstr "La partición {value1} contiene {value2}. Confirma su eliminación escri
 msgid "Partition {value1} holds {value2}. Emaki does not change it; delete the partition to use its space."
 msgstr "La partición {value1} contiene {value2}. Emaki no la modifica; elimina la partición para usar su espacio."
 
-#, python-brace-format
-msgid "Partition {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
-msgstr "Partición {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}."
-
 msgid "Partitions not listed here are not changed."
 msgstr "Las particiones que no aparecen aquí no cambian."
 
@@ -1128,9 +1088,6 @@ msgstr "Algunos paquetes necesitan versiones diferentes entre sí. Espera a que 
 
 msgid "Start the computer from the Emaki installation USB and run sudo emaki-boot-repair there."
 msgstr "Arranca la computadora desde la memoria USB de instalación de Emaki y ejecuta sudo emaki-boot-repair allí."
-
-msgid "Stop it [mdadm --stop]"
-msgstr "Detenlo [mdadm --stop]"
 
 #, python-brace-format
 msgid "Stopping target process {value1}: {value2}"
@@ -1734,8 +1691,6 @@ msgstr "Advertencia: no se pudo desmontar {target}: {error}"
 msgid "Wi-Fi country could not be set; continuing with the time zone."
 msgstr "No se pudo establecer el país de Wi-Fi; se continúa con la zona horaria."
 
-msgid "Wi-Fi country left unset: timezone "
-msgstr "No se estableció el país de Wi-Fi: la zona horaria "
 
 msgid "Wi-Fi was not copied; join it again after restarting."
 msgstr "No se copió la conexión Wi-Fi; vuelve a conectarte después de reiniciar."
@@ -1797,10 +1752,6 @@ msgstr "Windows está suspendido, no apagado (la hibernación o el Inicio rápid
 
 msgid "Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys."
 msgstr "Windows está cifrado con BitLocker, por lo que Emaki no puede crear espacio junto a él. No se hicieron cambios en Windows. En Windows, desactiva BitLocker y espera a que termine; luego apágalo y vuelve a arrancar desde la memoria USB. Si Windows dejó de arrancar después de cambiar Secure Boot, revierte ese cambio. Nunca elimines ni restablezcas las claves del firmware."
-
-#, python-brace-format
-msgid "Windows keeps {value1:.2f} GB, Emaki gets {value2:.2f} GB; back up your files first."
-msgstr "Windows conserva {value1:.2f} GB y Emaki recibe {value2:.2f} GB; primero haz una copia de seguridad de tus archivos."
 
 msgid "Windows must retain its minimum size plus 2 GiB."
 msgstr "Windows debe conservar su tamaño mínimo más 2 GiB."
@@ -1889,9 +1840,6 @@ msgstr "los archivos del usuario {value1} conservan ese propietario (no es una c
 msgid "files of user {value1} now belong to {value2} ({value3})"
 msgstr "los archivos del usuario {value1} ahora pertenecen a {value2} ({value3})"
 
-msgid "format"
-msgstr "formatear"
-
 #, python-brace-format
 msgid "fstab filesystem or UUID missing at {value1}."
 msgstr "Falta el sistema de archivos o el UUID de fstab en {value1}."
@@ -1952,9 +1900,6 @@ msgstr "se requiere una de las opciones --probe, --plan, --follow, --save-log"
 
 msgid "online_update must be boolean."
 msgstr "online_update debe ser booleano."
-
-msgid "preserve"
-msgstr "conservar"
 
 msgid "snapper did not print the new snapshot number."
 msgstr "snapper no imprimió el número de la instantánea nueva."
@@ -2042,10 +1987,6 @@ msgid "{value1} is a symbolic link."
 msgstr "{value1} es un enlace simbólico."
 
 #, python-brace-format
-msgid "{value1} is active [{value2}]. {value3}, then try again."
-msgstr "{value1} está activo [{value2}]. {value3}, luego inténtalo de nuevo."
-
-#, python-brace-format
 msgid "{value1} is held by {value2} [device mapper or RAID]. Deactivate that volume or stop that array before trying again."
 msgstr "{value1} está retenido por {value2} [device mapper o RAID]. Desactiva ese volumen o detén ese arreglo antes de volver a intentarlo."
 
@@ -2100,15 +2041,6 @@ msgstr "{device} no es una partición de arranque FAT. No se cambió nada."
 msgid "A startup copy needs exactly {names}."
 msgstr "Una copia de arranque necesita exactamente {names}."
 
-msgid "a Btrfs filesystem"
-msgstr "un sistema de archivos Btrfs"
-
-msgid "a RAID array"
-msgstr "un arreglo RAID"
-
-msgid "an LVM volume group"
-msgstr "un grupo de volúmenes LVM"
-
 #, python-brace-format
 msgid "captured {value1} from {value2}: security {value3}, {value4}; autoconnect preserved, any adapter, every user."
 msgstr "se capturó {value1} de {value2}: seguridad {value3}, {value4}; conexión automática conservada, cualquier adaptador, todos los usuarios."
@@ -2120,12 +2052,6 @@ msgstr "emaki-install-cli: el servicio del instalador no puede iniciarse: el med
 #, python-brace-format
 msgid "emaki-install-cli: the installer service is not running (nothing listens at {value1})."
 msgstr "emaki-install-cli: el servicio del instalador no está en ejecución (nada escucha en {value1})."
-
-msgid "encrypted Windows drive (BitLocker)"
-msgstr "unidad de Windows cifrada (BitLocker)"
-
-msgid "encrypted macOS disk (FileVault 2)"
-msgstr "disco de macOS cifrado (FileVault 2)"
 
 msgid "enterprise (802.1X) networks are not copied."
 msgstr "las redes empresariales (802.1X) no se copian."
@@ -2140,13 +2066,6 @@ msgstr "conectada en la página Red; ahora no hay ninguna conexión Wi-Fi activa
 #, python-brace-format
 msgid "key management {value1} is not supported."
 msgstr "la administración de claves {value1} no es compatible."
-
-#, python-brace-format
-msgid "locked {description}"
-msgstr "{description} bloqueado"
-
-msgid "macOS disk (APFS)"
-msgstr "disco de macOS (APFS)"
 
 #, python-brace-format
 msgid "mokutil could not report the machine key: {details}"
@@ -2248,10 +2167,6 @@ msgid "{value1} has no readable volume ID, so the installer cannot erase this de
 msgstr "{value1} no tiene un ID de volumen legible, por lo que el instalador no puede borrar este dispositivo de forma segura. Elige otro destino o limpia este dispositivo en una terminal [wipefs --all {value2}] y actualiza la lista de discos. Si es una partición, también puedes dejarla sin cambios en el modo Manual."
 
 #, python-brace-format
-msgid "{value1} is one of {value2} devices of {value3}; erasing it would damage the other devices."
-msgstr "{value1} es uno de los {value2} dispositivos de {value3}; borrarlo dañaría los otros dispositivos."
-
-#, python-brace-format
 msgid "{value1} saved Wi-Fi profiles, none is active and the Network page joined none of them"
 msgstr "{value1} perfiles Wi-Fi guardados, ninguno está activo y ninguno se conectó desde la página Red"
 
@@ -2261,21 +2176,170 @@ msgstr "pacman no devolvió detalles"
 msgid "Type ERASE to confirm that this volume and any connected data can be erased."
 msgstr "Escribe ERASE para confirmar que este volumen y todos los datos conectados se pueden borrar."
 
-#, python-brace-format
-msgid "{value1} contains a {value2}. The installer cannot check its contents; they may belong to a set of several disks."
-msgstr "{value1} contiene lo siguiente: {value2}. El instalador no puede comprobar su contenido; puede pertenecer a un conjunto de varios discos."
-
 msgid "will retry on the next probe."
 msgstr "se volverá a intentar en la próxima exploración."
 
 msgid "recovery discarded."
 msgstr "recuperación descartada."
 
-msgid "encrypted Linux system (LUKS)"
-msgstr "sistema Linux cifrado (LUKS)"
-
 msgid "another system"
 msgstr "otro sistema"
 
 msgid "files Emaki cannot check"
 msgstr "archivos que Emaki no puede comprobar"
+
+
+msgid "Cannot verify GPT partition GUID."
+msgstr "No se puede verificar el GUID de la partición GPT."
+
+msgid "Cannot verify GPT partition attributes."
+msgstr "No se pueden verificar los atributos de la partición GPT."
+
+msgid "Cannot verify GPT partition end."
+msgstr "No se puede verificar el final de la partición GPT."
+
+msgid "Cannot verify GPT partition name."
+msgstr "No se puede verificar el nombre de la partición GPT."
+
+msgid "Cannot verify GPT partition start."
+msgstr "No se puede verificar el inicio de la partición GPT."
+
+msgid "Cannot verify GPT partition type."
+msgstr "No se puede verificar el tipo de la partición GPT."
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of a Btrfs filesystem."
+msgstr "No se puede verificar que {value1} sea el único dispositivo de un sistema de archivos Btrfs."
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of a RAID array."
+msgstr "No se puede verificar que {value1} sea el único dispositivo de un arreglo RAID."
+
+#, python-brace-format
+msgid "Cannot verify that {value1} is the only device of an LVM volume group."
+msgstr "No se puede verificar que {value1} sea el único dispositivo de un grupo de volúmenes LVM."
+
+msgid "English (Colemak)"
+msgstr "Inglés (Colemak)"
+
+msgid "English (Dvorak)"
+msgstr "Inglés (Dvorak)"
+
+msgid "English (UK)"
+msgstr "Inglés (Reino Unido)"
+
+msgid "English (US)"
+msgstr "Inglés (EE. UU.)"
+
+msgid "French"
+msgstr "Francés"
+
+msgid "German"
+msgstr "Alemán"
+
+#, python-brace-format
+msgid "Hibernation: reserve {value1} bytes ({value2} GiB), equal to RAM."
+msgstr "Hibernación: reservar {value1} bytes ({value2} GiB), equivalentes a la RAM."
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. Emaki could not check its files; its fallback loader will not be changed."
+msgstr "Conservar la partición {value1} ({value2}, {value3}, {value4}) y sus archivos; uso: {value5}. Emaki no pudo comprobar los archivos de la partición; su cargador de respaldo no se cambiará."
+
+#, python-brace-format
+msgid "Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. It holds another system's startup files; its fallback loader will not be changed."
+msgstr "Conservar la partición {value1} ({value2}, {value3}, {value4}) y sus archivos; uso: {value5}. La partición contiene archivos de arranque de otro sistema; su cargador de respaldo no se cambiará."
+
+#, python-brace-format
+msgid "Partition {value1}: format {value3}, {value4} GiB; {value5}."
+msgstr "La partición {value1} ({value3}, {value4} GiB) se formateará; {value5}."
+
+#, python-brace-format
+msgid "Partition {value1}: preserve {value3}, {value4} GiB; {value5}."
+msgstr "La partición {value1} ({value3}, {value4} GiB) se conservará; {value5}."
+
+msgid "Portuguese"
+msgstr "Portugués"
+
+msgid "Portuguese (Brazil)"
+msgstr "Portugués (Brasil)"
+
+msgid "Russian"
+msgstr "Ruso"
+
+msgid "Spanish"
+msgstr "Español"
+
+msgid "Spanish (Latin American)"
+msgstr "Español (Latinoamérica)"
+
+#, python-brace-format
+msgid "Windows keeps {value1} GB, Emaki gets {value2} GB; back up your files first."
+msgstr "Windows conserva {value1} GB y Emaki recibe {value2} GB; primero haz una copia de seguridad de tus archivos."
+
+#, python-brace-format
+msgid "{value1} contains a locked encrypted Linux system (LUKS). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contiene un sistema Linux cifrado y bloqueado (LUKS). El instalador no puede comprobar su contenido; puede pertenecer a un conjunto de varios discos."
+
+#, python-brace-format
+msgid "{value1} contains a locked encrypted Windows drive (BitLocker). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contiene una unidad de Windows cifrada y bloqueada (BitLocker). El instalador no puede comprobar su contenido; puede pertenecer a un conjunto de varios discos."
+
+#, python-brace-format
+msgid "{value1} contains a locked encrypted macOS disk (FileVault 2). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contiene un disco de macOS cifrado y bloqueado (FileVault 2). El instalador no puede comprobar su contenido; puede pertenecer a un conjunto de varios discos."
+
+#, python-brace-format
+msgid "{value1} contains a macOS disk (APFS). The installer cannot check its contents; they may belong to a set of several disks."
+msgstr "{value1} contiene un disco de macOS (APFS). El instalador no puede comprobar su contenido; puede pertenecer a un conjunto de varios discos."
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. Close it [cryptsetup close], then try again."
+msgstr "{value1} está activo [{value2}]. Ciérralo [cryptsetup close], luego inténtalo de nuevo."
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. Deactivate it [lvchange -an], then try again."
+msgstr "{value1} está activo [{value2}]. Desactívalo [lvchange -an], luego inténtalo de nuevo."
+
+#, python-brace-format
+msgid "{value1} is active [{value2}]. Stop it [mdadm --stop], then try again."
+msgstr "{value1} está activo [{value2}]. Detenlo [mdadm --stop], luego inténtalo de nuevo."
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of a Btrfs filesystem; erasing it would damage the other devices."
+msgstr "{value1} es uno de los {value2} dispositivos de un sistema de archivos Btrfs; borrarlo dañaría los otros dispositivos."
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of a RAID array; erasing it would damage the other devices."
+msgstr "{value1} es uno de los {value2} dispositivos de un arreglo RAID; borrarlo dañaría los otros dispositivos."
+
+#, python-brace-format
+msgid "{value1} is one of {value2} devices of an LVM volume group; erasing it would damage the other devices."
+msgstr "{value1} es uno de los {value2} dispositivos de un grupo de volúmenes LVM; borrarlo dañaría los otros dispositivos."
+
+#, python-brace-format
+msgid "{value} GiB"
+msgstr "{value} GiB"
+
+
+#, python-brace-format
+msgid "Create partition {value1}: {value2}, {value3}; use: {value5}."
+msgstr "Crear la partición {value1}: {value2}, {value3}; uso: {value5}."
+
+#, python-brace-format
+msgid "Create partition {value1}: {value2}, {value3}, encrypted (LUKS2); use: {value5}."
+msgstr "Crear la partición {value1}: {value2}, {value3}, cifrada (LUKS2); uso: {value5}."
+
+#, python-brace-format
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}: its files are lost; use: {value6}."
+msgstr "Formatear la partición {value1} ({value2}, {value3}) como {value4}: se perderán sus archivos; uso: {value6}."
+
+#, python-brace-format
+msgid "Format partition {value1} ({value2}, {value3}) as {value4}, encrypted (LUKS2): its files are lost; use: {value6}."
+msgstr "Formatear la partición {value1} ({value2}, {value3}) como {value4}, cifrada (LUKS2): se perderán sus archivos; uso: {value6}."
+
+msgid "A new partition needs at least 1 GiB."
+msgstr "Una partición nueva necesita al menos 1 GiB."
+
+#, python-brace-format
+msgid "Wi-Fi country left unset: timezone {timezone} has no country."
+msgstr "No se definió el país de Wi-Fi: la zona horaria {timezone} no tiene un país asociado."

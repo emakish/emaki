@@ -28,6 +28,7 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import programs_arch as arch
 import programs_receipts as receipts
+import programs_kits as kits
 
 SERVICE = 'emaki-programs-install'
 SNAPSHOTS = Path('/.snapshots')
@@ -70,7 +71,10 @@ def validate(arguments):
 
 
 def revalidate(target, token):
-    plan = arch.install_plan(target, refresh=True)
+    kit = kits.target_info(target)
+    plan = kits.remove_plan(kit['id']) if kit and kit['action'] == 'remove' else arch.install_plan(target, refresh=True)
+    if plan.get('code') == 'conflict':
+        raise ValueError(plan['message'])
     if not plan.get('ok') or plan.get('token') != token:
         raise ValueError(_('Packages changed. Refresh the installation preview.'))
     return plan
@@ -110,7 +114,7 @@ def preinstall_snapshot(required=False):
     return number, number + ':' + point['digest']
 
 
-def worker(target, token):
+def worker(target, token, uid=None):
     descriptor = os.open('/run/emaki-update-manager.lock',
                          os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     with os.fdopen(descriptor, 'w') as lock:
@@ -123,9 +127,13 @@ def worker(target, token):
             backend.require_update_root()
             plan = revalidate(target, token)
             targets = plan['targets']
+            kit = kits.target_info(target)
+            docker = kits.docker_state(uid) if kit and kit['id'] == 'docker' else None
             before = backend.versions()
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             return finish('refused', notStarted=True, message=str(error))
+        if kit and kit['action'] == 'remove':
+            return remove_kit(kit, plan, backend, docker)
         emit('progress', message=_('Installing with a full repository update. Closing this window does not stop it.'))
         baseline = None
         snapshot, snapshot_token = '', ''
@@ -139,7 +147,7 @@ def worker(target, token):
                 # The completed update belongs to the system, not to this install.
                 baseline = after
                 try:
-                    snapshot, snapshot_token = preinstall_snapshot(required=target.endswith('/emaki-nvidia'))
+                    snapshot, snapshot_token = preinstall_snapshot(required=bool(kit) or target.endswith('/emaki-nvidia'))
                 except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                     restart, sign_out = backend.changed(before, after)
                     return finish('refused', restart=restart, signOut=sign_out,
@@ -152,7 +160,15 @@ def worker(target, token):
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             return finish('unknown', snapshot=snapshot, restoreToken=snapshot_token,
                           message=_('The transaction result could not be checked. Check repository updates before trying again.'))
+        setup_error = ''
+        if kit and result.returncode == 0 and docker is not None:
+            try:
+                kits.configure_docker(docker, kit['access'])
+            except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                setup_error = str(error)
         restart, sign_out = backend.changed(before, after)
+        if docker and kit['access'] and not docker['member']:
+            sign_out = True
         code = 'success' if result.returncode == 0 else 'partial' if before != after else 'cancelled' if result.returncode == 130 else 'failed'
         receipt = ''
         # A failing post-transaction hook does not undo committed packages.
@@ -160,18 +176,71 @@ def worker(target, token):
             name = target.split('/', 1)[1]
             try:
                 # What this install added, read from the package database it changed.
-                receipt = receipts.record('arch', '', name, name, baseline, after, snapshot,
-                                          snapshot_token=snapshot_token)['id']
+                if kit:
+                    metadata = dict(id=kit['id'])
+                    previous = kits.receipt_for(kit['id'])
+                    if previous:
+                        # A setup retry still takes back the original kit install.
+                        baseline = dict(baseline)
+                        for package in previous['added']:
+                            baseline.pop(package, None)
+                        baseline.update(previous.get('removed', {}))
+                        baseline.update({package: versions[0] for package, versions in previous['upgraded'].items()})
+                        snapshot = previous['snapshot']
+                        snapshot_token = previous.get('snapshotToken', '')
+                    if docker is not None:
+                        metadata['docker'] = dict(previous.get('kit', {}).get('docker', docker)) if previous else dict(docker)
+                        for field in ('memberAdded', 'socketEnabledByKit'):
+                            metadata['docker'][field] = (metadata['docker'].get(field, False)
+                                                        or docker.get(field, False))
+                    receipt = receipts.record('arch', 'development:' + kit['id'], kit['name'], kit['packages'][0],
+                                              baseline, after, snapshot, snapshot_token=snapshot_token, kit=metadata)['id']
+                else:
+                    receipt = receipts.record('arch', '', name, name, baseline, after, snapshot,
+                                              snapshot_token=snapshot_token)['id']
             except (OSError, ValueError):
                 receipt = ''
-        return finish(code, ok=result.returncode == 0, restart=restart, signOut=sign_out, receipt=receipt,
-                      snapshot=snapshot if result.returncode != 0 else '',
-                      restoreToken=snapshot_token if result.returncode != 0 else '',
-                      message=_('Repository installation finished.') if result.returncode == 0 else
-                      _('Repository installation did not finish. Review the transaction details.'))
+        if kit and not receipt and result.returncode == 0:
+            setup_error = _('The development kit receipt could not be saved. Review the system restore point before retrying.')
+        return finish('partial' if setup_error else code, ok=result.returncode == 0 and not setup_error, restart=restart, signOut=sign_out, receipt=receipt,
+                      snapshot=snapshot if result.returncode != 0 or setup_error else '',
+                      restoreToken=snapshot_token if result.returncode != 0 or setup_error else '',
+                      message=setup_error or (_('Repository installation finished.') if result.returncode == 0 else
+                      _('Repository installation did not finish. Review the transaction details.')))
 
 
-def request(target, token):
+
+def remove_kit(kit, plan, backend, docker):
+    snapshot, restore_token = preinstall_snapshot(required=True)
+    sign_out = False
+    try:
+        if docker is not None:
+            receipt = kits.receipt_for(kit['id'])
+            before = receipt.get('kit', {}).get('docker') if receipt else None
+            if before is not None:
+                # Never change a different person's membership on this request.
+                before = dict(before, uid=docker['uid'], user=docker['user'],
+                              enabled=before['enabled'] if before.get('socketEnabledByKit', True) else True,
+                              member=before['member'] if before['uid'] == docker['uid'] and before.get('memberAdded', True) else True)
+                sign_out = docker['member'] and not before['member'] and not docker.get('primary', False)
+                kits.restore_docker(before)
+        # Commit only the exact reviewed set. No recursive or dependency override flags.
+        result = subprocess.run(['pacman', '-Rn', '--noconfirm', '--', *plan['targets']],
+                                cwd='/', env=ENV, stdin=subprocess.DEVNULL)
+        installed = backend.versions()
+        remaining = [name for name in plan['targets'] if name in installed]
+        if result.returncode or remaining:
+            raise RuntimeError('incomplete removal')
+        for receipt in receipts.receipts(trusted=True):
+            if receipt['key'] == 'development:' + kit['id'] and not receipt['undone']:
+                receipts.mark_undone(receipts.DIRECTORY / (receipt['id'] + '.json'), receipt)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return finish('partial', snapshot=snapshot, restoreToken=restore_token, signOut=sign_out,
+                      message=_('The development kit removal did not finish. Review the transaction details.'))
+    return finish('removed', ok=True, signOut=sign_out,
+                  message=_('The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged.'))
+
+def request(target, token, uid=None):
     # All privileged arguments are reconstructed here, never supplied by the caller.
     update_backend().require_update_root()
     revalidate(target, token)
@@ -179,11 +248,12 @@ def request(target, token):
     # A new request cannot observe a previous or already-running transaction.
     request_field = 'EMAKI_INSTALL_REQUEST=' + uuid.uuid4().hex
     emit('progress', message=_('Starting repository installation.'))
+    user_arguments = ['--kit-uid', str(uid)] if uid is not None else []
     subprocess.run(['systemd-run', '--wait', '--collect', '--unit=' + SERVICE,
                     '--property=Type=exec', '--property=StandardOutput=journal',
                     '--property=LogExtraFields=' + request_field,
                     '--property=StandardError=journal', '--setenv=LC_ALL=C',
-                    '--setenv=PATH=' + ENV['PATH'], HELPER, '--run', target, token],
+                    '--setenv=PATH=' + ENV['PATH'], HELPER, '--run', target, token, *user_arguments],
                    cwd='/', env=ENV, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     # systemd-run's optional invocation status line is not a result protocol.
     # Match trusted service credentials as well as this request's journal field.
@@ -219,12 +289,24 @@ def request(target, token):
 
 def main(argv):
     try:
+        uid = None
+        if len(argv) == 5 and argv[0] == '--run' and argv[3] == '--kit-uid':
+            if os.environ.get('PKEXEC_UID') is not None:
+                raise ValueError(_('Invalid development kit.'))
+            uid = int(argv[4])
+            argv = argv[:3]
         is_worker, target, token = validate(argv)
+        kit = kits.target_info(target)
+        if kit and kit['id'] == 'docker':
+            if not is_worker:
+                uid = int(os.environ.get('PKEXEC_UID', '0'))
+            kits.docker_state(uid)
         if os.geteuid() != 0:
             raise ValueError(_('Authorization is required to install repository programs.'))
         os.umask(0o077)
-        return worker(target, token) if is_worker else request(target, token)
-    except (ValueError, RuntimeError) as error:
+        operation = worker if is_worker else request
+        return operation(target, token, uid) if uid is not None else operation(target, token)
+    except (KeyError, ValueError, RuntimeError) as error:
         return finish('refused', notStarted=True, message=str(error))
     except (OSError, subprocess.SubprocessError):
         return finish('unknown', message=_('The service result could not be observed. Check its journal before retrying.'))

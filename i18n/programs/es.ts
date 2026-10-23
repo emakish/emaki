@@ -4,6 +4,11 @@
 <TS version="2.1" language="es" sourcelanguage="en">
   <context>
     <name>ManagerLogic</name>
+        <message>
+            <source>d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern; keep the time in 24-hour form.</extracomment>
+            <translation>d MMM yyyy, HH:mm</translation>
+        </message>
     <message>
       <source>Internet</source>
       <translation>Internet</translation>
@@ -105,27 +110,27 @@
       <translation>se conserva</translation>
     </message>
     <message numerus="yes">
-      <source>%1 need(s) what it added.</source>
+      <source>This install can no longer be taken back as it was. %1 need(s) what it added.</source>
       <translation>
-        <numerusform>%1 necesita lo que agregó.</numerusform>
-        <numerusform>%1 necesitan lo que agregó.</numerusform>
+        <numerusform>Esta instalación ya no se puede deshacer tal como se hizo. %1 necesita lo que esta instalación agregó.</numerusform>
+        <numerusform>Esta instalación ya no se puede deshacer tal como se hizo. %1 necesitan lo que esta instalación agregó.</numerusform>
       </translation>
     </message>
     <message>
-      <source>It is now part of the system.</source>
-      <translation>Ahora es parte del sistema.</translation>
+      <source>This install can no longer be taken back as it was. It is now part of the system.</source>
+      <translation>Esta instalación ya no se puede deshacer tal como se hizo. El programa ahora es parte del sistema.</translation>
     </message>
     <message>
-      <source>It is now part of Emaki.</source>
-      <translation>Ahora es parte de Emaki.</translation>
+      <source>This install can no longer be taken back as it was. It is now part of Emaki.</source>
+      <translation>Esta instalación ya no se puede deshacer tal como se hizo. El programa ahora es parte de Emaki.</translation>
     </message>
     <message>
-      <source>You installed it yourself since.</source>
-      <translation>Desde entonces lo instalaste por tu cuenta.</translation>
+      <source>This install can no longer be taken back as it was. You installed it yourself since.</source>
+      <translation>Esta instalación ya no se puede deshacer tal como se hizo. Desde entonces instalaste el programa por tu cuenta.</translation>
     </message>
     <message>
-      <source>It is no longer installed.</source>
-      <translation>Ya no está instalado.</translation>
+      <source>This install can no longer be taken back as it was. It is no longer installed.</source>
+      <translation>Esta instalación ya no se puede deshacer tal como se hizo. El programa ya no está instalado.</translation>
     </message>
     <message>
       <source>0 MB</source>
@@ -384,9 +389,14 @@
   </context>
   <context>
     <name>ManagerUpdates</name>
+        <message>
+            <source>ddd d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern; keep the time in 24-hour form.</extracomment>
+            <translation>ddd d MMM yyyy, HH:mm</translation>
+        </message>
     <message>
-      <source>installing %1 of %2</source>
-      <translation>instalando %1 de %2</translation>
+      <source>Installing %1 of %2</source>
+      <translation>Instalando %1 de %2</translation>
     </message>
     <message>
       <source>Getting ready…</source>
@@ -623,6 +633,10 @@
     <message>
       <source>Restore</source>
       <translation>Restaurar</translation>
+    </message>
+    <message>
+      <source>Restore the system as it was before this removal (snapshot %1)</source>
+      <translation>Restaurar el sistema como estaba antes de esta desinstalación (instantánea %1)</translation>
     </message>
   </context>
   <context>
@@ -1105,6 +1119,36 @@
       <source>Got it, open the AUR</source>
       <translation>Entendido, abrir el AUR</translation>
     </message>
+    <message>
+      <source>Development kits</source>
+      <translation>Kits de desarrollo</translation>
+    </message>
+    <message>
+      <source>Websites as apps</source>
+      <translation>Sitios web como aplicaciones</translation>
+    </message>
+    <message>
+      <source>Adding you to the Docker group gives you root-level control of this computer.</source>
+      <translation>Agregarte al grupo Docker te da control de nivel root sobre esta computadora.</translation>
+    </message>
+    <message>
+      <source>The group takes effect after you sign out and sign back in.</source>
+      <translation>El grupo se aplica después de cerrar sesión y volver a iniciarla.</translation>
+    </message>
+        <message>
+            <source>Finish setting up %1?</source>
+            <translation>¿Terminar la configuración de %1?</translation>
+        </message>
+        <message>
+            <source>Finish setup</source>
+            <translation>Terminar configuración</translation>
+        </message>
+
+    <message>
+      <source>Installed</source>
+      <comment>list of installed programs</comment>
+      <translation>Instalados</translation>
+    </message>
   </context>
   <context>
     <name>ProgramCard</name>
@@ -1307,4 +1351,114 @@ No se pudo ocultar el recordatorio. Presiona Más tarde de nuevo.</translation>
       <translation>Programas y actualizaciones</translation>
     </message>
   </context>
+  <context>
+    <name>ManagerDevelopment</name>
+    <message>
+      <source>Tools for building software, installed together from Arch.</source>
+      <translation>Herramientas para desarrollar software, instaladas juntas desde Arch.</translation>
+    </message>
+    <message>
+      <source>Installed</source>
+      <translation>Instalado</translation>
+    </message>
+    <message>
+      <source>The stable Rust toolchain is downloaded for your account after the packages are installed. Toolchains in your home folder stay when you remove the kit.</source>
+      <translation>Las herramientas de Rust estable se descargan para tu cuenta después de instalar los paquetes. Las herramientas en tu carpeta personal se conservan al quitar el kit.</translation>
+    </message>
+    <message>
+      <source>Allow Docker without an administrator password</source>
+      <translation>Permitir Docker sin contraseña de administrador</translation>
+    </message>
+    <message>
+      <source>Remove</source>
+      <translation>Quitar</translation>
+    </message>
+    <message>
+      <source>Install</source>
+      <translation>Instalar</translation>
+    </message>
+    <message>
+      <source>Undo this install</source>
+      <translation>Deshacer esta instalación</translation>
+    </message>
+        <message>
+            <source>Development kits</source>
+            <translation>Kits de desarrollo</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>Cargando…</translation>
+        </message>
+        <message>
+            <source>Members of the Docker group can control this computer as root.</source>
+            <translation>Los miembros del grupo Docker pueden controlar esta computadora como root.</translation>
+        </message>
+        <message>
+            <source>Installing enables the Docker socket. Removing restores the previous socket and group settings. Images and containers stay on this computer.</source>
+            <translation>La instalación activa el socket de Docker. Al quitar el kit, se restaura la configuración anterior del socket y del grupo. Las imágenes y los contenedores permanecen en esta computadora.</translation>
+        </message>
+        <message>
+            <source>Finish setup</source>
+            <translation>Terminar configuración</translation>
+        </message>
+    </context>
+  <context>
+    <name>ManagerWebApps</name>
+    <message>
+      <source>Websites as apps</source>
+      <translation>Sitios web como aplicaciones</translation>
+    </message>
+    <message>
+      <source>Add a website as an app in Firefox. It has its own profile and launcher entry, which you can pin in the dock.</source>
+      <translation>Agrega un sitio web como aplicación en Firefox. Tiene su propio perfil y una entrada en el lanzador que puedes fijar en el dock.</translation>
+    </message>
+    <message>
+      <source>Website address</source>
+      <translation>Dirección del sitio web</translation>
+    </message>
+    <message>
+      <source>Name (optional)</source>
+      <translation>Nombre (opcional)</translation>
+    </message>
+    <message>
+      <source>Add</source>
+      <translation>Agregar</translation>
+    </message>
+    <message>
+      <source>Close the app first. Removing deletes its launcher, profile, sign-ins and saved site data.</source>
+      <translation>Primero cierra la aplicación. Al quitarla, se eliminan su entrada en el lanzador, perfil, sesiones y datos guardados del sitio.</translation>
+    </message>
+    <message>
+      <source>Remove app and its data</source>
+      <translation>Quitar la aplicación y sus datos</translation>
+    </message>
+    <message>
+      <source>Remove</source>
+      <translation>Quitar</translation>
+    </message>
+    <message>
+      <source>Cancel</source>
+      <translation>Cancelar</translation>
+    </message>
+        <message>
+            <source>Links to other sites open in this app too. Point at the top edge or press Ctrl+L to see the address.</source>
+            <translation>Los enlaces a otros sitios también se abren en esta aplicación. Lleva el puntero al borde superior o presiona Ctrl+L para ver la dirección.</translation>
+        </message>
+        <message>
+            <source>When you press Add, Emaki loads the page and its icon to read the site name and save its icon.</source>
+            <translation>Cuando presionas Agregar, Emaki carga la página y su ícono para leer el nombre del sitio y guardar su ícono.</translation>
+        </message>
+        <message>
+            <source>Adding…</source>
+            <translation>Agregando…</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>Cargando…</translation>
+        </message>
+        <message>
+            <source>No website apps yet.</source>
+            <translation>Todavía no hay aplicaciones web.</translation>
+        </message>
+    </context>
 </TS>

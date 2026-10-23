@@ -2172,7 +2172,7 @@ class BootAndSnapshotTests(unittest.TestCase):
 
     def test_keyboard_file_is_whole_before_the_image_build_and_identical_in_settings(self):
         for layouts, expected in ((['cz', 'ru'], b'KEYMAP=cz-qwertz\nXKBLAYOUT=cz,ru\n'),
-                                  (['ru', 'us'], b'KEYMAP=ru\nXKBLAYOUT=ru,us\n'),
+                                  (['us', 'ru'], b'KEYMAP=us\nXKBLAYOUT=us,ru\n'),
                                   (['dvorak', 'ua'], b'KEYMAP=dvorak\nXKBLAYOUT=us,ua\nXKBVARIANT=dvorak,\n')):
             with self.subTest(layouts=layouts), tempfile.TemporaryDirectory() as temp:
                 self.root = self.worker.target = Path(temp)

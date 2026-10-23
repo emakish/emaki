@@ -114,6 +114,7 @@ Item {
         visible: root.changed && !root.managed && !root.unavailable
         enabled: root.editable
         text: "↺"
+        padding: 0
         width: 26
         height: 26
         background: Rectangle {

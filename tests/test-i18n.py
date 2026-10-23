@@ -91,9 +91,12 @@ class Translations(unittest.TestCase):
             self.assertIn('Translation.initialize()', source, path)
         with tempfile.TemporaryDirectory(prefix='i18n-fallback-') as directory:
             base = Path(directory)
-            source = (ROOT / 'shell/Translation.qml').read_text().replace('import Emaki.I18n;', 'import Emaki.UnavailableCatalogue;')
+            original = (ROOT / 'shell/Translation.qml').read_text()
+            source = original.replace('import Emaki.I18n', 'import Emaki.UnavailableCatalogue')
+            self.assertNotEqual(source, original)
             (base / 'Translation.qml').write_text(source)
             (base / 'qmldir').write_text('singleton Translation 1.0 Translation.qml\n')
+            (base / 'ManagerLogic.js').write_text((ROOT / 'update-manager/ui/ManagerLogic.js').read_text().replace('@EMAKI_DATADIR@', str(ROOT)))
             plurals = []
             for domain in catalogues.DOMAINS:
                 path = ROOT / 'i18n' / domain / 'en.ts'
@@ -116,6 +119,8 @@ ShellRoot {
     FloatingWindow { Text { id: label; text: qsTranslate("Test", "English fallback") } }
     Timer { interval: 10; running: true; onTriggered: {
         if (ready || label.text !== "English fallback") { Qt.exit(1); return; }
+        if (Translation.timeZoneLabel("America/New_York", "ru") !== "America/New York"
+                || Translation.searchTimeZones("Москва", "ru").length !== 0) { Qt.exit(7); return; }
         for (const row of plurals) {
             const actual = Translation.englishPlural(qsTranslate(row[0], row[1], "", row[2]), row[2]);
             if (actual !== row[3]) { console.error(JSON.stringify(row), actual); Qt.exit(2); return; }
@@ -126,7 +131,7 @@ ShellRoot {
             const unit = count === 1 ? "second" : "seconds";
             if (state.rebootMessage.indexOf("Restarting in " + count + " " + unit + "…") < 0) { Qt.exit(3); return; }
             const blockers = count === 1 ? ["One"] : ["One", "Two"];
-            const expected = " " + blockers.join(", ") + (count === 1 ? " needs" : " need") + " what it added.";
+            const expected = "This install can no longer be taken back as it was. " + blockers.join(", ") + (count === 1 ? " needs" : " need") + " what it added.";
             if (Logic.undoRefusal({code: "cannot-undo", requiredBy: blockers}) !== expected) { Qt.exit(4); return; }
             if (Sudo.keyTurns(count) !== count + (count === 1 ? " turn" : " turns")) { Qt.exit(5); return; }
             if (Sudo.keyTurnsRemaining(count) !== count + (count === 1 ? " turn left" : " turns left")) { Qt.exit(6); return; }
@@ -136,7 +141,7 @@ ShellRoot {
 }
 '''.replace('PLURAL_CASES', json.dumps(plurals))
                 .replace('PROTOCOL_URI', (ROOT / 'installer/ui/Protocol.js').as_uri())
-                .replace('LOGIC_URI', (ROOT / 'update-manager/ui/ManagerLogic.js').as_uri())
+                .replace('LOGIC_URI', (base / 'ManagerLogic.js').as_uri())
                 .replace('SUDO_URI', (ROOT / 'shell/SudoText.js').as_uri()))
             env = os.environ.copy()
             for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME',

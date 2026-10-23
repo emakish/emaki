@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pure, deterministic planning. No subprocess, archinstall import or disk access."""
 from .i18n import _ as translate
-from .i18n import _, N_, LOCALES, system_locale
+from .i18n import _, N_, LOCALES, system_locale, format_number
 import copy
 from dataclasses import dataclass, field
 import hashlib
@@ -187,7 +187,7 @@ class Plan:
 # session's user. Keep sorted; extend when the package set grows.
 # Whether the first (default) layout must type Latin letters: the login screen and the
 # launcher start in it, and a non-Latin first layout types no login name or URL until the
-# person switches. Off: whether to enforce the rule is not decided yet.
+# person switches. Russian requires Latin first; this switch extends that rule to every layout.
 REQUIRE_LATIN_FIRST = False
 
 RESERVED_LOGINS = (
@@ -312,12 +312,12 @@ def validate_config(value, test_mode=False):
         ZoneInfo(c['timezone'])
     except (ZoneInfoNotFoundError, ValueError):
         require(False, Code.BAD_CONFIG, _('Unknown timezone.'))
-    c.setdefault('layouts', ['us'])
+    c.setdefault('layouts', ['us', 'ru'] if c['language'] == 'ru_RU.UTF-8' else ['us'])
     require(isinstance(c['layouts'], list) and 1 <= len(c['layouts']) <= 4
             and all(isinstance(x, str) and re.fullmatch(r'[a-z][a-z0-9_]{0,19}', x)
                     for x in c['layouts']) and len(set(c['layouts'])) == len(c['layouts']),
             Code.BAD_CONFIG, _('Supply one to four distinct XKB layouts.'))
-    if REQUIRE_LATIN_FIRST:
+    if REQUIRE_LATIN_FIRST or 'ru' in c['layouts']:
         require(is_latin(c['layouts'][0]), Code.BAD_CONFIG,
                 _('The default (first) layout must type Latin letters; a non-Latin layout can be second.'))
     u = c.get('user')
@@ -590,8 +590,8 @@ def partition_edits(value, disk):
         least = {'esp': ESP_FORMAT_MIN, 'swap': SWAP_MIN, 'linux': DATA_MIN}[row['type']]
         require(size >= least, Code.MANUAL_LAYOUT, {
             'esp': _('An EFI system partition needs at least 512 MiB.'),
-            'swap': 'A swap partition needs at least 256 MiB.',
-            'linux': 'A new partition needs at least 1 GiB.'}[row['type']])
+            'swap': _('A swap partition needs at least 256 MiB.'),
+            'linux': _('A new partition needs at least 1 GiB.')}[row['type']])
         extents.append((start, start + size))
         created.append({'id': row['id'], 'path': None, 'number': number, 'uuid': None, 'fs': None,
                         'size_bytes': size, 'start_bytes': start, 'esp': row['type'] == 'esp',
@@ -832,7 +832,7 @@ def make_plan(config, inventory, test_mode=False, esp_need=None):
     if c['mode'] == 'alongside':
         windows = next(p for p in disk['partitions'] if p['id'] == c['partition_id'])
         keep = alongside.usable_size(windows['size_bytes']) - c['shrink_bytes']
-        summary += [_('Windows keeps {value1:.2f} GB, Emaki gets {value2:.2f} GB; back up your files first.').format(value1=keep / 10 ** 9, value2=c['shrink_bytes'] / 10 ** 9),
+        summary += [_('Windows keeps {value1} GB, Emaki gets {value2} GB; back up your files first.').format(value1=format_number(keep / 10 ** 9, 2), value2=format_number(c['shrink_bytes'] / 10 ** 9, 2)),
                     _('Shrink the Windows filesystem and its partition end only; preserve its start, GUID, type, name and files.'),
                     _("Create Emaki's own startup partition (1 GiB) and root in the freed space; Windows' startup partition is not changed."),
                     _('Preserve all other partitions; add Windows Boot Manager to GRUB; Emaki stays the default.'),
@@ -841,12 +841,14 @@ def make_plan(config, inventory, test_mode=False, esp_need=None):
         summary += manual_summary(disk, parts, edits, c['encryption'] != 'none')
     for p in parts if c['mode'] != 'manual' else []:
         dest = ', '.join(f'{name} → {mp}' for name, mp in p.subvolumes.items()) or p.mountpoint
-        summary.append(_('Partition {value1}: {value2} {value3}, {value4:.2f} GiB; {value5}.').format(value1=p.number, value2=_('format') if p.format else _('preserve'), value3=p.fs, value4=p.size / GIB, value5=dest))
+        message = (_('Partition {value1}: format {value3}, {value4} GiB; {value5}.') if p.format else
+                   _('Partition {value1}: preserve {value3}, {value4} GiB; {value5}.'))
+        summary.append(message.format(value1=p.number, value3=p.fs, value4=format_number(p.size / GIB, 2), value5=dest))
     keyboard_index = len(summary) + 4
     summary.extend([_('GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority.'),
                     {'none': _('Encryption: off.'), 'account': _('Encryption: LUKS2 root, account password.'),
                      'separate': _('Encryption: LUKS2 root, separate disk password.')}[c['encryption']],
-                    (_('Hibernation: reserve {value1:,} bytes ({value2:.2f} GiB), equal to RAM.').format(value1=swap_bytes, value2=swap_bytes / GIB)
+                    (_('Hibernation: reserve {value1} bytes ({value2} GiB), equal to RAM.').format(value1=format_number(swap_bytes, grouping=True), value2=format_number(swap_bytes / GIB, 2))
                      if swap_bytes else _('Hibernation: off.')),
                     _('Account: {value1}; hostname: {value2}; timezone: {value3}.').format(value1=c['user']['login'], value2=c['hostname'], value3=c['timezone']),
                     keyboard_summary(c['layouts'], xkb_rules()),
@@ -888,7 +890,7 @@ def make_plan(config, inventory, test_mode=False, esp_need=None):
 def manual_summary(disk, parts, edits, encrypted):
     """Review lines for a manual layout, one per change in the order the worker makes them."""
     def size(n):
-        return f'{n / GIB:.2f} GiB'
+        return _('{value} GiB').format(value=format_number(n / GIB, 2))
 
     lines = []
     if edits and edits.new_table:
@@ -900,24 +902,28 @@ def manual_summary(disk, parts, edits, encrypted):
         lines.append(_('Delete partition {value1} ({value2}): all its files are lost.').format(value1=p['number'], value2=what))
     for p in sorted(parts, key=lambda p: p.number):
         root = p.mountpoint == '/' or '/' in p.subvolumes.values()
-        lock = _(', encrypted (LUKS2)') if p.encrypt or (root and encrypted) else ''
+        locked = p.encrypt or (root and encrypted)
         use = ('swap' if p.swap else ', '.join(f'{name} → {mp}' for name, mp in p.subvolumes.items()) or p.mountpoint)
         if p.create:
             kind = _('startup partition, FAT32') if p.esp else p.fs if not p.swap else 'swap'
-            lines.append(_('Create partition {value1}: {value2}, {value3}{value4}; use: {value5}.').format(value1=p.number, value2=size(p.size), value3=kind, value4=lock, value5=use))
+            message = (_('Create partition {value1}: {value2}, {value3}, encrypted (LUKS2); use: {value5}.') if locked else
+                       _('Create partition {value1}: {value2}, {value3}; use: {value5}.'))
+            lines.append(message.format(value1=p.number, value2=size(p.size), value3=kind, value5=use))
         elif p.format:
             fs = 'swap' if p.swap else 'FAT32' if p.fs == 'vfat' else p.fs
-            lines.append(_('Format partition {value1} ({value2}, {value3}) as {value4}{value5}: its files are lost; use: {value6}.').format(value1=p.number, value2=p.path, value3=size(p.size), value4=fs, value5=lock, value6=use))
+            message = (_('Format partition {value1} ({value2}, {value3}) as {value4}, encrypted (LUKS2): its files are lost; use: {value6}.') if locked else
+                       _('Format partition {value1} ({value2}, {value3}) as {value4}: its files are lost; use: {value6}.'))
+            lines.append(message.format(value1=p.number, value2=p.path, value3=size(p.size), value4=fs, value6=use))
         else:
             probed = next((part for part in disk['partitions'] if part.get('path') == p.path), {})
-            startup = ''
             system = alongside.other_system(probed) if p.esp else None
             if system == alongside.UNCHECKED:
-                startup = _(' Emaki could not check its files; its fallback loader will not be changed.')
+                message = _('Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. Emaki could not check its files; its fallback loader will not be changed.')
             elif system:
-                startup = _(" It holds another system's startup files; its fallback loader will not be changed.")
-            lines.append(_('Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}.').format(value1=p.number, value2=p.path, value3=size(p.size), value4=p.fs, value5=use)
-                         + startup)
+                message = _("Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}. It holds another system's startup files; its fallback loader will not be changed.")
+            else:
+                message = _('Keep partition {value1} ({value2}, {value3}, {value4}) and its files; use: {value5}.')
+            lines.append(message.format(value1=p.number, value2=p.path, value3=size(p.size), value4=p.fs, value5=use))
     lines.append(_('Partitions not listed here are not changed.'))
     return lines
 

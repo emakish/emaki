@@ -7,8 +7,20 @@ import Quickshell.Io
 ShellRoot {
     id: fixture
     property var notices: []
+    property var links: []
     QtObject {
         id: notifications
+        signal localActionRequested(string action)
+        function transientLocal(app, title, body, actions, options) {
+            const action = actions?.[0];
+            fixture.notices = fixture.notices.concat([{app: app, title: title, body: body,
+                transient: true, action: action?.id, label: action?.text}]);
+            return -fixture.notices.length;
+        }
+        function offer(app, title, body, action, label) {
+            fixture.notices = fixture.notices.concat([{app: app, title: title, body: body, action: action, label: label}]);
+            return -fixture.notices.length;
+        }
         function local(app, title, body) {
             fixture.notices = fixture.notices.concat([
                 {
@@ -22,6 +34,7 @@ ShellRoot {
     CaptureController {
         id: controller
         locked: false
+        onLinkRequested: url => fixture.links = fixture.links.concat([url])
         preferredOutput: "TEST-1"
         screens: [
             {
@@ -40,6 +53,7 @@ ShellRoot {
             if (controller.busy || controller.opened)
                 return false;
             fixture.notices = [];
+            fixture.links = [];
             controller.locked = false;
             controller.helperCommand = scenario === "missing" ? [Quickshell.env("CAPTURE_MISSING")] : [Quickshell.env("CAPTURE_PYTHON"), "-B", Quickshell.env("CAPTURE_HELPER"), scenario];
             return true;
@@ -83,9 +97,13 @@ ShellRoot {
         function loseHelper(): void {
             controller.helperCommand = [Quickshell.env("CAPTURE_MISSING")];
         }
+        function action(value: string): void {
+            notifications.localActionRequested(value);
+        }
         function state(): string {
             const state = JSON.parse(controller.status());
             state.notices = fixture.notices;
+            state.links = fixture.links;
             state.canCapture = controller.canCapture;
             return JSON.stringify(state);
         }

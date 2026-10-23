@@ -132,11 +132,17 @@ msgstr "Clock tools could not read that data. Please try again."
 msgid "Close window"
 msgstr "Close window"
 
+msgid "Command menu"
+msgstr "Command menu"
+
 msgid "Confirm password: "
 msgstr "Confirm password: "
 
 msgid "Connection changed."
 msgstr "Connection changed."
+
+msgid "Copy text from screen"
+msgstr "Copy text from screen"
 
 msgid "Could not check the screen timers."
 msgstr "Could not check the screen timers."
@@ -164,6 +170,9 @@ msgstr "Emaki landscape"
 
 msgid "Emaki problem report"
 msgstr "Emaki problem report"
+
+msgid "Emoji"
+msgstr "Emoji"
 
 msgid "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
 msgstr "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
@@ -418,6 +427,9 @@ msgstr "Privacy and capture activity"
 
 msgid "Raise volume"
 msgstr "Raise volume"
+
+msgid "Read QR code"
+msgstr "Read QR code"
 
 msgid "Recent journal errors"
 msgstr "Recent journal errors"
@@ -727,5 +739,9 @@ msgid "unsafe lock file"
 msgstr "unsafe lock file"
 
 #, python-brace-format
-msgid "{total:.1f} GiB · {free:.1f} GiB free"
-msgstr "{total:.1f} GiB · {free:.1f} GiB free"
+msgid "{amount} GiB"
+msgstr "{amount} GiB"
+
+#, python-brace-format
+msgid "{total} GiB · {free} GiB free"
+msgstr "{total} GiB · {free} GiB free"

@@ -114,6 +114,11 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>No additional text</translation>
         </message>
         <message>
+            <source>MMM d, yyyy</source>
+            <extracomment>Qt date pattern: MMM, d and yyyy are fields; put literal words in single quotes.</extracomment>
+            <translation>MMM d, yyyy</translation>
+        </message>
+        <message>
             <source>No matching notes</source>
             <translation>No matching notes</translation>
         </message>

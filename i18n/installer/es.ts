@@ -76,9 +76,74 @@
             <source>This operation is unavailable. Please try again.</source>
             <translation>Esta operación no está disponible. Inténtalo de nuevo.</translation>
         </message>
+
+        <message>
+            <source>English (US)</source>
+            <translation>Inglés (EE. UU.)</translation>
+        </message>
+        <message>
+            <source>English (UK)</source>
+            <translation>Inglés (Reino Unido)</translation>
+        </message>
+        <message>
+            <source>German</source>
+            <translation>Alemán</translation>
+        </message>
+        <message>
+            <source>French</source>
+            <translation>Francés</translation>
+        </message>
+        <message>
+            <source>Russian</source>
+            <translation>Ruso</translation>
+        </message>
+        <message>
+            <source>Spanish</source>
+            <translation>Español</translation>
+        </message>
+        <message>
+            <source>Spanish (Latin American)</source>
+            <translation>Español (Latinoamérica)</translation>
+        </message>
+        <message>
+            <source>Portuguese (Brazil)</source>
+            <translation>Portugués (Brasil)</translation>
+        </message>
+        <message>
+            <source>Portuguese</source>
+            <translation>Portugués</translation>
+        </message>
+        <message>
+            <source>English (Dvorak)</source>
+            <translation>Inglés (Dvorak)</translation>
+        </message>
+        <message>
+            <source>English (Colemak)</source>
+            <translation>Inglés (Colemak)</translation>
+        </message>
+        <message>
+            <source>%1 and %2</source>
+            <translation>%1 y %2</translation>
+        </message>
+        <message>
+            <source>%1, %2</source>
+            <translation>%1, %2</translation>
+        </message>
     </context>
     <context>
         <name>InstallerView</name>
+        <message>
+            <source>I understand the selected disk will be erased</source>
+            <translation>Entiendo que se borrará el disco seleccionado</translation>
+        </message>
+        <message>
+            <source>Review the installation plan for the selected disk.</source>
+            <translation>Revisa el plan de instalación para el disco seleccionado.</translation>
+        </message>
+        <message>
+            <source>%1%</source>
+            <translation>%1%</translation>
+        </message>
         <message>
             <source>Welcome</source>
             <translation>Bienvenida</translation>
@@ -198,10 +263,6 @@
         <message>
             <source>%1 GiB</source>
             <translation>%1 GiB</translation>
-        </message>
-        <message>
-            <source>the selected disk</source>
-            <translation>el disco seleccionado</translation>
         </message>
         <message>
             <source>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</source>
@@ -1049,6 +1110,11 @@
         <message>
             <source>Show details</source>
             <translation>Mostrar detalles</translation>
+        </message>
+
+        <message>
+            <source>the selected disk</source>
+            <translation>el disco seleccionado</translation>
         </message>
     </context>
     <context>

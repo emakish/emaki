@@ -11,6 +11,7 @@ ComboBox {
     valueRole: "value"
     focusPolicy: Qt.StrongFocus
     hoverEnabled: true
+    Accessible.description: displayText
     property bool keyboardOpened: false
     Keys.onReleased: event => {
         if (keyboardOpened && [Qt.Key_Return, Qt.Key_Enter].includes(event.key)) {

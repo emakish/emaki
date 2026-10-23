@@ -22,12 +22,17 @@ C.Button {
     font.pixelSize: 13
     font.weight: primary ? Font.DemiBold : Font.Medium
     focusPolicy: visible && enabled ? Qt.StrongFocus : Qt.NoFocus
+    Accessible.name: text
+    C.ToolTip.visible: label.truncated && (hovered || activeFocus)
+    C.ToolTip.text: text
     opacity: enabled ? 1 : .45
     Keys.onReturnPressed: if (enabled) clicked()
     Keys.onEnterPressed: if (enabled) clicked()
     contentItem: RowLayout {
         spacing: 7
         Text {
+            id: label
+            objectName: "manager-button-label"
             Layout.fillWidth: true
             text: button.text
             font: button.font

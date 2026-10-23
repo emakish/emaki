@@ -41,6 +41,8 @@ import programs_catalog as removal
 import programs_flatpak as flatpak
 import programs_receipts as receipts
 import programs_reviews as reviews
+import programs_kits as kits
+import programs_webapps as webapps
 
 try:
     from emaki_redaction import Redactor
@@ -1011,6 +1013,119 @@ class Engine:
             finished['ok'] = False
         return finished
 
+    def development(self):
+        # Read local package state without loading remote application catalogues.
+        installed = arch.parse_versions(arch.run(['pacman', '-Q']))
+        return dict(ok=True, kits=kits.catalog(installed))
+
+    def development_plan(self, id, action, dockerAccess=False):
+        if action not in ('install', 'remove', 'undo', 'finish') or type(dockerAccess) is not bool:
+            raise ValueError(_('Invalid transaction'))
+        if dockerAccess and (id != 'docker' or action != 'install'):
+            raise ValueError(_('Invalid consent'))
+        if action == 'finish':
+            if id != 'rust':
+                raise ValueError(_('Invalid transaction'))
+            installed = arch.parse_versions(arch.run(['pacman', '-Q']))
+            if not all(name in installed for name in kits.definition(id)['packages']):
+                return dict(ok=False, code='not-installed', message=_('Install the Rust packages before finishing setup.'))
+            native = dict(ok=True, packages=[], message=_('Installing the stable Rust toolchain for your user.'))
+        elif not self.aur_status().get('snapshots'):
+            return dict(ok=False, code='snapshots-unavailable', message=
+                        _('Development kits need system snapshots. This system does not support them.'))
+        elif action == 'install':
+            native = kits.install_plan(id, docker_access=dockerAccess, cache=self.cache, refresh=True)
+        elif action == 'remove':
+            native = kits.remove_plan(id)
+        else:
+            native = kits.undo_plan(id)
+            if native.get('ok'):
+                native = dict(native, packages=native.get('remove', []))
+        if not native.get('ok'):
+            return native
+        plan = dict(ok=True, action=action, key='development:' + id, kind='development',
+                    dockerAccess=dockerAccess, transaction=native)
+        plan['token'] = digest(plan)
+        return plan
+
+    def development_execute(self, id, action, token, emit, dockerAccess=False):
+        if not isinstance(token, str) or not re.fullmatch('[0-9a-f]{64}', token):
+            raise ValueError(_('Invalid plan token'))
+        plan = self.development_plan(id, action, dockerAccess)
+        if not plan.get('ok'):
+            return plan
+        if token != plan['token']:
+            return failure('changed', plan=plan)
+        native = plan['transaction']
+        if action == 'finish':
+            return kits.finish_user(id, emit)
+        if action == 'undo':
+            helper = Path(__file__).resolve().with_name('emaki-programs-undo')
+            arguments = [native['receipt'], native['target'], native['token']]
+        else:
+            helper = Path(__file__).resolve().with_name('emaki-programs-install')
+            arguments = [native['target'], native['token']]
+        finished = None
+        try:
+            with subprocess.Popen(['pkexec', str(helper), *arguments],
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL, text=True, start_new_session=True) as process:
+                for line in process.stdout:
+                    try:
+                        event = json.loads(line)
+                        if event.get('type') == 'finished':
+                            finished = event
+                        elif event.get('type') == 'progress':
+                            emit('progress', **{key: value for key, value in event.items() if key != 'type'})
+                    except (ValueError, AttributeError):
+                        continue
+                code = process.wait()
+            if finished is None:
+                return failure('not-authorized' if code in (126, 127) else 'unknown')
+            finished.pop('type', None)
+            if code:
+                finished['ok'] = False
+            if finished.get('ok') and action == 'install' and id == 'rust':
+                user_result = kits.finish_user(id, emit)
+                if not user_result.get('ok'):
+                    finished.update(user_result, partial=True)
+                elif user_result.get('message'):
+                    finished['message'] = user_result['message']
+            return finished
+        finally:
+            # Failures can still leave completed package work behind.
+            self.rows = None
+
+    def websites(self, operation, **params):
+        messages = {
+            'website-invalid-url': _('Enter a complete http:// or https:// website address.'),
+            'website-invalid-name': _('Choose a shorter name without control characters.'),
+            'website-invalid-id': _('This website app is invalid.'),
+            'website-unsafe-path': _('The website app folder is not safe to change.'),
+            'website-not-found': _('This website app no longer exists.'),
+            'website-modified': _('The website app files have changed. Nothing was removed.'),
+            'website-running': _('Close this website app before removing it.'),
+        }
+        try:
+            if operation == 'website-add':
+                if not set(params) <= {'url', 'name'} or 'url' not in params:
+                    raise TypeError
+                app = webapps.create_app(params['url'], params.get('name', ''))
+                message = (_('Website app added. Its name or icon could not be fetched; a generated icon is used when needed.')
+                           if app.get('metadataWarning') else _('Website app added. Find it in the launcher.'))
+                return dict(ok=True, app=app, apps=webapps.list_apps(), message=message)
+            if operation == 'website-remove':
+                if set(params) != {'id'}:
+                    raise TypeError
+                webapps.remove_app(params['id'])
+                return dict(ok=True, apps=webapps.list_apps(), message=_('Website app removed.'))
+            if params:
+                raise TypeError
+            return dict(ok=True, apps=webapps.list_apps())
+        except webapps.WebAppError as error:
+            code = str(error)
+            return dict(ok=False, code=code, message=messages.get(code, MESSAGES['failed']))
+
     def request(self, request, emit):
         if not isinstance(request, dict) or request.get('version') != PROTOCOL:
             raise ValueError(_('Invalid protocol version'))
@@ -1032,6 +1147,14 @@ class Engine:
             return self.plan(**params)
         if operation == 'execute':
             return self.execute(emit=emit, **params)
+        if operation == 'development':
+            return self.development(**params)
+        if operation == 'development-plan':
+            return self.development_plan(**params)
+        if operation == 'development-execute':
+            return self.development_execute(emit=emit, **params)
+        if operation in ('websites', 'website-add', 'website-remove'):
+            return self.websites(operation, **params)
         if operation == 'updates':
             backend = update_backend()
             self.cache.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -1081,7 +1204,9 @@ def main(argv, legacy):
         return 2
     parser = argparse.ArgumentParser(description=_('Program manager JSON protocol'))
     parser.add_argument('method', choices=('catalog', 'search', 'details', 'related', 'plan', 'execute',
-                                           'updates', 'aur', 'popular', 'serve'))
+                                           'updates', 'aur', 'popular', 'serve', 'development',
+                                           'development-plan', 'development-execute', 'websites',
+                                           'website-add', 'website-remove'))
     parser.add_argument('arguments', nargs='*')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--source', choices=('arch', 'flatpak', 'aur'), default='')
@@ -1092,6 +1217,7 @@ def main(argv, legacy):
     parser.add_argument('--include-aur', action='store_true')
     parser.add_argument('--limit', type=int, default=100)
     parser.add_argument('--offset', type=int, default=0)
+    parser.add_argument('--docker-access', action='store_true')
     args = parser.parse_args(argv)
     cache = Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'emaki-update-manager'
     # The privileged helper reads consent for this account from the same fixed
@@ -1107,11 +1233,20 @@ def main(argv, legacy):
         return 0
     params = {}
     expected = {'catalog': 0, 'search': 1, 'details': 1, 'related': 1, 'plan': (1, 2), 'execute': (2, 3),
-                'updates': 0, 'aur': 0, 'popular': 0}
+                'updates': 0, 'aur': 0, 'popular': 0, 'development': 0, 'development-plan': 2,
+                'development-execute': 3, 'websites': 0, 'website-add': (1, 2), 'website-remove': 1}
     counts = expected[args.method]
     if len(args.arguments) not in (counts if isinstance(counts, tuple) else (counts,)):
         parser.error(_('Invalid program manager arguments.'))
-    if args.method in ('catalog', 'search'):
+    if args.method in ('development-plan', 'development-execute'):
+        params = dict(action=args.arguments[0], id=args.arguments[1], dockerAccess=args.docker_access)
+        if args.method == 'development-execute':
+            params['token'] = args.arguments[2]
+    elif args.method == 'website-add':
+        params = dict(url=args.arguments[0], name=args.arguments[1] if len(args.arguments) == 2 else '')
+    elif args.method == 'website-remove':
+        params = dict(id=args.arguments[0])
+    elif args.method in ('catalog', 'search'):
         params = dict(query=args.arguments[0] if args.arguments else '', source=args.source,
                       category=args.category, installed=args.installed, refresh=args.refresh,
                       includeAur=args.include_aur, scope=args.scope, limit=args.limit, offset=args.offset)

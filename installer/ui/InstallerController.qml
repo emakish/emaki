@@ -17,11 +17,33 @@ Item {
     property var mounts: []
     property var diskReasons: ({})
     property var layouts: ["us"]
+    property bool layoutsEdited: false
     property string language: "en_US.UTF-8"
     readonly property var languageChoices: [
-        {locale: "en_US.UTF-8", label: "English"},
-        {locale: "es_MX.UTF-8", label: "Español (Latinoamérica)"},
-        {locale: "pt_BR.UTF-8", label: "Português (Brasil)"}
+        {
+            locale: "en_US.UTF-8",
+            label: "English"
+        },
+        {
+            locale: "es_MX.UTF-8",
+            label: "Español (Latinoamérica)"
+        },
+        {
+            locale: "pt_BR.UTF-8",
+            label: "Português (Brasil)"
+        },
+        {
+            locale: "de_DE.UTF-8",
+            label: "Deutsch"
+        },
+        {
+            locale: "fr_FR.UTF-8",
+            label: "Français"
+        },
+        {
+            locale: "ru_RU.UTF-8",
+            label: "Русский"
+        }
     ].filter(choice => session.availableLocales.includes(choice.locale))
     // The optional bridge lives only in the installer, never in the desktop singleton.
     readonly property var languageBridge: createLanguageBridge()
@@ -34,6 +56,9 @@ Item {
         }
     }
     onLanguageChanged: {
+        // Only untouched defaults follow the language. A chosen keyboard survives retranslation.
+        if (!layoutsEdited)
+            layouts = language === "ru_RU.UTF-8" ? ["us", "ru"] : ["us"];
         Protocol.invalidate(session);
         agreed = false;
         publish();
@@ -267,7 +292,9 @@ Item {
         return windowsPartition ? Math.min(windowsPartition.shrink.max_free_bytes, Math.max(alongsideMinimum, Protocol.alongsideDefault(windowsPartition))) : 0;
     }
     function write(message: var): void {
-        message = Object.assign({}, message, {language: language});
+        message = Object.assign({}, message, {
+            language: language
+        });
         if (mockTransport)
             outbound(message);
         else if (transport && transport.connected) {
@@ -479,19 +506,49 @@ Item {
             list.splice(index, 1);
         else if (index < 0 && list.length < 4)
             list.push(layout);
+        // Russian must retain a Latin layout for passwords and commands.
+        if (list[0] === "ru") {
+            const latin = list.findIndex(value => value !== "ru");
+            if (latin > 0)
+                list.unshift(list.splice(latin, 1)[0]);
+            else
+                list.unshift("us");
+        }
+        layoutsEdited = true;
         layouts = list;
     }
     function defaultLayout(layout: string): void {
+        if (layout === "ru")
+            return;
+        layoutsEdited = true;
         layouts = [layout].concat(layouts.filter(x => x !== layout));
     }
     function layoutLabel(code: string): string {
-        const row = catalog.layouts.find(x => !x.variant && x.layout.toUpperCase() === code);
-        return row ? row.label : code;
+        const labels = {
+            us: qsTranslate("InstallerController", "English (US)"),
+            gb: qsTranslate("InstallerController", "English (UK)"),
+            de: qsTranslate("InstallerController", "German"),
+            fr: qsTranslate("InstallerController", "French"),
+            ru: qsTranslate("InstallerController", "Russian"),
+            es: qsTranslate("InstallerController", "Spanish"),
+            latam: qsTranslate("InstallerController", "Spanish (Latin American)"),
+            br: qsTranslate("InstallerController", "Portuguese (Brazil)"),
+            pt: qsTranslate("InstallerController", "Portuguese"),
+            dvorak: qsTranslate("InstallerController", "English (Dvorak)"),
+            colemak: qsTranslate("InstallerController", "English (Colemak)")
+        };
+        const layout = code.toLowerCase();
+        const row = catalog.layouts.find(x => !x.variant && x.layout.toLowerCase() === layout);
+        return labels[layout] || (language.startsWith("en") && row ? row.label : layout);
     }
-    // "German", "German and French", "German, French and Czech".
+    // Join from the end so the conjunction belongs to the final pair only.
     function layoutNames(list: var): string {
-        const names = Array.from(list).map(layout => layoutLabel(String(layout).toUpperCase()));
-        return names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names.join("");
+        const names = Array.from(list).map(layout => layoutLabel(String(layout)));
+        if (names.length < 2) return names.join("");
+        let result = qsTranslate("InstallerController", "%1 and %2").arg(names[names.length - 2]).arg(names[names.length - 1]);
+        for (let i = names.length - 3; i >= 0; --i)
+            result = qsTranslate("InstallerController", "%1, %2").arg(names[i]).arg(result);
+        return result;
     }
     // Queue the wanted list unless it is already the one sent, confirmed or refused.
     function syncKeyboard(): void {
@@ -583,7 +640,9 @@ Item {
         if (mockTransport)
             keyboardOutbound(request);
         else {
-            keyboardInput = JSON.stringify(Object.assign({}, request, {language: language})) + "\n";
+            keyboardInput = JSON.stringify(Object.assign({}, request, {
+                language: language
+            })) + "\n";
             keyboardHelper.running = true;
         }
     }
@@ -710,7 +769,7 @@ Item {
     function createPartition(free: var, use: string, fs: string, size: real, encrypt: bool): string {
         // Until encryption is chosen the LUKS2 header is counted, as rootMinimum does: the root never
         // becomes too small later, on the Encryption step.
-        const error = locked ? qsTranslate("InstallerController", "Wait until the installer is ready.") : Protocol.newPartitionError(free, use, size, Protocol.rootMinimum(session.inventory?.memory_bytes || 0, false, use === "/" && (encrypt || encryption !== "none")));
+        const error = locked ? qsTranslate("InstallerController", "Wait until the installer is ready.") : Protocol.newPartitionError(free, use, size, Protocol.rootMinimum(session.inventory?.memory_bytes || 0, false, use === "/" && (encrypt || encryption !== "none")), language);
         if (error)
             return error;
         if (selectedDisk.partition_table !== "gpt" && !partitionEdits.new_table)
@@ -1010,7 +1069,8 @@ Item {
             clearJoinResult();
         helperOp = op;
         helperInput = JSON.stringify(Object.assign({
-            op: op, language: language
+            op: op,
+            language: language
         }, fields)) + "\n";
         helper.running = true;
     }

@@ -323,7 +323,8 @@ QtObject {
             pageId: "updates"
             description: qsTranslate("SettingsPageRegistry", "Choose the release channel for future updates.")
             searchAnchors: ({
-                    "updates-update-channel": "settings-update-channel"
+                    "updates-update-channel": "settings-update-channel",
+                    "updates-reset-emaki-settings": "settings-reset-emaki"
                 })
             component: Component {
                 SettingsMaintenancePage {

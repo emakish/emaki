@@ -19,7 +19,7 @@ Item {
         draftDate = pickedDate
     readonly property string headingDate: editing && draftDate ? draftDate : selectedDate
     //: Qt date pattern: d, dddd and MMMM are fields; put literal words in single quotes, as in 'de'.
-    readonly property string dateHeading: new Date(Number(headingDate.slice(0, 4)), Number(headingDate.slice(5, 7)) - 1, Number(headingDate.slice(8, 10))).toLocaleDateString(Qt.locale(), qsTranslate("CalendarEvents", "dddd, d MMMM"))
+    readonly property string dateHeading: new Date(Number(headingDate.slice(0, 4)), Number(headingDate.slice(5, 7)) - 1, Number(headingDate.slice(8, 10))).toLocaleDateString(Qt.locale(), qsTranslate("CalendarEvents", "dddd, d MMMM")).replace(/^[а-яё]/, first => first.toUpperCase())
     readonly property color fieldColor: ink.r > 0.5 ? "#383239" : "#fffaf8"
     readonly property color rim: Qt.rgba(dim.r, dim.g, dim.b, 0.25)
     property bool editing: false

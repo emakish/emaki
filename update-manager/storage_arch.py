@@ -3,13 +3,13 @@
 """Read-only Arch retention rules; callers alone own preview and deletion."""
 
 try:
-    from emaki_i18n import translation
+    from emaki_i18n import format_number, translation
 except ModuleNotFoundError:
     import sys as _i18n_sys
     from pathlib import Path as _I18nPath
     _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parents[1] / 'scripts'))
     _i18n_sys.path.insert(0, str(_I18nPath(__file__).resolve().parent))
-    from emaki_i18n import translation
+    from emaki_i18n import format_number, translation
 
 _ = translation('programs').gettext
 
@@ -493,6 +493,7 @@ def snapshot_usage():
             return {'bytes': aggregate, 'exclusive_bytes': total,
                     'reason': _('Space exclusively held by retained snapshots, including their shared extents.')}
         return {'bytes': None, 'exclusive_bytes': total,
-                'reason': _('Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable.').format(bytes=total)}
+                'reason': _('Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable.').format(
+                    size=_('{value} B').format(value=format_number(total, grouping=True)))}
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         return unavailable

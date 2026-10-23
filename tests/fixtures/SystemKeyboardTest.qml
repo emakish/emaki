@@ -459,6 +459,33 @@ ShellRoot {
             test.tabTo("confirm-no");
             input.keyClick(Qt.Key_Space);
             test.check(panel.body.confirmation === "", "power cancellation");
+            // The command menu's Restart (ShellScene.confirmSession): this same question, Cancel
+            // focused. The Enter that asked, held or pressed again, a double click, typing and
+            // moving never run it; a deliberate Enter on the action after it settles does.
+            panel.body.session("reboot");
+            panel.takeFocus(true);
+            input.wait(40);
+            test.check(panel.body.confirmation === "reboot", "menu session asks in the power panel");
+            test.check(test.find(panel, "confirm-no").activeFocus, "menu session focuses Cancel");
+            service.lastAction = "";
+            input.keyPress(Qt.Key_Return);
+            input.keyPress(Qt.Key_Return);
+            input.keyRelease(Qt.Key_Return);
+            test.check(service.lastAction === "" && panel.body.confirmation === "", "held or doubled Enter lands on Cancel");
+            panel.body.session("poweroff");
+            panel.takeFocus(true);
+            input.wait(40);
+            input.keyClick(Qt.Key_A);
+            input.keyClick(Qt.Key_Tab);
+            test.check(test.find(panel, "confirm-go").activeFocus, "moving reaches the action");
+            input.keyClick(Qt.Key_Return);
+            input.keyClick(Qt.Key_Return);
+            test.check(service.lastAction === "" && panel.body.confirmation === "poweroff", "typing, moving and a quick Enter on the action do not run it");
+            input.mouseDoubleClickSequence(test.find(panel, "confirm-go"));
+            test.check(service.lastAction === "" && panel.body.confirmation === "poweroff", "a double click on the action does not run it");
+            input.wait(700);
+            input.keyClick(Qt.Key_Return);
+            test.check(service.lastAction === "session" && service.lastValue === "poweroff" && panel.body.confirmation === "", "a deliberate Enter on the action runs it");
             input.keyClick(Qt.Key_Escape);
             test.check(!panel.opened && outside.activeFocus, "Escape closes and focus can return");
             test.check(outside.text === "", "keys did not enter underlying input");

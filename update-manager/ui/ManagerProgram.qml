@@ -363,7 +363,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             Layout.margins: 10
                             spacing: 14
-                            ManagerLabel { text: parent.modelData[0]; color: Shell.ShellPalette.managerDim; Layout.preferredWidth: 70; Layout.fillWidth: false; font.pixelSize: 13 }
+                            ManagerLabel { text: parent.modelData[0]; color: Shell.ShellPalette.managerDim; Layout.preferredWidth: Math.min(140, Math.max(70, implicitWidth)); Layout.fillWidth: false; font.pixelSize: 13 }
                             ManagerLabel { text: parent.modelData[1]; horizontalAlignment: Text.AlignRight; font.pixelSize: 13 }
                         }
                     }

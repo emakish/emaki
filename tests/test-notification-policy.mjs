@@ -138,7 +138,8 @@ function updateHistory(text) {
     assert.equal(context.restored, true);
     assert.equal(JSON.stringify(context.entries.map(e => e.summary)), JSON.stringify([mail.summary, similarlyNamed.summary]), 'legacy update notice must not survive a new session');
     // Both the local observer and the old transaction hook must remain memory-only.
-    context.entries.push({...update, sessionUpdate: true}, update, {...mail, held: true});
+    context.entries.push({...update, sessionUpdate: true}, update, {...mail, held: true},
+                         {...mail, summary: 'Text copied', body: 'Private captured text', transient: true});
     context.manualDnd = () => false;
     let saved;
     context.persistence = {submit: text => { saved = JSON.parse(text); }};
@@ -152,8 +153,10 @@ updateHistory(source);
 for (const before of [
     ' && !store.sessionUpdateEntry(e)).slice(0, 200)',
     ' && !store.sessionUpdateEntry(e)).map(e => ({',
+    ' && e.transient !== true && !store.sessionUpdateEntry(e)).map(e => ({',
 ]) {
     assert.ok(source.includes(before));
-    assert.throws(() => updateHistory(source.replace(before, before.replace(' && !store.sessionUpdateEntry(e)', ''))), assert.AssertionError);
+    const condition = before.includes('e.transient') ? ' && e.transient !== true' : ' && !store.sessionUpdateEntry(e)';
+    assert.throws(() => updateHistory(source.replace(before, before.replace(condition, ''))), assert.AssertionError);
 }
-console.log('Notification history: stale update cards removed, current notices unsaved, unrelated history preserved; 2 mutants PASS');
+console.log('Notification history: stale update cards removed, transient and current update notices unsaved, unrelated history preserved; 3 mutants PASS');

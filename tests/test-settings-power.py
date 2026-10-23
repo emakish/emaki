@@ -435,6 +435,11 @@ printf '%s\\n' '{"schema_version":1,"state":"ready","values":{"blank_ac":330,"bl
             for error in ['TypeError', 'ReferenceError', 'Cannot assign', 'Unable to assign', 'Binding loop']:
                 self.assertNotIn(error, output)
             helper.unlink()
+            # Removing the fixture must not expose an installed helper later on PATH.
+            # Resolve the runner before restricting subprocess lookup to the empty bin.
+            runner = shutil.which('qs', path=env['PATH'])
+            env['PATH'] = str(bindir)
+            self.assertIsNone(shutil.which('emaki-settings-power', path=env['PATH']))
             (base / 'shell.qml').write_text('''import QtQuick
 import Quickshell
 ShellRoot {
@@ -452,7 +457,7 @@ ShellRoot {
     }
 }
 ''')
-            result = subprocess.run(['qs', '-p', str(base / 'shell.qml'), '--no-color'],
+            result = subprocess.run([runner, '-p', str(base / 'shell.qml'), '--no-color'],
                                     env=env, capture_output=True, text=True, timeout=6)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('POWER_MISSING_HELPER_PASS', result.stdout + result.stderr)

@@ -1,0 +1,1178 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(no reply)"
+msgstr "(keine Antwort)"
+
+msgid "A good place to start"
+msgstr "Ein guter Ausgangspunkt"
+
+msgid "A recipe never runs as root."
+msgstr "Eine Bauanleitung wird niemals als root ausgeführt."
+
+msgid "A repository update is already running. Waiting for its result…"
+msgstr "Eine Systemaktualisierung läuft bereits. Auf ihr Ergebnis wird gewartet…"
+
+msgid "A system restore is ready. Restart before making another change."
+msgstr "Eine Systemwiederherstellung ist bereit. Starten Sie vor einer weiteren Änderung neu."
+
+msgid "A verified system snapshot could not be created. Nothing was installed."
+msgstr "Ein verifizierter System-Schnappschuss konnte nicht erstellt werden. Es wurde nichts installiert."
+
+msgid "AUR could not be checked. Some program updates may be missing from this list."
+msgstr "Das AUR konnte nicht geprüft werden. Einige Programmaktualisierungen fehlen möglicherweise in dieser Liste."
+
+msgid "AUR could not be reached. Its listed versions come from an older check."
+msgstr "Das AUR konnte nicht erreicht werden. Die angezeigten Versionen stammen aus einer älteren Prüfung."
+
+msgid "AUR download sizes are not available. Development packages may need rebuilding even when their listed version has not changed."
+msgstr "AUR-Downloadgrößen sind nicht verfügbar. Entwicklungsversionen (zum Beispiel -git-Pakete) müssen möglicherweise neu gebaut werden, auch wenn sich ihre angezeigte Version nicht geändert hat."
+
+msgid "AUR installs need system snapshots. This system does not support them, so nothing was installed."
+msgstr "AUR-Installationen benötigen System-Schnappschüsse. Dieses System unterstützt sie nicht, daher wurde nichts installiert."
+
+msgid "AUR search could not finish. Narrow the search or try again later."
+msgstr "Die AUR-Suche konnte nicht abgeschlossen werden. Grenzen Sie die Suche ein oder versuchen Sie es später erneut."
+
+msgid "AUR search results come from an older check."
+msgstr "Die AUR-Suchergebnisse stammen aus einer älteren Prüfung."
+
+msgid "AUR — update with your AUR tool"
+msgstr "AUR — mit Ihrem AUR-Werkzeug aktualisieren"
+
+msgid "AUR: Where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "AUR: Öffnen Sie, falls verfügbar, die Programmseite, um die Aktualisierung zu bauen, oder verwenden Sie Ihr AUR-Werkzeug."
+
+msgid "Additional Flatpak installations could not be read."
+msgstr "Zusätzliche Flatpak-Installationen konnten nicht gelesen werden."
+
+msgid "Administrator permission is required to refresh the restore point list."
+msgstr "Zum Auffrischen der Liste der Wiederherstellungspunkte sind Administratorrechte erforderlich."
+
+msgid "Administrator permission is required to restore the system."
+msgstr "Zum Wiederherstellen des Systems sind Administratorrechte erforderlich."
+
+msgid "All updates are installed."
+msgstr "Alle Aktualisierungen sind installiert."
+
+msgid "Allows password-free administrator commands for a chosen session. Read the warning before granting access."
+msgstr "Erlaubt Administratorbefehle ohne Passwort für eine ausgewählte Sitzung. Lesen Sie die Warnung, bevor Sie den Zugriff gewähren."
+
+msgid "An update check is already running. Check again in a moment."
+msgstr "Eine Aktualisierungsprüfung läuft bereits. Prüfen Sie in einem Moment erneut."
+
+msgid "An update is already running. Wait for it to finish."
+msgstr "Eine Aktualisierung läuft bereits. Warten Sie, bis sie abgeschlossen ist."
+
+msgid "An update or restore is running. Wait for it to finish."
+msgstr "Eine Aktualisierung oder Wiederherstellung läuft. Warten Sie, bis sie abgeschlossen ist."
+
+msgid "Another package operation is running. Try again when it finishes."
+msgstr "Ein anderer Paketvorgang läuft. Versuchen Sie es erneut, sobald er abgeschlossen ist."
+
+msgid "Another package operation is running. Wait for it to finish, then try again."
+msgstr "Ein anderer Paketvorgang läuft. Warten Sie, bis er abgeschlossen ist, und versuchen Sie es erneut."
+
+msgid "Another package operation may be running. Wait for it to finish before checking again."
+msgstr "Möglicherweise läuft ein anderer Paketvorgang. Warten Sie vor einer erneuten Prüfung, bis er abgeschlossen ist."
+
+msgid "Another package transaction is running."
+msgstr "Eine andere Pakettransaktion läuft."
+
+msgid "Another package transaction is running. Wait for it to finish and try again."
+msgstr "Eine andere Pakettransaktion läuft. Warten Sie, bis sie abgeschlossen ist, und versuchen Sie es erneut."
+
+msgid "Another program may be installing or updating software. Do not remove the lock while software changes may be running. Restart the computer, then try again."
+msgstr "Möglicherweise installiert oder aktualisiert ein anderes Programm Software. Entfernen Sie die Sperre nicht, solange Softwareänderungen laufen könnten. Starten Sie den Computer neu und versuchen Sie es erneut."
+
+msgid "AppStream DTDs and entities are not supported."
+msgstr "AppStream-DTDs und -Entitäten werden nicht unterstützt."
+
+msgid "AppStream XML exceeds structural limits."
+msgstr "AppStream-XML überschreitet die Strukturgrenzen."
+
+msgid "AppStream XML exceeds the scalar limit."
+msgstr "AppStream-XML überschreitet die Grenze für Skalarwerte."
+
+msgid "AppStream YAML aliases are not supported."
+msgstr "AppStream-YAML-Aliase werden nicht unterstützt."
+
+msgid "AppStream YAML exceeds structural limits."
+msgstr "AppStream-YAML überschreitet die Strukturgrenzen."
+
+msgid "AppStream YAML exceeds the scalar limit."
+msgstr "AppStream-YAML überschreitet die Grenze für Skalarwerte."
+
+msgid "AppStream YAML parser unavailable."
+msgstr "AppStream-YAML-Parser nicht verfügbar."
+
+msgid "AppStream catalog exceeds the component limit."
+msgstr "Der AppStream-Katalog überschreitet die Komponentengrenze."
+
+#, python-brace-format
+msgid "AppStream discovery unavailable: {error}"
+msgstr "AppStream-Erkennung nicht verfügbar: {error}"
+
+msgid "AppStream expanded input exceeds the file limit."
+msgstr "Entpackte AppStream-Eingabe überschreitet die Dateigrenze."
+
+msgid "AppStream input exceeds the file limit."
+msgstr "AppStream-Eingabe überschreitet die Dateigrenze."
+
+msgid "AppStream metadata could not be read."
+msgstr "AppStream-Metadaten konnten nicht gelesen werden."
+
+msgid "Applying Flatpak transaction."
+msgstr "Flatpak-Transaktion wird angewendet."
+
+msgid "Arch news could not be checked. Visit https://archlinux.org/news/ before updating."
+msgstr "Arch-Neuigkeiten konnten nicht geprüft werden. Besuchen Sie vor der Aktualisierung https://archlinux.org/news/."
+
+msgid "Arch news could not be reached. The notices come from an older check."
+msgstr "Arch-Neuigkeiten konnten nicht abgerufen werden. Die Hinweise stammen aus einer älteren Prüfung."
+
+msgid "Authorization is required to install programs from the AUR."
+msgstr "Zum Installieren von Programmen aus dem AUR ist eine Autorisierung erforderlich."
+
+msgid "Authorization is required to install repository programs."
+msgstr "Zum Installieren von Programmen aus Paketquellen ist eine Autorisierung erforderlich."
+
+msgid "Bringing the system up to date first."
+msgstr "Zuerst wird das System aktualisiert."
+
+msgid "Build tools could not be removed. The install was not completed."
+msgstr "Bauwerkzeuge konnten nicht entfernt werden. Die Installation wurde nicht abgeschlossen."
+
+#, python-brace-format
+msgid "Building {package} did not finish. The details are above."
+msgstr "Der Bau von {package} wurde nicht abgeschlossen. Die Details stehen oben."
+
+#, python-brace-format
+msgid "Building {package} from the AUR as a separate user without access to your files."
+msgstr "{package} aus dem AUR wird als separater Benutzer ohne Zugriff auf Ihre Dateien gebaut."
+
+msgid "Checking AUR package versions…"
+msgstr "AUR-Paketversionen werden geprüft…"
+
+msgid "Checking Arch news…"
+msgstr "Arch-Neuigkeiten werden geprüft…"
+
+msgid "Checking repository packages…"
+msgstr "Pakete der Paketquellen werden geprüft…"
+
+msgid "Choose a fixed update operation or --restore with a restore point token."
+msgstr "Wählen Sie einen festgelegten Aktualisierungsvorgang oder --restore mit einem Wiederherstellungspunkt-Token."
+
+msgid "Choose a restore point from the current list."
+msgstr "Wählen Sie einen Wiederherstellungspunkt aus der aktuellen Liste."
+
+msgid "Choose list or restore with an exact restore point."
+msgstr "Wählen Sie list oder restore mit einem exakten Wiederherstellungspunkt."
+
+msgid "Could not check updates."
+msgstr "Aktualisierungen konnten nicht geprüft werden."
+
+msgid "Could not check updates. The list is from the previous check."
+msgstr "Aktualisierungen konnten nicht geprüft werden. Die Liste stammt aus der vorherigen Prüfung."
+
+msgid "Delete unneeded files or clear the package cache in Settings > Storage, then try again."
+msgstr "Löschen Sie unnötige Dateien oder leeren Sie den Paketzwischenspeicher unter Einstellungen > Speicher und versuchen Sie es erneut."
+
+msgid "Empty AUR metadata archive"
+msgstr "Leeres AUR-Metadatenarchiv"
+
+msgid "Exclusive snapshot usage is unavailable."
+msgstr "Exklusiver Schnappschuss-Speicherverbrauch ist nicht verfügbar."
+
+msgid "Expected a package and a preview token."
+msgstr "Ein Paket und ein Vorschau-Token wurden erwartet."
+
+msgid "Expected a receipt, its package and a preview token."
+msgstr "Ein Beleg, sein Paket und ein Vorschau-Token wurden erwartet."
+
+#, python-brace-format
+msgid "Flathub AppStream metadata could not be read: {remote}"
+msgstr "Flathub-AppStream-Metadaten konnten nicht gelesen werden: {remote}"
+
+#, python-brace-format
+msgid "Flathub AppStream metadata is not cached: {remote}"
+msgstr "Flathub-AppStream-Metadaten sind nicht zwischengespeichert: {remote}"
+
+#, python-brace-format
+msgid "Flathub catalog could not be read: {source}"
+msgstr "Flathub-Katalog konnte nicht gelesen werden: {source}"
+
+#, python-brace-format
+msgid "Flatpak ({scope})"
+msgstr "Flatpak ({scope})"
+
+msgid "Flatpak changes apply to all users and require administrator authentication."
+msgstr "Flatpak-Änderungen gelten für alle Benutzer und erfordern eine Administratorauthentifizierung."
+
+#, python-brace-format
+msgid "Flatpak installation could not be read: {scope}"
+msgstr "Flatpak-Installation konnte nicht gelesen werden: {scope}"
+
+msgid "Flatpak installations could not be read."
+msgstr "Flatpak-Installationen konnten nicht gelesen werden."
+
+msgid "Flatpak installs are undone by their own backend"
+msgstr "Flatpak-Installationen werden durch ihr eigenes Backend rückgängig gemacht"
+
+msgid "Flatpak updates could not be checked. Check again before updating applications."
+msgstr "Flatpak-Aktualisierungen konnten nicht geprüft werden. Prüfen Sie erneut, bevor Sie Anwendungen aktualisieren."
+
+
+msgid "Installed dependencies could not be checked"
+msgstr "Installierte Abhängigkeiten konnten nicht geprüft werden"
+
+msgid "Installed package query failed"
+msgstr "Abfrage installierter Pakete fehlgeschlagen"
+
+msgid "Installed packages changed during the check. Check again when the package operation finishes."
+msgstr "Installierte Pakete haben sich während der Prüfung geändert. Prüfen Sie erneut, sobald der Paketvorgang abgeschlossen ist."
+
+msgid "Installed packages changed during the check. Try again when the package operation finishes."
+msgstr "Installierte Pakete haben sich während der Prüfung geändert. Versuchen Sie es erneut, sobald der Paketvorgang abgeschlossen ist."
+
+msgid "Installed packages changed. Refresh the catalog and try again."
+msgstr "Installierte Pakete haben sich geändert. Frischen Sie den Katalog auf und versuchen Sie es erneut."
+
+msgid "Installed packages could not be read"
+msgstr "Installierte Pakete konnten nicht gelesen werden"
+
+msgid "Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change."
+msgstr "Bei der Installation werden auch alle Pakete aus Paketquellen aktualisiert. Die Aktualisierung prüft neue Metadaten; die endgültige Paketliste und die Größen können sich ändern."
+
+msgid "Installing what the build needs from Arch."
+msgstr "Die zum Bauen benötigten Pakete von Arch werden installiert."
+
+msgid "Installing with a full repository update. Closing this window does not stop it."
+msgstr "Installation mit vollständiger Systemaktualisierung. Das Schließen dieses Fensters hält sie nicht an."
+
+msgid "Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings."
+msgstr "Installiert den unterstützten NVIDIA-Treiber, Grafikbibliotheken und Emakis Sitzungseinstellungen."
+
+msgid "Invalid AUR counters"
+msgstr "Ungültige AUR-Zähler"
+
+msgid "Invalid AUR dependency"
+msgstr "Ungültige AUR-Abhängigkeit"
+
+msgid "Invalid AUR entry"
+msgstr "Ungültiger AUR-Eintrag"
+
+msgid "Invalid AUR list"
+msgstr "Ungültige AUR-Liste"
+
+msgid "Invalid AUR list entry"
+msgstr "Ungültiger AUR-Listeneintrag"
+
+msgid "Invalid AUR metadata archive"
+msgstr "Ungültiges AUR-Metadatenarchiv"
+
+msgid "Invalid AUR name"
+msgstr "Ungültiger AUR-Name"
+
+msgid "Invalid AUR response"
+msgstr "Ungültige AUR-Antwort"
+
+msgid "Invalid AUR text"
+msgstr "Ungültiger AUR-Text"
+
+msgid "Invalid AUR time"
+msgstr "Ungültige AUR-Zeit"
+
+msgid "Invalid AUR version"
+msgstr "Ungültige AUR-Version"
+
+msgid "Invalid Git reference advertisement"
+msgstr "Ungültige Git-Referenzankündigung"
+
+msgid "Invalid boot identity"
+msgstr "Ungültige Startkennung"
+
+msgid "Invalid build request."
+msgstr "Ungültige Bauanfrage."
+
+msgid "Invalid catalog key"
+msgstr "Ungültiger Katalogschlüssel"
+
+msgid "Invalid catalog scope"
+msgstr "Ungültiger Katalogbereich"
+
+msgid "Invalid consent"
+msgstr "Ungültige Zustimmung"
+
+msgid "Invalid discovery option"
+msgstr "Ungültige Erkennungsoption"
+
+msgid "Invalid filters"
+msgstr "Ungültige Filter"
+
+msgid "Invalid installed package record"
+msgstr "Ungültiger Datensatz eines installierten Pakets"
+
+msgid "Invalid package database path"
+msgstr "Ungültiger Paketdatenbankpfad"
+
+msgid "Invalid package filters"
+msgstr "Ungültige Paketfilter"
+
+msgid "Invalid package name."
+msgstr "Ungültiger Paketname."
+
+msgid "Invalid parameters"
+msgstr "Ungültige Parameter"
+
+msgid "Invalid plan token"
+msgstr "Ungültiges Plan-Token"
+
+msgid "Invalid popular list"
+msgstr "Ungültige Beliebtheitsliste"
+
+msgid "Invalid popularity data"
+msgstr "Ungültige Beliebtheitsdaten"
+
+msgid "Invalid popularity response"
+msgstr "Ungültige Beliebtheitsantwort"
+
+msgid "Invalid preview token."
+msgstr "Ungültiges Vorschau-Token."
+
+msgid "Invalid program manager arguments."
+msgstr "Ungültige Argumente für die Programmverwaltung."
+
+msgid "Invalid protocol version"
+msgstr "Ungültige Protokollversion"
+
+msgid "Invalid receipt"
+msgstr "Ungültiger Beleg"
+
+msgid "Invalid receipt file"
+msgstr "Ungültige Belegdatei"
+
+msgid "Invalid receipt kind"
+msgstr "Ungültige Belegart"
+
+msgid "Invalid removal result"
+msgstr "Ungültiges Entfernungsergebnis"
+
+msgid "Invalid repository dependency"
+msgstr "Ungültige Paketquellenabhängigkeit"
+
+msgid "Invalid repository name"
+msgstr "Ungültiger Paketquellenname"
+
+msgid "Invalid request id"
+msgstr "Ungültige Anfrage-ID"
+
+msgid "Invalid shelf"
+msgstr "Ungültige Auswahl"
+
+msgid "Invalid shelf item"
+msgstr "Ungültiger Auswahleintrag"
+
+msgid "Invalid shelf text"
+msgstr "Ungültiger Auswahltext"
+
+msgid "Invalid shelf: a package twice"
+msgstr "Ungültige Auswahl: ein Paket doppelt"
+
+msgid "Invalid storefront"
+msgstr "Ungültige Store-Ansicht"
+
+msgid "Invalid storefront identities"
+msgstr "Ungültige Kennungen der Store-Ansicht"
+
+msgid "Invalid storefront row"
+msgstr "Ungültige Zeile der Store-Ansicht"
+
+msgid "Invalid storefront text"
+msgstr "Ungültiger Text der Store-Ansicht"
+
+msgid "Invalid transaction"
+msgstr "Ungültige Transaktion"
+
+msgid "Invalid transaction record"
+msgstr "Ungültiger Transaktionsdatensatz"
+
+msgid "Invalid update status parameters"
+msgstr "Ungültige Aktualisierungsstatusparameter"
+
+msgid "Invalid warning choice"
+msgstr "Ungültige Warnungsauswahl"
+
+msgid "Missing package version"
+msgstr "Paketversion fehlt"
+
+msgid "Missing timezone"
+msgstr "Zeitzone fehlt"
+
+msgid "Missing transaction version"
+msgstr "Transaktionsversion fehlt"
+
+msgid "NVIDIA support"
+msgstr "NVIDIA-Unterstützung"
+
+msgid "NVIDIA support has no Undo button because removing graphics drivers can leave a black screen. A restore point is made before installation. To go back, open Updates, choose the restore point dated just before this installation, select Restore, then restart."
+msgstr "NVIDIA-Unterstützung hat keine Schaltfläche zum Rückgängigmachen, da das Entfernen von Grafiktreibern zu einem schwarzen Bildschirm führen kann. Vor der Installation wird ein Wiederherstellungspunkt erstellt. Zum Zurücksetzen öffnen Sie „Aktualisierungen“, wählen den Wiederherstellungspunkt unmittelbar vor dieser Installation, klicken auf „Wiederherstellen“ und starten neu."
+
+#, python-brace-format
+msgid "No Flathub programs are available in the cached catalog: {scope}"
+msgstr "Im zwischengespeicherten Katalog sind keine Flathub-Programme verfügbar: {scope}"
+
+msgid "No enabled, verified Flathub remote is configured."
+msgstr "Keine aktivierte, verifizierte Flathub-Paketquelle eingerichtet."
+
+msgid "No matching after-update snapshot is available."
+msgstr "Kein passender Schnappschuss nach der Aktualisierung verfügbar."
+
+msgid "No retained snapshots were found."
+msgstr "Keine aufbewahrten Schnappschüsse gefunden."
+
+msgid "Not an AUR RPC address"
+msgstr "Keine AUR-RPC-Adresse"
+
+#, python-brace-format
+msgid "Not enough free space for this update: it needs about {needed}, {free} is free. {advice}"
+msgstr "Nicht genug freier Speicher für diese Aktualisierung: Benötigt werden etwa {needed}, frei sind {free}. {advice}"
+
+msgid "Not installed"
+msgstr "Nicht installiert"
+
+msgid "Nothing was removed."
+msgstr "Es wurde nichts entfernt."
+
+msgid "Only a full repository update is accepted."
+msgstr "Nur eine vollständige Systemaktualisierung wird akzeptiert."
+
+msgid "Open Programs & Updates as a regular user."
+msgstr "Öffnen Sie „Programme & Aktualisierungen“ als regulärer Benutzer."
+
+msgid "Open the AUR section and accept its warning before installing."
+msgstr "Öffnen Sie den AUR-Bereich und akzeptieren Sie vor der Installation seine Warnung."
+
+msgid "Other installed software needs this program, so it stays."
+msgstr "Andere installierte Software benötigt dieses Programm, daher bleibt es erhalten."
+
+msgid "Oversized AUR metadata archive"
+msgstr "Zu großes AUR-Metadatenarchiv"
+
+msgid "Oversized AUR response"
+msgstr "Zu große AUR-Antwort"
+
+msgid "Oversized Git reference advertisement"
+msgstr "Zu große Git-Referenzankündigung"
+
+msgid "Oversized package metadata"
+msgstr "Zu große Paketmetadaten"
+
+msgid "Package metadata is incomplete."
+msgstr "Paketmetadaten sind unvollständig."
+
+msgid "Package retention could not be verified. Nothing was removed."
+msgstr "Es konnte nicht überprüft werden, welche Pakete erhalten bleiben. Es wurde nichts entfernt."
+
+msgid "Packages changed. Refresh the installation preview."
+msgstr "Pakete haben sich geändert. Frischen Sie die Installationsvorschau auf."
+
+msgid "Packages from AUR are not checked by Arch or Emaki. Where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "Pakete aus dem AUR werden weder von Arch noch von Emaki geprüft. Öffnen Sie, falls verfügbar, die Programmseite, um die Aktualisierung zu bauen, oder verwenden Sie Ihr AUR-Werkzeug."
+
+msgid "Packages from Arch the build needs could not be installed."
+msgstr "Die zum Bauen benötigten Pakete von Arch konnten nicht installiert werden."
+
+msgid "Permission is required to remove a program."
+msgstr "Zum Entfernen eines Programms ist eine Berechtigung erforderlich."
+
+msgid "Permission is required to undo an install."
+msgstr "Zum Rückgängigmachen einer Installation ist eine Berechtigung erforderlich."
+
+msgid "Permission is required to update repository packages."
+msgstr "Zum Aktualisieren von Paketen aus Paketquellen ist eine Berechtigung erforderlich."
+
+msgid "Picked by Emaki"
+msgstr "Von Emaki ausgewählt"
+
+msgid "Popularity cache too large"
+msgstr "Beliebtheitszwischenspeicher zu groß"
+
+msgid "Popularity request timed out"
+msgstr "Zeitlimit der Beliebtheitsabfrage überschritten"
+
+msgid "Popularity response too large"
+msgstr "Beliebtheitsantwort zu groß"
+
+msgid "Program manager JSON protocol"
+msgstr "JSON-Protokoll der Programmverwaltung"
+
+msgid "Program metadata contains an invalid identifier."
+msgstr "Programmmetadaten enthalten eine ungültige Kennung."
+
+msgid "Programs & Updates needs a user runtime directory"
+msgstr "„Programme & Aktualisierungen“ benötigt ein Laufzeitverzeichnis für den Benutzer"
+
+msgid "Ratings could not be loaded. Check your connection."
+msgstr "Bewertungen konnten nicht geladen werden. Prüfen Sie Ihre Verbindung."
+
+msgid "Read the package list and notices before updating. These checks cannot guarantee that an update will work."
+msgstr "Lesen Sie vor der Aktualisierung die Paketliste und die Hinweise. Diese Prüfungen können nicht garantieren, dass eine Aktualisierung funktioniert."
+
+msgid "Reading what is new in Emaki…"
+msgstr "Neuigkeiten zu Emaki werden gelesen…"
+
+msgid "Refresh the installation preview."
+msgstr "Frischen Sie die Installationsvorschau auf."
+
+msgid "Removing build tools did not finish. Trying again."
+msgstr "Das Entfernen der Bauwerkzeuge wurde nicht abgeschlossen. Erneuter Versuch."
+
+msgid "Removing packages added by the failed install. The completed system update will stay."
+msgstr "Durch die fehlgeschlagene Installation hinzugefügte Pakete werden entfernt. Die abgeschlossene Systemaktualisierung bleibt erhalten."
+
+msgid "Removing this program would remove part of Emaki, so it stays."
+msgstr "Das Entfernen dieses Programms würde einen Teil von Emaki entfernen, daher bleibt es erhalten."
+
+msgid "Removing this program would remove part of the system, so it stays."
+msgstr "Das Entfernen dieses Programms würde einen Teil des Systems entfernen, daher bleibt es erhalten."
+
+msgid "Repository AppStream data is missing. Install the platform application metadata package and refresh."
+msgstr "AppStream-Daten der Paketquellen fehlen. Installieren Sie das Paket mit den Anwendungsmetadaten der Plattform und frischen Sie auf."
+
+msgid "Repository dependencies could not be resolved"
+msgstr "Abhängigkeiten aus Paketquellen konnten nicht aufgelöst werden"
+
+msgid "Repository installation did not finish. Review the transaction details."
+msgstr "Die Installation aus Paketquellen wurde nicht abgeschlossen. Prüfen Sie die Transaktionsdetails."
+
+msgid "Repository installation finished."
+msgstr "Die Installation aus Paketquellen wurde abgeschlossen."
+
+msgid "Repository metadata could not be refreshed. Cached programs are shown where available."
+msgstr "Paketquellenmetadaten konnten nicht aufgefrischt werden. Zwischengespeicherte Programme werden angezeigt, soweit verfügbar."
+
+msgid "Repository metadata is incomplete. Refresh the catalog and try again."
+msgstr "Paketquellenmetadaten sind unvollständig. Frischen Sie den Katalog auf und versuchen Sie es erneut."
+
+#, python-brace-format
+msgid "Repository metadata is unavailable: {repositories}. Refresh the catalog and try again."
+msgstr "Paketquellenmetadaten sind nicht verfügbar: {repositories}. Frischen Sie den Katalog auf und versuchen Sie es erneut."
+
+#, python-brace-format
+msgid "Repository metadata is unavailable: {repository}."
+msgstr "Paketquellenmetadaten sind nicht verfügbar: {repository}."
+
+msgid "Repository package information could not be read."
+msgstr "Informationen zu Paketen aus Paketquellen konnten nicht gelesen werden."
+
+msgid "Repository package metadata could not be read. The catalog is incomplete."
+msgstr "Paketmetadaten aus Paketquellen konnten nicht gelesen werden. Der Katalog ist unvollständig."
+
+msgid "Repository updates finished. AUR programs must be updated with your AUR tool."
+msgstr "Aktualisierungen aus den Paketquellen abgeschlossen. AUR-Programme müssen mit Ihrem AUR-Werkzeug aktualisiert werden."
+
+msgid "Repository updates finished. Check again to refresh the list."
+msgstr "Aktualisierungen aus den Paketquellen abgeschlossen. Prüfen Sie erneut, um die Liste aufzufrischen."
+
+#, python-brace-format
+msgid "Repository {repository}"
+msgstr "Paketquelle {repository}"
+
+msgid "Request too large"
+msgstr "Anfrage zu groß"
+
+msgid "Restart into the normal system before changing programs. Nothing was removed."
+msgstr "Starten Sie vor Programmänderungen in das normale System neu. Es wurde nichts entfernt."
+
+msgid "Restart into the normal system before installing programs."
+msgstr "Starten Sie vor der Programminstallation in das normale System neu."
+
+msgid "Restart into the normal system before removing programs. Nothing was removed."
+msgstr "Starten Sie vor dem Entfernen von Programmen in das normale System neu. Es wurde nichts entfernt."
+
+msgid "Restart into the normal system before updating repository packages."
+msgstr "Starten Sie vor dem Aktualisieren von Paketen aus Paketquellen in das normale System neu."
+
+msgid "Restart to finish the update"
+msgstr "Zum Abschließen der Aktualisierung neu starten"
+
+msgid "Restore is available only from the normal installed system."
+msgstr "Die Wiederherstellung ist nur vom normalen installierten System aus verfügbar."
+
+msgid "Restore points are unavailable on this system."
+msgstr "Wiederherstellungspunkte sind auf diesem System nicht verfügbar."
+
+msgid "Restore-point protection for system changes. Read its setup instructions before relying on it."
+msgstr "Schutz durch Wiederherstellungspunkte bei Systemänderungen. Lesen Sie die Einrichtungsanleitung, bevor Sie sich darauf verlassen."
+
+msgid "Reviews cannot contain the “<” sign. Remove it and send again."
+msgstr "Rezensionen dürfen das Zeichen „<“ nicht enthalten. Entfernen Sie es und senden Sie erneut."
+
+msgid "Select one AUR program and its reviewed install."
+msgstr "Wählen Sie ein AUR-Programm und seine geprüfte Installation."
+
+msgid "Select one repository program and its preview."
+msgstr "Wählen Sie ein Programm aus einer Paketquelle und seine Vorschau."
+
+msgid "Select one repository program."
+msgstr "Wählen Sie ein Programm aus einer Paketquelle."
+
+msgid "Session sudo key"
+msgstr "Sudo-Schlüssel für die Sitzung"
+
+msgid "Snapshot guard"
+msgstr "Schnappschussschutz"
+
+#, python-brace-format
+msgid "Software changes are blocked by a lock left by an earlier operation. Close all software installers and updaters. An administrator must check that none is running before removing {path}. Then try again. Nothing was removed automatically."
+msgstr "Softwareänderungen werden durch eine Sperre eines früheren Vorgangs blockiert. Schließen Sie alle Installations- und Aktualisierungsprogramme. Ein Administrator muss vor dem Entfernen von {path} prüfen, dass keines mehr läuft. Versuchen Sie es danach erneut. Es wurde nichts automatisch entfernt."
+
+msgid "Some packages from the failed install remain. Restore the pre-install snapshot before trying again."
+msgstr "Einige Pakete der fehlgeschlagenen Installation bleiben zurück. Stellen Sie vor einem erneuten Versuch den Schnappschuss vor der Installation wieder her."
+
+msgid "Space exclusively held by retained snapshots, including their shared extents."
+msgstr "Ausschließlich von aufbewahrten Schnappschüssen belegter Speicher, einschließlich ihrer gemeinsamen Extents."
+
+msgid "Starting repository installation."
+msgstr "Installation aus Paketquellen wird gestartet."
+
+msgid "Starting the install from the AUR."
+msgstr "Installation aus dem AUR wird gestartet."
+
+msgid "Storage inventory took too long. Nothing was removed."
+msgstr "Die Speicherbestandsaufnahme dauerte zu lange. Es wurde nichts entfernt."
+
+msgid "System and Flatpak updates finished. For AUR updates, where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "System- und Flatpak-Aktualisierungen abgeschlossen. Öffnen Sie für AUR-Aktualisierungen, falls verfügbar, die Programmseite zum Bauen oder verwenden Sie Ihr AUR-Werkzeug."
+
+msgid "System restore points could not be read or restored."
+msgstr "Systemwiederherstellungspunkte konnten nicht gelesen oder wiederhergestellt werden."
+
+msgid "System updates finished, but Flatpak updates did not finish. Review the details before trying again."
+msgstr "Systemaktualisierungen abgeschlossen, Flatpak-Aktualisierungen jedoch nicht. Prüfen Sie vor einem erneuten Versuch die Details."
+
+msgid "The AUR could not be checked for this program."
+msgstr "Das AUR konnte für dieses Programm nicht geprüft werden."
+
+msgid "The AUR did not answer for this program. Try again later."
+msgstr "Das AUR hat für dieses Programm nicht geantwortet. Versuchen Sie es später erneut."
+
+msgid "The AUR package information could not be read."
+msgstr "Die AUR-Paketinformationen konnten nicht gelesen werden."
+
+msgid "The AUR packages of this program depend on each other in a circle."
+msgstr "Die AUR-Pakete dieses Programms haben zyklische Abhängigkeiten."
+
+msgid "The AUR program or its packages changed. Review the install again."
+msgstr "Das AUR-Programm oder seine Pakete haben sich geändert. Prüfen Sie die Installation erneut."
+
+msgid "The AUR recipe has no published commit"
+msgstr "Die AUR-Bauanleitung hat keinen veröffentlichten Commit"
+
+msgid "The AUR redirected an RPC request"
+msgstr "Das AUR hat eine RPC-Anfrage umgeleitet"
+
+msgid "The AUR redirected the metadata archive"
+msgstr "Das AUR hat das Metadatenarchiv umgeleitet"
+
+msgid "The AUR redirected the recipe address"
+msgstr "Das AUR hat die Adresse der Bauanleitung umgeleitet"
+
+msgid "The AUR section is off. Open it and read the warning first."
+msgstr "Der AUR-Bereich ist ausgeschaltet. Öffnen Sie ihn und lesen Sie zuerst die Warnung."
+
+msgid "The Arch news feed could not be read."
+msgstr "Der Arch-Neuigkeiten-Feed konnte nicht gelesen werden."
+
+msgid "The Flatpak installation could not be read."
+msgstr "Die Flatpak-Installation konnte nicht gelesen werden."
+
+msgid "The Flatpak package list contains duplicate entries."
+msgstr "Die Flatpak-Paketliste enthält doppelte Einträge."
+
+msgid "The Flatpak package list could not be read."
+msgstr "Die Flatpak-Paketliste konnte nicht gelesen werden."
+
+msgid "The JSON service takes requests on standard input."
+msgstr "Der JSON-Dienst nimmt Anfragen über die Standardeingabe entgegen."
+
+msgid "The NVIDIA support packages are not available. Refresh repository updates and try again."
+msgstr "Die NVIDIA-Unterstützungspakete sind nicht verfügbar. Suchen Sie erneut nach Aktualisierungen und versuchen Sie es dann noch einmal."
+
+#, python-brace-format
+msgid "The Programs & Updates window could not be shown: {0}"
+msgstr "Das Fenster „Programme & Aktualisierungen“ konnte nicht angezeigt werden: {0}"
+
+msgid "The available package list could not be read."
+msgstr "Die Liste verfügbarer Pakete konnte nicht gelesen werden."
+
+#, python-brace-format
+msgid "The build of {package} did not produce: {missing}."
+msgstr "Der Bau von {package} hat Folgendes nicht erzeugt: {missing}."
+
+msgid "The date of the last full update is unknown. Review all the available Arch news notices."
+msgstr "Das Datum der letzten vollständigen Aktualisierung ist unbekannt. Lesen Sie alle verfügbaren Arch-Neuigkeiten."
+
+msgid "The desktop will change. Save your work, sign out and sign in again after updating."
+msgstr "Der Desktop wird geändert. Speichern Sie Ihre Arbeit und melden Sie sich nach der Aktualisierung ab und wieder an."
+
+msgid "The free-space check could not finish. The update was not started."
+msgstr "Die Prüfung des freien Speichers konnte nicht abgeschlossen werden. Die Aktualisierung wurde nicht gestartet."
+
+msgid "The install could not be saved for Undo. The added packages will be removed."
+msgstr "Die Installation konnte nicht zum Rückgängigmachen gespeichert werden. Die hinzugefügten Pakete werden entfernt."
+
+msgid "The install was taken back."
+msgstr "Die Installation wurde zurückgenommen."
+
+msgid "The installed package list could not be read."
+msgstr "Die Liste installierter Pakete konnte nicht gelesen werden."
+
+msgid "The installed package versions could not be read."
+msgstr "Die installierten Paketversionen konnten nicht gelesen werden."
+
+msgid "The kernel will change. Restart the computer after updating."
+msgstr "Der Kernel wird geändert. Starten Sie den Computer nach der Aktualisierung neu."
+
+msgid "The list of packages to remove changed. Review it again."
+msgstr "Die Liste der zu entfernenden Pakete hat sich geändert. Prüfen Sie sie erneut."
+
+msgid "The new kernel and system services start after a restart. Save your work first."
+msgstr "Der neue Kernel und die Systemdienste starten nach einem Neustart. Speichern Sie vorher Ihre Arbeit."
+
+msgid "The online information could not be checked. Check your connection, then try again."
+msgstr "Die Online-Informationen konnten nicht geprüft werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+
+msgid "The package source redirected to an insecure address."
+msgstr "Die Paketquelle hat auf eine unsichere Adresse umgeleitet."
+
+msgid "The package source returned too much data."
+msgstr "Die Paketquelle hat zu viele Daten zurückgegeben."
+
+msgid "The package state after the failed install could not be restored. Use the pre-install snapshot."
+msgstr "Der Paketzustand nach der fehlgeschlagenen Installation konnte nicht wiederhergestellt werden. Verwenden Sie den Schnappschuss vor der Installation."
+
+msgid "The packages to install could not be checked."
+msgstr "Die zu installierenden Pakete konnten nicht geprüft werden."
+
+msgid "The popular AUR list comes from an older check."
+msgstr "Die Liste beliebter AUR-Pakete stammt aus einer älteren Prüfung."
+
+msgid "The popular AUR list could not be read. Search still works."
+msgstr "Die Liste beliebter AUR-Pakete konnte nicht gelesen werden. Die Suche funktioniert weiterhin."
+
+msgid "The program could not be removed. Nothing was changed."
+msgstr "Das Programm konnte nicht entfernt werden. Es wurde nichts geändert."
+
+msgid "The program from the AUR is installed."
+msgstr "Das Programm aus dem AUR ist installiert."
+
+msgid "The program manager operation could not finish."
+msgstr "Der Vorgang der Programmverwaltung konnte nicht abgeschlossen werden."
+
+msgid "The program manager request is invalid."
+msgstr "Die Anfrage an die Programmverwaltung ist ungültig."
+
+msgid "The program was removed."
+msgstr "Das Programm wurde entfernt."
+
+msgid "The ratings index could not be read."
+msgstr "Der Bewertungsindex konnte nicht gelesen werden."
+
+msgid "The ratings index is not an object."
+msgstr "Der Bewertungsindex ist kein Objekt."
+
+msgid "The ratings service did not accept the review."
+msgstr "Der Bewertungsdienst hat die Rezension nicht angenommen."
+
+msgid "The ratings service redirected to an insecure address."
+msgstr "Der Bewertungsdienst hat auf eine unsichere Adresse umgeleitet."
+
+msgid "The ratings service returned too much data."
+msgstr "Der Bewertungsdienst hat zu viele Daten zurückgegeben."
+
+msgid "The recipe is not the reviewed commit."
+msgstr "Die Bauanleitung entspricht nicht dem geprüften Commit."
+
+msgid "The release page could not be read."
+msgstr "Die Versionsseite konnte nicht gelesen werden."
+
+msgid "The release page has an unexpected address."
+msgstr "Die Versionsseite hat eine unerwartete Adresse."
+
+msgid "The removal could not be checked. Nothing was removed."
+msgstr "Das Entfernen konnte nicht geprüft werden. Es wurde nichts entfernt."
+
+msgid "The removal did not finish as expected. Check the installed programs again."
+msgstr "Das Entfernen wurde nicht wie erwartet abgeschlossen. Prüfen Sie die installierten Programme erneut."
+
+msgid "The removal preview lists a package twice."
+msgstr "Die Entfernungsvorschau führt ein Paket doppelt auf."
+
+msgid "The restart was not authorized. Try again from the power menu."
+msgstr "Der Neustart wurde nicht autorisiert. Versuchen Sie es erneut über das Ein-/Ausschaltmenü."
+
+msgid "The restore point from before this install changed or is no longer available. Nothing was restored."
+msgstr "Der Wiederherstellungspunkt vor dieser Installation hat sich geändert oder ist nicht mehr verfügbar. Es wurde nichts wiederhergestellt."
+
+msgid "The restore point from before this install is unavailable."
+msgstr "Der Wiederherstellungspunkt vor dieser Installation ist nicht verfügbar."
+
+msgid "The restore point list is unavailable. Try again shortly."
+msgstr "Die Liste der Wiederherstellungspunkte ist nicht verfügbar. Versuchen Sie es in Kürze erneut."
+
+msgid "The result could not be checked. Look at Installed before trying again."
+msgstr "Das Ergebnis konnte nicht geprüft werden. Sehen Sie vor einem erneuten Versuch unter „Installiert“ nach."
+
+msgid "The review could not be sent. Check your connection and try again."
+msgstr "Die Rezension konnte nicht gesendet werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+
+msgid "The review could not be sent. Its key could not be saved in your home folder."
+msgstr "Die Rezension konnte nicht gesendet werden. Ihr Schlüssel konnte nicht in Ihrem persönlichen Ordner gespeichert werden."
+
+msgid "The review identity could not be saved."
+msgstr "Die Rezensionskennung konnte nicht gespeichert werden."
+
+msgid "The reviews answer is not a list."
+msgstr "Die Antwort mit Rezensionen ist keine Liste."
+
+msgid "The selected system restore point is ready. Restart to use it. Your home folder was left untouched."
+msgstr "Der ausgewählte Systemwiederherstellungspunkt ist bereit. Starten Sie neu, um ihn zu verwenden. Ihr persönlicher Ordner wurde nicht verändert."
+
+msgid "The service result could not be observed. Check its journal before retrying."
+msgstr "Das Dienstergebnis konnte nicht beobachtet werden. Prüfen Sie vor einem erneuten Versuch das Journal."
+
+msgid "The snapshot check could not be cleaned up. Nothing was installed."
+msgstr "Die Schnappschussprüfung konnte nicht bereinigt werden. Es wurde nichts installiert."
+
+msgid "The system restore connection ended. Check the restore status before trying again."
+msgstr "Die Verbindung zur Systemwiederherstellung wurde beendet. Prüfen Sie vor einem erneuten Versuch den Wiederherstellungsstatus."
+
+msgid "The system restore did not finish. Review the details before trying again."
+msgstr "Die Systemwiederherstellung wurde nicht abgeschlossen. Prüfen Sie vor einem erneuten Versuch die Details."
+
+msgid "The system restore request was not authorized."
+msgstr "Die Systemwiederherstellungsanfrage wurde nicht autorisiert."
+
+msgid "The system restore status could not be checked. Nothing was installed."
+msgstr "Der Systemwiederherstellungsstatus konnte nicht geprüft werden. Es wurde nichts installiert."
+
+msgid "The system restore status could not be checked. The update was not started."
+msgstr "Der Systemwiederherstellungsstatus konnte nicht geprüft werden. Die Aktualisierung wurde nicht gestartet."
+
+msgid "The system restore status could not be read."
+msgstr "Der Systemwiederherstellungsstatus konnte nicht gelesen werden."
+
+msgid "The system restore status is invalid."
+msgstr "Der Systemwiederherstellungsstatus ist ungültig."
+
+msgid "The system update did not finish, so nothing was built."
+msgstr "Die Systemaktualisierung wurde nicht abgeschlossen, daher wurde nichts gebaut."
+
+msgid "The transaction connection ended. Check the installed state before trying again."
+msgstr "Die Transaktionsverbindung wurde beendet. Prüfen Sie vor einem erneuten Versuch den Installationszustand."
+
+msgid "The transaction plan changed. Review it again."
+msgstr "Der Transaktionsplan hat sich geändert. Prüfen Sie ihn erneut."
+
+msgid "The transaction result could not be checked. Check repository updates before trying again."
+msgstr "Das Transaktionsergebnis konnte nicht geprüft werden. Prüfen Sie vor einem erneuten Versuch die Aktualisierungen aus den Paketquellen."
+
+msgid "The transaction was not authorized."
+msgstr "Die Transaktion wurde nicht autorisiert."
+
+msgid "The undo could not be checked. Nothing was removed."
+msgstr "Das Rückgängigmachen konnte nicht geprüft werden. Es wurde nichts entfernt."
+
+msgid "The undo did not finish as expected. Check the installed programs again."
+msgstr "Das Rückgängigmachen wurde nicht wie erwartet abgeschlossen. Prüfen Sie die installierten Programme erneut."
+
+msgid "The undo did not finish. Nothing was removed."
+msgstr "Das Rückgängigmachen wurde nicht abgeschlossen. Es wurde nichts entfernt."
+
+msgid "The update connection ended. Reopen the window to check the result; a started update keeps running."
+msgstr "Die Aktualisierungsverbindung wurde beendet. Öffnen Sie das Fenster erneut, um das Ergebnis zu prüfen; eine gestartete Aktualisierung läuft weiter."
+
+msgid "The update did not finish. Open the update details with an administrator before trying again."
+msgstr "Die Aktualisierung wurde nicht abgeschlossen. Öffnen Sie vor einem erneuten Versuch die Aktualisierungsdetails mit Administratorrechten."
+
+msgid "The update did not finish. Review the details before trying again."
+msgstr "Die Aktualisierung wurde nicht abgeschlossen. Prüfen Sie vor einem erneuten Versuch die Details."
+
+msgid "The update did not finish. Some packages changed. Review the details before trying again."
+msgstr "Die Aktualisierung wurde nicht abgeschlossen. Einige Pakete wurden geändert. Prüfen Sie vor einem erneuten Versuch die Details."
+
+msgid "The update download list could not be read."
+msgstr "Die Downloadliste der Aktualisierung konnte nicht gelesen werden."
+
+msgid "The update operation could not start. Check that the update manager is installed correctly."
+msgstr "Der Aktualisierungsvorgang konnte nicht gestartet werden. Prüfen Sie, ob die Aktualisierungsverwaltung korrekt installiert ist."
+
+msgid "The update service could not be started or observed. A started update keeps running; check its result before trying again."
+msgstr "Der Aktualisierungsdienst konnte nicht gestartet oder beobachtet werden. Eine gestartete Aktualisierung läuft weiter; prüfen Sie vor einem erneuten Versuch ihr Ergebnis."
+
+msgid "The update was not started."
+msgstr "Die Aktualisierung wurde nicht gestartet."
+
+msgid "The upgrade checks the repositories again. Its final package list and download size may change."
+msgstr "Die Aktualisierung prüft die Paketquellen erneut. Ihre endgültige Paketliste und Downloadgröße können sich ändern."
+
+msgid "There is no recorded install of this program to take back."
+msgstr "Für dieses Programm ist keine Installation zum Zurücknehmen aufgezeichnet."
+
+#, python-brace-format
+msgid "These installed packages were not found in AUR: {packages}."
+msgstr "Diese installierten Pakete wurden nicht im AUR gefunden: {packages}."
+
+msgid "These packages will be removed."
+msgstr "Diese Pakete werden entfernt."
+
+msgid "This additional Flatpak installation is read-only in this program manager."
+msgstr "Diese zusätzliche Flatpak-Installation ist in dieser Programmverwaltung schreibgeschützt."
+
+msgid "This existing Flatpak program can be removed from your account without administrator authentication."
+msgstr "Dieses vorhandene Flatpak-Programm kann ohne Administratorauthentifizierung aus Ihrem Konto entfernt werden."
+
+msgid "This hardware uses the built-in graphics driver. NVIDIA support is not needed."
+msgstr "Diese Hardware verwendet den eingebauten Grafiktreiber. NVIDIA-Unterstützung ist nicht erforderlich."
+
+msgid "This install can no longer be taken back as it was."
+msgstr "Diese Installation kann nicht mehr in ihrer ursprünglichen Form zurückgenommen werden."
+
+msgid "This install can no longer be taken back as it was. Nothing was removed."
+msgstr "Diese Installation kann nicht mehr in ihrer ursprünglichen Form zurückgenommen werden. Es wurde nichts entfernt."
+
+msgid "This install changed existing packages. Undo restores the whole system to the snapshot before the install and discards system changes made since then. Restart to use it. Your /home files stay untouched."
+msgstr "Diese Installation hat vorhandene Pakete geändert. Rückgängigmachen stellt das gesamte System auf den Schnappschuss vor der Installation zurück und verwirft seitherige Systemänderungen. Starten Sie neu, um es zu verwenden. Ihre Dateien in /home bleiben unverändert."
+
+msgid "This package is not a program you can remove here."
+msgstr "Dieses Paket ist kein Programm, das Sie hier entfernen können."
+
+msgid "This program has no ratings yet."
+msgstr "Dieses Programm hat noch keine Bewertungen."
+
+msgid "This program is already installed in its newest version."
+msgstr "Dieses Programm ist bereits in der neuesten Version installiert."
+
+msgid "This program is no longer in the catalog. Refresh the catalog."
+msgstr "Dieses Programm ist nicht mehr im Katalog. Frischen Sie den Katalog auf."
+
+msgid "This program is no longer installed."
+msgstr "Dieses Programm ist nicht mehr installiert."
+
+msgid "This program is not installed."
+msgstr "Dieses Programm ist nicht installiert."
+
+msgid "This program needs a package that is neither in Arch nor in the AUR."
+msgstr "Dieses Programm benötigt ein Paket, das weder bei Arch noch im AUR vorhanden ist."
+
+msgid "This program pulls in too many packages to build here."
+msgstr "Dieses Programm benötigt zu viele Pakete, um hier gebaut zu werden."
+
+msgid "This repository program is no longer available."
+msgstr "Dieses Programm aus einer Paketquelle ist nicht mehr verfügbar."
+
+msgid "This restore point changed or is no longer available. Load the list again."
+msgstr "Dieser Wiederherstellungspunkt hat sich geändert oder ist nicht mehr verfügbar. Laden Sie die Liste erneut."
+
+msgid "This review cannot be sent. Choose the stars and write a title and a few words."
+msgstr "Diese Rezension kann nicht gesendet werden. Wählen Sie die Sterne und schreiben Sie einen Titel und ein paar Worte."
+
+msgid "Truncated AUR metadata archive"
+msgstr "Unvollständiges AUR-Metadatenarchiv"
+
+msgid "Unexpected popularity redirect"
+msgstr "Unerwartete Weiterleitung der Beliebtheitsabfrage"
+
+msgid "Unknown method"
+msgstr "Unbekannte Methode"
+
+msgid "Untrusted receipt file"
+msgstr "Nicht vertrauenswürdige Belegdatei"
+
+msgid "Update service failed; details: journalctl -u emaki-update.service"
+msgstr "Aktualisierungsdienst fehlgeschlagen; Details: journalctl -u emaki-update.service"
+
+msgid "Updated"
+msgstr "Aktualisiert"
+
+msgid "Updates always include the full system"
+msgstr "Aktualisierungen umfassen immer das gesamte System"
+
+msgid "Updating Flatpak applications"
+msgstr "Flatpak-Anwendungen werden aktualisiert"
+
+#, python-brace-format
+msgid "Updating Flatpak applications ({scope})…"
+msgstr "Flatpak-Anwendungen werden aktualisiert ({scope})…"
+
+msgid "Updating all repository packages. You can hide this window; the update will keep running."
+msgstr "Alle Pakete aus Paketquellen werden aktualisiert. Sie können dieses Fenster ausblenden; die Aktualisierung läuft weiter."
+
+msgid "Usage: emaki-programs list|preview PACKAGE|remove PACKAGE TOKEN --json"
+msgstr "Aufruf: emaki-programs list|preview PACKAGE|remove PACKAGE TOKEN --json"
+
+msgid "Usage: emaki-programs ratings ID... | reviews ID... | review JSON"
+msgstr "Aufruf: emaki-programs ratings ID... | reviews ID... | review JSON"
+
+msgid "Usage: emaki-update-manager [--status|--check|--updates]"
+msgstr "Aufruf: emaki-update-manager [--status|--check|--updates]"
+
+msgid "Waiting for permission to update…"
+msgstr "Warten auf die Berechtigung zum Aktualisieren…"
+
+msgid "Warning: the update space check is unavailable; the package transaction will continue."
+msgstr "Warnung: Die Speicherprüfung für die Aktualisierung ist nicht verfügbar; die Pakettransaktion wird fortgesetzt."
+
+msgid "What the undo removes changed. Review it again."
+msgstr "Der Umfang des Rückgängigmachens hat sich geändert. Prüfen Sie ihn erneut."
+
+msgid "You have already reviewed this program."
+msgstr "Sie haben dieses Programm bereits bewertet."
+
+#, python-brace-format
+msgid "Your package settings hold back these updates: {packages}."
+msgstr "Ihre Paketeinstellungen halten diese Aktualisierungen zurück: {packages}."
+
+msgid "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
+msgstr "Ihr System kann in den Zustand vor dieser Installation zurückkehren. Starten Sie zum Abschließen neu. Dateien in Ihrem persönlichen Ordner bleiben unverändert."
+
+msgid "open the update manager as a regular user"
+msgstr "Öffnen Sie die Aktualisierungsverwaltung als regulärer Benutzer"
+
+#, python-brace-format
+msgid "{command} failed with status {status}"
+msgstr "{command} ist mit Status {status} fehlgeschlagen"
+
+#, python-brace-format
+msgid "{error} The unused snapshot will be removed by scheduled cleanup."
+msgstr "{error} Der ungenutzte Schnappschuss wird bei der geplanten Bereinigung entfernt."
+
+#, python-brace-format
+msgid "{package} was built but could not be installed."
+msgstr "{package} wurde gebaut, konnte aber nicht installiert werden."
+
+msgid "Choose a shorter name without control characters."
+msgstr "Wählen Sie einen kürzeren Namen ohne Steuerzeichen."
+
+msgid "Close this website app before removing it."
+msgstr "Schließen Sie diese Website-App, bevor Sie sie entfernen."
+
+msgid "Development kits need system snapshots. This system does not support them."
+msgstr "Entwicklungskits benötigen Systemschnappschüsse. Dieses System unterstützt sie nicht."
+
+msgid "Docker setup did not finish. Review the transaction details."
+msgstr "Die Docker-Einrichtung wurde nicht abgeschlossen. Prüfen Sie die Transaktionsdetails."
+
+msgid "Enter a complete http:// or https:// website address."
+msgstr "Geben Sie eine vollständige Website-Adresse mit http:// oder https:// ein."
+
+msgid "Install the Rust packages before finishing setup."
+msgstr "Installieren Sie die Rust-Pakete, bevor Sie die Einrichtung abschließen."
+
+msgid "Installing the stable Rust toolchain for your user."
+msgstr "Die stabile Rust-Toolchain wird für Ihr Benutzerkonto installiert."
+
+msgid "Invalid development kit."
+msgstr "Ungültiges Entwicklungskit."
+
+msgid "No development kit installation receipt is available."
+msgstr "Es ist kein Installationsnachweis für das Entwicklungskit vorhanden."
+
+msgid "No removable development kit packages are installed."
+msgstr "Es sind keine entfernbaren Pakete des Entwicklungskits installiert."
+
+msgid "Other installed software needs this development kit, so it stays."
+msgstr "Andere installierte Software benötigt dieses Entwicklungskit. Es bleibt daher installiert."
+
+msgid "Rust packages are installed, but the stable toolchain did not finish. Choose Finish setup to retry."
+msgstr "Die Rust-Pakete sind installiert, aber die Installation der stabilen Toolchain wurde nicht abgeschlossen. Wählen Sie „Einrichtung abschließen“, um es erneut zu versuchen."
+
+msgid "Select a signed-in user for Docker access."
+msgstr "Wählen Sie einen angemeldeten Benutzer für den Docker-Zugriff."
+
+msgid "The Rust toolchain must be installed as your user, not as administrator."
+msgstr "Die Rust-Toolchain muss unter Ihrem Benutzerkonto installiert werden, nicht als Administrator."
+
+msgid "The development kit packages are unavailable. Refresh the catalog and try again."
+msgstr "Die Pakete des Entwicklungskits sind nicht verfügbar. Frischen Sie den Katalog auf und versuchen Sie es erneut."
+
+msgid "The development kit receipt could not be saved. Review the system restore point before retrying."
+msgstr "Der Nachweis des Entwicklungskits konnte nicht gespeichert werden. Prüfen Sie den Systemwiederherstellungspunkt, bevor Sie es erneut versuchen."
+
+msgid "The development kit removal did not finish. Review the transaction details."
+msgstr "Das Entfernen des Entwicklungskits wurde nicht abgeschlossen. Prüfen Sie die Transaktionsdetails."
+
+msgid "The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged."
+msgstr "Das Entwicklungskit wurde entfernt. Docker-Images und -Container, persönliche Projekte und Rust-Toolchains bleiben unverändert."
+
+msgid "The installed packages %(packages)s conflict with this development kit; remove them first if you want to use this kit."
+msgstr "Die installierten Pakete %(packages)s stehen in Konflikt mit diesem Entwicklungskit. Entfernen Sie sie zuerst, wenn Sie dieses Entwicklungskit verwenden möchten."
+
+msgid "The stable Rust toolchain is ready. Use cargo +stable for this toolchain."
+msgstr "Die stabile Rust-Toolchain ist bereit. Verwenden Sie cargo +stable für diese Toolchain."
+
+msgid "The website app files have changed. Nothing was removed."
+msgstr "Die Dateien der Website-App haben sich geändert. Es wurde nichts entfernt."
+
+msgid "The website app folder is not safe to change."
+msgstr "Der Ordner der Website-App kann nicht sicher geändert werden."
+
+msgid "These development kit packages will be removed. Shared system packages stay installed."
+msgstr "Diese Pakete des Entwicklungskits werden entfernt. Gemeinsam genutzte Systempakete bleiben installiert."
+
+msgid "This website app is invalid."
+msgstr "Diese Website-App ist ungültig."
+
+msgid "This website app no longer exists."
+msgstr "Diese Website-App ist nicht mehr vorhanden."
+
+msgid "Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched."
+msgstr "Beim Rückgängigmachen wird das gesamte System auf den Schnappschuss vor der Installation dieses Entwicklungskits zurückgesetzt, einschließlich Docker-Zugriff und Socket-Einstellungen. Seitdem vorgenommene Systemänderungen werden verworfen. Starten Sie neu, um diesen Stand zu verwenden. Ihre Dateien im persönlichen Ordner und Ihre Rust-Toolchains bleiben unverändert."
+
+msgid "Website app added. Find it in the launcher."
+msgstr "Website-App hinzugefügt. Sie finden sie im Starter."
+
+msgid "Website app added. Its name or icon could not be fetched; a generated icon is used when needed."
+msgstr "Website-App hinzugefügt. Ihr Name oder Symbol konnte nicht abgerufen werden; bei Bedarf wird ein erzeugtes Symbol verwendet."
+
+msgid "Website app removed."
+msgstr "Website-App entfernt."
+
+
+#, python-brace-format
+msgid "AppStream metadata is unreadable: {path}: {error}"
+msgstr "Die AppStream-Metadaten sind nicht lesbar: {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata could not be parsed (parser unavailable): {path}: {error}"
+msgstr "Die AppStream-Metadaten konnten nicht verarbeitet werden (Parser nicht verfügbar): {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata is invalid: {path}: {error}"
+msgstr "Die AppStream-Metadaten sind ungültig: {path}: {error}"
+
+#, python-brace-format
+msgid "{value} MB"
+msgstr "{value} MB"
+
+#, python-brace-format
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#, python-brace-format
+msgid "Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable."
+msgstr "Für sich genommen belegen die Schnappschüsse mindestens {size} exklusiven Speicher; wie viel Speicher sich die Schnappschüsse teilen, ist nicht bekannt."
+
+#, python-brace-format
+msgid "{value} B"
+msgstr "{value} B"

@@ -174,9 +174,9 @@ class SpanishCatalogues(unittest.TestCase):
                             forms = translation.findall('numerusform')
                             for count in (0, 1, 2, 5):
                                 expected = forms[0 if count == 1 else 1].text.replace('%n', str(count))
-                                entries.append([context.findtext('name'), source, count, expected])
+                                entries.append([context.findtext('name'), source, count, expected, message.findtext('comment', '')])
                         else:
-                            entries.append([context.findtext('name'), source, -1, translation.text])
+                            entries.append([context.findtext('name'), source, -1, translation.text, message.findtext('comment', '')])
             fixture.write_text('''import QtQuick
 import Quickshell
 import Emaki.I18n
@@ -184,7 +184,7 @@ ShellRoot {
     property var entries: ENTRIES
     Timer { interval: 10; running: true; onTriggered: {
         for (const entry of entries) {
-            const translated = qsTranslate(entry[0], entry[1], "", entry[2]);
+            const translated = qsTranslate(entry[0], entry[1], entry[4], entry[2]);
             if (translated !== entry[3]) {
                 console.error("SPANISH_MISMATCH", JSON.stringify(entry), translated);
                 Qt.exit(1); return;

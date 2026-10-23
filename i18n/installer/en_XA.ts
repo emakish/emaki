@@ -38,6 +38,58 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Ŕéàðîñĝ ţĥé ðîšķ àĝàîñ…·······]</translation>
         </message>
         <message>
+            <source>English (US)</source>
+            <translation>[Éñĝļîšĥ (ÛŠ)···]</translation>
+        </message>
+        <message>
+            <source>English (UK)</source>
+            <translation>[Éñĝļîšĥ (ÛĶ)···]</translation>
+        </message>
+        <message>
+            <source>German</source>
+            <translation>[Ĝéŕɱàñ·]</translation>
+        </message>
+        <message>
+            <source>French</source>
+            <translation>[Ƒŕéñçĥ·]</translation>
+        </message>
+        <message>
+            <source>Russian</source>
+            <translation>[Ŕûššîàñ·]</translation>
+        </message>
+        <message>
+            <source>Spanish</source>
+            <translation>[Šþàñîšĥ·]</translation>
+        </message>
+        <message>
+            <source>Spanish (Latin American)</source>
+            <translation>[Šþàñîšĥ (Ļàţîñ Àɱéŕîçàñ)·······]</translation>
+        </message>
+        <message>
+            <source>Portuguese (Brazil)</source>
+            <translation>[Þöŕţûĝûéšé (Ɓŕàžîļ)·····]</translation>
+        </message>
+        <message>
+            <source>Portuguese</source>
+            <translation>[Þöŕţûĝûéšé··]</translation>
+        </message>
+        <message>
+            <source>English (Dvorak)</source>
+            <translation>[Éñĝļîšĥ (Ðṽöŕàķ)····]</translation>
+        </message>
+        <message>
+            <source>English (Colemak)</source>
+            <translation>[Éñĝļîšĥ (Çöļéɱàķ)····]</translation>
+        </message>
+        <message>
+            <source>%1 and %2</source>
+            <translation>[%1 àñð %2··]</translation>
+        </message>
+        <message>
+            <source>%1, %2</source>
+            <translation>[%1, %2·]</translation>
+        </message>
+        <message>
             <source>Wait until the installer is ready.</source>
             <translation>[Ŵàîţ ûñţîļ ţĥé îñšţàļļéŕ îš ŕéàðÿ.··········]</translation>
         </message>
@@ -201,10 +253,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[%1 ĜîƁ·]</translation>
         </message>
         <message>
-            <source>the selected disk</source>
-            <translation>[ţĥé šéļéçţéð ðîšķ····]</translation>
-        </message>
-        <message>
             <source>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</source>
             <translation>[Šéçûŕé Ɓööţ îš öñ, ƀûţ ţĥîš çöɱþûţéŕ ðöéš ñöţ ţŕûšţ ţĥé Ṁîçŕöšöƒţ çéŕţîƒîçàţé Éɱàķî šţàŕţš ŵîţĥ. Îñ ÿöûŕ ƒîŕɱŵàŕé šéţţîñĝš, ţûŕñ öñ ţĥé ţĥîŕð-þàŕţÿ çéŕţîƒîçàţé öþţîöñ (öƒţéñ "Àļļöŵ Ṁîçŕöšöƒţ 3ŕð Þàŕţÿ ÛÉƑÎ ÇÀ") öŕ ţûŕñ Šéçûŕé Ɓööţ öƒƒ, ţĥéñ šţàŕţ ţĥé ÛŠƁ àĝàîñ.··························································································]</translation>
         </message>
@@ -347,6 +395,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>I understand %1 will be erased</source>
             <translation>[Î ûñðéŕšţàñð %1 ŵîļļ ƀé éŕàšéð·········]</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased</source>
+            <translation>[Î ûñðéŕšţàñð ţĥé šéļéçţéð ðîšķ ŵîļļ ƀé éŕàšéð··············]</translation>
         </message>
         <message>
             <source>Try again</source>
@@ -543,6 +595,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Where should Emaki go?</source>
             <translation>[Ŵĥéŕé šĥöûļð Éɱàķî ĝö?······]</translation>
+        </message>
+        <message>
+            <source>the selected disk</source>
+            <translation>[ţĥé šéļéçţéð ðîšķ····]</translation>
         </message>
         <message>
             <source>Choose a disk. The live USB and unavailable disks cannot be selected.</source>
@@ -928,6 +984,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Ŕéṽîéŵ ţĥé îñšţàļļàţîöñ þļàñ ƒöŕ %1.···········]</translation>
         </message>
         <message>
+            <source>Review the installation plan for the selected disk.</source>
+            <translation>[Ŕéṽîéŵ ţĥé îñšţàļļàţîöñ þļàñ ƒöŕ ţĥé šéļéçţéð ðîšķ.················]</translation>
+        </message>
+        <message>
             <source>Edit disk settings</source>
             <translation>[Éðîţ ðîšķ šéţţîñĝš·····]</translation>
         </message>
@@ -974,6 +1034,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Skipped</source>
             <translation>[Šķîþþéð·]</translation>
+        </message>
+        <message>
+            <source>%1%</source>
+            <translation>[%1%]</translation>
         </message>
         <message>
             <source>MAKE YOURSELF AT HOME</source>

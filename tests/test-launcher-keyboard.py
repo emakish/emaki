@@ -99,7 +99,7 @@ def run(mutation=None):
                                 env=env, capture_output=True, text=True, timeout=40)
         output = result.stdout + result.stderr
         # The completed signal precedes QtTest's cleanupTestCase counter increment.
-        assert result.returncode == 0 and 'LAUNCHER_KEYBOARD_RESULT 8 0' in output, output
+        assert result.returncode == 0 and 'LAUNCHER_KEYBOARD_RESULT 9 0' in output, output
         if mutation:
             try:
                 focus_look(output, base / 'look')

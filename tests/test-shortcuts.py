@@ -82,10 +82,14 @@ class Shortcuts(unittest.TestCase):
             'Mod+BracketLeft': 'Move window into or out of left column',
             'Mod+BracketRight': 'Move window into or out of right column',
             'Mod+V': 'Clipboard history',
+            'Mod+K': 'Command menu',
+            'Mod+Semicolon': 'Emoji',
             'Mod+L': 'Lock screen',
             'Mod+Escape': 'Power menu',
             'Mod+Shift+S': 'Take an interactive screenshot',
             'Mod+Alt+R': 'Record screen',
+            'Mod+Alt+T': 'Copy text from screen',
+            'Mod+Alt+Q': 'Read QR code',
         }
         actual = {}
         for head, children in shortcuts.nodes((ROOT / 'niri/default.kdl').read_text()):

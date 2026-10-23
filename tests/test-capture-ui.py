@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--evidence', type=Path)
+    parser.add_argument('--language', choices=('en', 'es', 'pt_BR'), default='en')
     args = parser.parse_args()
     qs = shutil.which('qs')
     assert qs, 'qs is required'
@@ -31,6 +32,9 @@ def main():
                 (profile / 'qml' / source.name).symlink_to(source)
         shutil.copyfile(ROOT / 'shell/qmldir', profile / 'qml/qmldir')
         shutil.copyfile(ROOT / 'tests/fixtures/capture-panel.qml', profile / 'qml/fixture.qml')
+        if args.language != 'en':
+            fixture = profile / 'qml/fixture.qml'
+            fixture.write_text(fixture.read_text().replace('import QtQuick\n', 'import QtQuick\nimport Emaki.I18n\n', 1))
         destination = args.evidence.resolve() if args.evidence else profile / 'images'
         destination.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, HOME=str(profile), QT_QPA_PLATFORM='offscreen',
@@ -42,6 +46,10 @@ def main():
                    DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session.sock'),
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'no-system.sock'),
                    EMAKI_CAPTURE_TEST_OUTPUT=str(destination))
+        env['EMAKI_LANGUAGE'] = args.language
+        if args.language != 'en':
+            env['EMAKI_LOCALE_DIR'] = str(ROOT / 'i18n/locale')
+            env['QML_IMPORT_PATH'] = str(ROOT / '.cache/i18n-native/qml')
         env.pop('WAYLAND_DISPLAY', None)
         env.pop('DISPLAY', None)
         for width, height in ((800, 600), (1280, 720)):
@@ -51,10 +59,10 @@ def main():
             log = result.stdout + result.stderr
             assert result.returncode == 0 and 'CAPTURE_UI_PASSED' in log, log
             assert 'CAPTURE_UI_FAILURE' not in log and 'ReferenceError' not in log and 'TypeError' not in log, log
-            for target in ('area', 'window', 'screen'):
+            for target in ('area', 'window', 'screen', 'text', 'qr'):
                 image = destination / f'{width}x{height}-{target}.png'
                 assert image.read_bytes().startswith(b'\x89PNG\r\n\x1a\n'), image
-            print(f'Capture UI {width}x{height}: area keyboard geometry, target/mode/output/window choices, label bounds, three renders OK')
+            print(f'Capture UI {args.language} {width}x{height}: area keyboard geometry, target/mode/output/window choices, recognition activation and keyboard focus, label bounds, five renders OK')
 
 
 if __name__ == '__main__':

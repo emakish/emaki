@@ -520,13 +520,13 @@ function sizeFromGiB(text) {
     return Math.round(Number(value.replace(",", ".")) * 1024) * MIB;
 }
 // Why a new partition cannot be made in a free extent: "" when it can. root: the root minimum.
-function newPartitionError(free, use, size, root) {
+function newPartitionError(free, use, size, root, language) {
     if (!free) return qsTranslate("Protocol", "Choose free space first.");
     if (!EDITOR_KINDS[use]) return qsTranslate("Protocol", "Choose what the new partition is for.");
     if (!(size > 0)) return qsTranslate("Protocol", "Type the size in GiB, for example 40 or 0.5.");
-    if (size > free.size) return qsTranslate("Protocol", "Only %1 GiB of free space is here.").arg(number(free.size / GIB, 2));
+    if (size > free.size) return qsTranslate("Protocol", "Only %1 GiB of free space is here.").arg(number(free.size / GIB, 2, language));
     const least = use === "/" ? root : EDITOR_MINIMUM[use];
-    if (size < least) return (use === "/" ? qsTranslate("Protocol", "Root needs at least %1 GiB.") : use === "/efi" ? qsTranslate("Protocol", "An EFI system partition needs at least %1 GiB.") : use === "swap" ? qsTranslate("Protocol", "Swap needs at least %1 GiB.") : qsTranslate("Protocol", "A new partition needs at least %1 GiB.")).arg(number(least / GIB, 2));
+    if (size < least) return (use === "/" ? qsTranslate("Protocol", "Root needs at least %1 GiB.") : use === "/efi" ? qsTranslate("Protocol", "An EFI system partition needs at least %1 GiB.") : use === "swap" ? qsTranslate("Protocol", "Swap needs at least %1 GiB.") : qsTranslate("Protocol", "A new partition needs at least %1 GiB.")).arg(number(least / GIB, 2, language));
     return "";
 }
 // What a deletion of another system's partition must confirm (planner.deletion_identity).
@@ -539,8 +539,8 @@ function systemLabel(value) {
     return value || "";
 }
 // One line per partition row: what it is now.
-function partitionText(p) {
-    return [p.path, qsTranslate("Protocol", "%1 GiB").arg(number(p.size_bytes / GIB, 1)), p.fs || qsTranslate("Protocol", "unformatted"), p.esp ? "EFI" : "", systemLabel(p.other_system)].filter(x => x).join(" · ");
+function partitionText(p, language) {
+    return [p.path, qsTranslate("Protocol", "%1 GiB").arg(number(p.size_bytes / GIB, 1, language)), p.fs || qsTranslate("Protocol", "unformatted"), p.esp ? "EFI" : "", systemLabel(p.other_system)].filter(x => x).join(" · ");
 }
 // planner.storage_layout: 20 GiB, plus the RAM-sized hibernation file, plus the encryption header.
 function rootMinimum(memory, hibernation, encrypted) {
@@ -560,8 +560,8 @@ function alongsideDefault(p) {
     return p ? Math.min(p.shrink.max_free_bytes, Math.max(32 * 1073741824,
         Math.floor(p.shrink.max_free_bytes / 2 / 1048576) * 1048576)) : 0;
 }
-function alongsideReview(p, freed) {
-    return p ? qsTranslate("Protocol", "Windows keeps %1 GB, Emaki gets %2 GB; back up your files first.").arg(number((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9, 2)).arg(number(freed / 1e9, 2)) : qsTranslate("Protocol", "Windows shrink is unavailable. Refresh the disk list.");
+function alongsideReview(p, freed, language) {
+    return p ? qsTranslate("Protocol", "Windows keeps %1 GB, Emaki gets %2 GB; back up your files first.").arg(number((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9, 2, language)).arg(number(freed / 1e9, 2, language)) : qsTranslate("Protocol", "Windows shrink is unavailable. Refresh the disk list.");
 }
 
 function phaseSkipped(s, phase) {
@@ -583,6 +583,9 @@ function skippedPhaseText(phase) {
 }
 
 // Preserve the ungrouped decimal sizes used by the installer.
-function number(value, digits) {
-    return value.toFixed(digits);
+function number(value, digits, language) {
+    const text = value.toFixed(digits);
+    if (!language || language.startsWith("en") || language === "C") return text;
+    const locale = Qt.locale(language.startsWith("es") ? "es_ES" : language);
+    return text.replace(".", locale.decimalPoint);
 }

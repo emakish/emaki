@@ -2,7 +2,6 @@
   "copyright": "Copyright (C) 2026 Artur Yakymenko",
   "license": "SPDX-License-Identifier: GPL-3.0-or-later",
   "messages": {
-    "%1 %2": "Fixed unit, number or placeholder-only label.",
     "%1 B": "Fixed unit, number or placeholder-only label.",
     "%1 GB": "Fixed unit, number or placeholder-only label.",
     "%1 GiB": "Fixed unit, number or placeholder-only label.",
@@ -46,7 +45,15 @@
     "Wi-Fi: ": "Product, protocol or established technical name.",
     "Windows": "Product, protocol or established technical name.",
     "WireGuard": "Product, protocol or established technical name.",
+    "d MMM yyyy, HH:mm": "Qt date pattern uses localized month and weekday names in this language’s day-month-year order.",
+    "ddd d MMM yyyy, HH:mm": "Qt date pattern uses localized month and weekday names in this language’s day-month-year order.",
     "settings: {reason}\n": "Prefix naming the emaki settings command, like the emaki: prefix.",
-    "settings> ": "Prompt naming the emaki settings command, like the emaki: prefix."
+    "settings> ": "Prompt naming the emaki settings command, like the emaki: prefix.",
+    "{amount} GiB": "The language retains this technical size unit; the number is formatted separately in the session language.",
+    "{value} GB": "The language retains this technical size unit; the number is formatted separately in the session language.",
+    "{value} GiB": "The language retains this technical size unit; the number is formatted separately in the request language.",
+    "{value} MB": "The language retains this technical size unit; the number is formatted separately in the session language.",
+    "%1, %2": "List separator between translated layout names; punctuation is shared by these languages.",
+    "{value} B": "Byte symbol used by Storage, with the separately localized grouped number."
   }
 }

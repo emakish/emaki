@@ -84,7 +84,7 @@ def run(mutant=False):
             if mutant and path.name == 'ManagerButton.qml':
                 source = source.replace('Shell.ShellPalette.accent)', 'Shell.ShellPalette.accents[0].base)')
             (root / path.name).write_text(source.replace('@EMAKI_DATADIR@', str(ROOT)))
-        shutil.copyfile(UI / 'ManagerLogic.js', root / 'ManagerLogic.js')
+        (root / 'ManagerLogic.js').write_text((UI / 'ManagerLogic.js').read_text().replace('@EMAKI_DATADIR@', str(ROOT)))
         (root / 'test.qml').write_text(QML.replace('ROOT', str(ROOT)))
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QUICK_CONTROLS_STYLE='Basic', QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1')
         for name in ('runtime', 'cache', 'config', 'data', 'state'):

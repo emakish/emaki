@@ -79,7 +79,7 @@ def main():
         root = Path(directory)
         for name, source in [('installer', ROOT / 'installer/ui'), ('programs', ROOT / 'update-manager/ui')]:
             shutil.copytree(source, root / name, ignore=shutil.ignore_patterns('tests', '__pycache__', 'artifacts'))
-            for path in (root / name).glob('*.qml'):
+            for path in list((root / name).glob('*.qml')) + list((root / name).glob('*.js')):
                 path.write_text(path.read_text().replace('file:///usr/share/emaki/shell', 'file://' + str(ROOT / 'shell')).replace('file:@EMAKI_DATADIR@/shell', 'file://' + str(ROOT / 'shell')))
         entry = root / 'English.qml'
         entry.write_text(QML)

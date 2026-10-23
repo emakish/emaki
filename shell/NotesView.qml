@@ -211,7 +211,8 @@ Item {
                             spacing: 5
                             Text { width: parent.width; text: (entry.modelData.pinned ? "⌖  " : "") + entry.modelData.title; textFormat: Text.PlainText; elide: Text.ElideRight; color: ShellPalette.settingsInk; font.family: "Noto Sans"; font.pixelSize: 14; font.weight: Font.DemiBold }
                             Text { width: parent.width; text: entry.modelData.body.split("\n").slice(1).find(line => line.trim()) || qsTranslate("NotesView", "No additional text"); textFormat: Text.PlainText; elide: Text.ElideRight; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 12 }
-                            Text { text: new Date(entry.modelData.updated * 1000).toLocaleDateString(Qt.locale(), "MMM d, yyyy"); color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
+                            //: Qt date pattern: MMM, d and yyyy are fields; put literal words in single quotes.
+                            Text { text: new Date(entry.modelData.updated * 1000).toLocaleDateString(Qt.locale(), qsTranslate("NotesView", "MMM d, yyyy")); color: ShellPalette.settingsFaint; font.family: "Noto Sans"; font.pixelSize: 11 }
                         }
                     }
                     Text { anchors.centerIn: parent; width: parent.width; visible: !list.count; text: search.text ? qsTranslate("NotesView", "No matching notes") : qsTranslate("NotesView", "A little space for your thoughts.\nCreate your first note."); horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: ShellPalette.settingsDim; font.family: "Noto Sans"; font.pixelSize: 13; lineHeight: 1.5 }

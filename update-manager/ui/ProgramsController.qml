@@ -77,6 +77,33 @@ Item {
     property var essentials: ({minimal: false, programs: []})
     // Emaki's own optional packages for this computer (update-manager/emaki-shelf.json, read by the engine).
     property var shelf: []
+    property var developmentKits: []
+    property var websiteApps: []
+    signal websiteChanged(string action)
+    property bool developmentLoaded: false
+    property bool websitesLoaded: false
+    property string planTarget: ""
+    property bool dockerAccess: false
+    function readDevelopment(): void { later("development", {}, "development"); }
+    function readWebsites(): void { later("websites", {}, "websites"); }
+    function prepareKit(row: var, action: string, access: bool): void {
+        if (busy || externalBusy || refreshPending) return;
+        clearPlan();
+        selectedEdition = Object.assign({}, row, {key: "development:" + row.id, kind: "development"});
+        planTarget = row.id; dockerAccess = access;
+        planKey = selectedEdition.key; planAction = action; previewOpen = true;
+        request("development-plan", {id: row.id, action: action, dockerAccess: access}, "planning");
+    }
+    function addWebsite(url: string, name: string): void {
+        if (busy || externalBusy || refreshPending) return;
+        message = "";
+        request("website-add", {url: url, name: name}, "websiteChange");
+    }
+    function removeWebsite(id: string): void {
+        if (busy || externalBusy || refreshPending) return;
+        message = "";
+        request("website-remove", {id: id}, "websiteChange");
+    }
     // Background reads (consent state, AUR editions) wait for the single request slot.
     property var deferred: []
     property bool externalBusy: false
@@ -242,7 +269,7 @@ Item {
         selectedEdition = Logic.edition(selectedProgram, kind);
         clearPlan();
     }
-    function clearPlan(): void { plan = null; planAction = ""; planKey = ""; previewOpen = false; message = ""; messageIsError = true; queuedAction = ""; }
+    function clearPlan(): void { planTarget = ""; dockerAccess = false; plan = null; planAction = ""; planKey = ""; previewOpen = false; message = ""; messageIsError = true; queuedAction = ""; }
     function prepareInstall(): void { prepare("install"); }
     function prepareRemove(row: var): void {
         if (row) openProgram(row);
@@ -266,6 +293,11 @@ Item {
     function executePlan(): void {
         if (busy || externalBusy || refreshPending || !plan || !plan.ok || !plan.token || !selectedEdition || plan.key !== planKey) return;
         output = ""; percent = -1; succeeded = false;
+        if (planTarget) {
+            request("development-execute", {id: planTarget, action: planAction, dockerAccess: dockerAccess, token: plan.token},
+                    (planAction === "install" || planAction === "finish") ? "installing" : planAction === "undo" ? "undoing" : "removing");
+            return;
+        }
         request("execute", {action: planAction, key: plan.key, token: plan.token},
                 planAction === "install" ? "installing" : planAction === "undo" ? "undoing" : "removing");
     }
@@ -317,11 +349,12 @@ Item {
         if (event.type !== "result") return;
         const previous = phase;
         const params = pending.params;
+        const method = pending.method;
         pending = null; phase = "idle";
         if (previous === "undoing" && event.restart === true) restoreFinished(event);
-        if (previous === "installing") {
+        if (previous === "installing" || previous === "removing" && !!planTarget) {
             recoveryPoint = !event.ok && event.restoreToken
-                ? {id: String(event.restoreToken), snapshot: String(event.snapshot || ""), operation: "install"}
+                ? {id: String(event.restoreToken), snapshot: String(event.snapshot || ""), operation: previous === "removing" ? "remove" : "install"}
                 : null;
         }
         if (!event.ok) {
@@ -331,7 +364,7 @@ Item {
             if (previous === "aur") aurKnown = true;
             if (previous === "aurPopular") { aurPopular = []; aurPopularLoaded = true; }
             messageIsError = true;
-            message = (event.message || qsTranslate("ProgramsController", "The install or removal could not finish. See the details below.")) + Logic.undoRefusal(event);
+            message = (Logic.undoRefusal(event) || event.message || qsTranslate("ProgramsController", "The install or removal could not finish. See the details below.")) + signOutNotice(event);
             if (previous === "packageDetails" && selectedEdition?.key === params.key)
                 selectedEdition = Object.assign({}, selectedEdition, {actions: []});
             if (previous === "planning") plan = null;
@@ -339,6 +372,12 @@ Item {
             if (mutatingPhase(previous)) { transactionFinished(false); refreshAfterTransaction(); }
             if (previous === "installing" && !event.notStarted && !installRefusals.includes(event.code)) offerReport();
             if (event.code === "aur-closed") { aurEnabled = false; aurRows = []; }
+            return;
+        }
+        if (previous === "development") { developmentKits = event.kits || []; developmentLoaded = true; return; }
+        if (previous === "websites" || previous === "websiteChange") {
+            websiteApps = event.apps || []; websitesLoaded = true;
+            if (previous === "websiteChange") { messageIsError = false; message = event.message || ""; websiteChanged(method === "website-add" ? "add" : "remove"); }
             return;
         }
         if (previous === "aur") {
@@ -419,13 +458,19 @@ Item {
             succeeded = true; previewOpen = false; plan = null;
             messageIsError = false;
             message = event.message || "";
+            message += signOutNotice(event);
             transactionFinished(true);
             refreshAfterTransaction();
         }
     }
+    function signOutNotice(event: var): string {
+        return planTarget === "docker" && event.signOut === true
+            ? " " + qsTranslate("ManagerView", "The group takes effect after you sign out and sign back in.") : "";
+    }
     function mutatingPhase(name: string): bool { return name === "installing" || name === "removing" || name === "undoing"; }
     function refreshAfterTransaction(): void {
         // Even a failed operation may have changed the installed state.
+        if (planTarget) readDevelopment();
         Qt.callLater(() => root.refresh());
     }
     function fail(text: string): void {

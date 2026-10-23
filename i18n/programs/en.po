@@ -127,12 +127,20 @@ msgstr "AppStream expanded input exceeds the file limit."
 msgid "AppStream input exceeds the file limit."
 msgstr "AppStream input exceeds the file limit."
 
+#, python-brace-format
+msgid "AppStream metadata could not be parsed (parser unavailable): {path}: {error}"
+msgstr "AppStream metadata could not be parsed (parser unavailable): {path}: {error}"
+
 msgid "AppStream metadata could not be read."
 msgstr "AppStream metadata could not be read."
 
 #, python-brace-format
-msgid "AppStream metadata {reason}: {path}: {error}"
-msgstr "AppStream metadata {reason}: {path}: {error}"
+msgid "AppStream metadata is invalid: {path}: {error}"
+msgstr "AppStream metadata is invalid: {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata is unreadable: {path}: {error}"
+msgstr "AppStream metadata is unreadable: {path}: {error}"
 
 msgid "Applying Flatpak transaction."
 msgstr "Applying Flatpak transaction."
@@ -178,8 +186,14 @@ msgstr "Choose a fixed update operation or --restore with a restore point token.
 msgid "Choose a restore point from the current list."
 msgstr "Choose a restore point from the current list."
 
+msgid "Choose a shorter name without control characters."
+msgstr "Choose a shorter name without control characters."
+
 msgid "Choose list or restore with an exact restore point."
 msgstr "Choose list or restore with an exact restore point."
+
+msgid "Close this website app before removing it."
+msgstr "Close this website app before removing it."
 
 msgid "Could not check updates."
 msgstr "Could not check updates."
@@ -190,8 +204,17 @@ msgstr "Could not check updates. The list is from the previous check."
 msgid "Delete unneeded files or clear the package cache in Settings > Storage, then try again."
 msgstr "Delete unneeded files or clear the package cache in Settings > Storage, then try again."
 
+msgid "Development kits need system snapshots. This system does not support them."
+msgstr "Development kits need system snapshots. This system does not support them."
+
+msgid "Docker setup did not finish. Review the transaction details."
+msgstr "Docker setup did not finish. Review the transaction details."
+
 msgid "Empty AUR metadata archive"
 msgstr "Empty AUR metadata archive"
+
+msgid "Enter a complete http:// or https:// website address."
+msgstr "Enter a complete http:// or https:// website address."
 
 msgid "Exclusive snapshot usage is unavailable."
 msgstr "Exclusive snapshot usage is unavailable."
@@ -235,8 +258,11 @@ msgid "Flatpak updates could not be checked. Check again before updating applica
 msgstr "Flatpak updates could not be checked. Check again before updating applications."
 
 #, python-brace-format
-msgid "Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable."
-msgstr "Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable."
+msgid "Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable."
+msgstr "Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable."
+
+msgid "Install the Rust packages before finishing setup."
+msgstr "Install the Rust packages before finishing setup."
 
 msgid "Installed dependencies could not be checked"
 msgstr "Installed dependencies could not be checked"
@@ -258,6 +284,9 @@ msgstr "Installed packages could not be read"
 
 msgid "Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change."
 msgstr "Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change."
+
+msgid "Installing the stable Rust toolchain for your user."
+msgstr "Installing the stable Rust toolchain for your user."
 
 msgid "Installing what the build needs from Arch."
 msgstr "Installing what the build needs from Arch."
@@ -318,6 +347,9 @@ msgstr "Invalid catalog scope"
 
 msgid "Invalid consent"
 msgstr "Invalid consent"
+
+msgid "Invalid development kit."
+msgstr "Invalid development kit."
 
 msgid "Invalid discovery option"
 msgstr "Invalid discovery option"
@@ -437,11 +469,17 @@ msgstr "NVIDIA support has no Undo button because removing graphics drivers can 
 msgid "No Flathub programs are available in the cached catalog: {scope}"
 msgstr "No Flathub programs are available in the cached catalog: {scope}"
 
+msgid "No development kit installation receipt is available."
+msgstr "No development kit installation receipt is available."
+
 msgid "No enabled, verified Flathub remote is configured."
 msgstr "No enabled, verified Flathub remote is configured."
 
 msgid "No matching after-update snapshot is available."
 msgstr "No matching after-update snapshot is available."
+
+msgid "No removable development kit packages are installed."
+msgstr "No removable development kit packages are installed."
 
 msgid "No retained snapshots were found."
 msgstr "No retained snapshots were found."
@@ -467,6 +505,9 @@ msgstr "Open Programs & Updates as a regular user."
 
 msgid "Open the AUR section and accept its warning before installing."
 msgstr "Open the AUR section and accept its warning before installing."
+
+msgid "Other installed software needs this development kit, so it stays."
+msgstr "Other installed software needs this development kit, so it stays."
 
 msgid "Other installed software needs this program, so it stays."
 msgstr "Other installed software needs this program, so it stays."
@@ -624,6 +665,12 @@ msgstr "Restore-point protection for system changes. Read its setup instructions
 msgid "Reviews cannot contain the “<” sign. Remove it and send again."
 msgstr "Reviews cannot contain the “<” sign. Remove it and send again."
 
+msgid "Rust packages are installed, but the stable toolchain did not finish. Choose Finish setup to retry."
+msgstr "Rust packages are installed, but the stable toolchain did not finish. Choose Finish setup to retry."
+
+msgid "Select a signed-in user for Docker access."
+msgstr "Select a signed-in user for Docker access."
+
 msgid "Select one AUR program and its reviewed install."
 msgstr "Select one AUR program and its reviewed install."
 
@@ -719,6 +766,9 @@ msgstr "The NVIDIA support packages are not available. Refresh repository update
 msgid "The Programs & Updates window could not be shown: {0}"
 msgstr "The Programs & Updates window could not be shown: {0}"
 
+msgid "The Rust toolchain must be installed as your user, not as administrator."
+msgstr "The Rust toolchain must be installed as your user, not as administrator."
+
 msgid "The available package list could not be read."
 msgstr "The available package list could not be read."
 
@@ -731,6 +781,18 @@ msgstr "The date of the last full update is unknown. Review all the available Ar
 
 msgid "The desktop will change. Save your work, sign out and sign in again after updating."
 msgstr "The desktop will change. Save your work, sign out and sign in again after updating."
+
+msgid "The development kit packages are unavailable. Refresh the catalog and try again."
+msgstr "The development kit packages are unavailable. Refresh the catalog and try again."
+
+msgid "The development kit receipt could not be saved. Review the system restore point before retrying."
+msgstr "The development kit receipt could not be saved. Review the system restore point before retrying."
+
+msgid "The development kit removal did not finish. Review the transaction details."
+msgstr "The development kit removal did not finish. Review the transaction details."
+
+msgid "The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged."
+msgstr "The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged."
 
 msgid "The free-space check could not finish. The update was not started."
 msgstr "The free-space check could not finish. The update was not started."
@@ -746,6 +808,10 @@ msgstr "The installed package list could not be read."
 
 msgid "The installed package versions could not be read."
 msgstr "The installed package versions could not be read."
+
+#, python-format
+msgid "The installed packages %(packages)s conflict with this development kit; remove them first if you want to use this kit."
+msgstr "The installed packages %(packages)s conflict with this development kit; remove them first if you want to use this kit."
 
 msgid "The kernel will change. Restart the computer after updating."
 msgstr "The kernel will change. Restart the computer after updating."
@@ -861,6 +927,9 @@ msgstr "The service result could not be observed. Check its journal before retry
 msgid "The snapshot check could not be cleaned up. Nothing was installed."
 msgstr "The snapshot check could not be cleaned up. Nothing was installed."
 
+msgid "The stable Rust toolchain is ready. Use cargo +stable for this toolchain."
+msgstr "The stable Rust toolchain is ready. Use cargo +stable for this toolchain."
+
 msgid "The system restore connection ended. Check the restore status before trying again."
 msgstr "The system restore connection ended. Check the restore status before trying again."
 
@@ -933,8 +1002,17 @@ msgstr "The update was not started."
 msgid "The upgrade checks the repositories again. Its final package list and download size may change."
 msgstr "The upgrade checks the repositories again. Its final package list and download size may change."
 
+msgid "The website app files have changed. Nothing was removed."
+msgstr "The website app files have changed. Nothing was removed."
+
+msgid "The website app folder is not safe to change."
+msgstr "The website app folder is not safe to change."
+
 msgid "There is no recorded install of this program to take back."
 msgstr "There is no recorded install of this program to take back."
+
+msgid "These development kit packages will be removed. Shared system packages stay installed."
+msgstr "These development kit packages will be removed. Shared system packages stay installed."
 
 #, python-brace-format
 msgid "These installed packages were not found in AUR: {packages}."
@@ -994,8 +1072,17 @@ msgstr "This restore point changed or is no longer available. Load the list agai
 msgid "This review cannot be sent. Choose the stars and write a title and a few words."
 msgstr "This review cannot be sent. Choose the stars and write a title and a few words."
 
+msgid "This website app is invalid."
+msgstr "This website app is invalid."
+
+msgid "This website app no longer exists."
+msgstr "This website app no longer exists."
+
 msgid "Truncated AUR metadata archive"
 msgstr "Truncated AUR metadata archive"
+
+msgid "Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched."
+msgstr "Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched."
 
 msgid "Unexpected popularity redirect"
 msgstr "Unexpected popularity redirect"
@@ -1040,6 +1127,15 @@ msgstr "Waiting for permission to update…"
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "Warning: the update space check is unavailable; the package transaction will continue."
 
+msgid "Website app added. Find it in the launcher."
+msgstr "Website app added. Find it in the launcher."
+
+msgid "Website app added. Its name or icon could not be fetched; a generated icon is used when needed."
+msgstr "Website app added. Its name or icon could not be fetched; a generated icon is used when needed."
+
+msgid "Website app removed."
+msgstr "Website app removed."
+
 msgid "What the undo removes changed. Review it again."
 msgstr "What the undo removes changed. Review it again."
 
@@ -1053,17 +1149,8 @@ msgstr "Your package settings hold back these updates: {packages}."
 msgid "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
 msgstr "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
 
-msgid "invalid"
-msgstr "invalid"
-
 msgid "open the update manager as a regular user"
 msgstr "open the update manager as a regular user"
-
-msgid "parser unavailable"
-msgstr "parser unavailable"
-
-msgid "unreadable"
-msgstr "unreadable"
 
 #, python-brace-format
 msgid "{command} failed with status {status}"
@@ -1076,3 +1163,15 @@ msgstr "{error} The unused snapshot will be removed by scheduled cleanup."
 #, python-brace-format
 msgid "{package} was built but could not be installed."
 msgstr "{package} was built but could not be installed."
+
+#, python-brace-format
+msgid "{value} B"
+msgstr "{value} B"
+
+#, python-brace-format
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#, python-brace-format
+msgid "{value} MB"
+msgstr "{value} MB"

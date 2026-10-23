@@ -130,10 +130,6 @@ msgstr "La entrada de AppStream supera el límite del archivo."
 msgid "AppStream metadata could not be read."
 msgstr "No se pudieron leer los metadatos de AppStream."
 
-#, python-brace-format
-msgid "AppStream metadata {reason}: {path}: {error}"
-msgstr "Metadatos de AppStream {reason}: {path}: {error}"
-
 msgid "Applying Flatpak transaction."
 msgstr "Aplicando la transacción de Flatpak."
 
@@ -234,9 +230,6 @@ msgstr "Las instalaciones de Flatpak se deshacen con su propio backend"
 msgid "Flatpak updates could not be checked. Check again before updating applications."
 msgstr "No se pudieron comprobar las actualizaciones de Flatpak. Comprueba de nuevo antes de actualizar aplicaciones."
 
-#, python-brace-format
-msgid "Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable."
-msgstr "Las instantáneas individuales ocupan al menos {bytes} bytes exclusivos; el espacio compartido entre instantáneas no está disponible."
 
 msgid "Installed dependencies could not be checked"
 msgstr "No se pudieron comprobar las dependencias instaladas"
@@ -1053,17 +1046,8 @@ msgstr "Tu configuración de paquetes retiene estas actualizaciones: {packages}.
 msgid "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
 msgstr "Tu sistema está listo para volver a su estado anterior a esta instalación. Reinicia para terminar. Los archivos de tu carpeta personal no cambiaron."
 
-msgid "invalid"
-msgstr "no válidos"
-
 msgid "open the update manager as a regular user"
 msgstr "abre el administrador de actualizaciones como usuario normal"
-
-msgid "parser unavailable"
-msgstr "analizador no disponible"
-
-msgid "unreadable"
-msgstr "ilegibles"
 
 #, python-brace-format
 msgid "{command} failed with status {status}"
@@ -1076,3 +1060,119 @@ msgstr "{error} La instantánea sin usar se quitará mediante la limpieza progra
 #, python-brace-format
 msgid "{package} was built but could not be installed."
 msgstr "Se compiló {package}, pero no se pudo instalar."
+
+msgid "Choose a shorter name without control characters."
+msgstr "Elige un nombre más corto sin caracteres de control."
+
+msgid "Close this website app before removing it."
+msgstr "Cierra esta aplicación web antes de quitarla."
+
+msgid "Development kits need system snapshots. This system does not support them."
+msgstr "Los kits de desarrollo necesitan instantáneas del sistema. Este sistema no las admite."
+
+msgid "Docker setup did not finish. Review the transaction details."
+msgstr "La configuración de Docker no terminó. Revisa los detalles de la transacción."
+
+msgid "Enter a complete http:// or https:// website address."
+msgstr "Escribe una dirección web completa con http:// o https://."
+
+msgid "Installing the stable Rust toolchain for your user."
+msgstr "Instalando las herramientas de Rust estable para tu usuario."
+
+msgid "Invalid development kit."
+msgstr "Kit de desarrollo no válido."
+
+msgid "No development kit installation receipt is available."
+msgstr "No hay ningún comprobante de instalación del kit de desarrollo."
+
+msgid "No removable development kit packages are installed."
+msgstr "No hay paquetes del kit de desarrollo instalados que se puedan quitar."
+
+msgid "Other installed software needs this development kit, so it stays."
+msgstr "Otro software instalado necesita este kit de desarrollo, por lo que se conserva."
+
+msgid "Select a signed-in user for Docker access."
+msgstr "Selecciona un usuario con sesión iniciada para el acceso a Docker."
+
+msgid "The Rust toolchain must be installed as your user, not as administrator."
+msgstr "Las herramientas de Rust deben instalarse con tu usuario, no como administrador."
+
+msgid "The development kit packages are unavailable. Refresh the catalog and try again."
+msgstr "Los paquetes del kit de desarrollo no están disponibles. Actualiza el catálogo e inténtalo de nuevo."
+
+msgid "The development kit receipt could not be saved. Review the system restore point before retrying."
+msgstr "No se pudo guardar el comprobante del kit de desarrollo. Revisa el punto de restauración del sistema antes de reintentar."
+
+msgid "The development kit removal did not finish. Review the transaction details."
+msgstr "No se terminó de quitar el kit de desarrollo. Revisa los detalles de la transacción."
+
+msgid "The stable Rust toolchain is ready. Use cargo +stable for this toolchain."
+msgstr "Las herramientas de Rust estable están listas. Usa cargo +stable para utilizarlas."
+
+msgid "The website app files have changed. Nothing was removed."
+msgstr "Los archivos de la aplicación web cambiaron. No se quitó nada."
+
+msgid "The website app folder is not safe to change."
+msgstr "No es seguro modificar la carpeta de la aplicación web."
+
+msgid "These development kit packages will be removed. Shared system packages stay installed."
+msgstr "Se quitarán estos paquetes del kit de desarrollo. Los paquetes compartidos del sistema se mantendrán instalados."
+
+msgid "This website app is invalid."
+msgstr "Esta aplicación web no es válida."
+
+msgid "This website app no longer exists."
+msgstr "Esta aplicación web ya no existe."
+
+msgid "Website app added. Find it in the launcher."
+msgstr "Aplicación web agregada. Encuéntrala en el lanzador."
+
+msgid "Website app removed."
+msgstr "Se quitó la aplicación web."
+
+msgid "Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched."
+msgstr "Deshacer restaura todo el sistema a la instantánea anterior a la instalación de este kit de desarrollo, incluidos el acceso a Docker y la configuración del socket, y descarta los cambios del sistema realizados desde entonces. Reinicia para usarlo. Tus archivos personales y las herramientas de Rust no se modifican."
+
+msgid "The installed packages %(packages)s conflict with this development kit; remove them first if you want to use this kit."
+msgstr "Los paquetes instalados %(packages)s entran en conflicto con este kit de desarrollo; quítalos primero si quieres usar este kit."
+
+msgid "Rust packages are installed, but the stable toolchain did not finish. Choose Finish setup to retry."
+msgstr "Los paquetes de Rust están instalados, pero la instalación de las herramientas estables no terminó. Elige Terminar configuración para reintentar."
+
+msgid "Install the Rust packages before finishing setup."
+msgstr "Instala los paquetes de Rust antes de terminar la configuración."
+
+msgid "The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged."
+msgstr "Se quitó el kit de desarrollo. Las imágenes y los contenedores de Docker, los proyectos personales y las herramientas de Rust no se modificaron."
+
+msgid "Website app added. Its name or icon could not be fetched; a generated icon is used when needed."
+msgstr "Se agregó la aplicación web. No se pudo obtener su nombre o ícono; se usa un ícono generado cuando hace falta."
+
+
+#, python-brace-format
+msgid "AppStream metadata is unreadable: {path}: {error}"
+msgstr "No se pueden leer los metadatos de AppStream: {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata could not be parsed (parser unavailable): {path}: {error}"
+msgstr "No se pudieron analizar los metadatos de AppStream (analizador no disponible): {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata is invalid: {path}: {error}"
+msgstr "Los metadatos de AppStream no son válidos: {path}: {error}"
+
+#, python-brace-format
+msgid "{value} MB"
+msgstr "{value} MB"
+
+#, python-brace-format
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#, python-brace-format
+msgid "Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable."
+msgstr "Las instantáneas individuales ocupan al menos {size} de espacio exclusivo; no se puede determinar el espacio compartido entre instantáneas."
+
+#, python-brace-format
+msgid "{value} B"
+msgstr "{value} B"

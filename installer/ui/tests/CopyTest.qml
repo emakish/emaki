@@ -14,6 +14,7 @@ import ".." as UI
 // be selected with the mouse (Qt publishes a mouse selection as the primary selection).
 ShellRoot {
     id: test
+    readonly property var fixtureController: controller
     property bool failed: false
     property int stage: 0
     property real stageStarted: Date.now()
@@ -113,7 +114,7 @@ ShellRoot {
         UI.InstallerView {
             id: content
             anchors.fill: parent
-            controller: controller
+            controller: test.fixtureController
         }
         // Reads the clipboard back.
         TextInput {

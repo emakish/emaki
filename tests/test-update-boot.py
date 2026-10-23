@@ -524,6 +524,50 @@ class UpdateBoot(unittest.TestCase):
         self.assertEqual(update.environment()['emaki_attempt'], '2')
         self.assertEqual(self.pins, [('10', '')])
 
+    def test_next_transaction_before_acceptance_retains_armed_old_snapshot(self):
+        first = self.transaction('2')
+        self.boot_id = NEW
+        self.env(emaki_attempt='1', next_entry='emaki-auto-recovery')
+
+        def ready_with_another_transaction():
+            if self.clock == update.STABLE - 1:
+                self.parent = [124, '789', NEW]
+                self.transaction('4')
+            return 'ready'
+
+        # Desktop availability and loader confirmation do not finish the
+        # fifteen-second update acceptance window. Another package operation
+        # changes the record, so the in-flight observer must not accept it.
+        self.assertFalse(self.monitor(ready_with_another_transaction))
+        self.assertEqual(self.clock, update.STABLE)
+        self.assertEqual(update.record()['transaction'], first['transaction'])
+        self.assertEqual(update.record()['snapshot'], '2')
+        self.assertEqual(update.record()['armed_boot'], NEW)
+        self.assertEqual(update.environment()['emaki_attempt'], '1')
+        self.assertEqual(update.environment()['next_entry'], 'emaki-auto-recovery')
+        self.assertIn('/@snapshots/2/snapshot/boot/vmlinuz-linux',
+                      (self.esp / 'update.cfg').read_text())
+        self.assertEqual(self.pins, [('2', '')])
+
+    def test_waiting_for_acceptance_gives_next_transaction_its_own_snapshot(self):
+        first = self.transaction('2')
+        self.boot_id = NEW
+        self.env(emaki_attempt='1', next_entry='emaki-auto-recovery')
+        self.assertTrue(self.monitor(lambda: 'ready'))
+        self.assertIsNone(update.record())
+        self.assertEqual(update.environment(), {})
+
+        self.parent = [124, '789', NEW]
+        second = self.transaction('4')
+        self.assertNotEqual(second['transaction'], first['transaction'])
+        self.assertEqual(second['snapshot'], '4')
+        self.assertEqual(second['armed_boot'], NEW)
+        self.assertEqual(update.environment()['emaki_attempt'], '0')
+        self.assertNotIn('next_entry', update.environment())
+        self.assertIn('/@snapshots/4/snapshot/boot/vmlinuz-linux',
+                      (self.esp / 'update.cfg').read_text())
+        self.assertEqual(self.pins, [('2', ''), ('2', 'number'), ('4', '')])
+
     def test_deleted_pending_snapshot_disarms_and_refuses_unprotected_update(self):
         self.transaction()
         shutil.rmtree(self.snapshots / '10')

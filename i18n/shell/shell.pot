@@ -132,10 +132,16 @@ msgstr ""
 msgid "Close window"
 msgstr ""
 
+msgid "Command menu"
+msgstr ""
+
 msgid "Confirm password: "
 msgstr ""
 
 msgid "Connection changed."
+msgstr ""
+
+msgid "Copy text from screen"
 msgstr ""
 
 msgid "Could not check the screen timers."
@@ -163,6 +169,9 @@ msgid "Emaki landscape"
 msgstr ""
 
 msgid "Emaki problem report"
+msgstr ""
+
+msgid "Emoji"
 msgstr ""
 
 msgid "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
@@ -417,6 +426,9 @@ msgid "Privacy and capture activity"
 msgstr ""
 
 msgid "Raise volume"
+msgstr ""
+
+msgid "Read QR code"
 msgstr ""
 
 msgid "Recent journal errors"
@@ -727,5 +739,9 @@ msgid "unsafe lock file"
 msgstr ""
 
 #, python-brace-format
-msgid "{total:.1f} GiB · {free:.1f} GiB free"
+msgid "{amount} GiB"
+msgstr ""
+
+#, python-brace-format
+msgid "{total} GiB · {free} GiB free"
 msgstr ""

@@ -136,6 +136,7 @@ check: paths check-assumptions check-core check-i18n
 	python3 tests/test-report-icon.py
 	python3 tests/test-shared-canvas.py --static
 	python3 tests/test-capture.py
+	python3 tests/test-capture-recognition.py
 	python3 tests/test-capture-native.py
 	python3 tests/test-capture-import.py
 	python3 tests/test-capture-controller.py
@@ -201,6 +202,9 @@ check: paths check-assumptions check-core check-i18n
 	node tests/test-programs-logic.mjs
 	python3 update-manager/tests/test_appstream.py
 	python3 update-manager/tests/test_programs_engine.py
+	python3 update-manager/tests/test_programs_development_engine.py
+	python3 update-manager/tests/test_programs_kits.py
+	python3 update-manager/tests/test_programs_webapps.py
 	python3 update-manager/tests/test_programs_report_log.py
 	python3 update-manager/tests/test_programs_shelf.py
 	python3 update-manager/tests/test_programs_install.py
@@ -511,6 +515,7 @@ install: install-upkeep
 	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-update-manager/ui update-manager/ui/*.qml update-manager/ui/*.js
 	install -Dm644 update-manager/storefront.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/storefront.json
 	install -Dm644 update-manager/emaki-shelf.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/emaki-shelf.json
+	install -Dm644 update-manager/development-kits.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/development-kits.json
 	install -Dm644 update-manager/emaki-programs-updates.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
 	install -Dm644 installer/emaki_installer/redaction.py $(DESTDIR)$(LIBEXECDIR)/emaki_redaction.py
 	install -Dm644 installer/emaki_installer/update_errors.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_errors.py
@@ -526,6 +531,7 @@ install: install-upkeep
 	install -Dm755 update-manager/programs.py $(BIN)/emaki-programs
 	install -Dm644 update-manager/programs_catalog.py $(DESTDIR)$(LIBEXECDIR)/programs_catalog.py
 	install -Dm644 -t $(DESTDIR)$(LIBEXECDIR) update-manager/programs_appstream.py update-manager/programs_arch.py update-manager/programs_engine.py update-manager/programs_flatpak.py update-manager/programs_aur.py update-manager/programs_receipts.py update-manager/programs_reviews.py
+	install -Dm644 -t $(DESTDIR)$(LIBEXECDIR) update-manager/programs_kits.py update-manager/programs_webapps.py
 	install -Dm644 update-manager/restore.py $(DESTDIR)$(LIBEXECDIR)/restore.py
 	install -Dm755 update-manager/programs_remove.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-remove
 	install -Dm755 update-manager/programs_flatpak_apply.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-flatpak
@@ -839,6 +845,7 @@ uninstall:
 	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_graphics.py $(DESTDIR)$(LIBEXECDIR)/programs_appstream.py $(DESTDIR)$(LIBEXECDIR)/programs_arch.py $(DESTDIR)$(LIBEXECDIR)/programs_engine.py $(DESTDIR)$(LIBEXECDIR)/programs_flatpak.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-install $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.install.policy
 	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki-programs-flatpak $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.flatpak.policy
 	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_aur.py $(DESTDIR)$(LIBEXECDIR)/programs_receipts.py $(DESTDIR)$(LIBEXECDIR)/programs_reviews.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-aur $(DESTDIR)$(LIBEXECDIR)/emaki-programs-undo
+	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_kits.py $(DESTDIR)$(LIBEXECDIR)/programs_webapps.py
 	rm -f $(DESTDIR)$(LIBEXECDIR)/restore.py
 	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.aur.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.undo.policy
 	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/rules.d/00-emaki-programs.rules
@@ -996,7 +1003,14 @@ check-i18n: paths build-i18n
 	python3 tests/test-i18n-runtime.py
 	python3 tests/test-i18n-backends.py
 	python3 tests/test-i18n-pt-br.py
+	python3 tests/test-i18n-catalogues.py
+	python3 tests/test-i18n-fonts.py
+	python3 tests/test-i18n-shell-messages.py
+	python3 tests/test-i18n-timezones.py
 	python3 tests/test-i18n-long-dates.py
+	python3 tests/test-i18n-buttons.py
+	python3 tests/test-i18n-programs-formats.py
+	python3 update-manager/tests/test_display_messages.py
 	python3 tests/test-i18n-packaging.py
 	python3 tests/test-i18n-shell.py
 	python3 update-manager/ui/tests/i18n.py
@@ -1086,6 +1100,7 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python3 update-manager/ui/tests/interactions.py
 	python3 update-manager/ui/tests/controller.py
 	python3 update-manager/ui/tests/programs_controller.py
+	python3 update-manager/ui/tests/programs_pages.py
 	python3 update-manager/ui/tests/icons.py
 	python3 update-manager/ui/tests/reviews.py
 	python3 update-manager/ui/tests/layout.py
@@ -1093,6 +1108,7 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	mkdir -p "$(CURDIR)/.cache/tmp"
 	env $(CORE_ENV) TMPDIR="$(CURDIR)/.cache/tmp" cargo build -p emaki-cli --locked
 	python3 tests/test-settings-catalog.py "$(CARGO_TARGET_DIR)/debug/emaki"
+	python3 tests/test-settings-reset.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python3 tests/test-appearance-live.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python3 tests/test-accent-apps.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python3 update-manager/ui/tests/appearance.py "$(CARGO_TARGET_DIR)/debug/emaki"
@@ -1100,6 +1116,9 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python3 tests/test-polkit-prompt.py
 	python3 tests/test-shortcuts.py
 	python3 tests/test-launcher-keyboard.py
+	python3 tests/render-launcher-tabs.py --skip-compile
+	python3 tests/render-launcher-tabs.py --skip-compile --glass --output .cache/evidence/launcher-tabs/glass
+	python3 tests/test-launcher-commands.py
 	python3 tests/test-prompt-morph.py
 	python3 tests/test-launch-handoff.py
 	python3 tests/test-launcher-refresh.py
@@ -1160,6 +1179,7 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python tests/test-session-start-harness.py
 	python tests/test-notifications.py
 	python tests/test-launcher-tools.py
+	python tests/test-emoji-catalog.py
 	python3 tests/test-private-job-lists.py
 	python tests/test-launcher-details.py
 	python tests/check-launcher-inventory.py --self-test
@@ -1241,6 +1261,11 @@ shell-config:
 .PHONY: lock-wordmark
 lock-wordmark:
 	python scripts/build-lock-wordmark
+
+# Emoji names for the launcher from Unicode CLDR; checked in, so packages need no Unicode data.
+.PHONY: emoji-data
+emoji-data:
+	python scripts/build-emoji-data --font "$$(fc-match -f '%{file}' 'Noto Color Emoji')"
 
 .PHONY: pixel-mark
 pixel-mark:

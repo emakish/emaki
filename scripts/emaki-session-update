@@ -28,7 +28,7 @@ SCHEMA = 1
 MARKER = Path('/run/emaki-session-update')
 LOGINCTL = 'loginctl'
 SUMMARY = 'Sign out and sign in again to finish updating the desktop.'
-BODY = 'Save your work first [Emaki].'
+BODY = 'Save your work first.'
 # What a running session must do after a desktop update. Shell, compositor and Qt are all
 # loaded once per login, so every recorded update asks for a new session.
 SIGN_OUT = 'sign-out'

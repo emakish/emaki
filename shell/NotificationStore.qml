@@ -242,6 +242,8 @@ Scope {
     signal arrived(int id)
     function displayApp(app: string): string {
         switch (app) {
+        case "Emaki Calendar": return qsTranslate("NotificationStore", "Emaki Calendar");
+        case "Settings": return qsTranslate("NotificationStore", "Settings");
         case "Application": return qsTranslate("NotificationStore", "Application");
         case "Battery critical": return qsTranslate("NotificationStore", "Battery critical");
         case "Battery low": return qsTranslate("NotificationStore", "Battery low");

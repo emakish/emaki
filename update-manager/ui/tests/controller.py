@@ -186,7 +186,7 @@ def run(scenario):
         assert controller.count(command) == 4
         (root / 'UpdateController.qml').write_text(controller.replace(command, json.dumps(str(backend))))
         shutil.copyfile(UI / 'tests/ControllerTest.qml', root / 'ControllerTest.qml')
-        shutil.copyfile(UI / 'ManagerLogic.js', root / 'ManagerLogic.js')
+        (root / 'ManagerLogic.js').write_text((UI / 'ManagerLogic.js').read_text().replace('@EMAKI_DATADIR@', str(ROOT)))
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1', TEST_SCENARIO=scenario, TEST_CALLS=str(root / 'calls'))
         for name in ('runtime', 'cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)

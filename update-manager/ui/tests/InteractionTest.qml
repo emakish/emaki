@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Controls as C
 import QtTest
 import Quickshell
+import Emaki.I18n
 import ".." as UI
 import "file:@EMAKI_DATADIR@/shell" as Shell
 
@@ -589,7 +590,7 @@ ShellRoot {
                 && !test.label("Updating linux"), "the update starts with a plain line, not its raw log");
             updates.output = [":: Processing package changes...", "(1/1) upgrading archlinux-keyring", ":: Running post-transaction hooks...", ":: Retrieving packages..."].join("\n");
             input.wait(30);
-            test.check(test.named("update-step").text === "Step 1 of 4 · downloading" && !test.named("update-restore-point").visible && view.controller === updates
+            test.check(test.named("update-step").text === "Step 1 of 4 · Downloading" && !test.named("update-restore-point").visible && view.controller === updates
                 && test.find(view, item => typeof item.fraction === "number" && typeof item.stepText === "function").fraction < 0, "a second pacman run starts the steps again; downloading pulses");
             // The keyring is updated in its own pacman run first; the full update then starts the steps again.
             updates.output = ["Updating the package signing keys first.", ":: Processing package changes...", "(1/1) upgrading archlinux-keyring",
@@ -598,7 +599,7 @@ ShellRoot {
                 "(40/74) upgrading libdrm", "(41/74) upgrading mesa", "==> Building image from preset: /etc/mkinitcpio.d/linux.preset: 'default'",
                 "Proceed? [Y/n] y"].join("\n");
             input.wait(30);
-            test.check(test.named("update-step").text === "Step 3 of 4 · installing 41 of 74" && test.named("update-restore-point").visible
+            test.check(test.named("update-step").text === "Step 3 of 4 · Installing 41 of 74" && test.named("update-restore-point").visible
                 && Math.abs(test.find(test.named("update-bar"), item => item !== test.named("update-bar") && item.width > 0).width / test.named("update-bar").width - (2 + 41 / 74) / 4) < 0.01,
                 "the update shows its step, its count, a filled bar and the restore point");
             test.check(!test.find(view, item => item.visible && typeof item.text === "string" && item.text.includes("Proceed?")), "the raw log stays hidden until Details");

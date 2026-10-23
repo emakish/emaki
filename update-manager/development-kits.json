@@ -1,0 +1,11 @@
+{
+  "copyright": "Copyright (C) 2026 Artur Yakymenko",
+  "license": "SPDX-License-Identifier: GPL-3.0-or-later",
+  "kits": [
+    {"id": "python", "name": "Python", "packages": ["python", "python-pip", "python-pipx", "uv"], "shared": ["python"]},
+    {"id": "nodejs", "name": "Node.js", "packages": ["nodejs", "npm"]},
+    {"id": "rust", "name": "Rust", "packages": ["rustup"]},
+    {"id": "go", "name": "Go", "packages": ["go"]},
+    {"id": "docker", "name": "Docker", "packages": ["docker", "docker-compose", "docker-buildx"]}
+  ]
+}

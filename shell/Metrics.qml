@@ -31,6 +31,7 @@ QtObject {
     readonly property int settingsWidth: 1240
     readonly property int settingsHeight: 810
     readonly property int launcherHeader: 60
+    readonly property int launcherTabFade: 24
     readonly property int launcherBodyMax: 500
     readonly property int launcherFoot: 16 // was 42 with the key-hint line, since removed
     // The selection bubble of a launcher tile (Frequent and the app grid): one size on every

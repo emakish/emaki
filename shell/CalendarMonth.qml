@@ -52,7 +52,7 @@ Item {
         height: 28
         verticalAlignment: Text.AlignVCenter
         //: Qt date pattern: MMMM and yyyy are fields; put literal words in single quotes, as in 'de'.
-        text: new Date(calendar.year, calendar.month, 1).toLocaleDateString(Qt.locale(), qsTranslate("CalendarMonth", "MMMM yyyy"))
+        text: new Date(calendar.year, calendar.month, 1).toLocaleDateString(Qt.locale(), qsTranslate("CalendarMonth", "MMMM yyyy")).replace(Qt.locale().monthName(calendar.month, Locale.LongFormat), Qt.locale().standaloneMonthName(calendar.month, Locale.LongFormat)).replace(/^[а-яё]/, first => first.toUpperCase())
         textFormat: Text.PlainText
         font.family: ShellPalette.uiFont
         font.pixelSize: 14

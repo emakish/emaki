@@ -14,6 +14,7 @@ Column {
     property string action: ""
     property bool received: false
     readonly property string failure: qsTranslate("SettingsAboutPage", "System details or the report could not be read. Try again.")
+    readonly property string channelLabel: details.channel === "stable" ? qsTranslate("SettingsAboutPage", "Stable") : details.channel === "testing" ? qsTranslate("SettingsAboutPage", "Testing") : ""
     signal updatesRequested
     function start(next) {
         if (backend.running)
@@ -95,7 +96,8 @@ Column {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 objectName: "settings-about-version"
-                text: qsTranslate("SettingsAboutPage", "Version %1 · %2 channel").arg((page.details.version || qsTranslate("SettingsAboutPage", "Unavailable")) + (page.details.label ? " " + page.details.label : "")).arg(page.details.channel || qsTranslate("SettingsAboutPage", "Unavailable"))
+                //: %2 is a translated channel name in running text, not a heading.
+                text: page.details.version ? (page.channelLabel ? qsTranslate("SettingsAboutPage", "Version %1 · %2 channel").arg(page.details.version + (page.details.label ? " " + page.details.label : "")).arg(page.channelLabel) : qsTranslate("SettingsAboutPage", "Version %1 · channel unavailable").arg(page.details.version + (page.details.label ? " " + page.details.label : ""))) : (page.channelLabel ? qsTranslate("SettingsAboutPage", "Version unavailable · %1 channel").arg(page.channelLabel) : qsTranslate("SettingsAboutPage", "Version and channel unavailable"))
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 color: SettingsTheme.dim

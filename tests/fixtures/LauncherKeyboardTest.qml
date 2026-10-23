@@ -80,6 +80,65 @@ ShellRoot {
                 const geometry = launcher.geometryOf(launcher.selected);
                 return geometry !== null && geometry.rect.x >= geometry.clip.x - 1 && geometry.rect.y >= geometry.clip.y - 1 && geometry.rect.x + geometry.rect.width <= geometry.clip.x + geometry.clip.width + 1 && geometry.rect.y + geometry.rect.height <= geometry.clip.y + geometry.clip.height + 1;
             }
+            function test_tab_strip_navigation() {
+                const previousWidth = launcher.width;
+                launcher.width = 480;
+                launcher.setQuery("");
+                launcher.setMode("All");
+                window.requestActivate();
+                const strip = findChild(launcher, "launcher-mode-strip");
+                check(!!strip, "The tabs have a bounded strip");
+                const query = findChild(launcher, "launcher-search");
+                tryVerify(() => query.width >= 160);
+                function fullyVisible(item) {
+                    const p = item.mapToItem(strip, 0, 0);
+                    const left = strip.fadeLeft ? strip.fadeWidth : 0;
+                    const right = strip.width - (strip.fadeRight ? strip.fadeWidth : 0);
+                    return p.x - launcher.tabFocusPad >= left - .75 && p.x + item.width + launcher.tabFocusPad <= right + .75;
+                }
+                for (const name of launcher.modes) {
+                    launcher.setMode(name);
+                    const tab = findChild(launcher, "launcher-tab-" + name.toLowerCase());
+                    check(!!tab, name + " has a tab");
+                    tryVerify(() => fullyVisible(tab), 2000, name + " scrolls into view");
+                }
+                launcher.setMode("All");
+                launcher.takeFocus(true);
+                keyClick(Qt.Key_Right);
+                for (let index = 0; index < launcher.modes.length; ++index) {
+                    const tab = findChild(launcher, "launcher-tab-" + launcher.modes[index].toLowerCase());
+                    tryVerify(() => tab.activeFocus && fullyVisible(tab));
+                    keyClick(Qt.Key_Return);
+                    equal(launcher.modeIndex, index);
+                    if (index < launcher.modes.length - 1)
+                        keyClick(Qt.Key_Right);
+                }
+                // Scroll using the same wheel input a mouse sends, then click an exposed tab.
+                launcher.setMode("All");
+                tryVerify(() => strip.contentX < 1);
+                mouseWheel(strip, strip.width / 2, strip.height / 2, 0, -120);
+                tryVerify(() => strip.contentX > 1, 2000, "Mouse wheel scrolls tabs");
+                const exposed = launcher.modes.map(name => findChild(launcher, "launcher-tab-" + name.toLowerCase())).find(tab => fullyVisible(tab));
+                check(!!exposed, "A scrolled tab remains clickable");
+                mouseClick(exposed, exposed.width / 2, exposed.height / 2);
+                equal(launcher.modeIndex, exposed.index);
+                tryVerify(() => fullyVisible(exposed), 2000, "Clicked tab stays outside the fade");
+                // Clicking the same selected tab must reveal it again after manual scrolling.
+                launcher.setMode("All");
+                tryVerify(() => strip.contentX < 1);
+                mouseWheel(strip, strip.width / 2, strip.height / 2, 0, -20);
+                tryVerify(() => strip.contentX > 1);
+                const first = findChild(launcher, "launcher-tab-all");
+                mouseClick(first, first.width - 5, first.height / 2);
+                equal(launcher.modeIndex, 0);
+                tryVerify(() => fullyVisible(first), 2000, "Reselected tab clears the fade");
+                mouseDrag(strip, strip.width - 10, strip.height / 2, -80, 0);
+                tryVerify(() => strip.contentX > 1, 2000, "Dragging still scrolls tabs");
+                tryVerify(() => !strip.moving, 2000, "Tab drag settles");
+                launcher.width = previousWidth;
+                launcher.setMode("Apps");
+                launcher.takeFocus(true);
+            }
             function test_accessible_selection() {
                 launcher.setMode("Apps");
                 launcher.setQuery("");

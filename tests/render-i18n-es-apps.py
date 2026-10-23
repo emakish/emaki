@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Capture Spanish application pages with isolated offscreen fixture backends."""
+"""Capture translated application pages with isolated offscreen fixture backends."""
 import argparse
 import json
 import os
@@ -14,12 +14,19 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / '.cache/evidence/i18n/es'
+LANGUAGE = 'es'
+LOCALES = {'es': ('es_MX.UTF-8', 'Español (Latinoamérica)'),
+           'pt_BR': ('pt_BR.UTF-8', 'Português (Brasil)'), 'de': ('de_DE.UTF-8', 'Deutsch'),
+           'fr': ('fr_FR.UTF-8', 'Français'), 'ru': ('ru_RU.UTF-8', 'Русский')}
 
 
-def translated(domain, source):
-    for message in ET.parse(ROOT / 'i18n' / domain / 'es.ts').findall('.//message'):
-        if message.findtext('source') == source:
-            return message.findtext('translation')
+def translated(domain, source, context=None, disambiguation=''):
+    for group in ET.parse(ROOT / 'i18n' / domain / (LANGUAGE + '.ts')).findall('context'):
+        if context is not None and group.findtext('name') != context:
+            continue
+        for message in group.findall('message'):
+            if message.findtext('source') == source and message.findtext('comment', '') == disambiguation:
+                return message.findtext('translation')
     raise AssertionError(source)
 
 
@@ -33,8 +40,9 @@ def isolated(root):
         target.mkdir(mode=0o700)
         env[key] = str(target)
     env.update(QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
+               LANG=LOCALES[LANGUAGE][0], LC_ALL=LOCALES[LANGUAGE][0],
                QT_QUICK_CONTROLS_STYLE='Basic', QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1',
-               EMAKI_LANGUAGE='es', EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
+               EMAKI_LANGUAGE=LANGUAGE, EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
                QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
                QML2_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
                DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-session-bus'),
@@ -43,6 +51,7 @@ def isolated(root):
 
 
 PROGRAMS = '''import QtQuick
+import QtQuick.Controls as C
 import QtTest
 import Quickshell
 import Emaki.I18n
@@ -63,7 +72,13 @@ ShellRoot {
         if (!item || item.visible === false) return;
         if (typeof item.text === "string" && item.text) {
             strings.push(item.text);
-            if (item.truncated) console.log("TRUNCATED_TEXT " + JSON.stringify({text:item.text,width:item.width,implicitWidth:item.implicitWidth,contentWidth:item.contentWidth,parentWidth:item.parent.width,grandparentWidth:item.parent.parent.width}));
+            const button = item.objectName === "manager-button-label" ? item.parent.parent : null;
+            const record = {text:item.text,width:item.width,implicitWidth:item.implicitWidth,
+                contentWidth:item.contentWidth,parentWidth:item.parent.width,grandparentWidth:item.parent.parent.width,
+                button:button !== null, accessible:button ? button.Accessible.name : "",
+                tooltip:button ? button.C.ToolTip.text : "", elided:item.elide !== undefined && item.elide !== Text.ElideNone};
+            if (item.truncated) console.log("TRUNCATED_TEXT " + JSON.stringify(record));
+            if (button && item.contentWidth > item.width + 1) console.log("BUTTON_OVERFLOW " + JSON.stringify(record));
         }
         for (const child of item.children || []) walk(child, strings);
     }
@@ -117,14 +132,23 @@ def programs(width, height):
                 'property var command: ["' + sys.executable + '", "-c", "import json; print(json.dumps(dict(ok=True, reviews=[], ratings={})))"]'))
             log = interactions.run(width=width, height=height, entry=entry, source=source, extra={
                 **env, 'TEST_ES_OUTPUT': str(OUTPUT), 'TEST_SHOTS': str(OUTPUT),
-                'TEST_EXPECTED': json.dumps([translated('programs', text) for text in
+                'TEST_EXPECTED': json.dumps([translated('programs', text, 'ManagerView' if text == 'Installed' else None,
+                                                       'list of installed programs' if text == 'Installed' else '') for text in
                                             ('Popular', 'Installed', 'Update all', 'Update all', 'Install', 'Install')]),
                 'TEST_UPDATE_WARNINGS': json.dumps(catalog.warnings_for([{'name': 'linux', 'aur': False}])),
             })
             (OUTPUT / 'programs.log').write_text(log)
             for line in log.splitlines():
+                assert 'BUTTON_OVERFLOW ' not in line, line
                 if 'TRUNCATED_TEXT ' in line:
                     item = json.loads(line.split('TRUNCATED_TEXT ', 1)[1])
+                    if item['button']:
+                        assert item['text'] == item['accessible'] == item['tooltip'], item
+                        continue
+                    if width < 1180:
+                        # Narrow pages deliberately elide headings, search hints and external metadata.
+                        assert item['elided'] and item['contentWidth'] <= item['width'] + 1, item
+                        continue
                     # The catalogue's external application descriptions use intentional ellipsis.
                     assert item['text'] == 'Create images and edit photographs', item
         finally:
@@ -135,6 +159,9 @@ def programs(width, height):
 INSTALLER_CAPTURE = '''    Timer {
         id: shot; interval: 700
         onTriggered: {
+            if (controller.language !== Quickshell.env("TEST_INSTALLER_LOCALE")) {
+                console.error("ASSERTION_FAILED request language " + controller.language); Qt.exit(1); return;
+            }
             const layoutOk = test.checkLayout();
             if (!layoutOk) console.error("ASSERTION_FAILED layout");
             if (test.screenName === "welcome" && test.languageStage < 2) {
@@ -161,6 +188,9 @@ INSTALLER_CAPTURE = '''    Timer {
                 for (const child of item.children || []) visit(child);
             }
             visit(content);
+            if (["disk", "review"].includes(test.screenName) && !texts.some(text => text.includes("40,0"))) {
+                console.error("ASSERTION_FAILED localized disk size " + JSON.stringify(texts)); Qt.exit(1); return;
+            }
             if (!texts.includes(expected)) { console.error("ASSERTION_FAILED translated heading " + expected + " " + JSON.stringify(texts)); Qt.exit(1); return; }
             content.grabToImage(result => {
                 if (!result.saveToFile(test.screenshot)) { Qt.exit(1); return; }
@@ -175,8 +205,9 @@ def installer(width, height, selected=None):
     ui = ROOT / 'installer/ui'
     screens = ('welcome', 'keyboard', 'network', 'timezone', 'disk', 'filesystem', 'encryption',
                'you', 'software', 'review', 'install', 'done')
-    headings = ('Welcome', 'Keyboard', 'Network', 'Time zone', 'Disk', 'File system', 'Encryption',
-                'You', 'Software', 'Review', 'Install', 'Done')
+    headings = ('Welcome to Emaki', 'Make yourself at home', 'Get connected', 'Time zone',
+                'Where should Emaki go?', 'A home for your files', 'Protect your files',
+                'About you', 'Make it your desktop', 'One last look', 'Making room for you', 'Welcome home.')
     with tempfile.TemporaryDirectory(prefix='emaki-es-installer-') as temporary:
         root = Path(temporary)
         shutil.copytree(ui, root / 'ui', ignore=shutil.ignore_patterns('__pycache__', 'artifacts'))
@@ -186,10 +217,12 @@ def installer(width, height, selected=None):
         entry = entry.replace('if (!flick || flick.contentHeight <= flick.height)', 'if (!flick)').replace('flick.contentY = flick.contentHeight - flick.height;', 'flick.contentY = Math.max(0, flick.contentHeight - flick.height);')
         entry = entry.replace('stdinEnabled: true', 'stdinEnabled: true\n        stderr: SplitParser { onRead: data => console.error("FIXTURE_WORKER " + data) }')
         entry = entry.replace('property bool captured: false', 'property bool captured: false\n    property int languageStage: 0')
+        entry = entry.replace('id: controller\n', 'id: controller\n        language: Quickshell.env("TEST_INSTALLER_LOCALE")\n')
         entry = entry.replace('controller.receive(message);', 'if (message.type === "hello") message.available_locales = ["en_US.UTF-8", "es_MX.UTF-8"];\n                controller.receive(message);')
         start = entry.index('    Timer {\n        id: shot')
         end = entry.index('    Timer {\n        interval: 10000', start)
         entry = entry[:start] + INSTALLER_CAPTURE + entry[end:]
+        entry = entry.replace('es_MX.UTF-8', LOCALES[LANGUAGE][0])
         (root / 'ui/InstallerEs.qml').write_text(entry)
         for path in (root / 'ui').glob('*.qml'):
             path.write_text(path.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"').replace('@EMAKI_DATADIR@', str(ROOT)))
@@ -211,7 +244,8 @@ def installer(width, height, selected=None):
         env = isolated(root)
         env.update(EMAKI_INSTALLER_WIDTH=str(width), EMAKI_INSTALLER_HEIGHT=str(height),
                    EMAKI_INSTALLER_CHECKOUT=str(ROOT), TMPDIR=str(root),
-                   TEST_ES_LANGUAGE='Español (Latinoamérica)')
+                   TEST_INSTALLER_LOCALE=LOCALES[LANGUAGE][0],
+                   TEST_ES_LANGUAGE=LOCALES[LANGUAGE][1])
         for screen, heading in zip(screens, headings):
             if selected and screen != selected:
                 continue
@@ -235,15 +269,17 @@ def installer(width, height, selected=None):
 
 
 def main():
-    global OUTPUT
+    global OUTPUT, LANGUAGE
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=OUTPUT)
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--language', choices=tuple(LOCALES), default='es')
     parser.add_argument('--component', choices=('programs', 'installer', 'all'), default='all')
     parser.add_argument('--screen', choices=('welcome', 'keyboard', 'network', 'timezone', 'disk', 'filesystem', 'encryption', 'you', 'software', 'review', 'install', 'done'))
     parser.add_argument('--width', type=int, default=1180)
     parser.add_argument('--height', type=int, default=780)
     args = parser.parse_args()
-    OUTPUT = args.output.resolve()
+    LANGUAGE = args.language
+    OUTPUT = args.output.resolve() if args.output else ROOT / '.cache/evidence/i18n' / LANGUAGE
     OUTPUT.mkdir(parents=True, exist_ok=True)
     if args.component in ('programs', 'all'):
         programs(args.width, args.height)

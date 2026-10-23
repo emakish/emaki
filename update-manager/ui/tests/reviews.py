@@ -53,6 +53,7 @@ QML = '''import QtQuick
 import QtQuick.Controls as C
 import QtTest
 import Quickshell
+import Emaki.I18n
 ShellRoot {
     id: test
     property bool failed: false
@@ -315,13 +316,14 @@ ShellRoot {
 def main():
     with tempfile.TemporaryDirectory(prefix='reviews-ui-', dir=os.environ.get('TMPDIR')) as directory:
         root = Path(directory)
-        for name in ('ProgramReviews.qml', 'Stars.qml', 'ManagerLabel.qml', 'ManagerButton.qml', 'ProgramCard.qml',
+        for name in ('ProgramReviews.qml', 'Stars.qml', 'ManagerLogic.js', 'ManagerLabel.qml', 'ManagerButton.qml', 'ProgramCard.qml',
                      'ProgramIcon.qml', 'ManagerActions.qml'):
             (root / name).write_text((UI / name).read_text().replace('@EMAKI_DATADIR@', str(UI.parents[1])))
         (root / 'engine.py').write_text(ENGINE)
         (root / 'submitted.log').write_text('')
         (root / 'test.qml').write_text(QML.replace('COMMAND', json.dumps([sys.executable, str(root / 'engine.py')])))
-        env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QUICK_CONTROLS_STYLE='Basic',
+        env = dict(os.environ, QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
+                   EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'), EMAKI_LANGUAGE='en', QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QUICK_CONTROLS_STYLE='Basic',
                    QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1', TEST_ENGINE=str(UI.parent),
                    TEST_SUBMITTED=str(root / 'submitted.log'), LANG='en_US.UTF-8', LC_ALL='')
         for name in ('cache', 'config', 'data', 'state'):

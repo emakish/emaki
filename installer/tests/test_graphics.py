@@ -36,9 +36,9 @@ class ConsoleFontTests(unittest.TestCase):
         return graphics.console_font(self.plan, self.root)
 
     def test_native_mode_threshold_and_integer_boundary(self):
-        for mode, expected in [('1024x768', 'ter-124b'), ('1280x800', 'ter-124b'),
-                               ('1920x1080', 'ter-124b'), ('2560x1600', None),
-                               ('1752x1600', 'ter-124b'), ('1760x1600', None)]:
+        for mode, expected in [('1024x768', 'ter-v24b'), ('1280x800', 'ter-v24b'),
+                               ('1920x1080', 'ter-v24b'), ('2560x1600', None),
+                               ('1752x1600', 'ter-v24b'), ('1760x1600', None)]:
             with self.subTest(mode=mode):
                 self.connector('card0-eDP-1', mode + '\n1024x768\n')
                 self.assertEqual(self.font(), expected)
@@ -46,18 +46,18 @@ class ConsoleFontTests(unittest.TestCase):
     def test_internal_panel_precedes_external_display(self):
         self.connector('card0-HDMI-A-1', '3840x2160\n')
         self.connector('card0-eDP-1', '1280x800\n')
-        self.assertEqual(self.font(), 'ter-124b')
+        self.assertEqual(self.font(), 'ter-v24b')
         self.connector('card1-LVDS-1', '2560x1600\n')
         self.assertIsNone(self.font())
 
     def test_external_displays_must_all_be_known_and_below_threshold(self):
         self.connector('card0-DP-1', '1920x1080\n')
         self.connector('card0-HDMI-A-1', '1280x800\n')
-        self.assertEqual(self.font(), 'ter-124b')
+        self.assertEqual(self.font(), 'ter-v24b')
         self.connector('card0-HDMI-A-1', '3840x2160\n')
         self.assertIsNone(self.font())
         self.connector('card0-HDMI-A-1', '3840x2160\n', 'disconnected')
-        self.assertEqual(self.font(), 'ter-124b')
+        self.assertEqual(self.font(), 'ter-v24b')
 
     def test_unknown_geometry_keeps_kernel_default(self):
         self.assertIsNone(self.font())
@@ -85,11 +85,38 @@ class ConsoleFontTests(unittest.TestCase):
     def test_nvidia_resume_does_not_guess_installed_gop_mode(self):
         self.connector('card0-eDP-1', '1280x800\n')
         self.plan.graphics_packages = ('emaki-nvidia',)
-        self.assertEqual(self.font(), 'ter-124b')
+        self.assertEqual(self.font(), 'ter-v24b')
         self.plan.config['hibernation'] = True
         self.assertIsNone(self.font())
         self.plan.graphics_packages = ()
-        self.assertEqual(self.font(), 'ter-124b')
+        self.assertEqual(self.font(), 'ter-v24b')
+
+    def test_russian_always_selects_a_cyrillic_font_at_the_required_size(self):
+        self.plan.config['language'] = 'ru_RU.UTF-8'
+        self.assertEqual(self.font(), 'ter-v32b')
+        for mode, expected in [('1024x768', 'ter-v24b'), ('1920x1080', 'ter-v24b'),
+                               ('2560x1600', 'ter-v32b'), ('3840x2160', 'ter-v32b'),
+                               ('1760x1600', 'ter-v32b'), ('1752x1600', 'ter-v24b'),
+                               ('invalid', 'ter-v32b'), ('', 'ter-v32b')]:
+            with self.subTest(mode=mode):
+                self.connector('card0-eDP-1', mode + '\n')
+                self.assertEqual(self.font(), expected)
+        self.connector('card0-eDP-1', '1280x800\n')
+        self.plan.graphics_packages = ('emaki-nvidia',)
+        self.plan.config['hibernation'] = True
+        self.assertEqual(self.font(), 'ter-v32b')
+
+    def test_russian_unknown_and_firmware_displays_use_large_unicode_font(self):
+        self.plan.config['language'] = 'ru_RU.UTF-8'
+        self.connector('card0-Unknown-1', '1024x768\n')
+        self.assertEqual(self.font(), 'ter-v32b')
+        self.connector('card0-Unknown-1', '1024x768\n', 'disconnected')
+        self.connector('card0-HDMI-A-1', '1024x768\n')
+        device = self.root / 'class/drm/card0/device'
+        device.mkdir(parents=True)
+        (device / 'driver').symlink_to(self.root / 'bus/platform/drivers/simpledrm')
+        self.assertEqual(self.font(), 'ter-v32b')
+
 
 
 # Serialized protocol plan fields and ordered packages from the unmodified checkout

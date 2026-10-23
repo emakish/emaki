@@ -1,0 +1,1178 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: Emaki\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ru\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "(no reply)"
+msgstr "(нет ответа)"
+
+msgid "A good place to start"
+msgstr "С чего начать"
+
+msgid "A recipe never runs as root."
+msgstr "Рецепт никогда не выполняется от root."
+
+msgid "A repository update is already running. Waiting for its result…"
+msgstr "Обновление системы уже выполняется. Ожидание результата…"
+
+msgid "A system restore is ready. Restart before making another change."
+msgstr "Восстановление системы готово. Перезапустите компьютер перед следующим изменением."
+
+msgid "A verified system snapshot could not be created. Nothing was installed."
+msgstr "Не удалось создать проверенный снимок системы. Ничего не установлено."
+
+msgid "AUR could not be checked. Some program updates may be missing from this list."
+msgstr "Не удалось проверить AUR. В списке могут отсутствовать обновления некоторых программ."
+
+msgid "AUR could not be reached. Its listed versions come from an older check."
+msgstr "Не удалось связаться с AUR. Указанные версии взяты из прежней проверки."
+
+msgid "AUR download sizes are not available. Development packages may need rebuilding even when their listed version has not changed."
+msgstr "Размеры загрузки для AUR неизвестны. Пакеты из разрабатываемых веток (например, *-git) может понадобиться пересобрать, даже если указанная версия не изменилась."
+
+msgid "AUR installs need system snapshots. This system does not support them, so nothing was installed."
+msgstr "Установка из AUR требует снимков системы. Эта система их не поддерживает, поэтому ничего не установлено."
+
+msgid "AUR search could not finish. Narrow the search or try again later."
+msgstr "Поиск AUR не завершился. Уточните запрос или повторите попытку позже."
+
+msgid "AUR search results come from an older check."
+msgstr "Результаты поиска AUR взяты из прежней проверки."
+
+msgid "AUR — update with your AUR tool"
+msgstr "AUR — обновите своим инструментом AUR"
+
+msgid "AUR: Where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "AUR: если доступно, откройте страницу программы для сборки обновления или используйте свой инструмент AUR."
+
+msgid "Additional Flatpak installations could not be read."
+msgstr "Не удалось прочитать дополнительные установки Flatpak."
+
+msgid "Administrator permission is required to refresh the restore point list."
+msgstr "Для обновления списка точек восстановления нужны права администратора."
+
+msgid "Administrator permission is required to restore the system."
+msgstr "Для восстановления системы нужны права администратора."
+
+msgid "All updates are installed."
+msgstr "Все обновления установлены."
+
+msgid "Allows password-free administrator commands for a chosen session. Read the warning before granting access."
+msgstr "Разрешает команды администратора без пароля для выбранного сеанса. Прочитайте предупреждение перед предоставлением доступа."
+
+msgid "An update check is already running. Check again in a moment."
+msgstr "Проверка обновлений уже выполняется. Повторите чуть позже."
+
+msgid "An update is already running. Wait for it to finish."
+msgstr "Обновление уже выполняется. Дождитесь завершения."
+
+msgid "An update or restore is running. Wait for it to finish."
+msgstr "Выполняется обновление или восстановление. Дождитесь завершения."
+
+msgid "Another package operation is running. Try again when it finishes."
+msgstr "Выполняется другая операция с пакетами. Повторите после её завершения."
+
+msgid "Another package operation is running. Wait for it to finish, then try again."
+msgstr "Выполняется другая операция с пакетами. Дождитесь её завершения и повторите попытку."
+
+msgid "Another package operation may be running. Wait for it to finish before checking again."
+msgstr "Возможно, выполняется другая операция с пакетами. Дождитесь её завершения перед повторной проверкой."
+
+msgid "Another package transaction is running."
+msgstr "Выполняется другая транзакция пакетов."
+
+msgid "Another package transaction is running. Wait for it to finish and try again."
+msgstr "Выполняется другая транзакция пакетов. Дождитесь её завершения и повторите попытку."
+
+msgid "Another program may be installing or updating software. Do not remove the lock while software changes may be running. Restart the computer, then try again."
+msgstr "Другая программа может устанавливать или обновлять ПО. Не удаляйте блокировку, пока могут выполняться изменения программ. Перезапустите компьютер и повторите попытку."
+
+msgid "AppStream DTDs and entities are not supported."
+msgstr "DTD и сущности AppStream не поддерживаются."
+
+msgid "AppStream XML exceeds structural limits."
+msgstr "XML AppStream превышает ограничения структуры."
+
+msgid "AppStream XML exceeds the scalar limit."
+msgstr "XML AppStream превышает ограничение скалярного значения."
+
+msgid "AppStream YAML aliases are not supported."
+msgstr "Псевдонимы YAML AppStream не поддерживаются."
+
+msgid "AppStream YAML exceeds structural limits."
+msgstr "YAML AppStream превышает ограничения структуры."
+
+msgid "AppStream YAML exceeds the scalar limit."
+msgstr "YAML AppStream превышает ограничение скалярного значения."
+
+msgid "AppStream YAML parser unavailable."
+msgstr "Анализатор YAML AppStream недоступен."
+
+msgid "AppStream catalog exceeds the component limit."
+msgstr "Каталог AppStream превышает ограничение числа компонентов."
+
+#, python-brace-format
+msgid "AppStream discovery unavailable: {error}"
+msgstr "Обнаружение AppStream недоступно: {error}"
+
+msgid "AppStream expanded input exceeds the file limit."
+msgstr "Распакованные входные данные AppStream превышают ограничение файла."
+
+msgid "AppStream input exceeds the file limit."
+msgstr "Входные данные AppStream превышают ограничение файла."
+
+msgid "AppStream metadata could not be read."
+msgstr "Не удалось прочитать метаданные AppStream."
+
+msgid "Applying Flatpak transaction."
+msgstr "Применение транзакции Flatpak."
+
+msgid "Arch news could not be checked. Visit https://archlinux.org/news/ before updating."
+msgstr "Не удалось проверить новости Arch. Перед обновлением посетите https://archlinux.org/news/."
+
+msgid "Arch news could not be reached. The notices come from an older check."
+msgstr "Не удалось получить новости Arch. Уведомления взяты из прежней проверки."
+
+msgid "Authorization is required to install programs from the AUR."
+msgstr "Для установки программ из AUR требуется авторизация."
+
+msgid "Authorization is required to install repository programs."
+msgstr "Для установки программ из репозиториев требуется авторизация."
+
+msgid "Bringing the system up to date first."
+msgstr "Сначала обновление системы."
+
+msgid "Build tools could not be removed. The install was not completed."
+msgstr "Не удалось удалить инструменты сборки. Установка не завершена."
+
+#, python-brace-format
+msgid "Building {package} did not finish. The details are above."
+msgstr "Сборка {package} не завершилась. Подробности выше."
+
+#, python-brace-format
+msgid "Building {package} from the AUR as a separate user without access to your files."
+msgstr "Сборка {package} из AUR от отдельного пользователя без доступа к вашим файлам."
+
+msgid "Checking AUR package versions…"
+msgstr "Проверка версий пакетов AUR…"
+
+msgid "Checking Arch news…"
+msgstr "Проверка новостей Arch…"
+
+msgid "Checking repository packages…"
+msgstr "Проверка пакетов репозиториев…"
+
+msgid "Choose a fixed update operation or --restore with a restore point token."
+msgstr "Выберите заданную операцию обновления или --restore с токеном точки восстановления."
+
+msgid "Choose a restore point from the current list."
+msgstr "Выберите точку восстановления из текущего списка."
+
+msgid "Choose list or restore with an exact restore point."
+msgstr "Выберите list или restore с точной точкой восстановления."
+
+msgid "Could not check updates."
+msgstr "Не удалось проверить обновления."
+
+msgid "Could not check updates. The list is from the previous check."
+msgstr "Не удалось проверить обновления. Список взят из предыдущей проверки."
+
+msgid "Delete unneeded files or clear the package cache in Settings > Storage, then try again."
+msgstr "Удалите ненужные файлы или очистите кэш пакетов в «Настройки › Хранилище» и повторите попытку."
+
+msgid "Empty AUR metadata archive"
+msgstr "Пустой архив метаданных AUR"
+
+msgid "Exclusive snapshot usage is unavailable."
+msgstr "Не удалось узнать, сколько места занимают только снимки."
+
+msgid "Expected a package and a preview token."
+msgstr "Ожидались пакет и токен предпросмотра."
+
+msgid "Expected a receipt, its package and a preview token."
+msgstr "Ожидались квитанция, её пакет и токен предпросмотра."
+
+#, python-brace-format
+msgid "Flathub AppStream metadata could not be read: {remote}"
+msgstr "Не удалось прочитать метаданные AppStream Flathub: {remote}"
+
+#, python-brace-format
+msgid "Flathub AppStream metadata is not cached: {remote}"
+msgstr "Метаданные AppStream Flathub не кэшированы: {remote}"
+
+#, python-brace-format
+msgid "Flathub catalog could not be read: {source}"
+msgstr "Не удалось прочитать каталог Flathub: {source}"
+
+#, python-brace-format
+msgid "Flatpak ({scope})"
+msgstr "Flatpak ({scope})"
+
+msgid "Flatpak changes apply to all users and require administrator authentication."
+msgstr "Изменения Flatpak применяются ко всем пользователям и требуют аутентификации администратора."
+
+#, python-brace-format
+msgid "Flatpak installation could not be read: {scope}"
+msgstr "Не удалось прочитать установку Flatpak: {scope}"
+
+msgid "Flatpak installations could not be read."
+msgstr "Не удалось прочитать установки Flatpak."
+
+msgid "Flatpak installs are undone by their own backend"
+msgstr "Установки Flatpak отменяются их собственным механизмом"
+
+msgid "Flatpak updates could not be checked. Check again before updating applications."
+msgstr "Не удалось проверить обновления Flatpak. Проверьте снова перед обновлением приложений."
+
+
+msgid "Installed dependencies could not be checked"
+msgstr "Не удалось проверить установленные зависимости"
+
+msgid "Installed package query failed"
+msgstr "Ошибка запроса установленных пакетов"
+
+msgid "Installed packages changed during the check. Check again when the package operation finishes."
+msgstr "Установленные пакеты изменились во время проверки. Проверьте снова после завершения операции с пакетами."
+
+msgid "Installed packages changed during the check. Try again when the package operation finishes."
+msgstr "Установленные пакеты изменились во время проверки. Повторите попытку после завершения операции с пакетами."
+
+msgid "Installed packages changed. Refresh the catalog and try again."
+msgstr "Установленные пакеты изменились. Обновите каталог и повторите попытку."
+
+msgid "Installed packages could not be read"
+msgstr "Не удалось прочитать установленные пакеты"
+
+msgid "Installing also updates all repository packages. The upgrade checks fresh metadata; the final package list and sizes may change."
+msgstr "Установка также обновляет все пакеты репозиториев. Обновление проверяет свежие метаданные; итоговый список пакетов и размеры могут измениться."
+
+msgid "Installing what the build needs from Arch."
+msgstr "Установка необходимых для сборки пакетов из Arch."
+
+msgid "Installing with a full repository update. Closing this window does not stop it."
+msgstr "Установка вместе с полным обновлением системы. Закрытие окна её не остановит."
+
+msgid "Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings."
+msgstr "Устанавливает поддерживаемый драйвер NVIDIA, графические библиотеки и настройки сеанса Emaki."
+
+msgid "Invalid AUR counters"
+msgstr "Недопустимые счётчики AUR"
+
+msgid "Invalid AUR dependency"
+msgstr "Недопустимая зависимость AUR"
+
+msgid "Invalid AUR entry"
+msgstr "Недопустимая запись AUR"
+
+msgid "Invalid AUR list"
+msgstr "Недопустимый список AUR"
+
+msgid "Invalid AUR list entry"
+msgstr "Недопустимая запись списка AUR"
+
+msgid "Invalid AUR metadata archive"
+msgstr "Недопустимый архив метаданных AUR"
+
+msgid "Invalid AUR name"
+msgstr "Недопустимое имя AUR"
+
+msgid "Invalid AUR response"
+msgstr "Недопустимый ответ AUR"
+
+msgid "Invalid AUR text"
+msgstr "Недопустимый текст AUR"
+
+msgid "Invalid AUR time"
+msgstr "Недопустимое время AUR"
+
+msgid "Invalid AUR version"
+msgstr "Недопустимая версия AUR"
+
+msgid "Invalid Git reference advertisement"
+msgstr "Недопустимое объявление ссылок Git"
+
+msgid "Invalid boot identity"
+msgstr "Недопустимый идентификатор загрузки"
+
+msgid "Invalid build request."
+msgstr "Недопустимый запрос сборки."
+
+msgid "Invalid catalog key"
+msgstr "Недопустимый ключ каталога"
+
+msgid "Invalid catalog scope"
+msgstr "Недопустимая область каталога"
+
+msgid "Invalid consent"
+msgstr "Недопустимое согласие"
+
+msgid "Invalid discovery option"
+msgstr "Недопустимый параметр обнаружения"
+
+msgid "Invalid filters"
+msgstr "Недопустимые фильтры"
+
+msgid "Invalid installed package record"
+msgstr "Недопустимая запись установленного пакета"
+
+msgid "Invalid package database path"
+msgstr "Недопустимый путь базы пакетов"
+
+msgid "Invalid package filters"
+msgstr "Недопустимые фильтры пакетов"
+
+msgid "Invalid package name."
+msgstr "Недопустимое имя пакета."
+
+msgid "Invalid parameters"
+msgstr "Недопустимые параметры"
+
+msgid "Invalid plan token"
+msgstr "Недопустимый токен плана"
+
+msgid "Invalid popular list"
+msgstr "Недопустимый список популярного"
+
+msgid "Invalid popularity data"
+msgstr "Недопустимые данные популярности"
+
+msgid "Invalid popularity response"
+msgstr "Недопустимый ответ популярности"
+
+msgid "Invalid preview token."
+msgstr "Недопустимый токен предпросмотра."
+
+msgid "Invalid program manager arguments."
+msgstr "Недопустимые аргументы менеджера программ."
+
+msgid "Invalid protocol version"
+msgstr "Недопустимая версия протокола"
+
+msgid "Invalid receipt"
+msgstr "Недопустимая квитанция"
+
+msgid "Invalid receipt file"
+msgstr "Недопустимый файл квитанции"
+
+msgid "Invalid receipt kind"
+msgstr "Недопустимый тип квитанции"
+
+msgid "Invalid removal result"
+msgstr "Недопустимый результат удаления"
+
+msgid "Invalid repository dependency"
+msgstr "Недопустимая зависимость репозитория"
+
+msgid "Invalid repository name"
+msgstr "Недопустимое имя репозитория"
+
+msgid "Invalid request id"
+msgstr "Недопустимый идентификатор запроса"
+
+msgid "Invalid shelf"
+msgstr "Недопустимая подборка"
+
+msgid "Invalid shelf item"
+msgstr "Недопустимый элемент подборки"
+
+msgid "Invalid shelf text"
+msgstr "Недопустимый текст подборки"
+
+msgid "Invalid shelf: a package twice"
+msgstr "Недопустимая подборка: пакет указан дважды"
+
+msgid "Invalid storefront"
+msgstr "Недопустимая витрина"
+
+msgid "Invalid storefront identities"
+msgstr "Недопустимые идентификаторы витрины"
+
+msgid "Invalid storefront row"
+msgstr "Недопустимая строка витрины"
+
+msgid "Invalid storefront text"
+msgstr "Недопустимый текст витрины"
+
+msgid "Invalid transaction"
+msgstr "Недопустимая транзакция"
+
+msgid "Invalid transaction record"
+msgstr "Недопустимая запись транзакции"
+
+msgid "Invalid update status parameters"
+msgstr "Недопустимые параметры состояния обновления"
+
+msgid "Invalid warning choice"
+msgstr "Недопустимый выбор предупреждения"
+
+msgid "Missing package version"
+msgstr "Отсутствует версия пакета"
+
+msgid "Missing timezone"
+msgstr "Отсутствует часовой пояс"
+
+msgid "Missing transaction version"
+msgstr "Отсутствует версия транзакции"
+
+msgid "NVIDIA support"
+msgstr "Поддержка NVIDIA"
+
+msgid "NVIDIA support has no Undo button because removing graphics drivers can leave a black screen. A restore point is made before installation. To go back, open Updates, choose the restore point dated just before this installation, select Restore, then restart."
+msgstr "У поддержки NVIDIA нет кнопки «Откатить установку»: удаление графических драйверов может оставить чёрный экран. Перед установкой создаётся точка восстановления. Для возврата откройте вкладку «Обновления», выберите точку восстановления, созданную непосредственно перед этой установкой, нажмите «Восстановить» и перезапустите компьютер."
+
+#, python-brace-format
+msgid "No Flathub programs are available in the cached catalog: {scope}"
+msgstr "В кэшированном каталоге нет программ Flathub: {scope}"
+
+msgid "No enabled, verified Flathub remote is configured."
+msgstr "Не настроен включённый проверенный источник Flathub."
+
+msgid "No matching after-update snapshot is available."
+msgstr "Нет подходящего снимка после обновления."
+
+msgid "No retained snapshots were found."
+msgstr "Сохранённые снимки не найдены."
+
+msgid "Not an AUR RPC address"
+msgstr "Это не адрес RPC AUR"
+
+#, python-brace-format
+msgid "Not enough free space for this update: it needs about {needed}, {free} is free. {advice}"
+msgstr "Недостаточно места для обновления: нужно около {needed}, свободно {free}. {advice}"
+
+msgid "Not installed"
+msgstr "Не установлено"
+
+msgid "Nothing was removed."
+msgstr "Ничего не удалено."
+
+msgid "Only a full repository update is accepted."
+msgstr "Допускается только полное обновление системы."
+
+msgid "Open Programs & Updates as a regular user."
+msgstr "Откройте «Программы и обновления» от имени обычного пользователя."
+
+msgid "Open the AUR section and accept its warning before installing."
+msgstr "Откройте раздел AUR и примите предупреждение перед установкой."
+
+msgid "Other installed software needs this program, so it stays."
+msgstr "Эта программа нужна другим установленным программам, поэтому она останется."
+
+msgid "Oversized AUR metadata archive"
+msgstr "Слишком большой архив метаданных AUR"
+
+msgid "Oversized AUR response"
+msgstr "Слишком большой ответ AUR"
+
+msgid "Oversized Git reference advertisement"
+msgstr "Слишком большое объявление ссылок Git"
+
+msgid "Oversized package metadata"
+msgstr "Слишком большие метаданные пакета"
+
+msgid "Package metadata is incomplete."
+msgstr "Метаданные пакета неполны."
+
+msgid "Package retention could not be verified. Nothing was removed."
+msgstr "Не удалось проверить сохранение пакетов. Ничего не удалено."
+
+msgid "Packages changed. Refresh the installation preview."
+msgstr "Пакеты изменились. Обновите предпросмотр установки."
+
+msgid "Packages from AUR are not checked by Arch or Emaki. Where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "Пакеты AUR не проверяются Arch или Emaki. Если доступно, откройте страницу программы для сборки обновления или используйте свой инструмент AUR."
+
+msgid "Packages from Arch the build needs could not be installed."
+msgstr "Не удалось установить пакеты Arch, необходимые для сборки."
+
+msgid "Permission is required to remove a program."
+msgstr "Для удаления программы требуется разрешение."
+
+msgid "Permission is required to undo an install."
+msgstr "Для отката установки требуется разрешение."
+
+msgid "Permission is required to update repository packages."
+msgstr "Для обновления пакетов репозиториев требуется разрешение."
+
+msgid "Picked by Emaki"
+msgstr "Выбор Emaki"
+
+msgid "Popularity cache too large"
+msgstr "Кэш популярности слишком велик"
+
+msgid "Popularity request timed out"
+msgstr "Истекло время запроса популярности"
+
+msgid "Popularity response too large"
+msgstr "Ответ популярности слишком велик"
+
+msgid "Program manager JSON protocol"
+msgstr "Протокол JSON менеджера программ"
+
+msgid "Program metadata contains an invalid identifier."
+msgstr "Метаданные программы содержат недопустимый идентификатор."
+
+msgid "Programs & Updates needs a user runtime directory"
+msgstr "Для «Программ и обновлений» нужен пользовательский каталог среды выполнения"
+
+msgid "Ratings could not be loaded. Check your connection."
+msgstr "Не удалось загрузить оценки. Проверьте соединение."
+
+msgid "Read the package list and notices before updating. These checks cannot guarantee that an update will work."
+msgstr "Перед обновлением прочитайте список пакетов и уведомления. Эти проверки не гарантируют, что обновление пройдёт успешно."
+
+msgid "Reading what is new in Emaki…"
+msgstr "Чтение новостей Emaki…"
+
+msgid "Refresh the installation preview."
+msgstr "Обновите предпросмотр установки."
+
+msgid "Removing build tools did not finish. Trying again."
+msgstr "Удаление инструментов сборки не завершилось. Повторная попытка."
+
+msgid "Removing packages added by the failed install. The completed system update will stay."
+msgstr "Удаление пакетов, добавленных неудачной установкой. Завершённое обновление системы останется."
+
+msgid "Removing this program would remove part of Emaki, so it stays."
+msgstr "Удаление этой программы удалит часть Emaki, поэтому она останется."
+
+msgid "Removing this program would remove part of the system, so it stays."
+msgstr "Удаление этой программы удалит часть системы, поэтому она останется."
+
+msgid "Repository AppStream data is missing. Install the platform application metadata package and refresh."
+msgstr "Данные AppStream репозиториев отсутствуют. Установите пакет метаданных приложений платформы и обновите данные."
+
+msgid "Repository dependencies could not be resolved"
+msgstr "Не удалось разрешить зависимости репозиториев"
+
+msgid "Repository installation did not finish. Review the transaction details."
+msgstr "Установка из репозитория не завершилась. Проверьте подробности транзакции."
+
+msgid "Repository installation finished."
+msgstr "Установка из репозитория завершена."
+
+msgid "Repository metadata could not be refreshed. Cached programs are shown where available."
+msgstr "Не удалось обновить метаданные репозиториев. По возможности показаны кэшированные программы."
+
+msgid "Repository metadata is incomplete. Refresh the catalog and try again."
+msgstr "Метаданные репозиториев неполны. Обновите каталог и повторите попытку."
+
+#, python-brace-format
+msgid "Repository metadata is unavailable: {repositories}. Refresh the catalog and try again."
+msgstr "Метаданные репозиториев недоступны: {repositories}. Обновите каталог и повторите попытку."
+
+#, python-brace-format
+msgid "Repository metadata is unavailable: {repository}."
+msgstr "Метаданные репозитория недоступны: {repository}."
+
+msgid "Repository package information could not be read."
+msgstr "Не удалось прочитать сведения о пакетах репозитория."
+
+msgid "Repository package metadata could not be read. The catalog is incomplete."
+msgstr "Не удалось прочитать метаданные пакетов репозитория. Каталог неполон."
+
+msgid "Repository updates finished. AUR programs must be updated with your AUR tool."
+msgstr "Обновления из репозиториев установлены. Программы из AUR нужно обновить своим инструментом AUR."
+
+msgid "Repository updates finished. Check again to refresh the list."
+msgstr "Обновления из репозиториев установлены. Нажмите «Проверить снова», чтобы обновить список."
+
+#, python-brace-format
+msgid "Repository {repository}"
+msgstr "Репозиторий {repository}"
+
+msgid "Request too large"
+msgstr "Запрос слишком велик"
+
+msgid "Restart into the normal system before changing programs. Nothing was removed."
+msgstr "Загрузитесь в обычную систему перед изменением программ. Ничего не удалено."
+
+msgid "Restart into the normal system before installing programs."
+msgstr "Загрузитесь в обычную систему перед установкой программ."
+
+msgid "Restart into the normal system before removing programs. Nothing was removed."
+msgstr "Загрузитесь в обычную систему перед удалением программ. Ничего не удалено."
+
+msgid "Restart into the normal system before updating repository packages."
+msgstr "Загрузитесь в обычную систему перед обновлением пакетов репозиториев."
+
+msgid "Restart to finish the update"
+msgstr "Перезапустите компьютер для завершения обновления"
+
+msgid "Restore is available only from the normal installed system."
+msgstr "Восстановление доступно только из обычной установленной системы."
+
+msgid "Restore points are unavailable on this system."
+msgstr "Точки восстановления недоступны в этой системе."
+
+msgid "Restore-point protection for system changes. Read its setup instructions before relying on it."
+msgstr "Защита изменений системы точками восстановления. Прочитайте инструкции по настройке, прежде чем полагаться на неё."
+
+msgid "Reviews cannot contain the “<” sign. Remove it and send again."
+msgstr "Отзывы не могут содержать знак «<». Уберите его и отправьте снова."
+
+msgid "Select one AUR program and its reviewed install."
+msgstr "Выберите одну программу AUR и её проверенную установку."
+
+msgid "Select one repository program and its preview."
+msgstr "Выберите одну программу репозитория и её предпросмотр."
+
+msgid "Select one repository program."
+msgstr "Выберите одну программу репозитория."
+
+msgid "Session sudo key"
+msgstr "Ключ sudo для сеанса"
+
+msgid "Snapshot guard"
+msgstr "Защита снимками"
+
+#, python-brace-format
+msgid "Software changes are blocked by a lock left by an earlier operation. Close all software installers and updaters. An administrator must check that none is running before removing {path}. Then try again. Nothing was removed automatically."
+msgstr "Изменения программ заблокированы файлом, оставшимся от прежней операции. Закройте все установщики и средства обновления. Перед удалением {path} администратор должен убедиться, что ни одно из них не работает. Затем повторите попытку. Ничего не удалено автоматически."
+
+msgid "Some packages from the failed install remain. Restore the pre-install snapshot before trying again."
+msgstr "Некоторые пакеты неудачной установки остались. Восстановите снимок до установки перед новой попыткой."
+
+msgid "Space exclusively held by retained snapshots, including their shared extents."
+msgstr "Место, занятое исключительно сохранёнными снимками, включая их общие экстенты."
+
+msgid "Starting repository installation."
+msgstr "Начало установки из репозитория."
+
+msgid "Starting the install from the AUR."
+msgstr "Начало установки из AUR."
+
+msgid "Storage inventory took too long. Nothing was removed."
+msgstr "Проверка хранилища заняла слишком много времени. Ничего не удалено."
+
+msgid "System and Flatpak updates finished. For AUR updates, where available, open the program’s page to build its update, or use your AUR tool."
+msgstr "Обновления системы и Flatpak завершены. Для обновлений AUR, если доступно, откройте страницу программы для сборки обновления или используйте свой инструмент AUR."
+
+msgid "System restore points could not be read or restored."
+msgstr "Не удалось прочитать или восстановить точки восстановления системы."
+
+msgid "System updates finished, but Flatpak updates did not finish. Review the details before trying again."
+msgstr "Обновления системы завершены, но обновления Flatpak не завершились. Проверьте подробности перед новой попыткой."
+
+msgid "The AUR could not be checked for this program."
+msgstr "Не удалось проверить эту программу в AUR."
+
+msgid "The AUR did not answer for this program. Try again later."
+msgstr "AUR не ответил для этой программы. Повторите попытку позже."
+
+msgid "The AUR package information could not be read."
+msgstr "Не удалось прочитать сведения о пакете AUR."
+
+msgid "The AUR packages of this program depend on each other in a circle."
+msgstr "Пакеты AUR этой программы образуют циклическую зависимость."
+
+msgid "The AUR program or its packages changed. Review the install again."
+msgstr "Программа AUR или её пакеты изменились. Проверьте установку снова."
+
+msgid "The AUR recipe has no published commit"
+msgstr "У рецепта AUR нет опубликованного коммита"
+
+msgid "The AUR redirected an RPC request"
+msgstr "AUR перенаправил запрос RPC"
+
+msgid "The AUR redirected the metadata archive"
+msgstr "AUR перенаправил архив метаданных"
+
+msgid "The AUR redirected the recipe address"
+msgstr "AUR перенаправил адрес рецепта"
+
+msgid "The AUR section is off. Open it and read the warning first."
+msgstr "Раздел AUR выключен. Сначала откройте его и прочитайте предупреждение."
+
+msgid "The Arch news feed could not be read."
+msgstr "Не удалось прочитать ленту новостей Arch."
+
+msgid "The Flatpak installation could not be read."
+msgstr "Не удалось прочитать установку Flatpak."
+
+msgid "The Flatpak package list contains duplicate entries."
+msgstr "Список пакетов Flatpak содержит повторяющиеся записи."
+
+msgid "The Flatpak package list could not be read."
+msgstr "Не удалось прочитать список пакетов Flatpak."
+
+msgid "The JSON service takes requests on standard input."
+msgstr "Служба JSON принимает запросы через стандартный ввод."
+
+msgid "The NVIDIA support packages are not available. Refresh repository updates and try again."
+msgstr "Пакеты поддержки NVIDIA недоступны. Обновите данные репозиториев и повторите попытку."
+
+#, python-brace-format
+msgid "The Programs & Updates window could not be shown: {0}"
+msgstr "Не удалось показать окно «Программы и обновления»: {0}"
+
+msgid "The available package list could not be read."
+msgstr "Не удалось прочитать список доступных пакетов."
+
+#, python-brace-format
+msgid "The build of {package} did not produce: {missing}."
+msgstr "Сборка {package} не создала: {missing}."
+
+msgid "The date of the last full update is unknown. Review all the available Arch news notices."
+msgstr "Дата последнего полного обновления неизвестна. Просмотрите все доступные новости Arch."
+
+msgid "The desktop will change. Save your work, sign out and sign in again after updating."
+msgstr "Рабочий стол изменится. После обновления сохраните работу, выйдите из сеанса и войдите снова."
+
+msgid "The free-space check could not finish. The update was not started."
+msgstr "Проверка свободного места не завершилась. Обновление не запущено."
+
+msgid "The install could not be saved for Undo. The added packages will be removed."
+msgstr "Не удалось сохранить установку для отката. Добавленные пакеты будут удалены."
+
+msgid "The install was taken back."
+msgstr "Откат установки выполнен."
+
+msgid "The installed package list could not be read."
+msgstr "Не удалось прочитать список установленных пакетов."
+
+msgid "The installed package versions could not be read."
+msgstr "Не удалось прочитать версии установленных пакетов."
+
+msgid "The kernel will change. Restart the computer after updating."
+msgstr "Ядро изменится. Перезапустите компьютер после обновления."
+
+msgid "The list of packages to remove changed. Review it again."
+msgstr "Список пакетов для удаления изменился. Проверьте его снова."
+
+msgid "The new kernel and system services start after a restart. Save your work first."
+msgstr "Новое ядро и системные службы запустятся после перезапуска. Сначала сохраните работу."
+
+msgid "The online information could not be checked. Check your connection, then try again."
+msgstr "Не удалось проверить сведения в сети. Проверьте соединение и повторите попытку."
+
+msgid "The package source redirected to an insecure address."
+msgstr "Источник пакетов перенаправил запрос на небезопасный адрес."
+
+msgid "The package source returned too much data."
+msgstr "Источник пакетов вернул слишком много данных."
+
+msgid "The package state after the failed install could not be restored. Use the pre-install snapshot."
+msgstr "Не удалось восстановить состояние пакетов после неудачной установки. Используйте снимок до установки."
+
+msgid "The packages to install could not be checked."
+msgstr "Не удалось проверить пакеты для установки."
+
+msgid "The popular AUR list comes from an older check."
+msgstr "Список популярных пакетов AUR взят из прежней проверки."
+
+msgid "The popular AUR list could not be read. Search still works."
+msgstr "Не удалось прочитать список популярных пакетов AUR. Поиск по-прежнему работает."
+
+msgid "The program could not be removed. Nothing was changed."
+msgstr "Не удалось удалить программу. Ничего не изменено."
+
+msgid "The program from the AUR is installed."
+msgstr "Программа из AUR установлена."
+
+msgid "The program manager operation could not finish."
+msgstr "Операция менеджера программ не завершилась."
+
+msgid "The program manager request is invalid."
+msgstr "Недопустимый запрос менеджера программ."
+
+msgid "The program was removed."
+msgstr "Программа удалена."
+
+msgid "The ratings index could not be read."
+msgstr "Не удалось прочитать индекс оценок."
+
+msgid "The ratings index is not an object."
+msgstr "Индекс оценок не является объектом."
+
+msgid "The ratings service did not accept the review."
+msgstr "Служба оценок не приняла отзыв."
+
+msgid "The ratings service redirected to an insecure address."
+msgstr "Служба оценок перенаправила запрос на небезопасный адрес."
+
+msgid "The ratings service returned too much data."
+msgstr "Служба оценок вернула слишком много данных."
+
+msgid "The recipe is not the reviewed commit."
+msgstr "Рецепт не соответствует проверенному коммиту."
+
+msgid "The release page could not be read."
+msgstr "Не удалось прочитать страницу выпуска."
+
+msgid "The release page has an unexpected address."
+msgstr "У страницы выпуска неожиданный адрес."
+
+msgid "The removal could not be checked. Nothing was removed."
+msgstr "Не удалось проверить удаление. Ничего не удалено."
+
+msgid "The removal did not finish as expected. Check the installed programs again."
+msgstr "Удаление завершилось не так, как ожидалось. Проверьте установленные программы снова."
+
+msgid "The removal preview lists a package twice."
+msgstr "Предпросмотр удаления содержит пакет дважды."
+
+msgid "The restart was not authorized. Try again from the power menu."
+msgstr "Перезапуск не разрешён. Повторите из меню питания."
+
+msgid "The restore point from before this install changed or is no longer available. Nothing was restored."
+msgstr "Точка восстановления до этой установки изменилась или больше недоступна. Ничего не восстановлено."
+
+msgid "The restore point from before this install is unavailable."
+msgstr "Точка восстановления до этой установки недоступна."
+
+msgid "The restore point list is unavailable. Try again shortly."
+msgstr "Список точек восстановления недоступен. Повторите попытку чуть позже."
+
+msgid "The result could not be checked. Look at Installed before trying again."
+msgstr "Не удалось проверить результат. Перед повторной попыткой проверьте вкладку «Установленные»."
+
+msgid "The review could not be sent. Check your connection and try again."
+msgstr "Не удалось отправить отзыв. Проверьте соединение и повторите попытку."
+
+msgid "The review could not be sent. Its key could not be saved in your home folder."
+msgstr "Не удалось отправить отзыв. Его ключ не удалось сохранить в домашней папке."
+
+msgid "The review identity could not be saved."
+msgstr "Не удалось сохранить идентификатор отзыва."
+
+msgid "The reviews answer is not a list."
+msgstr "Ответ отзывов не является списком."
+
+msgid "The selected system restore point is ready. Restart to use it. Your home folder was left untouched."
+msgstr "Выбранная точка восстановления системы готова. Перезапустите компьютер, чтобы перейти на неё. Домашняя папка не затронута."
+
+msgid "The service result could not be observed. Check its journal before retrying."
+msgstr "Не удалось отследить результат службы. Проверьте её журнал перед повтором."
+
+msgid "The snapshot check could not be cleaned up. Nothing was installed."
+msgstr "Не удалось очистить данные проверки снимка. Ничего не установлено."
+
+msgid "The system restore connection ended. Check the restore status before trying again."
+msgstr "Связь со службой восстановления прервалась. Перед повтором проверьте, в каком состоянии восстановление."
+
+msgid "The system restore did not finish. Review the details before trying again."
+msgstr "Восстановление системы не завершилось. Проверьте подробности перед повтором."
+
+msgid "The system restore request was not authorized."
+msgstr "Запрос восстановления системы не разрешён."
+
+msgid "The system restore status could not be checked. Nothing was installed."
+msgstr "Не удалось проверить состояние восстановления системы. Ничего не установлено."
+
+msgid "The system restore status could not be checked. The update was not started."
+msgstr "Не удалось проверить состояние восстановления системы. Обновление не запущено."
+
+msgid "The system restore status could not be read."
+msgstr "Не удалось прочитать состояние восстановления системы."
+
+msgid "The system restore status is invalid."
+msgstr "Недопустимое состояние восстановления системы."
+
+msgid "The system update did not finish, so nothing was built."
+msgstr "Обновление системы не завершилось, поэтому ничего не собрано."
+
+msgid "The transaction connection ended. Check the installed state before trying again."
+msgstr "Связь со службой установки прервалась. Перед повтором проверьте, что сейчас установлено."
+
+msgid "The transaction plan changed. Review it again."
+msgstr "План транзакции изменился. Проверьте его снова."
+
+msgid "The transaction result could not be checked. Check repository updates before trying again."
+msgstr "Не удалось проверить результат транзакции. Перед повтором проверьте обновления из репозиториев."
+
+msgid "The transaction was not authorized."
+msgstr "Транзакция не разрешена."
+
+msgid "The undo could not be checked. Nothing was removed."
+msgstr "Не удалось проверить откат. Ничего не удалено."
+
+msgid "The undo did not finish as expected. Check the installed programs again."
+msgstr "Откат завершился не так, как ожидалось. Проверьте установленные программы снова."
+
+msgid "The undo did not finish. Nothing was removed."
+msgstr "Откат не завершился. Ничего не удалено."
+
+msgid "The update connection ended. Reopen the window to check the result; a started update keeps running."
+msgstr "Связь со службой обновления прервалась. Откройте окно заново, чтобы увидеть результат; запущенное обновление продолжит работу."
+
+msgid "The update did not finish. Open the update details with an administrator before trying again."
+msgstr "Обновление не завершилось. Откройте подробности обновления вместе с администратором перед повтором."
+
+msgid "The update did not finish. Review the details before trying again."
+msgstr "Обновление не завершилось. Проверьте подробности перед повтором."
+
+msgid "The update did not finish. Some packages changed. Review the details before trying again."
+msgstr "Обновление не завершилось. Некоторые пакеты изменились. Проверьте подробности перед повтором."
+
+msgid "The update download list could not be read."
+msgstr "Не удалось прочитать список загрузок обновления."
+
+msgid "The update operation could not start. Check that the update manager is installed correctly."
+msgstr "Операция обновления не запустилась. Проверьте правильность установки менеджера обновлений."
+
+msgid "The update service could not be started or observed. A started update keeps running; check its result before trying again."
+msgstr "Не удалось запустить или отследить службу обновлений. Запущенное обновление продолжает работать; проверьте результат перед повтором."
+
+msgid "The update was not started."
+msgstr "Обновление не запущено."
+
+msgid "The upgrade checks the repositories again. Its final package list and download size may change."
+msgstr "Обновление проверяет репозитории заново. Итоговый список пакетов и размер загрузки могут измениться."
+
+msgid "There is no recorded install of this program to take back."
+msgstr "Нет записи об установке этой программы, которую можно откатить."
+
+#, python-brace-format
+msgid "These installed packages were not found in AUR: {packages}."
+msgstr "Эти установленные пакеты не найдены в AUR: {packages}."
+
+msgid "These packages will be removed."
+msgstr "Эти пакеты будут удалены."
+
+msgid "This additional Flatpak installation is read-only in this program manager."
+msgstr "Эта дополнительная установка Flatpak доступна в менеджере программ только для чтения."
+
+msgid "This existing Flatpak program can be removed from your account without administrator authentication."
+msgstr "Эту установленную программу Flatpak можно удалить из вашей учётной записи без аутентификации администратора."
+
+msgid "This hardware uses the built-in graphics driver. NVIDIA support is not needed."
+msgstr "Это оборудование использует встроенный графический драйвер. Поддержка NVIDIA не нужна."
+
+msgid "This install can no longer be taken back as it was."
+msgstr "Эту установку больше нельзя откатить в точности."
+
+msgid "This install can no longer be taken back as it was. Nothing was removed."
+msgstr "Эту установку больше нельзя откатить в точности. Ничего не удалено."
+
+msgid "This install changed existing packages. Undo restores the whole system to the snapshot before the install and discards system changes made since then. Restart to use it. Your /home files stay untouched."
+msgstr "Эта установка изменила существующие пакеты. Откат восстановит всю систему из снимка перед установкой и отбросит последующие системные изменения. Чтобы изменения вступили в силу, перезапустите компьютер. Файлы в /home не затрагиваются."
+
+msgid "This package is not a program you can remove here."
+msgstr "Этот пакет не является программой, которую можно удалить здесь."
+
+msgid "This program has no ratings yet."
+msgstr "У этой программы пока нет оценок."
+
+msgid "This program is already installed in its newest version."
+msgstr "Уже установлена новейшая версия этой программы."
+
+msgid "This program is no longer in the catalog. Refresh the catalog."
+msgstr "Этой программы больше нет в каталоге. Обновите каталог."
+
+msgid "This program is no longer installed."
+msgstr "Эта программа больше не установлена."
+
+msgid "This program is not installed."
+msgstr "Эта программа не установлена."
+
+msgid "This program needs a package that is neither in Arch nor in the AUR."
+msgstr "Программе нужен пакет, которого нет ни в Arch, ни в AUR."
+
+msgid "This program pulls in too many packages to build here."
+msgstr "Программа требует слишком много пакетов для сборки здесь."
+
+msgid "This repository program is no longer available."
+msgstr "Эта программа репозитория больше недоступна."
+
+msgid "This restore point changed or is no longer available. Load the list again."
+msgstr "Точка восстановления изменилась или больше недоступна. Загрузите список снова."
+
+msgid "This review cannot be sent. Choose the stars and write a title and a few words."
+msgstr "Этот отзыв нельзя отправить. Выберите звёзды, напишите заголовок и несколько слов."
+
+msgid "Truncated AUR metadata archive"
+msgstr "Обрезанный архив метаданных AUR"
+
+msgid "Unexpected popularity redirect"
+msgstr "Неожиданное перенаправление популярности"
+
+msgid "Unknown method"
+msgstr "Неизвестный метод"
+
+msgid "Untrusted receipt file"
+msgstr "Недоверенный файл квитанции"
+
+msgid "Update service failed; details: journalctl -u emaki-update.service"
+msgstr "Сбой службы обновлений; подробности: journalctl -u emaki-update.service"
+
+msgid "Updated"
+msgstr "Обновлено"
+
+msgid "Updates always include the full system"
+msgstr "Обновления всегда охватывают всю систему"
+
+msgid "Updating Flatpak applications"
+msgstr "Обновление приложений Flatpak"
+
+#, python-brace-format
+msgid "Updating Flatpak applications ({scope})…"
+msgstr "Обновление приложений Flatpak ({scope})…"
+
+msgid "Updating all repository packages. You can hide this window; the update will keep running."
+msgstr "Обновление всех пакетов репозиториев. Можно скрыть окно; обновление продолжится."
+
+msgid "Usage: emaki-programs list|preview PACKAGE|remove PACKAGE TOKEN --json"
+msgstr "Использование: emaki-programs list|preview PACKAGE|remove PACKAGE TOKEN --json"
+
+msgid "Usage: emaki-programs ratings ID... | reviews ID... | review JSON"
+msgstr "Использование: emaki-programs ratings ID... | reviews ID... | review JSON"
+
+msgid "Usage: emaki-update-manager [--status|--check|--updates]"
+msgstr "Использование: emaki-update-manager [--status|--check|--updates]"
+
+msgid "Waiting for permission to update…"
+msgstr "Ожидание разрешения на обновление…"
+
+msgid "Warning: the update space check is unavailable; the package transaction will continue."
+msgstr "Предупреждение: проверка места для обновления недоступна; транзакция пакетов продолжится."
+
+msgid "What the undo removes changed. Review it again."
+msgstr "Список удаляемого при откате изменился. Проверьте его снова."
+
+msgid "You have already reviewed this program."
+msgstr "Вы уже оставили отзыв об этой программе."
+
+#, python-brace-format
+msgid "Your package settings hold back these updates: {packages}."
+msgstr "Эти обновления отложены по вашим настройкам пакетов: {packages}."
+
+msgid "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
+msgstr "Система готова вернуться к состоянию до этой установки. Перезапустите компьютер для завершения. Файлы домашней папки не изменены."
+
+msgid "open the update manager as a regular user"
+msgstr "откройте менеджер обновлений от имени обычного пользователя"
+
+#, python-brace-format
+msgid "{command} failed with status {status}"
+msgstr "Команда «{command}» завершилась с кодом {status}"
+
+#, python-brace-format
+msgid "{error} The unused snapshot will be removed by scheduled cleanup."
+msgstr "{error} Неиспользуемый снимок будет удалён плановой очисткой."
+
+#, python-brace-format
+msgid "{package} was built but could not be installed."
+msgstr "{package} собран, но установить его не удалось."
+
+msgid "Website app removed."
+msgstr "Приложение сайта удалено."
+
+msgid "Website app added. Its name or icon could not be fetched; a generated icon is used when needed."
+msgstr "Приложение сайта добавлено. Не удалось получить его название или значок; при необходимости используется сгенерированный значок."
+
+msgid "Website app added. Find it in the launcher."
+msgstr "Приложение сайта добавлено. Оно доступно в меню запуска."
+
+msgid "Development kits need system snapshots. This system does not support them."
+msgstr "Наборам для разработки нужны снимки системы. Эта система их не поддерживает."
+
+msgid "No removable development kit packages are installed."
+msgstr "Нет установленных пакетов набора для разработки, которые можно удалить."
+
+msgid "This website app no longer exists."
+msgstr "Этого приложения сайта больше нет."
+
+msgid "The stable Rust toolchain is ready. Use cargo +stable for this toolchain."
+msgstr "Стабильный тулчейн Rust готов. Используйте cargo +stable для работы с ним."
+
+msgid "This website app is invalid."
+msgstr "Некорректное приложение сайта."
+
+msgid "Install the Rust packages before finishing setup."
+msgstr "Установите пакеты Rust перед завершением настройки."
+
+msgid "Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched."
+msgstr "Откат восстанавливает всю систему из снимка до установки этого набора для разработки, включая доступ к Docker и настройки сокета, и отменяет все последующие изменения системы. Для применения перезапустите компьютер. Файлы в домашней папке и тулчейны Rust не изменятся."
+
+msgid "The installed packages %(packages)s conflict with this development kit; remove them first if you want to use this kit."
+msgstr "Установленные пакеты %(packages)s конфликтуют с этим набором для разработки; сначала удалите их, если хотите использовать этот набор."
+
+msgid "Rust packages are installed, but the stable toolchain did not finish. Choose Finish setup to retry."
+msgstr "Пакеты Rust установлены, но установка стабильного тулчейна не завершена. Нажмите «Завершить настройку», чтобы повторить попытку."
+
+msgid "The Rust toolchain must be installed as your user, not as administrator."
+msgstr "Тулчейн Rust нужно устанавливать от имени вашего пользователя, а не администратора."
+
+msgid "No development kit installation receipt is available."
+msgstr "Нет записи об установке набора для разработки."
+
+msgid "Close this website app before removing it."
+msgstr "Закройте приложение сайта перед удалением."
+
+msgid "Enter a complete http:// or https:// website address."
+msgstr "Введите полный адрес сайта, начинающийся с http:// или https://."
+
+msgid "Choose a shorter name without control characters."
+msgstr "Выберите более короткое название без управляющих символов."
+
+msgid "The website app folder is not safe to change."
+msgstr "Невозможно безопасно изменить папку приложения сайта."
+
+msgid "Invalid development kit."
+msgstr "Недопустимый набор для разработки."
+
+msgid "The development kit receipt could not be saved. Review the system restore point before retrying."
+msgstr "Не удалось сохранить запись об установке набора для разработки. Проверьте точку восстановления системы перед повторной попыткой."
+
+msgid "The website app files have changed. Nothing was removed."
+msgstr "Файлы приложения сайта изменились. Ничего не удалено."
+
+msgid "Other installed software needs this development kit, so it stays."
+msgstr "Этот набор для разработки нужен другим установленным программам, поэтому он будет сохранён."
+
+msgid "Docker setup did not finish. Review the transaction details."
+msgstr "Настройка Docker не завершена. Проверьте подробности операции."
+
+msgid "The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged."
+msgstr "Набор для разработки удалён. Образы и контейнеры Docker, личные проекты и тулчейны Rust не изменены."
+
+msgid "Select a signed-in user for Docker access."
+msgstr "Выберите пользователя, вошедшего в систему, для доступа к Docker."
+
+msgid "Installing the stable Rust toolchain for your user."
+msgstr "Установка стабильного тулчейна Rust для вашей учётной записи."
+
+msgid "These development kit packages will be removed. Shared system packages stay installed."
+msgstr "Эти пакеты набора для разработки будут удалены. Общие системные пакеты останутся установленными."
+
+msgid "The development kit packages are unavailable. Refresh the catalog and try again."
+msgstr "Пакеты набора для разработки недоступны. Обновите каталог и повторите попытку."
+
+msgid "The development kit removal did not finish. Review the transaction details."
+msgstr "Удаление набора для разработки не завершено. Проверьте подробности операции."
+
+
+#, python-brace-format
+msgid "AppStream metadata is unreadable: {path}: {error}"
+msgstr "Не удалось прочитать метаданные AppStream: {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata could not be parsed (parser unavailable): {path}: {error}"
+msgstr "Не удалось разобрать метаданные AppStream (анализатор недоступен): {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata is invalid: {path}: {error}"
+msgstr "Недопустимые метаданные AppStream: {path}: {error}"
+
+#, python-brace-format
+msgid "{value} MB"
+msgstr "{value} MB"
+
+#, python-brace-format
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#, python-brace-format
+msgid "Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable."
+msgstr "Снимки по отдельности занимают не менее {size} места, не используемого другими данными; сколько места снимки используют совместно, неизвестно."
+
+#, python-brace-format
+msgid "{value} B"
+msgstr "{value} Б"

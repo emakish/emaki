@@ -13,6 +13,7 @@ import ".." as UI
 // field that checks the layout, and an edit that brings more than one character empties it.
 ShellRoot {
     id: test
+    readonly property var fixtureController: controller
     property bool failed: false
     property int stage: 0
     property real stageStarted: Date.now()
@@ -91,7 +92,7 @@ ShellRoot {
         UI.InstallerView {
             id: content
             anchors.fill: parent
-            controller: controller
+            controller: test.fixtureController
         }
         // Stands in for text the person selected and copied elsewhere.
         TextInput {

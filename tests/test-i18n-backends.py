@@ -4,6 +4,7 @@
 """Isolated locale precedence and wrapper failure boundaries."""
 import importlib.util
 import importlib.machinery
+import gettext
 import os
 from pathlib import Path
 import shutil
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,22 @@ def load(path):
 
 
 class Backends(unittest.TestCase):
+    def test_programs_removal_and_docker_translation_wording(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            compiled = Path(tmp) / 'programs.mo'
+            subprocess.run(['msgfmt', str(ROOT / 'i18n/programs/es.po'),
+                            '-o', str(compiled)], check=True)
+            with compiled.open('rb') as stream:
+                translate = gettext.GNUTranslations(stream).gettext
+            self.assertEqual(translate('Website app removed.'), 'Se quitó la aplicación web.')
+            self.assertEqual(translate('The development kit removal did not finish. Review the transaction details.'),
+                             'No se terminó de quitar el kit de desarrollo. Revisa los detalles de la transacción.')
+        tree = ET.parse(ROOT / 'i18n/programs/pt_BR.ts')
+        messages = {message.findtext('source'): message.findtext('translation')
+                    for message in tree.iter('message')}
+        self.assertEqual(messages['Adding you to the Docker group gives you root-level control of this computer.'],
+                         'Ao entrar no grupo Docker, você passa a ter controle de nível root sobre este computador.')
+
     def test_installed_boot_catalogue_location(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

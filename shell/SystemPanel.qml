@@ -55,7 +55,8 @@ Item {
             if (!panel.opened || !panel.keyboardFocusPending || panel.contentAlpha <= .001)
                 return;
             panel.keyboardFocusPending = false;
-            Keyboard.focusFirst(Keyboard.targets(body.pages).length ? body.pages : panel);
+            if (!body.focusConfirmation())
+                Keyboard.focusFirst(Keyboard.targets(body.pages).length ? body.pages : panel);
         });
     }
     onContentAlphaChanged: applyKeyboardFocus()

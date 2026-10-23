@@ -1,7 +1,7 @@
 {
   "checked_at": "2026-10-21T06:34:32.874745+00:00",
   "source": "/var/lib/pacman/sync",
-  "method": "Selected cached core/extra sync databases required-dependency closure; virtual providers chosen deterministically. Pacman build resolution remains authoritative.",
+  "method": "Selected cached core/extra sync databases required-dependency closure; virtual providers chosen deterministically. Pacman build resolution remains authoritative. Capture recognition dependency closure refreshed from the same cached databases on 2026-10-23; unrelated package metadata retains the original check date.",
   "direct": [
     {
       "pkgname": "7zip",
@@ -1429,8 +1429,13 @@
     "tdb",
     "terminus-font",
     "tesseract",
-    "tesseract-data-afr",
+    "tesseract-data-deu",
+    "tesseract-data-eng",
+    "tesseract-data-fra",
     "tesseract-data-osd",
+    "tesseract-data-por",
+    "tesseract-data-rus",
+    "tesseract-data-spa",
     "testdisk",
     "tevent",
     "thin-provisioning-tools",
@@ -1561,7 +1566,7 @@
   ],
   "retained_gnome_apps": [],
   "direct_compressed_bytes": 349760602,
-  "added_offline_compressed_bytes": 519184928,
+  "added_offline_compressed_bytes": 508674579,
   "added": [
     {
       "pkgname": "7zip",
@@ -2030,15 +2035,6 @@
       "pkgrel": "1",
       "compressed_size": 38905,
       "installed_size": 153467
-    },
-    {
-      "pkgname": "leptonica",
-      "repo": "extra",
-      "arch": "x86_64",
-      "pkgver": "1.87.0",
-      "pkgrel": "2",
-      "compressed_size": 1332492,
-      "installed_size": 3893255
     },
     {
       "pkgname": "libabw",
@@ -2914,33 +2910,6 @@
       "installed_size": 7049973
     },
     {
-      "pkgname": "tesseract",
-      "repo": "extra",
-      "arch": "x86_64",
-      "pkgver": "5.5.3",
-      "pkgrel": "1",
-      "compressed_size": 1759644,
-      "installed_size": 4889669
-    },
-    {
-      "pkgname": "tesseract-data-afr",
-      "repo": "extra",
-      "arch": "any",
-      "pkgver": "4.1.0",
-      "pkgrel": "5",
-      "compressed_size": 3602706,
-      "installed_size": 7851157
-    },
-    {
-      "pkgname": "tesseract-data-osd",
-      "repo": "extra",
-      "arch": "any",
-      "pkgver": "4.1.0",
-      "pkgrel": "5",
-      "compressed_size": 3815507,
-      "installed_size": 10562874
-    },
-    {
       "pkgname": "threadweaver",
       "repo": "extra",
       "arch": "x86_64",
@@ -3450,7 +3419,6 @@
     "x265": 1,
     "openh264": 1,
     "aom": 1,
-    "tesseract-data-afr": 128,
     "giflib": 1,
     "raptor": 1,
     "vlc-plugins-video-output": 1,
@@ -3461,6 +3429,7 @@
     "gtk3": 1,
     "phonon-qt6-vlc": 1,
     "passim": 1,
-    "ostree": 1
+    "ostree": 1,
+    "tesseract-data-deu": 128
   }
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Repair and atomically save the shell's private notification history."""
+"""Repair and atomically save the shell's private state files: the notification history and
+the recently chosen emoji (one request line: {"file": NAME, "text": TEXT or null to repair only})."""
 import json
 import os
 from pathlib import Path
@@ -12,9 +13,13 @@ import sys
 from clipboard_store import directory
 
 
-def repair_file(folder):
+# The only files written here, in $XDG_STATE_HOME/emaki (0700); each is 0600.
+FILES = ('notifications.json', 'emoji-recent.json')
+
+
+def repair_file(folder, name):
     try:
-        fd = os.open('notifications.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                      dir_fd=folder)
     except FileNotFoundError:
         return
@@ -27,7 +32,9 @@ def repair_file(folder):
         os.close(fd)
 
 
-def save(text):
+def save(text, name='notifications.json'):
+    if name not in FILES:
+        raise ValueError('unknown state file')
     root = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'emaki'
     try:
         folder = directory(root, create=text is not None)
@@ -37,10 +44,10 @@ def save(text):
         raise
     try:
         os.fchmod(folder, 0o700)
-        repair_file(folder)
+        repair_file(folder, name)
         if text is None:
             return
-        temporary = '.notifications-' + secrets.token_hex(16)
+        temporary = '.' + name.split('.')[0] + '-' + secrets.token_hex(16)
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                      0o600, dir_fd=folder)
         try:
@@ -49,7 +56,7 @@ def save(text):
                 stream.write(text.encode('utf-8'))
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.rename(temporary, 'notifications.json', src_dir_fd=folder, dst_dir_fd=folder)
+            os.rename(temporary, name, src_dir_fd=folder, dst_dir_fd=folder)
             os.fsync(folder)
         finally:
             try:
@@ -64,7 +71,7 @@ if __name__ == '__main__':
     os.umask(0o077)
     try:
         request = json.loads(sys.stdin.readline())
-        save(request['text'])
+        save(request['text'], request.get('file', 'notifications.json'))
     except (OSError, ValueError, KeyError, TypeError):
         # Never print message bodies or paths to the shell log.
         sys.exit(1)

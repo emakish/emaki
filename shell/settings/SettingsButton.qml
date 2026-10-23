@@ -22,13 +22,19 @@ Button {
             root.clicked();
         event.accepted = true;
     }
+    Accessible.name: text
+    ToolTip.visible: label.truncated && (hovered || activeFocus)
+    ToolTip.text: text
     contentItem: Text {
+        id: label
+        objectName: "settings-button-label"
         textFormat: Text.PlainText
         text: root.text
         font: root.font
         color: SettingsTheme.ink
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideRight
     }
     background: Rectangle {
         antialiasing: true

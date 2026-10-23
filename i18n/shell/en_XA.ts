@@ -645,6 +645,253 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
     </context>
     <context>
+        <name>Commands</name>
+        <message>
+            <source>lock screen away password</source>
+            <translation>[ļöçķ šçŕééñ àŵàÿ þàššŵöŕð·······]</translation>
+        </message>
+        <message>
+            <source>log out sign out leave session exit</source>
+            <translation>[ļöĝ öûţ šîĝñ öûţ ļéàṽé šéššîöñ éẋîţ···········]</translation>
+        </message>
+        <message>
+            <source>restart reboot computer</source>
+            <translation>[ŕéšţàŕţ ŕéƀööţ çöɱþûţéŕ·······]</translation>
+        </message>
+        <message>
+            <source>shut down power off turn off computer</source>
+            <translation>[šĥûţ ðöŵñ þöŵéŕ öƒƒ ţûŕñ öƒƒ çöɱþûţéŕ···········]</translation>
+        </message>
+        <message>
+            <source>Switch to dark appearance</source>
+            <translation>[Šŵîţçĥ ţö ðàŕķ àþþéàŕàñçé·······]</translation>
+        </message>
+        <message>
+            <source>dark mode theme night appearance</source>
+            <translation>[ðàŕķ ɱöðé ţĥéɱé ñîĝĥţ àþþéàŕàñçé··········]</translation>
+        </message>
+        <message>
+            <source>Switch to light appearance</source>
+            <translation>[Šŵîţçĥ ţö ļîĝĥţ àþþéàŕàñçé········]</translation>
+        </message>
+        <message>
+            <source>light mode theme day appearance</source>
+            <translation>[ļîĝĥţ ɱöðé ţĥéɱé ðàÿ àþþéàŕàñçé·········]</translation>
+        </message>
+        <message>
+            <source>Turn Night Light on</source>
+            <translation>[Ţûŕñ Ñîĝĥţ Ļîĝĥţ öñ·····]</translation>
+        </message>
+        <message>
+            <source>night light warm screen evening blue</source>
+            <translation>[ñîĝĥţ ļîĝĥţ ŵàŕɱ šçŕééñ éṽéñîñĝ ƀļûé···········]</translation>
+        </message>
+        <message>
+            <source>Turn Night Light off</source>
+            <translation>[Ţûŕñ Ñîĝĥţ Ļîĝĥţ öƒƒ·····]</translation>
+        </message>
+        <message>
+            <source>Check for updates</source>
+            <translation>[Çĥéçķ ƒöŕ ûþðàţéš····]</translation>
+        </message>
+        <message>
+            <source>update upgrade programs system new version</source>
+            <translation>[ûþðàţé ûþĝŕàðé þŕöĝŕàɱš šÿšţéɱ ñéŵ ṽéŕšîöñ·············]</translation>
+        </message>
+        <message>
+            <source>Install a program</source>
+            <translation>[Îñšţàļļ à þŕöĝŕàɱ····]</translation>
+        </message>
+        <message>
+            <source>install add get program app software store</source>
+            <translation>[îñšţàļļ àðð ĝéţ þŕöĝŕàɱ àþþ šöƒţŵàŕé šţöŕé·············]</translation>
+        </message>
+        <message>
+            <source>Take a screenshot</source>
+            <translation>[Ţàķé à šçŕééñšĥöţ····]</translation>
+        </message>
+        <message>
+            <source>screenshot capture picture screen print</source>
+            <translation>[šçŕééñšĥöţ çàþţûŕé þîçţûŕé šçŕééñ þŕîñţ············]</translation>
+        </message>
+        <message>
+            <source>Record the screen</source>
+            <translation>[Ŕéçöŕð ţĥé šçŕééñ····]</translation>
+        </message>
+        <message>
+            <source>record video screencast capture screen</source>
+            <translation>[ŕéçöŕð ṽîðéö šçŕééñçàšţ çàþţûŕé šçŕééñ············]</translation>
+        </message>
+        <message>
+            <source>Copy text from screen</source>
+            <translation>[Çöþÿ ţéẋţ ƒŕöɱ šçŕééñ······]</translation>
+        </message>
+        <message>
+            <source>copy text screen recognize ocr clipboard</source>
+            <translation>[çöþÿ ţéẋţ šçŕééñ ŕéçöĝñîžé öçŕ çļîþƀöàŕð············]</translation>
+        </message>
+        <message>
+            <source>Read QR code</source>
+            <translation>[Ŕéàð ǪŔ çöðé···]</translation>
+        </message>
+        <message>
+            <source>qr code scan read screen link</source>
+            <translation>[ǫŕ çöðé šçàñ ŕéàð šçŕééñ ļîñķ·········]</translation>
+        </message>
+        <message>
+            <source>Development kits</source>
+            <translation>[Ðéṽéļöþɱéñţ ķîţš····]</translation>
+        </message>
+        <message>
+            <source>development programming tools code compiler containers</source>
+            <translation>[ðéṽéļöþɱéñţ þŕöĝŕàɱɱîñĝ ţööļš çöðé çöɱþîļéŕ çöñţàîñéŕš·················]</translation>
+        </message>
+        <message>
+            <source>Add a website as an app</source>
+            <translation>[Àðð à ŵéƀšîţé àš àñ àþþ·······]</translation>
+        </message>
+        <message>
+            <source>website web app browser shortcut add</source>
+            <translation>[ŵéƀšîţé ŵéƀ àþþ ƀŕöŵšéŕ šĥöŕţçûţ àðð···········]</translation>
+        </message>
+        <message>
+            <source>Clipboard history</source>
+            <translation>[Çļîþƀöàŕð ĥîšţöŕÿ····]</translation>
+        </message>
+        <message>
+            <source>clipboard copied paste history</source>
+            <translation>[çļîþƀöàŕð çöþîéð þàšţé ĥîšţöŕÿ·········]</translation>
+        </message>
+        <message>
+            <source>Emoji</source>
+            <translation>[Éɱöĵî]</translation>
+        </message>
+        <message>
+            <source>emoji smiley symbols characters</source>
+            <translation>[éɱöĵî šɱîļéÿ šÿɱƀöļš çĥàŕàçţéŕš·········]</translation>
+        </message>
+        <message>
+            <source>Keyboard shortcuts</source>
+            <translation>[Ķéÿƀöàŕð šĥöŕţçûţš·····]</translation>
+        </message>
+        <message>
+            <source>keyboard shortcuts keys hotkeys</source>
+            <translation>[ķéÿƀöàŕð šĥöŕţçûţš ķéÿš ĥöţķéÿš·········]</translation>
+        </message>
+        <message>
+            <source>Open Notes</source>
+            <translation>[Öþéñ Ñöţéš··]</translation>
+        </message>
+        <message>
+            <source>notes note write checklist</source>
+            <translation>[ñöţéš ñöţé ŵŕîţé çĥéçķļîšţ········]</translation>
+        </message>
+        <message>
+            <source>Report a problem</source>
+            <translation>[Ŕéþöŕţ à þŕöƀļéɱ····]</translation>
+        </message>
+        <message>
+            <source>report problem bug help feedback</source>
+            <translation>[ŕéþöŕţ þŕöƀļéɱ ƀûĝ ĥéļþ ƒééðƀàçķ··········]</translation>
+        </message>
+        <message>
+            <source>Reset Emaki settings</source>
+            <translation>[Ŕéšéţ Éɱàķî šéţţîñĝš·····]</translation>
+        </message>
+        <message>
+            <source>reset defaults restore settings</source>
+            <translation>[ŕéšéţ ðéƒàûļţš ŕéšţöŕé šéţţîñĝš·········]</translation>
+        </message>
+        <message>
+            <source>wifi wireless network internet</source>
+            <translation>[ŵîƒî ŵîŕéļéšš ñéţŵöŕķ îñţéŕñéţ·········]</translation>
+        </message>
+        <message>
+            <source>bluetooth headphones devices pair</source>
+            <translation>[ƀļûéţööţĥ ĥéàðþĥöñéš ðéṽîçéš þàîŕ··········]</translation>
+        </message>
+        <message>
+            <source>ethernet cable wired vpn dns internet</source>
+            <translation>[éţĥéŕñéţ çàƀļé ŵîŕéð ṽþñ ðñš îñţéŕñéţ···········]</translation>
+        </message>
+        <message>
+            <source>theme light dark accent colour color</source>
+            <translation>[ţĥéɱé ļîĝĥţ ðàŕķ àççéñţ çöļöûŕ çöļöŕ···········]</translation>
+        </message>
+        <message>
+            <source>background picture image desktop</source>
+            <translation>[ƀàçķĝŕöûñð þîçţûŕé îɱàĝé ðéšķţöþ··········]</translation>
+        </message>
+        <message>
+            <source>bar panel dock taskbar hide</source>
+            <translation>[ƀàŕ þàñéļ ðöçķ ţàšķƀàŕ ĥîðé········]</translation>
+        </message>
+        <message>
+            <source>windows workspaces gaps width focus columns</source>
+            <translation>[ŵîñðöŵš ŵöŕķšþàçéš ĝàþš ŵîðţĥ ƒöçûš çöļûɱñš··············]</translation>
+        </message>
+        <message>
+            <source>monitor screen scale resolution</source>
+            <translation>[ɱöñîţöŕ šçŕééñ šçàļé ŕéšöļûţîöñ·········]</translation>
+        </message>
+        <message>
+            <source>audio volume speakers microphone</source>
+            <translation>[àûðîö ṽöļûɱé šþéàķéŕš ɱîçŕöþĥöñé··········]</translation>
+        </message>
+        <message>
+            <source>keyboard layout typing repeat</source>
+            <translation>[ķéÿƀöàŕð ļàÿöûţ ţÿþîñĝ ŕéþéàţ·········]</translation>
+        </message>
+        <message>
+            <source>mouse touchpad trackpad pointer scroll</source>
+            <translation>[ɱöûšé ţöûçĥþàð ţŕàçķþàð þöîñţéŕ šçŕöļļ············]</translation>
+        </message>
+        <message>
+            <source>notifications alerts do not disturb</source>
+            <translation>[ñöţîƒîçàţîöñš àļéŕţš ðö ñöţ ðîšţûŕƀ···········]</translation>
+        </message>
+        <message>
+            <source>battery power sleep energy</source>
+            <translation>[ƀàţţéŕÿ þöŵéŕ šļééþ éñéŕĝÿ········]</translation>
+        </message>
+        <message>
+            <source>lock login password screen</source>
+            <translation>[ļöçķ ļöĝîñ þàššŵöŕð šçŕééñ········]</translation>
+        </message>
+        <message>
+            <source>default apps browser mail</source>
+            <translation>[ðéƒàûļţ àþþš ƀŕöŵšéŕ ɱàîļ·······]</translation>
+        </message>
+        <message>
+            <source>updates recovery snapshots maintenance reset</source>
+            <translation>[ûþðàţéš ŕéçöṽéŕÿ šñàþšĥöţš ɱàîñţéñàñçé ŕéšéţ··············]</translation>
+        </message>
+        <message>
+            <source>privacy security encryption permissions</source>
+            <translation>[þŕîṽàçÿ šéçûŕîţÿ éñçŕÿþţîöñ þéŕɱîššîöñš············]</translation>
+        </message>
+        <message>
+            <source>language region time date format</source>
+            <translation>[ļàñĝûàĝé ŕéĝîöñ ţîɱé ðàţé ƒöŕɱàţ··········]</translation>
+        </message>
+        <message>
+            <source>users accounts password picture</source>
+            <translation>[ûšéŕš àççöûñţš þàššŵöŕð þîçţûŕé·········]</translation>
+        </message>
+        <message>
+            <source>disk space storage free</source>
+            <translation>[ðîšķ šþàçé šţöŕàĝé ƒŕéé·······]</translation>
+        </message>
+        <message>
+            <source>about version system information</source>
+            <translation>[àƀöûţ ṽéŕšîöñ šÿšţéɱ îñƒöŕɱàţîöñ··········]</translation>
+        </message>
+        <message>
+            <source>sudo keys</source>
+            <translation>[šûðö ķéÿš··]</translation>
+        </message>
+    </context>
+    <context>
         <name>DisplaysService</name>
         <message>
             <source>Display settings returned an invalid response.</source>
@@ -903,6 +1150,13 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
     </context>
     <context>
+        <name>EmojiCatalog</name>
+        <message>
+            <source>Emoji names could not be loaded.</source>
+            <translation>[Éɱöĵî ñàɱéš çöûļð ñöţ ƀé ļöàðéð.··········]</translation>
+        </message>
+    </context>
+    <context>
         <name>GreeterAuth</name>
         <message>
             <source>Username</source>
@@ -1133,6 +1387,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>LauncherBody</name>
         <message>
+            <source>Settings</source>
+            <translation>[Šéţţîñĝš·]</translation>
+        </message>
+        <message>
             <source>Apps</source>
             <translation>[Àþþš]</translation>
         </message>
@@ -1213,10 +1471,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Ţéŕɱîñàļ àþþ···]</translation>
         </message>
         <message>
-            <source>Settings</source>
-            <translation>[Šéţţîñĝš·]</translation>
-        </message>
-        <message>
             <source>Window #%1</source>
             <translation>[Ŵîñðöŵ #%1··]</translation>
         </message>
@@ -1231,6 +1485,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>DuckDuckGo · default browser</source>
             <translation>[ÐûçķÐûçķĜö · ðéƒàûļţ ƀŕöŵšéŕ········]</translation>
+        </message>
+        <message>
+            <source>Commands</source>
+            <translation>[Çöɱɱàñðš·]</translation>
+        </message>
+        <message>
+            <source>Emoji</source>
+            <translation>[Éɱöĵî]</translation>
         </message>
         <message>
             <source>Opening file…</source>
@@ -1351,6 +1613,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Nothing matches “%1”</source>
             <translation>[Ñöţĥîñĝ ɱàţçĥéš “%1”·····]</translation>
+        </message>
+        <message>
+            <source>Reading emoji names…</source>
+            <translation>[Ŕéàðîñĝ éɱöĵî ñàɱéš…·····]</translation>
         </message>
         <message>
             <source>Nothing opened from here yet · type to search everything</source>
@@ -1689,6 +1955,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Do not disturb returns %1.</source>
             <translation>[Ðö ñöţ ðîšţûŕƀ ŕéţûŕñš %1.········]</translation>
+        </message>
+        <message>
+            <source>Emaki Calendar</source>
+            <translation>[Éɱàķî Çàļéñðàŕ···]</translation>
+        </message>
+        <message>
+            <source>Settings</source>
+            <translation>[Šéţţîñĝš·]</translation>
         </message>
         <message>
             <source>Application</source>
@@ -2162,8 +2436,8 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Šîĝñ öûţ àñð šîĝñ îñ àĝàîñ ţö ƒîñîšĥ ûþðàţîñĝ ţĥé ðéšķţöþ.···················]</translation>
         </message>
         <message>
-            <source>Save your work first [Emaki].</source>
-            <translation>[Šàṽé ÿöûŕ ŵöŕķ ƒîŕšţ [Éɱàķî].·········]</translation>
+            <source>Save your work first.</source>
+            <translation>[Šàṽé ÿöûŕ ŵöŕķ ƒîŕšţ.······]</translation>
         </message>
     </context>
     <context>
@@ -2171,6 +2445,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>System details or the report could not be read. Try again.</source>
             <translation>[Šÿšţéɱ ðéţàîļš öŕ ţĥé ŕéþöŕţ çöûļð ñöţ ƀé ŕéàð. Ţŕÿ àĝàîñ.···················]</translation>
+        </message>
+        <message>
+            <source>Stable</source>
+            <translation>[Šţàƀļé·]</translation>
+        </message>
+        <message>
+            <source>Testing</source>
+            <translation>[Ţéšţîñĝ·]</translation>
         </message>
         <message>
             <source>Report saved. Review it before sharing; it may contain private information. Nothing has been uploaded.</source>
@@ -2182,11 +2464,20 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
         <message>
             <source>Version %1 · %2 channel</source>
+            <extracomment>%2 is a translated channel name in running text, not a heading.</extracomment>
             <translation>[Ṽéŕšîöñ %1 · %2 çĥàññéļ·······]</translation>
         </message>
         <message>
-            <source>Unavailable</source>
-            <translation>[Ûñàṽàîļàƀļé··]</translation>
+            <source>Version %1 · channel unavailable</source>
+            <translation>[Ṽéŕšîöñ %1 · çĥàññéļ ûñàṽàîļàƀļé··········]</translation>
+        </message>
+        <message>
+            <source>Version unavailable · %1 channel</source>
+            <translation>[Ṽéŕšîöñ ûñàṽàîļàƀļé · %1 çĥàññéļ··········]</translation>
+        </message>
+        <message>
+            <source>Version and channel unavailable</source>
+            <translation>[Ṽéŕšîöñ àñð çĥàññéļ ûñàṽàîļàƀļé·········]</translation>
         </message>
         <message>
             <source>Update channel</source>
@@ -2243,6 +2534,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>The firmware vendor and version.</source>
             <translation>[Ţĥé ƒîŕɱŵàŕé ṽéñðöŕ àñð ṽéŕšîöñ.··········]</translation>
+        </message>
+        <message>
+            <source>Unavailable</source>
+            <translation>[Ûñàṽàîļàƀļé··]</translation>
         </message>
         <message>
             <source>Software</source>
@@ -2734,6 +3029,58 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>SettingsMaintenancePage</name>
         <message>
+            <source>Theme, accent, wallpaper choice and window gaps</source>
+            <translation>[Ţĥéɱé, àççéñţ, ŵàļļþàþéŕ çĥöîçé àñð ŵîñðöŵ ĝàþš···············]</translation>
+        </message>
+        <message>
+            <source>Top bar, dock and when they hide</source>
+            <translation>[Ţöþ ƀàŕ, ðöçķ àñð ŵĥéñ ţĥéÿ ĥîðé··········]</translation>
+        </message>
+        <message>
+            <source>Apps pinned to the dock</source>
+            <translation>[Àþþš þîññéð ţö ţĥé ðöçķ·······]</translation>
+        </message>
+        <message>
+            <source>Mouse, touchpad, key repeat and shortcuts</source>
+            <translation>[Ṁöûšé, ţöûçĥþàð, ķéÿ ŕéþéàţ àñð šĥöŕţçûţš·············]</translation>
+        </message>
+        <message>
+            <source>Default apps</source>
+            <translation>[Ðéƒàûļţ àþþš···]</translation>
+        </message>
+        <message>
+            <source>Notification rules and Do Not Disturb</source>
+            <translation>[Ñöţîƒîçàţîöñ ŕûļéš àñð Ðö Ñöţ Ðîšţûŕƀ···········]</translation>
+        </message>
+        <message>
+            <source>System sounds and Night Light</source>
+            <translation>[Šÿšţéɱ šöûñðš àñð Ñîĝĥţ Ļîĝĥţ·········]</translation>
+        </message>
+        <message>
+            <source>Screen blanking and lock delay</source>
+            <translation>[Šçŕééñ ƀļàñķîñĝ àñð ļöçķ ðéļàÿ·········]</translation>
+        </message>
+        <message>
+            <source>Your files, notes, pictures and wallpapers</source>
+            <translation>[Ÿöûŕ ƒîļéš, ñöţéš, þîçţûŕéš àñð ŵàļļþàþéŕš·············]</translation>
+        </message>
+        <message>
+            <source>Settings inside your apps</source>
+            <translation>[Šéţţîñĝš îñšîðé ÿöûŕ àþþš·······]</translation>
+        </message>
+        <message>
+            <source>Your own niri configuration</source>
+            <translation>[Ÿöûŕ öŵñ ñîŕî çöñƒîĝûŕàţîöñ········]</translation>
+        </message>
+        <message>
+            <source>Displays, keyboard layouts, language and time zone</source>
+            <translation>[Ðîšþļàÿš, ķéÿƀöàŕð ļàÿöûţš, ļàñĝûàĝé àñð ţîɱé žöñé················]</translation>
+        </message>
+        <message>
+            <source>Clipboard and notification history</source>
+            <translation>[Çļîþƀöàŕð àñð ñöţîƒîçàţîöñ ĥîšţöŕÿ··········]</translation>
+        </message>
+        <message>
             <source>Update channel settings could not be opened. Try again.</source>
             <translation>[Ûþðàţé çĥàññéļ šéţţîñĝš çöûļð ñöţ ƀé öþéñéð. Ţŕÿ àĝàîñ.··················]</translation>
         </message>
@@ -2790,6 +3137,50 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Ŕéţûŕñ ţö ţĥé ŕéçöṽéŕÿ þŕöɱþţ ţö ķééþ ţĥîš šţàţé.················]</translation>
         </message>
         <message>
+            <source>Reset</source>
+            <translation>[Ŕéšéţ]</translation>
+        </message>
+        <message>
+            <source>Reset Emaki settings</source>
+            <translation>[Ŕéšéţ Éɱàķî šéţţîñĝš·····]</translation>
+        </message>
+        <message>
+            <source>Return Emaki's own settings to their defaults. Your files and app settings are not touched.</source>
+            <translation>[Ŕéţûŕñ Éɱàķî'š öŵñ šéţţîñĝš ţö ţĥéîŕ ðéƒàûļţš. Ÿöûŕ ƒîļéš àñð àþþ šéţţîñĝš àŕé ñöţ ţöûçĥéð.······························]</translation>
+        </message>
+        <message>
+            <source>Undo</source>
+            <translation>[Ûñðö]</translation>
+        </message>
+        <message>
+            <source>Reset…</source>
+            <translation>[Ŕéšéţ…·]</translation>
+        </message>
+        <message>
+            <source>Review reset</source>
+            <translation>[Ŕéṽîéŵ ŕéšéţ···]</translation>
+        </message>
+        <message>
+            <source>These return to their defaults:</source>
+            <translation>[Ţĥéšé ŕéţûŕñ ţö ţĥéîŕ ðéƒàûļţš:·········]</translation>
+        </message>
+        <message>
+            <source>These are not touched:</source>
+            <translation>[Ţĥéšé àŕé ñöţ ţöûçĥéð:······]</translation>
+        </message>
+        <message>
+            <source>A copy of your current Emaki settings is kept, so you can undo the reset.</source>
+            <translation>[À çöþÿ öƒ ÿöûŕ çûŕŕéñţ Éɱàķî šéţţîñĝš îš ķéþţ, šö ÿöû çàñ ûñðö ţĥé ŕéšéţ.························]</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>[Çàñçéļ·]</translation>
+        </message>
+        <message>
+            <source>Reset settings</source>
+            <translation>[Ŕéšéţ šéţţîñĝš···]</translation>
+        </message>
+        <message>
             <source>Password</source>
             <translation>[Þàššŵöŕð·]</translation>
         </message>
@@ -2800,6 +3191,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.</source>
             <translation>[Öþéñ ţĥé šÿšţéɱ þàššŵöŕð þŕöɱþţ îñ ÿöûŕ ţéŕɱîñàļ. Ÿöûŕ ļöĝîñ ŵàļļéţ ɱàÿ šţîļļ ûšé ÿöûŕ þŕéṽîöûš þàššŵöŕð; ûþðàţé îţš þàššŵöŕð šéþàŕàţéļÿ.··············································]</translation>
+        </message>
+        <message>
+            <source>Change…</source>
+            <translation>[Çĥàñĝé…·]</translation>
         </message>
         <message>
             <source>Enter your current and new password in the terminal.</source>
@@ -3468,6 +3863,65 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Refresh</source>
             <translation>[Ŕéƒŕéšĥ·]</translation>
+        </message>
+    </context>
+    <context>
+        <name>SettingsReset</name>
+        <message>
+            <source>Your files and app settings were not changed.</source>
+            <translation>[Ÿöûŕ ƒîļéš àñð àþþ šéţţîñĝš ŵéŕé ñöţ çĥàñĝéð.··············]</translation>
+        </message>
+        <message>
+            <source>Undo</source>
+            <translation>[Ûñðö]</translation>
+        </message>
+        <message>
+            <source>Emaki settings could not be reset. Try again.</source>
+            <translation>[Éɱàķî šéţţîñĝš çöûļð ñöţ ƀé ŕéšéţ. Ţŕÿ àĝàîñ.··············]</translation>
+        </message>
+        <message>
+            <source>Your previous Emaki settings could not be restored. Try Undo again.</source>
+            <translation>[Ÿöûŕ þŕéṽîöûš Éɱàķî šéţţîñĝš çöûļð ñöţ ƀé ŕéšţöŕéð. Ţŕÿ Ûñðö àĝàîñ.······················]</translation>
+        </message>
+        <message>
+            <source>Emaki settings are back to their defaults.</source>
+            <translation>[Éɱàķî šéţţîñĝš àŕé ƀàçķ ţö ţĥéîŕ ðéƒàûļţš.·············]</translation>
+        </message>
+        <message>
+            <source>Emaki settings could not be reset, but some may show their defaults until you change a setting or log in again. Try the reset again, or Undo.</source>
+            <translation>[Éɱàķî šéţţîñĝš çöûļð ñöţ ƀé ŕéšéţ, ƀûţ šöɱé ɱàÿ šĥöŵ ţĥéîŕ ðéƒàûļţš ûñţîļ ÿöû çĥàñĝé à šéţţîñĝ öŕ ļöĝ îñ àĝàîñ. Ţŕÿ ţĥé ŕéšéţ àĝàîñ, öŕ Ûñðö.················································]</translation>
+        </message>
+        <message>
+            <source>The reset could not be confirmed. Undo puts back what it can; History shows the rest.</source>
+            <translation>[Ţĥé ŕéšéţ çöûļð ñöţ ƀé çöñƒîŕɱéð. Ûñðö þûţš ƀàçķ ŵĥàţ îţ çàñ; Ĥîšţöŕÿ šĥöŵš ţĥé ŕéšţ.····························]</translation>
+        </message>
+        <message>
+            <source>Some Emaki settings could not be reset. Undo puts everything back.</source>
+            <translation>[Šöɱé Éɱàķî šéţţîñĝš çöûļð ñöţ ƀé ŕéšéţ. Ûñðö þûţš éṽéŕÿţĥîñĝ ƀàçķ.······················]</translation>
+        </message>
+        <message>
+            <source>The reset could not be confirmed. Reopen Settings to check your settings.</source>
+            <translation>[Ţĥé ŕéšéţ çöûļð ñöţ ƀé çöñƒîŕɱéð. Ŕéöþéñ Šéţţîñĝš ţö çĥéçķ ÿöûŕ šéţţîñĝš.························]</translation>
+        </message>
+        <message>
+            <source>Emaki settings could not be reset. Nothing was changed.</source>
+            <translation>[Éɱàķî šéţţîñĝš çöûļð ñöţ ƀé ŕéšéţ. Ñöţĥîñĝ ŵàš çĥàñĝéð.··················]</translation>
+        </message>
+        <message>
+            <source>Your previous Emaki settings are restored.</source>
+            <translation>[Ÿöûŕ þŕéṽîöûš Éɱàķî šéţţîñĝš àŕé ŕéšţöŕéð.·············]</translation>
+        </message>
+        <message>
+            <source>Dock pins, Night Light and screen blanking are restored. Other settings changed after the reset, so they stay as they are; see History.</source>
+            <translation>[Ðöçķ þîñš, Ñîĝĥţ Ļîĝĥţ àñð šçŕééñ ƀļàñķîñĝ àŕé ŕéšţöŕéð. Öţĥéŕ šéţţîñĝš çĥàñĝéð àƒţéŕ ţĥé ŕéšéţ, šö ţĥéÿ šţàÿ àš ţĥéÿ àŕé; šéé Ĥîšţöŕÿ.··············································]</translation>
+        </message>
+        <message>
+            <source>Dock pins, Night Light and screen blanking are restored. Whether other settings were reset is unknown; see History.</source>
+            <translation>[Ðöçķ þîñš, Ñîĝĥţ Ļîĝĥţ àñð šçŕééñ ƀļàñķîñĝ àŕé ŕéšţöŕéð. Ŵĥéţĥéŕ öţĥéŕ šéţţîñĝš ŵéŕé ŕéšéţ îš ûñķñöŵñ; šéé Ĥîšţöŕÿ.·······································]</translation>
+        </message>
+        <message>
+            <source>Your Emaki settings were kept. Some may show their defaults until you change a setting or log in again.</source>
+            <translation>[Ÿöûŕ Éɱàķî šéţţîñĝš ŵéŕé ķéþţ. Šöɱé ɱàÿ šĥöŵ ţĥéîŕ ðéƒàûļţš ûñţîļ ÿöû çĥàñĝé à šéţţîñĝ öŕ ļöĝ îñ àĝàîñ.···································]</translation>
         </message>
     </context>
     <context>
@@ -4303,6 +4757,46 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Ŕéçöŕðîñĝ··]</translation>
         </message>
         <message>
+            <source>Text</source>
+            <translation>[Ţéẋţ]</translation>
+        </message>
+        <message>
+            <source>QR code</source>
+            <translation>[ǪŔ çöðé·]</translation>
+        </message>
+        <message>
+            <source>Text copied</source>
+            <translation>[Ţéẋţ çöþîéð··]</translation>
+        </message>
+        <message>
+            <source>Code copied</source>
+            <translation>[Çöðé çöþîéð··]</translation>
+        </message>
+        <message>
+            <source>No text found</source>
+            <translation>[Ñö ţéẋţ ƒöûñð···]</translation>
+        </message>
+        <message>
+            <source>No QR code or barcode found</source>
+            <translation>[Ñö ǪŔ çöðé öŕ ƀàŕçöðé ƒöûñð········]</translation>
+        </message>
+        <message>
+            <source>Clipboard unavailable</source>
+            <translation>[Çļîþƀöàŕð ûñàṽàîļàƀļé······]</translation>
+        </message>
+        <message>
+            <source>Open link</source>
+            <translation>[Öþéñ ļîñķ··]</translation>
+        </message>
+        <message>
+            <source>Text recognition requires tesseract.</source>
+            <translation>[Ţéẋţ ŕéçöĝñîţîöñ ŕéǫûîŕéš ţéššéŕàçţ.···········]</translation>
+        </message>
+        <message>
+            <source>QR code recognition requires zbarimg.</source>
+            <translation>[ǪŔ çöðé ŕéçöĝñîţîöñ ŕéǫûîŕéš žƀàŕîɱĝ.···········]</translation>
+        </message>
+        <message>
             <source>Capture</source>
             <translation>[Çàþţûŕé·]</translation>
         </message>
@@ -4373,6 +4867,94 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Preparing capture</source>
             <translation>[Þŕéþàŕîñĝ çàþţûŕé····]</translation>
+        </message>
+        <message>
+            <source>Wi-Fi</source>
+            <translation>[Ŵî-Ƒî]</translation>
+        </message>
+        <message>
+            <source>Bluetooth</source>
+            <translation>[Ɓļûéţööţĥ··]</translation>
+        </message>
+        <message>
+            <source>Network</source>
+            <translation>[Ñéţŵöŕķ·]</translation>
+        </message>
+        <message>
+            <source>Appearance</source>
+            <translation>[Àþþéàŕàñçé··]</translation>
+        </message>
+        <message>
+            <source>Wallpaper</source>
+            <translation>[Ŵàļļþàþéŕ··]</translation>
+        </message>
+        <message>
+            <source>Panel &amp; Dock</source>
+            <translation>[Þàñéļ &amp; Ðöçķ···]</translation>
+        </message>
+        <message>
+            <source>Windows &amp; Workspaces</source>
+            <translation>[Ŵîñðöŵš &amp; Ŵöŕķšþàçéš·····]</translation>
+        </message>
+        <message>
+            <source>Displays</source>
+            <translation>[Ðîšþļàÿš·]</translation>
+        </message>
+        <message>
+            <source>Sound</source>
+            <translation>[Šöûñð]</translation>
+        </message>
+        <message>
+            <source>Keyboard</source>
+            <translation>[Ķéÿƀöàŕð·]</translation>
+        </message>
+        <message>
+            <source>Mouse &amp; Trackpad</source>
+            <translation>[Ṁöûšé &amp; Ţŕàçķþàð····]</translation>
+        </message>
+        <message>
+            <source>Notifications</source>
+            <translation>[Ñöţîƒîçàţîöñš···]</translation>
+        </message>
+        <message>
+            <source>Battery &amp; Power</source>
+            <translation>[Ɓàţţéŕÿ &amp; Þöŵéŕ····]</translation>
+        </message>
+        <message>
+            <source>Lock &amp; Login</source>
+            <translation>[Ļöçķ &amp; Ļöĝîñ···]</translation>
+        </message>
+        <message>
+            <source>Apps</source>
+            <translation>[Àþþš]</translation>
+        </message>
+        <message>
+            <source>Updates &amp; Recovery</source>
+            <translation>[Ûþðàţéš &amp; Ŕéçöṽéŕÿ·····]</translation>
+        </message>
+        <message>
+            <source>Privacy &amp; Security</source>
+            <translation>[Þŕîṽàçÿ &amp; Šéçûŕîţÿ·····]</translation>
+        </message>
+        <message>
+            <source>Region &amp; Time</source>
+            <translation>[Ŕéĝîöñ &amp; Ţîɱé···]</translation>
+        </message>
+        <message>
+            <source>Users</source>
+            <translation>[Ûšéŕš]</translation>
+        </message>
+        <message>
+            <source>Storage</source>
+            <translation>[Šţöŕàĝé·]</translation>
+        </message>
+        <message>
+            <source>About</source>
+            <translation>[Àƀöûţ]</translation>
+        </message>
+        <message>
+            <source>AI Assistants</source>
+            <translation>[ÀÎ Àššîšţàñţš···]</translation>
         </message>
         <message>
             <source>Remove program</source>
@@ -4821,14 +5403,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Àļļ šĥöŕţçûţš···]</translation>
         </message>
         <message>
-            <source>Wi-Fi</source>
-            <translation>[Ŵî-Ƒî]</translation>
-        </message>
-        <message>
-            <source>Network</source>
-            <translation>[Ñéţŵöŕķ·]</translation>
-        </message>
-        <message>
             <source>Join networks, see saved ones, forget them, show a password.</source>
             <translation>[Ĵöîñ ñéţŵöŕķš, šéé šàṽéð öñéš, ƒöŕĝéţ ţĥéɱ, šĥöŵ à þàššŵöŕð.···················]</translation>
         </message>
@@ -4891,10 +5465,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>For a network that does not show its name.</source>
             <translation>[Ƒöŕ à ñéţŵöŕķ ţĥàţ ðöéš ñöţ šĥöŵ îţš ñàɱé.·············]</translation>
-        </message>
-        <message>
-            <source>Bluetooth</source>
-            <translation>[Ɓļûéţööţĥ··]</translation>
         </message>
         <message>
             <source>Pair headphones, mice and other devices and see their battery.</source>
@@ -4993,10 +5563,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Àṽàîļàƀļé ƒöŕɱàţš ðéþéñð öñ ţĥé îñšţàļļéð ÑéţŵöŕķṀàñàĝéŕ þļûĝîñš.·····················]</translation>
         </message>
         <message>
-            <source>Appearance</source>
-            <translation>[Àþþéàŕàñçé··]</translation>
-        </message>
-        <message>
             <source>Personal</source>
             <translation>[Þéŕšöñàļ·]</translation>
         </message>
@@ -5045,10 +5611,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[àûţöɱàţîç šçĥéðûļé éṽéñîñĝ ĥöûŕš··········]</translation>
         </message>
         <message>
-            <source>Wallpaper</source>
-            <translation>[Ŵàļļþàþéŕ··]</translation>
-        </message>
-        <message>
             <source>Choose an Emaki wallpaper or your own picture.</source>
             <translation>[Çĥööšé àñ Éɱàķî ŵàļļþàþéŕ öŕ ÿöûŕ öŵñ þîçţûŕé.···············]</translation>
         </message>
@@ -5071,10 +5633,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
             <translation>[Çĥööšé à þîçţûŕé ƒöŕ éṽéŕÿ ðîšþļàÿ. Ŕéšéţ ŕéšţöŕéš ÿöûŕ îñĥéŕîţéð ŵàļļþàþéŕ.·························]</translation>
-        </message>
-        <message>
-            <source>Panel &amp; Dock</source>
-            <translation>[Þàñéļ &amp; Ðöçķ···]</translation>
         </message>
         <message>
             <source>Choose when the panel and dock appear.</source>
@@ -5145,10 +5703,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Ṁöṽé ţö ţĥé ƀöţţöɱ éðĝé ţö šĥöŵ ÿöûŕ àþþš.·············]</translation>
         </message>
         <message>
-            <source>Windows &amp; Workspaces</source>
-            <translation>[Ŵîñðöŵš &amp; Ŵöŕķšþàçéš·····]</translation>
-        </message>
-        <message>
             <source>Choose window spacing, initial width and focus behavior.</source>
             <translation>[Çĥööšé ŵîñðöŵ šþàçîñĝ, îñîţîàļ ŵîðţĥ àñð ƒöçûš ƀéĥàṽîöŕ.··················]</translation>
         </message>
@@ -5191,10 +5745,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Use your existing focus behavior, or focus windows under the pointer.</source>
             <translation>[Ûšé ÿöûŕ éẋîšţîñĝ ƒöçûš ƀéĥàṽîöŕ, öŕ ƒöçûš ŵîñðöŵš ûñðéŕ ţĥé þöîñţéŕ.·······················]</translation>
-        </message>
-        <message>
-            <source>Displays</source>
-            <translation>[Ðîšþļàÿš·]</translation>
         </message>
         <message>
             <source>Arrange your screens and set their resolution, scale and refresh rate.</source>
@@ -5357,10 +5907,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[ñîĝĥţ ļîĝĥţ çûšţöɱ ĥöûŕš ɱöŕñîñĝ··········]</translation>
         </message>
         <message>
-            <source>Sound</source>
-            <translation>[Šöûñð]</translation>
-        </message>
-        <message>
             <source>Speakers, headphones and microphones, volume per app, system sounds.</source>
             <translation>[Šþéàķéŕš, ĥéàðþĥöñéš àñð ɱîçŕöþĥöñéš, ṽöļûɱé þéŕ àþþ, šÿšţéɱ šöûñðš.······················]</translation>
         </message>
@@ -5469,10 +6015,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Ṽöļûɱé þéŕ àþþ···]</translation>
         </message>
         <message>
-            <source>Keyboard</source>
-            <translation>[Ķéÿƀöàŕð·]</translation>
-        </message>
-        <message>
             <source>Layouts and how to switch them, key repeat, and every shortcut.</source>
             <translation>[Ļàÿöûţš àñð ĥöŵ ţö šŵîţçĥ ţĥéɱ, ķéÿ ŕéþéàţ, àñð éṽéŕÿ šĥöŕţçûţ.·····················]</translation>
         </message>
@@ -5551,10 +6093,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Switch the focused window between floating and tiled.</source>
             <translation>[Šŵîţçĥ ţĥé ƒöçûšéð ŵîñðöŵ ƀéţŵééñ ƒļöàţîñĝ àñð ţîļéð.·················]</translation>
-        </message>
-        <message>
-            <source>Mouse &amp; Trackpad</source>
-            <translation>[Ṁöûšé &amp; Ţŕàçķþàð····]</translation>
         </message>
         <message>
             <source>Pointer speed, scrolling direction, tap to click and gestures.</source>
@@ -5685,10 +6223,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Îñ ţĥé öṽéŕṽîéŵ, ðŕàĝ ţö ţĥé ţöþ öŕ ƀöţţöɱ éðĝé ţö šŵîţçĥ ŵöŕķšþàçéš.·······················]</translation>
         </message>
         <message>
-            <source>Notifications</source>
-            <translation>[Ñöţîƒîçàţîöñš···]</translation>
-        </message>
-        <message>
             <source>System</source>
             <translation>[Šÿšţéɱ·]</translation>
         </message>
@@ -5761,10 +6295,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Éñð ţĥé ðàîļÿ þàûšé àţ ţĥîš ţîɱé (ĤĤ:ṀṀ).·············]</translation>
         </message>
         <message>
-            <source>Battery &amp; Power</source>
-            <translation>[Ɓàţţéŕÿ &amp; Þöŵéŕ····]</translation>
-        </message>
-        <message>
             <source>Sleep, the lid, power modes, a charge limit and battery health.</source>
             <translation>[Šļééþ, ţĥé ļîð, þöŵéŕ ɱöðéš, à çĥàŕĝé ļîɱîţ àñð ƀàţţéŕÿ ĥéàļţĥ.·····················]</translation>
         </message>
@@ -5821,10 +6351,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Þéŕçéñţàĝé öƒ ţĥé öŕîĝîñàļ ƒûļļ-çĥàŕĝé çàþàçîţÿ.···············]</translation>
         </message>
         <message>
-            <source>Lock &amp; Login</source>
-            <translation>[Ļöçķ &amp; Ļöĝîñ···]</translation>
-        </message>
-        <message>
             <source>Change your password and choose when to lock.</source>
             <translation>[Çĥàñĝé ÿöûŕ þàššŵöŕð àñð çĥööšé ŵĥéñ ţö ļöçķ.··············]</translation>
         </message>
@@ -5851,10 +6377,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Require your password after this much time without input.</source>
             <translation>[Ŕéǫûîŕé ÿöûŕ þàššŵöŕð àƒţéŕ ţĥîš ɱûçĥ ţîɱé ŵîţĥöûţ îñþûţ.··················]</translation>
-        </message>
-        <message>
-            <source>Apps</source>
-            <translation>[Àþþš]</translation>
         </message>
         <message>
             <source>Default apps, apps that start with the session, and installed programs.</source>
@@ -5925,10 +6447,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Šţàŕţ ţĥîš àþþ ŵĥéñ ÿöû šîĝñ îñ.··········]</translation>
         </message>
         <message>
-            <source>Updates &amp; Recovery</source>
-            <translation>[Ûþðàţéš &amp; Ŕéçöṽéŕÿ·····]</translation>
-        </message>
-        <message>
             <source>Choose an update channel and review snapshot recovery.</source>
             <translation>[Çĥööšé àñ ûþðàţé çĥàññéļ àñð ŕéṽîéŵ šñàþšĥöţ ŕéçöṽéŕÿ.·················]</translation>
         </message>
@@ -5945,8 +6463,20 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Çĥööšé ŵĥîçĥ ŕéļéàšéš ÿöûŕ ñéẋţ ûþðàţé ûšéš.··············]</translation>
         </message>
         <message>
-            <source>Privacy &amp; Security</source>
-            <translation>[Þŕîṽàçÿ &amp; Šéçûŕîţÿ·····]</translation>
+            <source>Reset Emaki settings</source>
+            <translation>[Ŕéšéţ Éɱàķî šéţţîñĝš·····]</translation>
+        </message>
+        <message>
+            <source>Reset Emaki settings defaults restore undo</source>
+            <translation>[Ŕéšéţ Éɱàķî šéţţîñĝš ðéƒàûļţš ŕéšţöŕé ûñðö·············]</translation>
+        </message>
+        <message>
+            <source>Return Emaki's own settings to their defaults. Your files and app settings are not touched.</source>
+            <translation>[Ŕéţûŕñ Éɱàķî'š öŵñ šéţţîñĝš ţö ţĥéîŕ ðéƒàûļţš. Ÿöûŕ ƒîļéš àñð àþþ šéţţîñĝš àŕé ñöţ ţöûçĥéð.······························]</translation>
+        </message>
+        <message>
+            <source>Your files and app settings are not touched.</source>
+            <translation>[Ÿöûŕ ƒîļéš àñð àþþ šéţţîñĝš àŕé ñöţ ţöûçĥéð.··············]</translation>
         </message>
         <message>
             <source>Review recovery, encryption, sudo keys and remembered portal permissions.</source>
@@ -6017,10 +6547,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Šàṽéð ŕéþöŕţš···]</translation>
         </message>
         <message>
-            <source>Region &amp; Time</source>
-            <translation>[Ŕéĝîöñ &amp; Ţîɱé···]</translation>
-        </message>
-        <message>
             <source>Language, formats, time zone and the 24-hour clock.</source>
             <translation>[Ļàñĝûàĝé, ƒöŕɱàţš, ţîɱé žöñé àñð ţĥé 24-ĥöûŕ çļöçķ.················]</translation>
         </message>
@@ -6073,10 +6599,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Ķééþ ţĥé çļöçķ îñ šÿñç ŵîţĥ àñ îñţéŕñéţ ţîɱé šéŕṽîçé.·················]</translation>
         </message>
         <message>
-            <source>Users</source>
-            <translation>[Ûšéŕš]</translation>
-        </message>
-        <message>
             <source>Your account, picture and password, and other people on this computer.</source>
             <translation>[Ÿöûŕ àççöûñţ, þîçţûŕé àñð þàššŵöŕð, àñð öţĥéŕ þéöþļé öñ ţĥîš çöɱþûţéŕ.·······················]</translation>
         </message>
@@ -6115,10 +6637,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Create an account with its own files and settings.</source>
             <translation>[Çŕéàţé àñ àççöûñţ ŵîţĥ îţš öŵñ ƒîļéš àñð šéţţîñĝš.················]</translation>
-        </message>
-        <message>
-            <source>Storage</source>
-            <translation>[Šţöŕàĝé·]</translation>
         </message>
         <message>
             <source>Inspect disk use and preview safe cleanup.</source>
@@ -6165,10 +6683,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[ţŕàšĥ çļéàñûþ···]</translation>
         </message>
         <message>
-            <source>About</source>
-            <translation>[Àƀöûţ]</translation>
-        </message>
-        <message>
             <source>This Emaki version and this computer’s hardware.</source>
             <translation>[Ţĥîš Éɱàķî ṽéŕšîöñ àñð ţĥîš çöɱþûţéŕ’š ĥàŕðŵàŕé.···············]</translation>
         </message>
@@ -6207,10 +6721,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Collect logs and a short system summary into a file you can review. Add to a report only what you choose to share.</source>
             <translation>[Çöļļéçţ ļöĝš àñð à šĥöŕţ šÿšţéɱ šûɱɱàŕÿ îñţö à ƒîļé ÿöû çàñ ŕéṽîéŵ. Àðð ţö à ŕéþöŕţ öñļÿ ŵĥàţ ÿöû çĥööšé ţö šĥàŕé.······································]</translation>
-        </message>
-        <message>
-            <source>AI Assistants</source>
-            <translation>[ÀÎ Àššîšţàñţš···]</translation>
         </message>
         <message>
             <source>Protection and permissions for installed assistants.</source>
@@ -6543,6 +7053,11 @@ Shared or compressed extents can make returned space smaller. Only these exact e
     <context>
         <name>StaticBar</name>
         <message>
+            <source>ddd d MMM</source>
+            <extracomment>Qt date pattern: ddd, d and MMM are fields; put literal words in single quotes.</extracomment>
+            <translation>[ddd d MMM]</translation>
+        </message>
+        <message>
             <source>dddd, d MMMM</source>
             <extracomment>Qt date pattern: d, dddd and MMMM are fields; put literal words in single quotes, as in 'de'.</extracomment>
             <translation>[dddd, d MMMM]</translation>
@@ -6648,6 +7163,22 @@ Shared or compressed extents can make returned space smaller. Only these exact e
     </context>
     <context>
         <name>SystemBody</name>
+        <message>
+            <source>Lock</source>
+            <translation>[Ļöçķ]</translation>
+        </message>
+        <message>
+            <source>Log out</source>
+            <translation>[Ļöĝ öûţ·]</translation>
+        </message>
+        <message>
+            <source>Restart</source>
+            <translation>[Ŕéšţàŕţ·]</translation>
+        </message>
+        <message>
+            <source>Shut down</source>
+            <translation>[Šĥûţ ðöŵñ··]</translation>
+        </message>
         <message>
             <source>Wi-Fi could not restart. Try again later.</source>
             <translation>[Ŵî-Ƒî çöûļð ñöţ ŕéšţàŕţ. Ţŕÿ àĝàîñ ļàţéŕ.·············]</translation>
@@ -7146,39 +7677,71 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         </message>
         <message>
             <source>Lock</source>
+            <comment>power row icon label</comment>
             <translation>[Ļöçķ]</translation>
+        </message>
+        <message>
+            <source>Sleep</source>
+            <comment>power row icon label</comment>
+            <translation>[Šļééþ]</translation>
+        </message>
+        <message>
+            <source>Restart</source>
+            <comment>power row icon label</comment>
+            <translation>[Ŕéšţàŕţ·]</translation>
+        </message>
+        <message>
+            <source>Shut down</source>
+            <comment>power row icon label</comment>
+            <translation>[Šĥûţ ðöŵñ··]</translation>
+        </message>
+        <message>
+            <source>Log out</source>
+            <comment>power row icon label</comment>
+            <translation>[Ļöĝ öûţ·]</translation>
+        </message>
+        <message>
+            <source>Hibernate</source>
+            <comment>power row icon label</comment>
+            <translation>[Ĥîƀéŕñàţé··]</translation>
         </message>
         <message>
             <source>Sleep</source>
             <translation>[Šļééþ]</translation>
         </message>
         <message>
-            <source>Restart</source>
-            <translation>[Ŕéšţàŕţ·]</translation>
-        </message>
-        <message>
-            <source>Shut down</source>
-            <translation>[Šĥûţ ðöŵñ··]</translation>
-        </message>
-        <message>
-            <source>Log out</source>
-            <translation>[Ļöĝ öûţ·]</translation>
-        </message>
-        <message>
             <source>Hibernate</source>
             <translation>[Ĥîƀéŕñàţé··]</translation>
         </message>
         <message>
-            <source>%1 now?</source>
-            <translation>[%1 ñöŵ?·]</translation>
+            <source>Restart now?
+Save your work first.</source>
+            <translation>[Ŕéšţàŕţ ñöŵ?
+Šàṽé ÿöûŕ ŵöŕķ ƒîŕšţ.··········]</translation>
         </message>
         <message>
-            <source>The screen locks first.</source>
-            <translation>[Ţĥé šçŕééñ ļöçķš ƒîŕšţ.·······]</translation>
+            <source>Sleep now?
+The screen locks first.</source>
+            <translation>[Šļééþ ñöŵ?
+Ţĥé šçŕééñ ļöçķš ƒîŕšţ.··········]</translation>
         </message>
         <message>
-            <source>Save your work first.</source>
-            <translation>[Šàṽé ÿöûŕ ŵöŕķ ƒîŕšţ.······]</translation>
+            <source>Log out now?
+Save your work first.</source>
+            <translation>[Ļöĝ öûţ ñöŵ?
+Šàṽé ÿöûŕ ŵöŕķ ƒîŕšţ.··········]</translation>
+        </message>
+        <message>
+            <source>Hibernate now?
+The screen locks first.</source>
+            <translation>[Ĥîƀéŕñàţé ñöŵ?
+Ţĥé šçŕééñ ļöçķš ƒîŕšţ.············]</translation>
+        </message>
+        <message>
+            <source>Shut down now?
+Save your work first.</source>
+            <translation>[Šĥûţ ðöŵñ ñöŵ?
+Šàṽé ÿöûŕ ŵöŕķ ƒîŕšţ.···········]</translation>
         </message>
         <message>
             <source>Keyboard</source>
@@ -7501,8 +8064,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Ŵĥàţ'š ñéŵ··]</translation>
         </message>
         <message>
-            <source>What's new in Emaki 0.11</source>
-            <translation>[Ŵĥàţ'š ñéŵ îñ Éɱàķî 0.11·······]</translation>
+            <source>What's new in Emaki 0.12</source>
+            <translation>[Ŵĥàţ'š ñéŵ îñ Éɱàķî 0.12·······]</translation>
         </message>
         <message>
             <source>Close what's new</source>
@@ -7521,44 +8084,56 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Çöûļð ñöţ šàṽé ûþðàţé þŕöĝŕéšš. Ţĥîš šçŕééñ ɱàÿ àþþéàŕ àĝàîñ ñéẋţ ļöĝîñ.························]</translation>
         </message>
         <message>
-            <source>Clocks in the clock shade</source>
-            <translation>[Çļöçķš îñ ţĥé çļöçķ šĥàðé·······]</translation>
+            <source>Emaki speaks German, French and Russian</source>
+            <translation>[Éɱàķî šþéàķš Ĝéŕɱàñ, Ƒŕéñçĥ àñð Ŕûššîàñ············]</translation>
         </message>
         <message>
-            <source>A timer with a Pomodoro preset, a stopwatch, alarms and world clocks are now in the clock shade.</source>
-            <translation>[À ţîɱéŕ ŵîţĥ à Þöɱöðöŕö þŕéšéţ, à šţöþŵàţçĥ, àļàŕɱš àñð ŵöŕļð çļöçķš àŕé ñöŵ îñ ţĥé çļöçķ šĥàðé.································]</translation>
+            <source>German, French and Russian are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time.</source>
+            <translation>[Ĝéŕɱàñ, Ƒŕéñçĥ àñð Ŕûššîàñ àŕé àṽàîļàƀļé àçŕöšš ţĥé ðéšķţöþ, Þŕöĝŕàɱš &amp; Ûþðàţéš, ţĥé îñšţàļļéŕ àñð Ñöţéš. Çĥööšé ÿöûŕ ļàñĝûàĝé îñ Šéţţîñĝš › Ŕéĝîöñ &amp; Ţîɱé.·····················································]</translation>
         </message>
         <message>
-            <source>Emaki speaks Spanish and Portuguese</source>
-            <translation>[Éɱàķî šþéàķš Šþàñîšĥ àñð Þöŕţûĝûéšé···········]</translation>
+            <source>A command menu and emoji</source>
+            <translation>[À çöɱɱàñð ɱéñû àñð éɱöĵî·······]</translation>
         </message>
         <message>
-            <source>Latin American Spanish and Brazilian Portuguese are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time, then sign out and back in.</source>
-            <translation>[Ļàţîñ Àɱéŕîçàñ Šþàñîšĥ àñð Ɓŕàžîļîàñ Þöŕţûĝûéšé àŕé àṽàîļàƀļé àçŕöšš ţĥé ðéšķţöþ, Þŕöĝŕàɱš &amp; Ûþðàţéš, ţĥé îñšţàļļéŕ àñð Ñöţéš. Çĥööšé ÿöûŕ ļàñĝûàĝé îñ Šéţţîñĝš › Ŕéĝîöñ &amp; Ţîɱé, ţĥéñ šîĝñ öûţ àñð ƀàçķ îñ.······································································]</translation>
+            <source>Super+K opens every system action in the launcher: settings pages, appearance, Night Light, restart and more. Super+; finds an emoji by name and copies it.</source>
+            <translation>[Šûþéŕ+Ķ öþéñš éṽéŕÿ šÿšţéɱ àçţîöñ îñ ţĥé ļàûñçĥéŕ: šéţţîñĝš þàĝéš, àþþéàŕàñçé, Ñîĝĥţ Ļîĝĥţ, ŕéšţàŕţ àñð ɱöŕé. Šûþéŕ+; ƒîñðš àñ éɱöĵî ƀÿ ñàɱé àñð çöþîéš îţ.·····················································]</translation>
         </message>
         <message>
-            <source>Update reminders from Emaki</source>
-            <translation>[Ûþðàţé ŕéɱîñðéŕš ƒŕöɱ Éɱàķî········]</translation>
+            <source>Copy text and QR codes from the screen</source>
+            <translation>[Çöþÿ ţéẋţ àñð ǪŔ çöðéš ƒŕöɱ ţĥé šçŕééñ············]</translation>
         </message>
         <message>
-            <source>Emaki tells you when updates are ready and opens Programs &amp; Updates.</source>
-            <translation>[Éɱàķî ţéļļš ÿöû ŵĥéñ ûþðàţéš àŕé ŕéàðÿ àñð öþéñš Þŕöĝŕàɱš &amp; Ûþðàţéš.······················]</translation>
+            <source>In Capture, choose Text or QR code and select an area: Emaki copies what it reads. Recognition runs on your computer.</source>
+            <translation>[Îñ Çàþţûŕé, çĥööšé Ţéẋţ öŕ ǪŔ çöðé àñð šéļéçţ àñ àŕéà: Éɱàķî çöþîéš ŵĥàţ îţ ŕéàðš. Ŕéçöĝñîţîöñ ŕûñš öñ ÿöûŕ çöɱþûţéŕ.·······································]</translation>
         </message>
         <message>
-            <source>Discover is no longer part of the Rich set.</source>
-            <translation>[Ðîšçöṽéŕ îš ñö ļöñĝéŕ þàŕţ öƒ ţĥé Ŕîçĥ šéţ.··············]</translation>
+            <source>Developer kits and websites as apps</source>
+            <translation>[Ðéṽéļöþéŕ ķîţš àñð ŵéƀšîţéš àš àþþš···········]</translation>
+        </message>
+        <message>
+            <source>Programs &amp; Updates installs Python, Node.js, Rust, Go and Docker in one step, and turns a website into its own app in Firefox.</source>
+            <translation>[Þŕöĝŕàɱš &amp; Ûþðàţéš îñšţàļļš Þÿţĥöñ, Ñöðé.ĵš, Ŕûšţ, Ĝö àñð Ðöçķéŕ îñ öñé šţéþ, àñð ţûŕñš à ŵéƀšîţé îñţö îţš öŵñ àþþ îñ Ƒîŕéƒöẋ.···········································]</translation>
+        </message>
+        <message>
+            <source>Reset Emaki's settings</source>
+            <translation>[Ŕéšéţ Éɱàķî'š šéţţîñĝš······]</translation>
+        </message>
+        <message>
+            <source>Settings › Updates &amp; Recovery returns Emaki's own settings to their defaults. Your files and app settings stay, and Undo brings everything back.</source>
+            <translation>[Šéţţîñĝš › Ûþðàţéš &amp; Ŕéçöṽéŕÿ ŕéţûŕñš Éɱàķî'š öŵñ šéţţîñĝš ţö ţĥéîŕ ðéƒàûļţš. Ÿöûŕ ƒîļéš àñð àþþ šéţţîñĝš šţàÿ, àñð Ûñðö ƀŕîñĝš éṽéŕÿţĥîñĝ ƀàçķ.·················································]</translation>
         </message>
         <message>
             <source>Fixes</source>
             <translation>[Ƒîẋéš]</translation>
         </message>
         <message>
-            <source>• Small downloads show their real size
-• The password card no longer flashes an error while it closes
-• Install buttons stay available while the catalogue refreshes</source>
-            <translation>[• Šɱàļļ ðöŵñļöàðš šĥöŵ ţĥéîŕ ŕéàļ šîžé
-• Ţĥé þàššŵöŕð çàŕð ñö ļöñĝéŕ ƒļàšĥéš àñ éŕŕöŕ ŵĥîļé îţ çļöšéš
-• Îñšţàļļ ƀûţţöñš šţàÿ àṽàîļàƀļé ŵĥîļé ţĥé çàţàļöĝûé ŕéƒŕéšĥéš························································]</translation>
+            <source>• Numbers, sizes and dates follow your language
+• Translated buttons show their whole label
+• Every launcher tab stays within reach</source>
+            <translation>[• Ñûɱƀéŕš, šîžéš àñð ðàţéš ƒöļļöŵ ÿöûŕ ļàñĝûàĝé
+• Ţŕàñšļàţéð ƀûţţöñš šĥöŵ ţĥéîŕ ŵĥöļé ļàƀéļ
+• Éṽéŕÿ ļàûñçĥéŕ ţàƀ šţàÿš ŵîţĥîñ ŕéàçĥ············································]</translation>
         </message>
     </context>
     <context>

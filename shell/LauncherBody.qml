@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import "SystemIcons.js" as SystemIcons
 import Quickshell
 import "Calculator.js" as Calculator
+import "Commands.js" as Commands
 import "Liquid.js" as Liquid
 
 // Queries and titles live only in this scene; status never returns their contents.
@@ -28,7 +30,11 @@ Item {
         settingsActive = false;
         takeFocus(keyboardMode);
     }
-    onSettingsActiveChanged: wake()
+    onSettingsActiveChanged: {
+        if (!settingsActive)
+            Qt.callLater(modeStrip.revealSelected);
+        wake();
+    }
     property bool keyboardBoundary: true
     property bool keyboardMode: false
     TapHandler {
@@ -234,7 +240,44 @@ Item {
     signal backRequested
     signal dismissed
     signal settingsRequested
+    // The command menu opens Settings on one page (ShellScene: settingsController.openOn).
+    signal settingsPageRequested(string page)
     signal openFailed(string reason)
+    // Log out, Restart and Shut down ask in the power panel's own confirmation
+    // (ShellScene.confirmSession), never in the launcher row.
+    signal sessionRequested(string action)
+    // What the command menu acts through: the Settings catalogue (appearance) and the system
+    // service (Night Light), the same objects Settings and the power panel use.
+    property var commandSettings: settingsController?.catalog ?? null
+    property var commandSystem: settingsController?.service ?? null
+    function runCommand(entry: var): bool {
+        const call = entry.call;
+        if (call.session) {
+            sessionRequested(call.session);
+            return true;
+        }
+        if (call.mode) {
+            // The destination starts empty: the words that found this row are not its search.
+            query.text = "";
+            return setMode(call.mode);
+        }
+        if (call.settings) {
+            settingsPageRequested(call.settings);
+            return true;
+        }
+        if (call.setting) {
+            if (!commandSettings)
+                return false;
+            commandSettings.set(call.setting[0], call.setting[1]);
+        } else if (call.night !== undefined) {
+            if (!commandSystem?.night?.setOn(call.night))
+                return false;
+        }
+        dismissed();
+        if (call.run)
+            Quickshell.execDetached(call.app ? AppLaunch.command(call.app, call.run) : call.run);
+        return true;
+    }
     Component {
         id: catalogFactory
         AppCatalog {}
@@ -274,6 +317,11 @@ Item {
         id: recent
         active: body.opened && body.modeIndex === 0
     }
+    // Emoji names are read the first time the Emoji mode opens (EmojiCatalog.load()).
+    EmojiCatalog {
+        id: emojiCatalog
+    }
+    readonly property alias emoji: emojiCatalog
     readonly property bool recentMode: query.text.trim().length === 0 && modeIndex === 0
     property string pendingRecentApp: ""
     function recentRows(): var {
@@ -362,7 +410,7 @@ Item {
     property string selectionKey: ""
     readonly property int selected: selectionKey ? results.findIndex(row => rowKey(row) === selectionKey) : results.length ? 0 : -1
     function rowKey(row: var): string {
-        return row ? row.kind + ":" + (row.kind === "window" ? niri.generation + ":" + row.id : (row.kind === "app" || row.kind === "frequent") ? row.entry.id : row.kind === "file" ? row.path : row.kind === "clip" ? row.id : row.value || row.label) : "";
+        return row ? row.kind + ":" + (row.kind === "window" ? niri.generation + ":" + row.id : (row.kind === "app" || row.kind === "frequent") ? row.entry.id : row.kind === "file" ? row.path : row.kind === "clip" || row.kind === "command" ? row.id : row.kind === "emoji" ? row.emoji : row.value || row.label) : "";
     }
     function selectAt(index: int): void {
         selectionKey = rowKey(results[index]);
@@ -376,7 +424,16 @@ Item {
     readonly property int frequentCount: gridMode && queryText.length === 0 && category === "All" ? apps.frequent.length : 0
     readonly property bool categoriesShown: !settingsActive && gridMode && queryText.length === 0
     readonly property var categories: ["All", "Development", "Internet", "Media", "Games", "Learning", "Office", "System"]
-    readonly property var categoryLabels: ({All: qsTranslate("LauncherBody", "All"), Development: qsTranslate("LauncherBody", "Development"), Internet: qsTranslate("LauncherBody", "Internet"), Media: qsTranslate("LauncherBody", "Media"), Games: qsTranslate("LauncherBody", "Games"), Learning: qsTranslate("LauncherBody", "Learning"), Office: qsTranslate("LauncherBody", "Office"), System: qsTranslate("LauncherBody", "System")})
+    readonly property var categoryLabels: ({
+            All: qsTranslate("LauncherBody", "All"),
+            Development: qsTranslate("LauncherBody", "Development"),
+            Internet: qsTranslate("LauncherBody", "Internet"),
+            Media: qsTranslate("LauncherBody", "Media"),
+            Games: qsTranslate("LauncherBody", "Games"),
+            Learning: qsTranslate("LauncherBody", "Learning"),
+            Office: qsTranslate("LauncherBody", "Office"),
+            System: qsTranslate("LauncherBody", "System")
+        })
     readonly property var results: buildResults()
     readonly property int side: 22
     readonly property int bodyTop: Metrics.launcherHeader + 10
@@ -404,6 +461,7 @@ Item {
             return false;
         leaveSettings();
         modeIndex = index;
+        Qt.callLater(modeStrip.revealSelected);
         takeFocus();
         return true;
     }
@@ -597,6 +655,41 @@ Item {
                     detail: c.image ? qsTranslate("LauncherBody", "Image · Enter copies, never pastes") : qsTranslate("LauncherBody", "Text · Enter copies, never pastes")
                 });
         }
+        if (modeIndex === 5) {
+            const nightOn = commandSystem?.night?.on;
+            for (const found of Commands.search(Commands.actions, text)) {
+                const entry = found.entry;
+                // Night Light offers the switch it is not in, once its state is known.
+                if (entry.call.night !== undefined && typeof nightOn === "boolean" && entry.call.night === nightOn)
+                    continue;
+                rows.push({
+                    kind: "command",
+                    id: entry.id,
+                    entry: entry,
+                    icon: entry.icon,
+                    label: found.title,
+                    detail: entry.call.settings && entry.id.startsWith("settings-") ? qsTranslate("LauncherBody", "Settings") : ""
+                });
+            }
+        }
+        if (modeIndex === 6 && emoji.state === "ready") {
+            emoji.revision;
+            const found = emoji.search(text);
+            // Empty query: recently chosen emoji first, then the catalogue in Unicode order.
+            if (!text) {
+                const shown = new Set(found.map(row => row.emoji));
+                for (const entry of emoji.entries.slice(0, emoji.limit + found.length))
+                    if (found.length < emoji.limit && !shown.has(entry.emoji))
+                        found.push(emoji.row(entry));
+            }
+            for (const row of found)
+                rows.push({
+                    kind: "emoji",
+                    emoji: row.emoji,
+                    label: row.name,
+                    detail: row.detail
+                });
+        }
         if (modeIndex === 0 && text)
             rows.push({
                 kind: "web",
@@ -660,6 +753,11 @@ Item {
             return;
         if (row.kind === "settings") {
             settingsRequested();
+        } else if (row.kind === "command") {
+            runCommand(row.entry);
+        } else if (row.kind === "emoji") {
+            if (emoji.choose(row.emoji))
+                dismissed();
         } else if (row.kind === "app" || row.kind === "frequent") {
             if (assignFor) {
                 identity?.learn(assignFor, row.entry.id);
@@ -704,7 +802,10 @@ Item {
     }
     onModeIndexChanged: {
         leaveSettings();
+        Qt.callLater(modeStrip.revealSelected);
         selectionKey = "";
+        if (modeIndex === 6)
+            emoji.load();
         wake();
     }
     onCategoryChanged: {
@@ -720,8 +821,9 @@ Item {
     readonly property bool inputFocused: settingsActive ? (settingsView?.search.activeFocus ?? false) : query.activeFocus
     readonly property int queryLength: query.length
     property int modeIndex: 1 // Apps by default (23.09): All is the search + Recent view
-    readonly property var modes: ["All", "Apps", "Windows", "Files", "Clipboard"]
-    readonly property var modeLabels: [qsTranslate("LauncherBody", "All"), qsTranslate("LauncherBody", "Apps"), qsTranslate("LauncherBody", "Windows"), qsTranslate("LauncherBody", "Files"), qsTranslate("LauncherBody", "Clipboard")]
+    readonly property var modes: ["All", "Apps", "Windows", "Files", "Clipboard", "Commands", "Emoji"]
+    readonly property var modeLabels: [qsTranslate("LauncherBody", "All"), qsTranslate("LauncherBody", "Apps"), qsTranslate("LauncherBody", "Windows"), qsTranslate("LauncherBody", "Files"), qsTranslate("LauncherBody", "Clipboard"), qsTranslate("LauncherBody", "Commands"), qsTranslate("LauncherBody", "Emoji")]
+    readonly property int searchMinimumWidth: 160
 
     function filesMessage(): string {
         if (!["idle", "pending", "requested"].includes(files.openState))
@@ -791,6 +893,13 @@ Item {
                 return qsTranslate("LauncherBody", "Clipboard history is empty");
             return results.length ? "" : qsTranslate("LauncherBody", "Nothing matches “%1”").arg(queryText);
         }
+        if (modeIndex === 6) {
+            if (emoji.state === "error")
+                return emoji.message;
+            if (emoji.state !== "ready")
+                return qsTranslate("LauncherBody", "Reading emoji names…");
+            return results.length ? "" : qsTranslate("LauncherBody", "Nothing matches “%1”").arg(queryText);
+        }
         if (!["idle", "requested"].includes(web.state))
             return stateNote("web", web.state);
         if (modeIndex === 3 || !["idle", "requested"].includes(files.openState))
@@ -828,9 +937,10 @@ Item {
         lastSelected = -1;
     }
     onOpenedChanged: {
-        if (opened)
+        if (opened) {
             takeFocus();
-        else
+            Qt.callLater(modeStrip.revealSelected);
+        } else
             query.focus = false;
         wake();
     }
@@ -852,6 +962,41 @@ Item {
     readonly property var modeBubble: Liquid.liquid()
     // The mode and category drops stand 4 px proud of their tab; keyboard focus does too.
     readonly property int tabFocusPad: 4
+    // Only alpha matters: the same mask fades both ink layers over any glass colour.
+    Rectangle {
+        id: modeFadeMask
+        objectName: "launcher-mode-fade-mask"
+        width: modeStrip.width
+        height: modeStrip.height
+        visible: false
+        layer.enabled: modeStrip.layer.enabled
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop {
+                position: 0
+                color: modeStrip.fadeLeft ? "transparent" : "white"
+            }
+            GradientStop {
+                position: Math.min(.5, modeStrip.fadeWidth / Math.max(1, modeStrip.width))
+                color: "white"
+            }
+            GradientStop {
+                position: 1 - Math.min(.5, modeStrip.fadeWidth / Math.max(1, modeStrip.width))
+                color: "white"
+            }
+            GradientStop {
+                position: 1
+                color: modeStrip.fadeRight ? "transparent" : "white"
+            }
+        }
+    }
+    component ModeFade: MultiEffect {
+        maskEnabled: true
+        maskSource: modeFadeMask
+        maskThresholdMin: .5
+        maskSpreadAtMin: 1
+        autoPaddingEnabled: false
+    }
     readonly property var categoryBubble: Liquid.liquid()
     readonly property var selectBubble: Liquid.liquid()
     // The plate's height follows the content on a spring (k 420, ζ .8).
@@ -911,7 +1056,7 @@ Item {
     readonly property rect modeRect: {
         modesRepeater.count;
         const mode = settingsActive ? settingsButton : modesRepeater.itemAt(modeIndex);
-        return mode ? Qt.rect(mode.x + (settingsActive ? 0 : modesRow.x), mode.y + (settingsActive ? 0 : modesRow.y), mode.width, mode.height) : Qt.rect(0, 0, 0, 0);
+        return mode ? Qt.rect(mode.x + (settingsActive ? 0 : modeStrip.x + modesRow.x - modeStrip.contentX), mode.y + (settingsActive ? 0 : modeStrip.y + modesRow.y), mode.width, mode.height) : Qt.rect(0, 0, 0, 0);
     }
     property rect categoryRect: Qt.rect(0, 0, 0, 0)
     property var selection: null
@@ -1008,7 +1153,8 @@ Item {
         // No drop on a tab without geometry: it would stand on nothing and fade its label out.
         if (modeRect.width > 0 && modeRect.height > 0) {
             active = Liquid.place(modeBubble, Liquid.pad([modeRect.x, modeRect.y, modeRect.width, modeRect.height], 4), 13, now) || active;
-        }
+        } else
+            active = Liquid.vanish(modeBubble, now) || active;
         const chip = categoriesShown ? categoryRepeater.itemAt(categories.indexOf(category)) : null;
         if (chip) {
             categoryRect = itemRect(chip);
@@ -1052,11 +1198,16 @@ Item {
         const d = Liquid.drop(bubble, origin.x, origin.y);
         if (!d)
             return null;
-        const x = Math.max(origin.x, d.rect.x);
-        const y = Math.max(origin.y, d.rect.y);
-        const right = Math.min(origin.x + shownWidth, d.rect.x + d.rect.z);
-        const bottom = Math.min(origin.y + shownHeight, d.rect.y + d.rect.w);
-        const alpha = d.params.w * (kind === "logo" ? 1 : contentAlpha);
+        // The mode drop shares the strip's viewport in both the glass and flat paths.
+        const strip = kind === "mode" && !settingsActive;
+        const x = Math.max(origin.x + (strip ? modeStrip.x : 0), d.rect.x);
+        const y = Math.max(origin.y + (strip ? modeStrip.y : 0), d.rect.y);
+        const right = Math.min(origin.x + shownWidth, origin.x + (strip ? modeStrip.x + modeStrip.width : shownWidth), d.rect.x + d.rect.z);
+        const bottom = Math.min(origin.y + shownHeight, origin.y + (strip ? modeStrip.y + modeStrip.height : shownHeight), d.rect.y + d.rect.w);
+        // Use the original extent, before clipping: a drop crossing an edge must
+        // disappear with its ink instead of leaving an opaque, square-cut rim.
+        const coverage = strip ? modeStrip.coverage(d.rect.x - origin.x - modeStrip.x, d.rect.x + d.rect.z - origin.x - modeStrip.x) : 1;
+        const alpha = d.params.w * (kind === "logo" ? 1 : contentAlpha) * coverage;
         if (right <= x || bottom <= y || alpha < .001)
             return null;
         return {
@@ -1398,60 +1549,178 @@ Item {
                             body.dismissed();
                     }
                 }
-                Row {
-                    id: modesRow
-                    x: body.animatedWidth - 56 - width
-                    y: 16
-                    height: 28
-                    spacing: 2
-                    Repeater {
-                        id: modesRepeater
-                        model: body.modes
-                        Item {
-                            id: modeItem
-                            Accessible.role: Accessible.PageTab
-                            Accessible.name: body.modeLabels[index]
-                            Accessible.selected: !body.settingsActive && body.modeIndex === index
-                            Accessible.onPressAction: activate()
-                            activeFocusOnTab: true
-                            Keys.onPressed: event => body.handleKey(event)
-                            function activate(): void {
-                                body.leaveSettings();
-                                body.modeIndex = index;
+                Flickable {
+                    id: modeStrip
+                    objectName: "launcher-mode-strip"
+                    x: Math.max(query.x + body.searchMinimumWidth + 14, body.animatedWidth - 56 - contentWidth)
+                    y: 16 - body.tabFocusPad
+                    width: Math.max(0, body.animatedWidth - 56 - x)
+                    height: 28 + 2 * body.tabFocusPad
+                    contentWidth: modesRow.width + 2 * body.tabFocusPad
+                    contentHeight: height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.HorizontalFlick
+                    interactive: body.opened && contentWidth > width
+                    readonly property var labelInk: {
+                        modesRepeater.count;
+                        const ink = [];
+                        for (let i = 0; i < modesRepeater.count; ++i) {
+                            const item = modesRepeater.itemAt(i);
+                            if (item)
+                                ink.push([modesRow.x + item.x + item.inkLeft, modesRow.x + item.x + item.inkRight]);
+                        }
+                        return ink;
+                    }
+                    property real fadeWidth: Metrics.launcherTabFade
+                    readonly property bool fadeLeft: labelInk.length > 0 && contentX > labelInk[0][0]
+                    readonly property bool fadeRight: labelInk.length > 0 && contentX + width < labelInk[labelInk.length - 1][1]
+                    layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software && (fadeLeft || fadeRight)
+                    layer.effect: ModeFade {}
+                    function coverage(left: real, right: real): real {
+                        return Math.max(0, Math.min(1, fadeLeft ? left / fadeWidth : 1, fadeRight ? (width - right) / fadeWidth : 1));
+                    }
+                    function reveal(index: int): void {
+                        const item = modesRepeater.itemAt(index);
+                        if (!item || width <= 0)
+                            return;
+                        cancelFlick();
+                        const left = modesRow.x + item.x - body.tabFocusPad;
+                        const right = left + item.width + 2 * body.tabFocusPad;
+                        const maximum = Math.max(0, contentWidth - width);
+                        if (!labelInk.length)
+                            return;
+                        const first = labelInk[0][0], last = labelInk[labelInk.length - 1][1];
+                        // Intersect the legal scroll intervals for both edges. An active
+                        // fade must contain neighbouring ink in its outer half; padding
+                        // alone is not overflow. Keep the usual 24 px if it fits, otherwise
+                        // choose the narrowest working fade within 16–48 px. At each width,
+                        // prefer an 8 px signal, then a visible sliver of neighbouring ink.
+                        const fades = [Metrics.launcherTabFade];
+                        for (let fade = 16; fade <= 48; ++fade) {
+                            if (fade !== Metrics.launcherTabFade)
+                                fades.push(fade);
+                        }
+                        for (const fade of fades) {
+                            for (const signal of [8, 1]) {
+                                const starts = [[0, Math.min(first, left)]];
+                                const ends = [[Math.max(last - width, right - width), maximum]];
+                                for (let i = 0; i < labelInk.length; ++i) {
+                                    if (i === index)
+                                        continue;
+                                    const ink = labelInk[i];
+                                    starts.push([Math.max(first + .01, ink[0] + signal - fade / 2), Math.min(ink[1] - signal, left - fade)]);
+                                    ends.push([Math.max(ink[0] + signal - width, right + fade - width), Math.min(last - width - .01, ink[1] - signal + fade / 2 - width)]);
+                                }
+                                let best = null;
+                                for (const start of starts) {
+                                    for (const end of ends) {
+                                        const low = Math.max(0, right - width, start[0], end[0]);
+                                        const high = Math.min(maximum, left, start[1], end[1]);
+                                        if (low > high)
+                                            continue;
+                                        const target = Math.max(low, Math.min(high, contentX));
+                                        if (best === null || Math.abs(target - contentX) < Math.abs(best - contentX))
+                                            best = target;
+                                    }
+                                }
+                                if (best !== null) {
+                                    fadeWidth = fade;
+                                    contentX = best;
+                                    return;
+                                }
                             }
-                            Keys.onReturnPressed: activate()
-                            Keys.onEnterPressed: activate()
-                            Keys.onSpacePressed: activate()
-                            // The mode drop's shape (pad 4, radius 13): on the open mode it is
-                            // the same bubble, on another one the bubble the arrow moved.
-                            FocusRing {
-                                anchors.margins: -body.tabFocusPad
-                                radius: 13
-                                shown: body.keyboardMode && modeItem.activeFocus && !body.glassReady
-                            }
-                            required property int index
-                            objectName: "launcher-tab-" + modelData.toLowerCase()
-                            required property string modelData
-                            width: modeLabel.implicitWidth + 22
-                            height: 28
-                            Text {
-                                id: modeLabel
-                                anchors.centerIn: parent
-                                text: body.modeLabels[modeItem.index]
-                                textFormat: Text.PlainText
-                                font.family: ShellPalette.uiFont
-                                font.pixelSize: 13
-                                font.weight: Font.Medium
-                                color: !body.settingsActive && body.modeIndex === modeItem.index ? body.ink : body.dim
-                                opacity: !body.settingsActive && body.modeIndex === modeItem.index ? 1 - body.modeAlpha : 1
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: body.opened
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    modeItem.activate();
-                                    body.takeFocus();
+                        }
+                        // Keep the selection clear during transient opening geometries
+                        // too narrow to fit a tab and the minimum fades.
+                        let widest = 0;
+                        for (let i = 0; i < modesRepeater.count; ++i)
+                            widest = Math.max(widest, modesRepeater.itemAt(i)?.width || 0);
+                        fadeWidth = Math.min(Metrics.launcherTabFade, Math.max(0, (width - widest - 2 * body.tabFocusPad) / 2));
+                        const target = Math.max(right + fadeWidth - width, Math.min(contentX, left - fadeWidth));
+                        contentX = Math.max(0, Math.min(maximum, target));
+                    }
+                    function revealSelected(): void {
+                        reveal(body.modeIndex);
+                    }
+                    onWidthChanged: Qt.callLater(revealSelected)
+                    onContentWidthChanged: Qt.callLater(revealSelected)
+                    onLabelInkChanged: Qt.callLater(revealSelected)
+                    WheelHandler {
+                        enabled: modeStrip.interactive
+                        onWheel: event => {
+                            body.keyboardMode = false;
+                            modeStrip.cancelFlick();
+                            const delta = event.pixelDelta.x || event.pixelDelta.y || event.angleDelta.x || event.angleDelta.y;
+                            modeStrip.contentX = Math.max(0, Math.min(modeStrip.contentWidth - modeStrip.width, modeStrip.contentX - delta));
+                            event.accepted = true;
+                        }
+                    }
+                    Row {
+                        id: modesRow
+                        x: body.tabFocusPad
+                        y: body.tabFocusPad
+                        height: 28
+                        spacing: 2
+                        Repeater {
+                            id: modesRepeater
+                            model: body.modes
+                            Item {
+                                id: modeItem
+                                Accessible.role: Accessible.PageTab
+                                Accessible.name: body.modeLabels[index]
+                                Accessible.selected: !body.settingsActive && body.modeIndex === index
+                                Accessible.onPressAction: activate()
+                                activeFocusOnTab: true
+                                onActiveFocusChanged: if (activeFocus)
+                                    modeStrip.reveal(index)
+                                Keys.onPressed: event => body.handleKey(event)
+                                function activate(): void {
+                                    body.leaveSettings();
+                                    body.modeIndex = index;
+                                    modeStrip.revealSelected();
+                                }
+                                Keys.onReturnPressed: activate()
+                                Keys.onEnterPressed: activate()
+                                Keys.onSpacePressed: activate()
+                                // The mode drop's shape (pad 4, radius 13): on the open mode it is
+                                // the same bubble, on another one the bubble the arrow moved.
+                                FocusRing {
+                                    anchors.margins: -body.tabFocusPad
+                                    radius: 13
+                                    shown: body.keyboardMode && modeItem.activeFocus && !body.glassReady
+                                }
+                                required property int index
+                                objectName: "launcher-tab-" + modelData.toLowerCase()
+                                required property string modelData
+                                readonly property real inkLeft: modeLabel.x + modeMetrics.tightBoundingRect.x
+                                readonly property real inkRight: inkLeft + modeMetrics.tightBoundingRect.width
+                                width: Math.ceil(modeLabel.implicitWidth) + 22
+                                height: 28
+                                TextMetrics {
+                                    id: modeMetrics
+                                    font: modeLabel.font
+                                    text: modeLabel.text
+                                }
+                                Text {
+                                    id: modeLabel
+                                    anchors.centerIn: parent
+                                    text: body.modeLabels[modeItem.index]
+                                    textFormat: Text.PlainText
+                                    font.family: ShellPalette.uiFont
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    color: !body.settingsActive && body.modeIndex === modeItem.index ? body.ink : body.dim
+                                    opacity: !body.settingsActive && body.modeIndex === modeItem.index ? 1 - body.modeAlpha : 1
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: body.opened
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        modeItem.activate();
+                                        body.takeFocus();
+                                    }
                                 }
                             }
                         }
@@ -1754,21 +2023,31 @@ Item {
             source: SystemIcons.settingsSvg(body.ink)
             sourceSize: Qt.size(24, 24)
         }
-        Text {
-            x: body.modeRect.x
-            y: body.modeRect.y
-            width: body.modeRect.width
-            height: body.modeRect.height
-            visible: !body.settingsActive && body.modeAlpha > .001
-            opacity: body.modeAlpha
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            text: body.modeLabels[body.modeIndex]
-            textFormat: Text.PlainText
-            font.family: ShellPalette.uiFont
-            font.pixelSize: 13
-            font.weight: Font.Medium
-            color: body.ink
+        Item {
+            x: modeStrip.x
+            y: modeStrip.y
+            width: modeStrip.width
+            height: modeStrip.height
+            clip: true
+            layer.enabled: modeStrip.layer.enabled
+            layer.effect: ModeFade {}
+            Text {
+                objectName: "launcher-mode-ink"
+                x: body.modeRect.x - parent.x
+                y: body.modeRect.y - parent.y
+                width: body.modeRect.width
+                height: body.modeRect.height
+                visible: !body.settingsActive && width > 0 && height > 0 && body.modeAlpha > .001
+                opacity: body.modeAlpha
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: body.modeLabels[body.modeIndex]
+                textFormat: Text.PlainText
+                font.family: ShellPalette.uiFont
+                font.pixelSize: 13
+                font.weight: Font.Medium
+                color: body.ink
+            }
         }
         Text {
             x: body.categoryRect.x
@@ -1824,7 +2103,7 @@ Item {
             }
             x: 56
             y: 14
-            width: Math.max(40, modesRow.x - x - 14)
+            width: Math.max(body.searchMinimumWidth, modeStrip.x - x - 14)
             height: 32
             verticalAlignment: TextInput.AlignVCenter
             font.family: ShellPalette.uiFont
@@ -1854,12 +2133,15 @@ Item {
             Keys.onReturnPressed: event => {
                 body.keyboardMode = true;
                 event.accepted = true;
-                body.activate();
+                // A held Enter runs a command once, not once per repeat.
+                if (!(event.isAutoRepeat && body.modeIndex === 5))
+                    body.activate();
             }
             Keys.onEnterPressed: event => {
                 body.keyboardMode = true;
                 event.accepted = true;
-                body.activate();
+                if (!(event.isAutoRepeat && body.modeIndex === 5))
+                    body.activate();
             }
             Keys.onDownPressed: event => {
                 body.keyboardMode = true;

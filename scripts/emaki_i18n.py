@@ -19,6 +19,28 @@ def selected_languages(environ=None):
     return [item for item in environ.get('LANGUAGE', '').split(':') if item] + [locale]
 
 
+def format_number(value, decimals=0, *, language=None, grouping=False):
+    """Format display numbers without changing process-wide locale state.
+
+    Precision and grouping are chosen by the caller to retain each surface's
+    existing layout. An explicit language scopes formatting to one request;
+    otherwise use the same language preferences as the message catalogue.
+    """
+    preferences = selected_languages() if language is None else language.split(':')
+    selected = 'en'
+    for preference in preferences:
+        base = preference.replace('-', '_').split('.')[0].split('@')[0].split('_')[0]
+        if base in ('en', 'es', 'pt', 'de', 'fr', 'ru', 'C', 'POSIX'):
+            selected = base
+            break
+    spec = 'd' if isinstance(value, int) and decimals == 0 else f'.{decimals}f'
+    text = format(value, (',' if grouping else '') + spec)
+    if selected in ('es', 'pt', 'de', 'fr', 'ru'):
+        separator = '\u202f' if selected == 'fr' else '\u00a0' if selected == 'ru' else '.'
+        text = text.translate(str.maketrans({'.': ',', ',': separator}))
+    return text
+
+
 def translation(domain):
     directory = os.environ.get('EMAKI_LOCALE_DIR')
     if not directory:

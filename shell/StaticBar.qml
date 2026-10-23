@@ -119,7 +119,8 @@ Item {
     }
     readonly property string clockTime: dateTime.toLocaleTimeString(Qt.locale(), (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true) ? "HH:mm" : "h:mm AP")
     // English sessions keep 0.10's names ("Sep", not en_GB's "Sept"); other languages name days and months themselves.
-    readonly property string clockDate: dateTime.toLocaleDateString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_US") : Qt.locale(), "ddd d MMM")
+    //: Qt date pattern: ddd, d and MMM are fields; put literal words in single quotes.
+    readonly property string clockDate: dateTime.toLocaleDateString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_US") : Qt.locale(), qsTranslate("StaticBar", "ddd d MMM"))
     //: Qt date pattern: d, dddd and MMMM are fields; put literal words in single quotes, as in 'de'.
     readonly property string clockLongDate: dateTime.toLocaleDateString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_US") : Qt.locale(), qsTranslate("StaticBar", "dddd, d MMMM"))
     property bool clockPresent: false

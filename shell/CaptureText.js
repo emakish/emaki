@@ -7,6 +7,16 @@ function window() { return qsTranslate("Shell", "Window"); }
 function screen() { return qsTranslate("Shell", "Screen"); }
 function picture() { return qsTranslate("Shell", "Picture"); }
 function recording() { return qsTranslate("Shell", "Recording"); }
+function text() { return qsTranslate("Shell", "Text"); }
+function qr() { return qsTranslate("Shell", "QR code"); }
+function copiedText() { return qsTranslate("Shell", "Text copied"); }
+function copiedCode() { return qsTranslate("Shell", "Code copied"); }
+function noText() { return qsTranslate("Shell", "No text found"); }
+function noCode() { return qsTranslate("Shell", "No QR code or barcode found"); }
+function clipboardUnavailable() { return qsTranslate("Shell", "Clipboard unavailable"); }
+function openLink() { return qsTranslate("Shell", "Open link"); }
+function missingTesseract() { return qsTranslate("Shell", "Text recognition requires tesseract."); }
+function missingZbar() { return qsTranslate("Shell", "QR code recognition requires zbarimg."); }
 function capture() { return qsTranslate("Shell", "Capture"); }
 function record() { return qsTranslate("Shell", "Start recording"); }
 function cancel() { return qsTranslate("Shell", "Cancel"); }

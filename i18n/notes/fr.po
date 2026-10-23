@@ -1,0 +1,120 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+msgid ""
+msgstr "Project-Id-Version: Emaki\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nLanguage: fr\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#,  python-format
+msgid "%(path)s: the folder is a broken symbolic link."
+msgstr "%(path)s : le dossier est un lien symbolique cassé."
+
+msgid "A note cannot be larger than 1 MiB."
+msgstr "Une note ne peut pas dépasser 1 Mio."
+
+msgid "A request must be an object."
+msgstr "Une demande doit être un objet."
+
+msgid "Action must be text."
+msgstr "L’action doit être du texte."
+
+msgid "All day"
+msgstr "Toute la journée"
+
+msgid "An event identifier is required."
+msgstr "Un identifiant d’événement est requis."
+
+msgid "Cannot watch notes"
+msgstr "Impossible de surveiller les notes"
+
+msgid "Duration must be a positive number of minutes."
+msgstr "La durée doit être un nombre positif de minutes."
+
+msgid "Emaki Notes needs a user runtime directory"
+msgstr "Notes Emaki nécessite un répertoire d’exécution utilisateur"
+
+msgid "Enter a date as YYYY-MM-DD."
+msgstr "Saisissez une date au format AAAA-MM-JJ."
+
+msgid "Enter a start time as HH:MM."
+msgstr "Saisissez une heure de début au format HH:MM."
+
+msgid "Enter an event title on one line."
+msgstr "Saisissez un titre d’événement sur une seule ligne."
+
+msgid "Enter one task line."
+msgstr "Saisissez une seule ligne de tâche."
+
+msgid "Invalid event identifier."
+msgstr "Identifiant d’événement invalide."
+
+msgid "Invalid note identifier."
+msgstr "Identifiant de note invalide."
+
+msgid "Larger than 1 MiB; open it in a text editor."
+msgstr "Fichier de plus de 1 Mio ; ouvrez-le dans un éditeur de texte."
+
+msgid "Not a regular file."
+msgstr "Ce n’est pas un fichier ordinaire."
+
+msgid "Note text must be text."
+msgstr "Le texte de la note doit être du texte."
+
+msgid "Open Emaki Notes as a regular user."
+msgstr "Ouvrez Notes Emaki en tant qu’utilisateur ordinaire."
+
+msgid "Reminder must be minutes before the event."
+msgstr "Le rappel doit indiquer le nombre de minutes avant l’événement."
+
+msgid "Symbolic links cannot be edited as events."
+msgstr "Les liens symboliques ne peuvent pas être modifiés en tant qu’événements."
+
+msgid "Symbolic links cannot be edited as notes."
+msgstr "Les liens symboliques ne peuvent pas être modifiés en tant que notes."
+
+msgid "Task line is missing."
+msgstr "La ligne de tâche est absente."
+
+msgid "The Emaki Notes window could not be shown."
+msgstr "La fenêtre Notes Emaki n’a pas pu être affichée."
+
+msgid "The notes metadata is invalid; restore it before pinning."
+msgstr "Les métadonnées des notes sont invalides ; restaurez-les avant d’épingler."
+
+msgid "The notes metadata is not an object."
+msgstr "Les métadonnées des notes ne sont pas un objet."
+
+msgid "This event cannot be stored; check its date and title."
+msgstr "Cet événement ne peut pas être enregistré ; vérifiez sa date et son titre."
+
+msgid "This event was removed elsewhere."
+msgstr "Cet événement a été supprimé ailleurs."
+
+msgid "This item changed elsewhere. Your edit has been kept; reload or save it as a new note."
+msgstr "Cet élément a changé ailleurs. Votre modification est conservée ; rechargez ou enregistrez-la comme une nouvelle note."
+
+msgid "This line is not a task."
+msgstr "Cette ligne n’est pas une tâche."
+
+msgid "This note was removed elsewhere. Save your edit as a new note."
+msgstr "Cette note a été supprimée ailleurs. Enregistrez votre modification comme une nouvelle note."
+
+msgid "Unknown action."
+msgstr "Action inconnue."
+
+msgid "Unknown notes action."
+msgstr "Action de notes inconnue."
+
+msgid "Unsupported reminder trigger."
+msgstr "Déclencheur de rappel non pris en charge."
+
+msgid "Untitled note"
+msgstr "Note sans titre"
+
+msgid "Usage: backend.py {serve|remind|snapshot}"
+msgstr "Utilisation : backend.py {serve|remind|snapshot}"
+
+msgid "Usage: emaki-notes [--note ID]"
+msgstr "Utilisation : emaki-notes [--note ID]"
+
+msgid "not an object"
+msgstr "ce n’est pas un objet"

@@ -20,7 +20,11 @@ LEGACY_ZRAM = '[zram0]\nzram-size = min(ram / 2, 8192)\nswap-priority = 100\n'
 LEGACY_WHEEL = '%wheel ALL=(ALL:ALL) ALL\n'
 # The languages Emaki is translated into besides English; the installer turns them on for new installs
 # (installer/emaki_installer/i18n.py LOCALES), this migration for systems that update to them.
-EMAKI_LANGUAGES = ('es_MX.UTF-8', 'pt_BR.UTF-8')
+LANGUAGE_MIGRATIONS = {
+    6: ('es_MX.UTF-8', 'pt_BR.UTF-8'),
+    7: ('de_DE.UTF-8', 'fr_FR.UTF-8', 'ru_RU.UTF-8'),
+}
+EMAKI_LANGUAGES = tuple(language for languages in LANGUAGE_MIGRATIONS.values() for language in languages)
 FORMER_DESKTOP_DEPENDENCIES = ('firefox', 'dolphin', 'kdegraphics-thumbnailers', 'ffmpegthumbs')
 SUDO_BROKER = '@EMAKI_LIBEXECDIR@/emaki-sudo-broker'
 # Preserve historical choices and ambiguous preexisting optional services.
@@ -163,7 +167,41 @@ def repair_sudoers_mode(root):
         directory.chmod(0o750)
 
 
-def enable_languages(root):
+def repair_console_font(root):
+    """Replace the former default once; keep explicit custom fonts and keyboard settings."""
+    path = root / 'etc/vconsole.conf'
+    if not safe(path) or not path.is_file() or path.stat().st_nlink != 1:
+        return
+    text = path.read_text()
+    assignments = list(re.finditer(r'^[ \t]*FONT[ \t]*=.*$', text, re.MULTILINE))
+    if assignments:
+        # Ambiguous repeated assignments and explicit empty values are local choices.
+        if len(assignments) != 1:
+            return
+        old = re.fullmatch(r'([ \t]*FONT[ \t]*=[ \t]*)([\'"]?)ter-124b\2([ \t]*(?:#.*)?)', assignments[0][0])
+        if not old:
+            return
+        replacement = old[1] + old[2] + 'ter-v24b' + old[2] + old[3]
+        text = text[:assignments[0].start()] + replacement + text[assignments[0].end():]
+    else:
+        locale = root / 'etc/locale.conf'
+        if not safe(locale) or not locale.is_file() or locale.stat().st_nlink != 1:
+            return
+        languages = re.findall(r'^[ \t]*LANG[ \t]*=.*$', locale.read_text(), re.MULTILINE)
+        if len(languages) != 1 or not re.fullmatch(
+                r'[ \t]*LANG[ \t]*=[ \t]*([\'"]?)ru_RU\.UTF-8\1[ \t]*(?:#.*)?', languages[0]):
+            return
+        # No reliable installed framebuffer geometry is available during an update.
+        # Match the kernel's large 16x32 font while adding Cyrillic glyph coverage.
+        text += ('\n' if text and not text.endswith('\n') else '') + 'FONT=ter-v32b\n'
+    # Persist the rebuild request before changing consolefont's initramfs input.
+    # The normal transaction hooks consume it, or retain it after a failed rebuild.
+    from emaki_boot_defaults import KERNELS, queue_presets
+    queue_presets(root, KERNELS)
+    write(path, text, mode=stat.S_IMODE(path.stat().st_mode))
+
+
+def enable_languages(root, languages=EMAKI_LANGUAGES):
     """Turn on Emaki's translated languages in /etc/locale.gen, so Settings › Region & Time offers them.
 
     Settings lists only generated locales, and an updated system has just the one its installer
@@ -174,14 +212,16 @@ def enable_languages(root):
         return False
     lines = path.read_text().splitlines(keepends=True)
     changed = False
-    for language in EMAKI_LANGUAGES:
+    for language in languages:
         entry = language + ' UTF-8'
-        if any(line.strip() == entry for line in lines):
+        active = re.compile(r'\s*' + re.escape(language) + r'\s+UTF-8\s*(?:#.*)?')
+        if any(active.fullmatch(line.rstrip('\n')) for line in lines):
             continue
-        commented = re.compile(r'#\s*' + re.escape(entry) + r'\s*')
+        commented = re.compile(r'\s*#\s*' + re.escape(language) + r'\s+UTF-8\s*(#.*)?')
         for index, line in enumerate(lines):
-            if commented.fullmatch(line.rstrip('\n')):
-                lines[index] = entry + '\n'
+            match = commented.fullmatch(line.rstrip('\n'))
+            if match:
+                lines[index] = entry + ('  ' + match[1] if match[1] else '') + '\n'
                 break
         else:
             if lines and not lines[-1].endswith('\n'):
@@ -193,31 +233,32 @@ def enable_languages(root):
     return changed
 
 
-def languages_generated():
+def languages_generated(languages=EMAKI_LANGUAGES):
     available = subprocess.run(['locale', '-a'], capture_output=True, text=True, check=True,
                                timeout=60).stdout.split()
     names = {name.lower().replace('utf-8', 'utf8') for name in available}
-    return all(language.lower().replace('utf-8', 'utf8') in names for language in EMAKI_LANGUAGES)
+    return all(language.lower().replace('utf-8', 'utf8') in names for language in languages)
 
 
-def generate_languages(root, build=True):
+def generate_languages(root, build=True, languages=EMAKI_LANGUAGES):
     """Enable the languages and, on the running system, build them; an offline root or a fresh install (the
     installer writes locale.gen and runs locale-gen itself) only gets the file. Success means the languages
     are really there: Arch's locale-gen exits 0 when one locale fails to build. A failure is reported, never
     stops the other migrations, and the next transaction retries."""
     try:
-        changed = enable_languages(root)
+        changed = enable_languages(root, languages)
         if root != Path('/') or not build:
             return True
-        if not changed and languages_generated():
+        if not changed and languages_generated(languages):
             return True
         result = subprocess.run(['locale-gen'], capture_output=True, text=True, timeout=900)
-        if not result.returncode and languages_generated():
+        if not result.returncode and languages_generated(languages):
             return True
         detail = result.stderr[-2000:]
     except (OSError, subprocess.SubprocessError) as error:
         detail = str(error)
-    print('Emaki: could not prepare Spanish and Portuguese; the next update retries.\n' + detail, file=sys.stderr)
+    print('Emaki: could not prepare language support (' + ', '.join(languages)
+          + '); the next update retries.\n' + detail, file=sys.stderr)
     return False
 
 
@@ -433,8 +474,17 @@ def apply(root, fresh=False):
         repair_flatpak_modes(root)
         state['version'] = 5
         write(path, json.dumps(state) + '\n')
-    if state.get('version', 0) < 6 and generate_languages(root, build=not fresh):
-        state['version'] = 6
+    if not state.get('unicode_console_font'):
+        if not fresh:
+            repair_console_font(root)
+        state['unicode_console_font'] = True
+        write(path, json.dumps(state) + '\n')
+    for version, languages in LANGUAGE_MIGRATIONS.items():
+        if state.get('version', 0) >= version:
+            continue
+        if not generate_languages(root, build=not fresh, languages=languages):
+            break
+        state['version'] = version
         write(path, json.dumps(state) + '\n')
     from emaki_boot_defaults import apply as boot_defaults
     boot_defaults(root)

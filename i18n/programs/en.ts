@@ -4,6 +4,57 @@
 SPDX-License-Identifier: GPL-3.0-or-later -->
 <TS version="2.1" language="en" sourcelanguage="en">
     <context>
+        <name>ManagerDevelopment</name>
+        <message>
+            <source>Development kits</source>
+            <translation>Development kits</translation>
+        </message>
+        <message>
+            <source>Tools for building software, installed together from Arch.</source>
+            <translation>Tools for building software, installed together from Arch.</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>Loading…</translation>
+        </message>
+        <message>
+            <source>Installed</source>
+            <translation>Installed</translation>
+        </message>
+        <message>
+            <source>The stable Rust toolchain is downloaded for your account after the packages are installed. Toolchains in your home folder stay when you remove the kit.</source>
+            <translation>The stable Rust toolchain is downloaded for your account after the packages are installed. Toolchains in your home folder stay when you remove the kit.</translation>
+        </message>
+        <message>
+            <source>Installing enables the Docker socket. Removing restores the previous socket and group settings. Images and containers stay on this computer.</source>
+            <translation>Installing enables the Docker socket. Removing restores the previous socket and group settings. Images and containers stay on this computer.</translation>
+        </message>
+        <message>
+            <source>Allow Docker without an administrator password</source>
+            <translation>Allow Docker without an administrator password</translation>
+        </message>
+        <message>
+            <source>Members of the Docker group can control this computer as root.</source>
+            <translation>Members of the Docker group can control this computer as root.</translation>
+        </message>
+        <message>
+            <source>Install</source>
+            <translation>Install</translation>
+        </message>
+        <message>
+            <source>Finish setup</source>
+            <translation>Finish setup</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>Remove</translation>
+        </message>
+        <message>
+            <source>Undo this install</source>
+            <translation>Undo this install</translation>
+        </message>
+    </context>
+    <context>
         <name>ManagerLogic</name>
         <message>
             <source>Internet</source>
@@ -106,27 +157,32 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>stays</translation>
         </message>
         <message numerus="yes">
-            <source>%1 need(s) what it added.</source>
+            <source>This install can no longer be taken back as it was. %1 need(s) what it added.</source>
             <translation>
-                <numerusform>%1 needs what it added.</numerusform>
-                <numerusform>%1 need what it added.</numerusform>
+                <numerusform>This install can no longer be taken back as it was. %1 needs what it added.</numerusform>
+                <numerusform>This install can no longer be taken back as it was. %1 need what it added.</numerusform>
             </translation>
         </message>
         <message>
-            <source>It is now part of the system.</source>
-            <translation>It is now part of the system.</translation>
+            <source>This install can no longer be taken back as it was. It is now part of the system.</source>
+            <translation>This install can no longer be taken back as it was. It is now part of the system.</translation>
         </message>
         <message>
-            <source>It is now part of Emaki.</source>
-            <translation>It is now part of Emaki.</translation>
+            <source>This install can no longer be taken back as it was. It is now part of Emaki.</source>
+            <translation>This install can no longer be taken back as it was. It is now part of Emaki.</translation>
         </message>
         <message>
-            <source>You installed it yourself since.</source>
-            <translation>You installed it yourself since.</translation>
+            <source>This install can no longer be taken back as it was. You installed it yourself since.</source>
+            <translation>This install can no longer be taken back as it was. You installed it yourself since.</translation>
         </message>
         <message>
-            <source>It is no longer installed.</source>
-            <translation>It is no longer installed.</translation>
+            <source>This install can no longer be taken back as it was. It is no longer installed.</source>
+            <translation>This install can no longer be taken back as it was. It is no longer installed.</translation>
+        </message>
+        <message>
+            <source>d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern for an installation date. Keep the time in 24-hour form.</extracomment>
+            <translation>d MMM yyyy, HH:mm</translation>
         </message>
         <message>
             <source>0 MB</source>
@@ -386,8 +442,8 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>ManagerUpdates</name>
         <message>
-            <source>installing %1 of %2</source>
-            <translation>installing %1 of %2</translation>
+            <source>Installing %1 of %2</source>
+            <translation>Installing %1 of %2</translation>
         </message>
         <message>
             <source>Getting ready…</source>
@@ -450,6 +506,15 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Emaki desktop settings</source>
             <translation>Emaki desktop settings</translation>
+        </message>
+        <message>
+            <source>ddd d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern for a restore point. Keep the time in 24-hour form.</extracomment>
+            <translation>ddd d MMM yyyy, HH:mm</translation>
+        </message>
+        <message>
+            <source>Restore the system as it was before this removal (snapshot %1)</source>
+            <translation>Restore the system as it was before this removal (snapshot %1)</translation>
         </message>
         <message>
             <source>Restore the system as it was before the install of %1</source>
@@ -694,6 +759,7 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
         <message>
             <source>Installed</source>
+            <comment>list of installed programs</comment>
             <translation>Installed</translation>
         </message>
         <message>
@@ -862,6 +928,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Installing…</translation>
         </message>
         <message>
+            <source>Development kits</source>
+            <translation>Development kits</translation>
+        </message>
+        <message>
+            <source>Websites as apps</source>
+            <translation>Websites as apps</translation>
+        </message>
+        <message>
             <source>Our picks are not available right now. Try Refresh.</source>
             <translation>Our picks are not available right now. Try Refresh.</translation>
         </message>
@@ -880,6 +954,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Emaki’s own extras. Each installs with one button.</source>
             <translation>Emaki’s own extras. Each installs with one button.</translation>
+        </message>
+        <message>
+            <source>Installed</source>
+            <translation>Installed</translation>
         </message>
         <message>
             <source>Install</source>
@@ -949,6 +1027,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Remove %1?</translation>
         </message>
         <message>
+            <source>Finish setting up %1?</source>
+            <translation>Finish setting up %1?</translation>
+        </message>
+        <message>
             <source>Undo the install of %1?</source>
             <translation>Undo the install of %1?</translation>
         </message>
@@ -963,6 +1045,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Install %1?</source>
             <translation>Install %1?</translation>
+        </message>
+        <message>
+            <source>Adding you to the Docker group gives you root-level control of this computer.</source>
+            <translation>Adding you to the Docker group gives you root-level control of this computer.</translation>
+        </message>
+        <message>
+            <source>The group takes effect after you sign out and sign back in.</source>
+            <translation>The group takes effect after you sign out and sign back in.</translation>
         </message>
         <message>
             <source>Nobody checked how these programs are built, neither Emaki nor Arch. Their build instructions run on this computer while the program is built. Building also brings the system up to date first.</source>
@@ -1055,6 +1145,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Cancel</translation>
         </message>
         <message>
+            <source>Finish setup</source>
+            <translation>Finish setup</translation>
+        </message>
+        <message>
             <source>Restore and restart later</source>
             <translation>Restore and restart later</translation>
         </message>
@@ -1105,6 +1199,65 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Got it, open the AUR</source>
             <translation>Got it, open the AUR</translation>
+        </message>
+    </context>
+    <context>
+        <name>ManagerWebApps</name>
+        <message>
+            <source>Websites as apps</source>
+            <translation>Websites as apps</translation>
+        </message>
+        <message>
+            <source>Add a website as an app in Firefox. It has its own profile and launcher entry, which you can pin in the dock.</source>
+            <translation>Add a website as an app in Firefox. It has its own profile and launcher entry, which you can pin in the dock.</translation>
+        </message>
+        <message>
+            <source>Links to other sites open in this app too. Point at the top edge or press Ctrl+L to see the address.</source>
+            <translation>Links to other sites open in this app too. Point at the top edge or press Ctrl+L to see the address.</translation>
+        </message>
+        <message>
+            <source>Website address</source>
+            <translation>Website address</translation>
+        </message>
+        <message>
+            <source>Name (optional)</source>
+            <translation>Name (optional)</translation>
+        </message>
+        <message>
+            <source>When you press Add, Emaki loads the page and its icon to read the site name and save its icon.</source>
+            <translation>When you press Add, Emaki loads the page and its icon to read the site name and save its icon.</translation>
+        </message>
+        <message>
+            <source>Adding…</source>
+            <translation>Adding…</translation>
+        </message>
+        <message>
+            <source>Add</source>
+            <translation>Add</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>Loading…</translation>
+        </message>
+        <message>
+            <source>No website apps yet.</source>
+            <translation>No website apps yet.</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>Remove</translation>
+        </message>
+        <message>
+            <source>Close the app first. Removing deletes its launcher, profile, sign-ins and saved site data.</source>
+            <translation>Close the app first. Removing deletes its launcher, profile, sign-ins and saved site data.</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>Cancel</translation>
+        </message>
+        <message>
+            <source>Remove app and its data</source>
+            <translation>Remove app and its data</translation>
         </message>
     </context>
     <context>

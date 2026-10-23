@@ -1,0 +1,742 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+msgid ""
+msgstr "Project-Id-Version: Emaki\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nLanguage: fr\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "\nThe change could not be confirmed. Settings shows the current accounts."
+msgstr "\nLa modification n’a pas pu être confirmée. Les Paramètres affichent les comptes actuels."
+
+msgid "### Steps to reproduce"
+msgstr "### Étapes pour reproduire"
+
+msgid "### System"
+msgstr "### Système"
+
+msgid "### What I expected"
+msgstr "### Résultat attendu"
+
+msgid "### What happened"
+msgstr "### Ce qui s’est passé"
+
+msgid "1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it"
+msgstr "1 à 4 dispositions XKB distinctes, séparées par des virgules (us,ru) ; disposition(variante) selon la liste des règles XKB"
+
+msgid "<!-- Nothing else was collected from your computer. Logs help, but add them only if you choose to: Settings > About can save a diagnostics file for you to review first. -->"
+msgstr "<!-- Aucune autre donnée n’a été collectée sur votre ordinateur. Les journaux sont utiles, mais ne les ajoutez que si vous le souhaitez : Paramètres > À propos peut enregistrer un fichier de diagnostic à examiner d’abord. -->"
+
+msgid "A previous display change needs recovery. Reopen Displays and try again."
+msgstr "Une modification d’affichage précédente nécessite une récupération. Rouvrez Écrans et réessayez."
+
+msgid "A startup entry could not be read. Check its contents and try again."
+msgstr "Une entrée de démarrage n’a pas pu être lue. Vérifiez son contenu et réessayez."
+
+msgid "Alarm was not found"
+msgstr "Alarme introuvable"
+
+msgid "An interrupted display change from an earlier session was discarded."
+msgstr "Une modification d’affichage interrompue lors d’une session précédente a été abandonnée."
+
+msgid "An interrupted display change was reverted."
+msgstr "Une modification d’affichage interrompue a été annulée."
+
+msgid "An interrupted display reset was reverted."
+msgstr "Une réinitialisation d’affichage interrompue a été annulée."
+
+msgid "Another display change is waiting for confirmation."
+msgstr "Une autre modification d’affichage attend une confirmation."
+
+msgid "Apps could not be read or changed. Refresh the page and try again."
+msgstr "Les applications n’ont pas pu être lues ou modifiées. Actualisez la page et réessayez."
+
+msgid "Automatic locking and blanking are unavailable because required session components are missing."
+msgstr "Le verrouillage et l’extinction automatiques de l’écran sont indisponibles car des composants de session requis sont absents."
+
+msgid "Battery, profiles and session"
+msgstr "Batterie, profils et session"
+
+msgid "Block devices"
+msgstr "Périphériques bloc"
+
+msgid "Bluetooth"
+msgstr "Bluetooth"
+
+msgid "Brightness and night light"
+msgstr "Luminosité et éclairage nocturne"
+
+msgid "Browser"
+msgstr "Navigateur"
+
+msgid "Choose None, Automatic or Manual proxy settings."
+msgstr "Choisissez Aucun, Automatique ou Manuel pour le serveur mandataire."
+
+msgid "Choose a charge limit from 50 to 100 percent."
+msgstr "Choisissez une limite de charge entre 50 et 100 pour cent."
+
+msgid "Choose a local VPN configuration file."
+msgstr "Choisissez un fichier local de configuration VPN."
+
+msgid "Choose a readable VPN configuration file."
+msgstr "Choisissez un fichier de configuration VPN lisible."
+
+msgid "Choose a saved connection."
+msgstr "Choisissez une connexion enregistrée."
+
+msgid "Choose a supported network settings action."
+msgstr "Choisissez une action de paramètres réseau prise en charge."
+
+msgid "Choose a valid VPN type."
+msgstr "Choisissez un type de VPN valide."
+
+msgid "Choose a valid display setting."
+msgstr "Choisissez un paramètre d’affichage valide."
+
+msgid "Choose a wallpaper"
+msgstr "Choisir un fond d’écran"
+
+msgid "Choose one of the available delays."
+msgstr "Choisissez l’un des délais disponibles."
+
+msgid "Choose whether the app starts automatically."
+msgstr "Choisissez si l’application démarre automatiquement."
+
+msgid "Choose your picture"
+msgstr "Choisir votre photo"
+
+msgid "Clipboard history"
+msgstr "Historique du presse-papiers"
+
+msgid "Clock command is too large"
+msgstr "La commande d’horloge est trop volumineuse"
+
+msgid "Clock state directory must not be writable by others"
+msgstr "Le répertoire d’état de l’horloge ne doit pas être accessible en écriture aux autres utilisateurs"
+
+msgid "Clock state is too large"
+msgstr "L’état de l’horloge est trop volumineux"
+
+msgid "Clock tools are already running in another session."
+msgstr "Les outils d’horloge sont déjà en cours d’exécution dans une autre session."
+
+msgid "Clock tools could not read or save their settings. Check access and available space."
+msgstr "Les outils d’horloge n’ont pas pu lire ou enregistrer leurs paramètres. Vérifiez les accès et l’espace disponible."
+
+msgid "Clock tools could not read that data. Please try again."
+msgstr "Les outils d’horloge n’ont pas pu lire ces données. Réessayez."
+
+msgid "Close window"
+msgstr "Fermer la fenêtre"
+
+msgid "Confirm password: "
+msgstr "Confirmez le mot de passe : "
+
+msgid "Connection changed."
+msgstr "Connexion modifiée."
+
+msgid "Could not check the screen timers."
+msgstr "Impossible de vérifier les délais de l’écran."
+
+msgid "Cycle column widths"
+msgstr "Alterner entre les largeurs de colonne prédéfinies"
+
+msgid "Disabled"
+msgstr "Désactivé"
+
+msgid "Disabled displays are session-only and cannot be saved."
+msgstr "Les écrans désactivés le sont uniquement pour la session et ne peuvent pas être enregistrés."
+
+msgid "Display information could not be read."
+msgstr "Les informations d’affichage n’ont pas pu être lues."
+
+msgid "Display settings changed elsewhere. Reopen Displays and try again."
+msgstr "Les paramètres d’affichage ont changé ailleurs. Rouvrez Écrans et réessayez."
+
+msgid "Display settings could not be saved. Check the available space and try again."
+msgstr "Les paramètres d’affichage n’ont pas pu être enregistrés. Vérifiez l’espace disponible et réessayez."
+
+msgid "Emaki landscape"
+msgstr "Paysage Emaki"
+
+msgid "Emaki problem report"
+msgstr "Rapport de problème Emaki"
+
+msgid "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+msgstr "Saisissez un mot de passe sans saut de ligne, tabulation ou autre caractère de contrôle (1 024 octets UTF-8 maximum)."
+
+msgid "Enter a proxy address as host:port."
+msgstr "Saisissez une adresse de serveur mandataire sous la forme hôte:port."
+
+msgid "Enter an HTTP or HTTPS proxy configuration URL."
+msgstr "Saisissez une URL HTTP ou HTTPS de configuration du serveur mandataire."
+
+msgid "Enter between one and sixteen DNS server addresses."
+msgstr "Saisissez entre une et seize adresses de serveurs DNS."
+
+msgid "Enter valid DNS server addresses."
+msgstr "Saisissez des adresses de serveurs DNS valides."
+
+msgid "Expected a clock command"
+msgstr "Une commande d’horloge était attendue"
+
+msgid "Expected a whole number"
+msgstr "Un nombre entier était attendu"
+
+msgid "Expected true or false"
+msgstr "true ou false était attendu"
+
+msgid "Failed system units"
+msgstr "Unités système en échec"
+
+msgid "Failed user units"
+msgstr "Unités utilisateur en échec"
+
+msgid "Files"
+msgstr "Fichiers"
+
+msgid "Float or tile window"
+msgstr "Basculer la fenêtre en mode flottant ou mosaïque"
+
+msgid "Focus dock"
+msgstr "Activer le dock"
+
+msgid "Focus left column"
+msgstr "Activer la colonne de gauche"
+
+msgid "Focus newest notification"
+msgstr "Activer la notification la plus récente"
+
+msgid "Focus right column"
+msgstr "Activer la colonne de droite"
+
+msgid "Focus top bar"
+msgstr "Activer la barre supérieure"
+
+msgid "Focus window or workspace above"
+msgstr "Activer la fenêtre ou l’espace de travail au-dessus"
+
+msgid "Focus window or workspace below"
+msgstr "Activer la fenêtre ou l’espace de travail en dessous"
+
+#,  python-brace-format
+msgid "Go to workspace {number}"
+msgstr "Aller à l’espace de travail {number}"
+
+msgid "Image viewer"
+msgstr "Visionneuse d’images"
+
+msgid "Installation"
+msgstr "Installation"
+
+#,  python-brace-format
+msgid "Installed with Emaki {value1}; current release matches"
+msgstr "Installé avec Emaki {value1} ; la version actuelle est identique"
+
+#,  python-brace-format
+msgid "Installed with Emaki {value1}; now on {value2}"
+msgstr "Installé avec Emaki {value1} ; utilise maintenant {value2}"
+
+msgid "Invalid alarm identifier"
+msgstr "Identifiant d’alarme invalide"
+
+msgid "Invalid alarm label"
+msgstr "Nom d’alarme invalide"
+
+msgid "Invalid application identifier."
+msgstr "Identifiant d’application invalide."
+
+msgid "Invalid clock state"
+msgstr "État d’horloge invalide"
+
+msgid "Invalid duration"
+msgstr "Durée invalide"
+
+msgid "Invalid laps"
+msgstr "Tours invalides"
+
+msgid "Invalid notice"
+msgstr "Avis invalide"
+
+msgid "Invalid repeat days"
+msgstr "Jours de répétition invalides"
+
+msgid "Invalid time zone search"
+msgstr "Recherche de fuseau horaire invalide"
+
+msgid "Invalid timer state"
+msgstr "État du minuteur invalide"
+
+msgid "Keep at least one display turned on."
+msgstr "Gardez au moins un écran allumé."
+
+msgid "Keep or revert the current display change first."
+msgstr "Conservez ou annulez d’abord la modification d’affichage actuelle."
+
+msgid "Keyboard layouts"
+msgstr "Dispositions du clavier"
+
+msgid "Lid behavior is managed by the system."
+msgstr "Le comportement du capot est géré par le système."
+
+msgid "Linux kernel"
+msgstr "Noyau Linux"
+
+msgid "Lock screen"
+msgstr "Verrouiller l’écran"
+
+msgid "Lower volume"
+msgstr "Baisser le volume"
+
+msgid "Make column narrower"
+msgstr "Réduire la largeur de la colonne"
+
+msgid "Make column wider"
+msgstr "Augmenter la largeur de la colonne"
+
+msgid "Make keyboard brighter"
+msgstr "Augmenter la luminosité du clavier"
+
+msgid "Make keyboard dimmer"
+msgstr "Réduire la luminosité du clavier"
+
+msgid "Make screen brighter"
+msgstr "Augmenter la luminosité de l’écran"
+
+msgid "Make screen dimmer"
+msgstr "Réduire la luminosité de l’écran"
+
+msgid "Maximize column"
+msgstr "Maximiser la colonne"
+
+msgid "Move column left"
+msgstr "Déplacer la colonne à gauche"
+
+msgid "Move column right"
+msgstr "Déplacer la colonne à droite"
+
+msgid "Move column to left monitor"
+msgstr "Déplacer la colonne vers l’écran de gauche"
+
+msgid "Move column to monitor above"
+msgstr "Déplacer la colonne vers l’écran au-dessus"
+
+msgid "Move column to monitor below"
+msgstr "Déplacer la colonne vers l’écran en dessous"
+
+msgid "Move column to right monitor"
+msgstr "Déplacer la colonne vers l’écran de droite"
+
+#,  python-brace-format
+msgid "Move column to workspace {number}"
+msgstr "Déplacer la colonne vers l’espace de travail {number}"
+
+msgid "Move window down or to workspace below"
+msgstr "Déplacer la fenêtre vers le bas ou l’espace de travail en dessous"
+
+msgid "Move window into or out of left column"
+msgstr "Déplacer la fenêtre dans ou hors de la colonne de gauche"
+
+msgid "Move window into or out of right column"
+msgstr "Déplacer la fenêtre dans ou hors de la colonne de droite"
+
+msgid "Move window up or to workspace above"
+msgstr "Déplacer la fenêtre vers le haut ou l’espace de travail au-dessus"
+
+msgid "Mute or unmute microphone"
+msgstr "Couper ou rétablir le microphone"
+
+msgid "Mute or unmute sound"
+msgstr "Couper ou rétablir le son"
+
+msgid "Network settings could not be reached. Try again."
+msgstr "Les paramètres réseau sont injoignables. Réessayez."
+
+msgid "Network settings could not be read. Try again."
+msgstr "Les paramètres réseau n’ont pas pu être lus. Réessayez."
+
+msgid "Network settings took too long. Try again."
+msgstr "Les paramètres réseau ont pris trop de temps. Réessayez."
+
+msgid "NetworkManager could not complete this change. Check your connection and permissions."
+msgstr "NetworkManager n’a pas pu terminer cette modification. Vérifiez votre connexion et vos autorisations."
+
+msgid "NetworkManager is not available."
+msgstr "NetworkManager est indisponible."
+
+#,  python-brace-format
+msgid "New password for {value1}: "
+msgstr "Nouveau mot de passe pour {value1} : "
+
+msgid "Next track"
+msgstr "Piste suivante"
+
+msgid "Not recorded (please say whether this is a fresh installation or an updated one)"
+msgstr "Non enregistré (précisez s’il s’agit d’une nouvelle installation ou d’une mise à jour)"
+
+msgid "Notifications, calendar and music"
+msgstr "Notifications, calendrier et musique"
+
+msgid "Open files"
+msgstr "Ouvrir les fichiers"
+
+msgid "Open launcher"
+msgstr "Ouvrir le lanceur"
+
+msgid "Open terminal"
+msgstr "Ouvrir le terminal"
+
+msgid "Open terminal (works without Super)"
+msgstr "Ouvrir le terminal (fonctionne sans Super)"
+
+msgid "Password changed."
+msgstr "Mot de passe modifié."
+
+msgid "Password not changed."
+msgstr "Mot de passe non modifié."
+
+msgid "Pictures"
+msgstr "Images"
+
+msgid "Play or pause media"
+msgstr "Lire ou mettre en pause le média"
+
+msgid "Power menu"
+msgstr "Menu d’alimentation"
+
+msgid "Press Enter to close this window. "
+msgstr "Appuyez sur Entrée pour fermer cette fenêtre. "
+
+msgid "Previous track"
+msgstr "Piste précédente"
+
+msgid "Privacy and capture activity"
+msgstr "Activité de confidentialité et de capture"
+
+msgid "Raise volume"
+msgstr "Augmenter le volume"
+
+msgid "Recent journal errors"
+msgstr "Erreurs récentes du journal"
+
+msgid "Record screen"
+msgstr "Enregistrer l’écran"
+
+msgid "Review this file before sharing. It may contain private information."
+msgstr "Examinez ce fichier avant de le partager. Il peut contenir des informations privées."
+
+msgid "Saved display settings cannot be read. Restore the managed display file to continue."
+msgstr "Les paramètres d’affichage enregistrés sont illisibles. Restaurez le fichier d’affichage géré pour continuer."
+
+msgid "Search keyboard shortcuts"
+msgstr "Rechercher des raccourcis clavier"
+
+msgid "Settings were saved. Reconnect this connection to apply them."
+msgstr "Les paramètres ont été enregistrés. Reconnectez cette connexion pour les appliquer."
+
+msgid "Show shortcut overview"
+msgstr "Afficher l’aperçu des raccourcis"
+
+msgid "Show that the password window is real"
+msgstr "Montrer que la fenêtre du mot de passe est authentique"
+
+msgid "Sound and app volume"
+msgstr "Son et volume des applications"
+
+msgid "Stop media"
+msgstr "Arrêter le média"
+
+msgid "Switch keyboard layout"
+msgstr "Changer de disposition du clavier"
+
+msgid "Switch windows"
+msgstr "Changer de fenêtre"
+
+msgid "Switch windows backwards"
+msgstr "Changer de fenêtre en sens inverse"
+
+msgid "Switch windows of the same app"
+msgstr "Changer de fenêtre de la même application"
+
+msgid "Switch windows of the same app backwards"
+msgstr "Changer de fenêtre de la même application en sens inverse"
+
+msgid "System details"
+msgstr "Détails du système"
+
+msgid "Take an interactive screenshot"
+msgstr "Prendre une capture d’écran interactive"
+
+msgid "Terminal"
+msgstr "Terminal"
+
+msgid "Text editor"
+msgstr "Éditeur de texte"
+
+msgid "That resolution or refresh rate is not available on this display."
+msgstr "Cette résolution ou cette fréquence de rafraîchissement n’est pas disponible sur cet écran."
+
+msgid "The account is ready."
+msgstr "Le compte est prêt."
+
+msgid "The account was not created."
+msgstr "Le compte n’a pas été créé."
+
+msgid "The alarm limit is 64"
+msgstr "La limite est de 64 alarmes"
+
+msgid "The application entry is too large."
+msgstr "L’entrée de l’application est trop volumineuse."
+
+msgid "The confirmation time expired. The previous settings were restored."
+msgstr "Le délai de confirmation a expiré. Les paramètres précédents ont été rétablis."
+
+msgid "The connected displays changed. Reopen Displays and try again."
+msgstr "Les écrans connectés ont changé. Rouvrez Écrans et réessayez."
+
+msgid "The display configuration could not be loaded."
+msgstr "La configuration d’affichage n’a pas pu être chargée."
+
+msgid "The display configuration reload was not confirmed."
+msgstr "Le rechargement de la configuration d’affichage n’a pas été confirmé."
+
+msgid "The display did not confirm the requested settings."
+msgstr "L’écran n’a pas confirmé les paramètres demandés."
+
+msgid "The display name is invalid."
+msgstr "Le nom de l’écran est invalide."
+
+msgid "The display request is invalid."
+msgstr "La demande d’affichage est invalide."
+
+msgid "The display request is too large."
+msgstr "La demande d’affichage est trop volumineuse."
+
+msgid "The display service could not apply the change."
+msgstr "Le service d’affichage n’a pas pu appliquer la modification."
+
+msgid "The display service is unavailable."
+msgstr "Le service d’affichage est indisponible."
+
+msgid "The display service returned an invalid response."
+msgstr "Le service d’affichage a renvoyé une réponse invalide."
+
+msgid "The display settings lock is not safe to use."
+msgstr "Le verrou des paramètres d’affichage ne peut pas être utilisé en toute sécurité."
+
+msgid "The idle policy stopped unexpectedly."
+msgstr "La gestion de l’inactivité s’est arrêtée de manière inattendue."
+
+msgid "The inherited configuration does not enable this display. Its settings were restored."
+msgstr "La configuration héritée n’active pas cet écran. Ses paramètres ont été rétablis."
+
+msgid "The installed application is unavailable."
+msgstr "L’application installée est indisponible."
+
+msgid "The managed display directory is not safe to use."
+msgstr "Le répertoire d’affichage géré ne peut pas être utilisé en toute sécurité."
+
+msgid "The managed display file is not safe to use."
+msgstr "Le fichier d’affichage géré ne peut pas être utilisé en toute sécurité."
+
+msgid "The new display size would separate or overlap screens. Adjust their positions first."
+msgstr "La nouvelle taille d’affichage séparerait ou ferait se chevaucher les écrans. Ajustez d’abord leurs positions."
+
+msgid "The passwords do not match."
+msgstr "Les mots de passe ne correspondent pas."
+
+msgid "The pending display change cannot be recovered."
+msgstr "La modification d’affichage en attente ne peut pas être récupérée."
+
+msgid "The personal configuration directory is not owned by you."
+msgstr "Le répertoire de configuration personnelle ne vous appartient pas."
+
+msgid "The personal configuration directory must be absolute."
+msgstr "Le chemin du répertoire de configuration personnelle doit être absolu."
+
+msgid "The previous display settings could not be fully restored. Reconnect the display and try again."
+msgstr "Les paramètres d’affichage précédents n’ont pas pu être entièrement rétablis. Reconnectez l’écran et réessayez."
+
+msgid "The previous display settings have been restored."
+msgstr "Les paramètres d’affichage précédents ont été rétablis."
+
+msgid "The remaining display was turned back on."
+msgstr "L’écran restant a été rallumé."
+
+msgid "The saved lid setting is not valid."
+msgstr "Le paramètre de capot enregistré est invalide."
+
+msgid "The saved power settings are not valid."
+msgstr "Les paramètres d’alimentation enregistrés sont invalides."
+
+msgid "The screen timers are not running. Apply a setting to try again."
+msgstr "Les délais de l’écran ne sont pas actifs. Appliquez un paramètre pour réessayer."
+
+msgid "The selected display is no longer connected."
+msgstr "L’écran sélectionné n’est plus connecté."
+
+msgid "The startup directory is not owned by you."
+msgstr "Le répertoire de démarrage ne vous appartient pas."
+
+msgid "The startup entry is not a personal regular file."
+msgstr "L’entrée de démarrage n’est pas un fichier ordinaire personnel."
+
+msgid "The startup entry is not an application."
+msgstr "L’entrée de démarrage n’est pas une application."
+
+msgid "The startup entry is too large."
+msgstr "L’entrée de démarrage est trop volumineuse."
+
+msgid "The stopwatch has 100 laps; reset to record more"
+msgstr "Le chronomètre compte 100 tours ; réinitialisez-le pour en enregistrer davantage"
+
+msgid "The system could not apply the power setting."
+msgstr "Le système n’a pas pu appliquer le paramètre d’alimentation."
+
+msgid "The world clock limit is 24"
+msgstr "La limite est de 24 horloges mondiales"
+
+msgid "Their login wallet may still use the previous password."
+msgstr "Son portefeuille de connexion peut encore utiliser l’ancien mot de passe."
+
+msgid "There is no display change to keep."
+msgstr "Aucune modification d’affichage à conserver."
+
+msgid "This VPN type needs its NetworkManager plugin."
+msgstr "Ce type de VPN nécessite son module NetworkManager."
+
+msgid "This app already has a personal startup entry. Check it before adding the app again."
+msgstr "Cette application possède déjà une entrée de démarrage personnelle. Vérifiez-la avant d’ajouter à nouveau l’application."
+
+msgid "This battery does not expose a charge limit."
+msgstr "Cette batterie ne propose pas de limite de charge."
+
+msgid "This connection is no longer available."
+msgstr "Cette connexion n’est plus disponible."
+
+msgid "This display change applies until the session ends."
+msgstr "Cette modification d’affichage s’applique jusqu’à la fin de la session."
+
+msgid "This file has not been uploaded."
+msgstr "Ce fichier n’a pas été téléversé."
+
+msgid "Toggle fullscreen"
+msgstr "Basculer en mode plein écran"
+
+msgid "Toggle overview"
+msgstr "Afficher ou masquer la vue d’ensemble"
+
+msgid "Too many clock entries"
+msgstr "Trop d’entrées d’horloge"
+
+msgid "Tray applications"
+msgstr "Applications de la zone de notification"
+
+msgid "Turn this display on before changing its settings."
+msgstr "Activez cet écran avant de modifier ses paramètres."
+
+msgid "Unavailable"
+msgstr "Indisponible"
+
+msgid "Unexpected startup argument."
+msgstr "Argument de démarrage inattendu."
+
+msgid "Unknown clock command"
+msgstr "Commande d’horloge inconnue"
+
+msgid "Unknown power setting."
+msgstr "Paramètre d’alimentation inconnu."
+
+msgid "Unknown startup action."
+msgstr "Action de démarrage inconnue."
+
+msgid "Unknown time zone"
+msgstr "Fuseau horaire inconnu"
+
+msgid "Unknown user"
+msgstr "Utilisateur inconnu"
+
+msgid "Unsafe clock state file"
+msgstr "Fichier d’état de l’horloge non sûr"
+
+msgid "Unsafe clock state lock"
+msgstr "Verrou d’état de l’horloge non sûr"
+
+msgid "Unsupported clock state version"
+msgstr "Version d’état de l’horloge non prise en charge"
+
+msgid "Update channel"
+msgstr "Canal de mise à jour"
+
+msgid "Use only letters, digits and symbols of the English (US) keyboard."
+msgstr "Utilisez uniquement les lettres, chiffres et symboles du clavier anglais (États-Unis)."
+
+msgid "Use status, add, set or reset with --json."
+msgstr "Utilisez status, add, set ou reset avec --json."
+
+msgid "VPN imported."
+msgstr "VPN importé."
+
+msgid "Video player"
+msgstr "Lecteur vidéo"
+
+msgid "Welcome to Emaki"
+msgstr "Bienvenue dans Emaki"
+
+msgid "Wi-Fi and VPN"
+msgstr "Wi-Fi et VPN"
+
+msgid "Your saved clocks could not be read. Start over to keep a backup and reset them."
+msgstr "Vos horloges enregistrées n’ont pas pu être lues. « Recommencer » conserve une sauvegarde et les réinitialise."
+
+msgid "Your startup entries could not be accessed. Check their permissions and try again."
+msgstr "Vos entrées de démarrage sont inaccessibles. Vérifiez leurs autorisations et réessayez."
+
+msgid "a time zone name of the tz database (Europe/Berlin, UTC)"
+msgstr "un nom de fuseau horaire de la base tz (Europe/Berlin, UTC)"
+
+msgid "an installed UTF-8 locale (en_US.UTF-8)"
+msgstr "une locale UTF-8 installée (en_US.UTF-8)"
+
+msgid "an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language"
+msgstr "une locale UTF-8 installée pour les nombres, dates, monnaies, unités et formats de papier ; vide pour suivre la langue"
+
+msgid "emaki-settings-wallpaper: wallpaper apply or verification failed"
+msgstr "emaki-settings-wallpaper : échec de l’application ou de la vérification du fond d’écran"
+
+msgid "invalid block tree"
+msgstr "arborescence des périphériques bloc invalide"
+
+msgid "missing or unsafe runtime directory"
+msgstr "répertoire d’exécution absent ou non sûr"
+
+#,  python-brace-format
+msgid "read the machine: emaki-machine-settings get {value1} --json"
+msgstr "lisez les paramètres de la machine : emaki-machine-settings get {value1} --json"
+
+msgid "set the before value again to go back once that read shows the change; do not repeat the change blindly"
+msgstr "rétablissez la valeur précédente pour revenir en arrière une fois la modification confirmée par cette lecture ; ne répétez pas la modification à l’aveugle"
+
+msgid "unsafe lock directory"
+msgstr "répertoire de verrouillage non sûr"
+
+msgid "unsafe lock file"
+msgstr "fichier de verrouillage non sûr"
+
+#,  python-brace-format
+msgid "{total} GiB · {free} GiB free"
+msgstr "{total} Gio · {free} Gio libres"
+
+msgid "Command menu"
+msgstr "Menu des commandes"
+
+msgid "Copy text from screen"
+msgstr "Copier le texte à l’écran"
+
+msgid "Emoji"
+msgstr "Émojis"
+
+msgid "Read QR code"
+msgstr "Lire un code QR"
+
+#, python-brace-format
+msgid "{amount} GiB"
+msgstr "{amount} Gio"

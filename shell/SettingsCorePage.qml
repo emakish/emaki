@@ -17,12 +17,13 @@ Column {
             id: panelHidingChoice
             catalog: page.catalog
             settingKey: "bar.autohide_mode"
-            controlWidth: Math.max(180, Math.ceil(fullscreenLabel.width) + 55)
+            controlWidth: Math.max(180, Math.ceil(fullscreenLabel.advanceWidth
+                + (controlItem?.leftPadding ?? 10) + (controlItem?.rightPadding ?? 10)
+                + (controlItem?.contentItem.leftPadding ?? 13) + (controlItem?.contentItem.rightPadding ?? 26)))
             TextMetrics {
                 id: fullscreenLabel
                 text: panelHidingChoice.options.find(option => option.value === "fullscreen")?.label || ""
-                font.family: SettingsTheme.fontFamily
-                font.pixelSize: 13
+                font: panelHidingChoice.controlItem?.font ?? Qt.font({family: SettingsTheme.fontFamily, pixelSize: 13})
             }
             width: parent.width
             title: qsTranslate("SettingsCorePage", "Hide the panel automatically")

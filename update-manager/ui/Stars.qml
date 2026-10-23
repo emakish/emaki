@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "ManagerLogic.js" as Logic
 import "file:@EMAKI_DATADIR@/shell" as Shell
 
 // A row of five stars for a 0–5 rating, with the average and count beside it.
@@ -18,15 +19,16 @@ Row {
     // The widest the row may be (a narrow card or list row sets it): the count goes first, then the average.
     property real maximumWidth: Number.POSITIVE_INFINITY
     // "4.7", "4.6 · 1.2k" on cards, "4.7 · 1,804 ratings" on a program page.
-    readonly property string fullText: [showAverage ? value.toFixed(1) : "",
-        showCount ? Shell.Translation.englishPlural(qsTranslate("Stars", "%1 rating(s)", "", count), count).arg(count.toLocaleString(Qt.locale("en_US"), "f", 0))
+    readonly property string fullText: [showAverage ? Logic.decimal(value, 1) : "",
+        showCount ? Shell.Translation.englishPlural(qsTranslate("Stars", "%1 rating(s)", "", count), count).arg(Logic.groupedCount(count))
             : showShortCount && count > 0 ? compact(count) : ""].filter(part => part !== "").join(" · ")
-    readonly property string averageText: showAverage ? value.toFixed(1) : ""
+    readonly property string averageText: showAverage ? Logic.decimal(value, 1) : ""
     readonly property real room: maximumWidth - glyphs.implicitWidth - spacing
     visible: value > 0
     spacing: 5
     function compact(number: int): string {
-        return number >= 1000 ? qsTranslate("Stars", "%1k").arg((number >= 10000 ? String(Math.round(number / 1000)) : (number / 1000).toFixed(1).replace(/\.0$/, ""))) : String(number);
+        const formatted = number >= 10000 ? String(Math.round(number / 1000)) : (number / 1000).toFixed(1).replace(/\.0$/, "");
+        return number >= 1000 ? qsTranslate("Stars", "%1k").arg(formatted.replace(".", Logic.numericLocale().decimalPoint)) : String(number);
     }
     TextMetrics { id: fullMetrics; font: label.font; text: stars.fullText }
     TextMetrics { id: averageMetrics; font: label.font; text: stars.averageText }

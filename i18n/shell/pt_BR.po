@@ -727,5 +727,21 @@ msgid "unsafe lock file"
 msgstr "arquivo de bloqueio inseguro"
 
 #, python-brace-format
-msgid "{total:.1f} GiB · {free:.1f} GiB free"
-msgstr "{total:.1f} GiB · {free:.1f} GiB livres"
+msgid "{total} GiB · {free} GiB free"
+msgstr "{total} GiB · {free} GiB livres"
+
+msgid "Command menu"
+msgstr "Menu de comandos"
+
+msgid "Emoji"
+msgstr "Emojis"
+
+msgid "Copy text from screen"
+msgstr "Copiar texto da tela"
+
+msgid "Read QR code"
+msgstr "Ler código QR"
+
+#, python-brace-format
+msgid "{amount} GiB"
+msgstr "{amount} GiB"

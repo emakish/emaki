@@ -35,6 +35,28 @@ Scope {
     function validId(id: var): bool {
         return typeof id === "string" && id.length > 0 && id.length <= 256 && !id.includes("/") && !id.includes("\n");
     }
+    // The settings reset removed or restored the file: read it again, without saving.
+    function reload(): void {
+        saveTimer.stop();
+        restored = false;
+        foreign = false;
+        pinned = defaultPins;
+        pinsChosen = false;
+        // A fresh load: reload() keeps the old text when the file was removed.
+        stateFile.path = "";
+        stateFile.path = Qt.binding(() => store.statePath);
+        restore();
+    }
+    Connections {
+        target: SettingsBridge
+        function onStoresHoldRequested(): void {
+            saveTimer.stop();
+            store.restored = false;
+        }
+        function onStoresReloadRequested(): void {
+            store.reload();
+        }
+    }
     function restore(): void {
         try {
             const file = JSON.parse(stateFile.text() || "{}");

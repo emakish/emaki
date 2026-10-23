@@ -11,6 +11,7 @@ import ".." as UI
 
 ShellRoot {
     id: test
+    readonly property var fixtureController: controller
     property string screenName: Quickshell.env("EMAKI_INSTALLER_SCREEN") || "welcome"
     property bool prepared: false
     property bool captured: false
@@ -428,7 +429,7 @@ ShellRoot {
             UI.InstallerView {
                 id: content
                 anchors.fill: parent
-                controller: controller
+                controller: test.fixtureController
             }
         }
     }

@@ -133,10 +133,6 @@ msgstr "A entrada do AppStream excede o limite de arquivo."
 msgid "AppStream metadata could not be read."
 msgstr "Não foi possível ler os metadados AppStream."
 
-#, python-brace-format
-msgid "AppStream metadata {reason}: {path}: {error}"
-msgstr "Metadados AppStream {reason}: {path}: {error}"
-
 msgid "Applying Flatpak transaction."
 msgstr "Aplicando a transação Flatpak."
 
@@ -237,9 +233,6 @@ msgstr "As instalações do Flatpak são desfeitas pelo próprio backend"
 msgid "Flatpak updates could not be checked. Check again before updating applications."
 msgstr "Não foi possível verificar as atualizações do Flatpak. Verifique novamente antes de atualizar os aplicativos."
 
-#, python-brace-format
-msgid "Individual snapshots hold at least {bytes} exclusive bytes; space shared between snapshots is unavailable."
-msgstr "Os snapshots individuais ocupam pelo menos {bytes} bytes exclusivos; o espaço compartilhado entre snapshots está indisponível."
 
 msgid "Installed dependencies could not be checked"
 msgstr "Não foi possível verificar as dependências instaladas"
@@ -1056,17 +1049,8 @@ msgstr "Suas configurações de pacotes retêm estas atualizações: {packages}.
 msgid "Your system is ready to return to its state before this install. Restart to finish. Files in your home folder are unchanged."
 msgstr "Seu sistema está pronto para voltar ao estado anterior a esta instalação. Reinicie para concluir. Os arquivos na sua pasta pessoal não foram alterados."
 
-msgid "invalid"
-msgstr "inválidos"
-
 msgid "open the update manager as a regular user"
 msgstr "abra o gerenciador de atualizações como um usuário comum"
-
-msgid "parser unavailable"
-msgstr "analisador indisponível"
-
-msgid "unreadable"
-msgstr "ilegíveis"
 
 #, python-brace-format
 msgid "{command} failed with status {status}"
@@ -1079,3 +1063,119 @@ msgstr "{error} O snapshot não usado será removido pela limpeza agendada."
 #, python-brace-format
 msgid "{package} was built but could not be installed."
 msgstr "{package} foi compilado, mas não pôde ser instalado."
+
+msgid "Choose a shorter name without control characters."
+msgstr "Escolha um nome mais curto, sem caracteres de controle."
+
+msgid "Close this website app before removing it."
+msgstr "Feche este aplicativo de site antes de removê-lo."
+
+msgid "Development kits need system snapshots. This system does not support them."
+msgstr "Os kits de desenvolvimento precisam de snapshots do sistema. Este sistema não oferece suporte a eles."
+
+msgid "Docker setup did not finish. Review the transaction details."
+msgstr "A configuração do Docker não foi concluída. Confira os detalhes da transação."
+
+msgid "Enter a complete http:// or https:// website address."
+msgstr "Digite um endereço de site completo com http:// ou https://."
+
+msgid "Installing the stable Rust toolchain for your user."
+msgstr "Instalando as ferramentas do Rust estável para seu usuário."
+
+msgid "Invalid development kit."
+msgstr "Kit de desenvolvimento inválido."
+
+msgid "No development kit installation receipt is available."
+msgstr "Não há nenhum recibo de instalação do kit de desenvolvimento."
+
+msgid "No removable development kit packages are installed."
+msgstr "Não há pacotes instalados do kit de desenvolvimento que possam ser removidos."
+
+msgid "Other installed software needs this development kit, so it stays."
+msgstr "Outros programas instalados precisam deste kit de desenvolvimento, por isso ele será mantido."
+
+msgid "Select a signed-in user for Docker access."
+msgstr "Selecione um usuário com sessão iniciada para receber acesso ao Docker."
+
+msgid "The Rust toolchain must be installed as your user, not as administrator."
+msgstr "As ferramentas do Rust devem ser instaladas com seu usuário, não como administrador."
+
+msgid "The development kit packages are unavailable. Refresh the catalog and try again."
+msgstr "Os pacotes do kit de desenvolvimento não estão disponíveis. Recarregue o catálogo e tente novamente."
+
+msgid "The development kit receipt could not be saved. Review the system restore point before retrying."
+msgstr "Não foi possível salvar o recibo do kit de desenvolvimento. Confira o ponto de restauração do sistema antes de tentar novamente."
+
+msgid "The development kit removal did not finish. Review the transaction details."
+msgstr "A remoção do kit de desenvolvimento não foi concluída. Confira os detalhes da transação."
+
+msgid "The stable Rust toolchain is ready. Use cargo +stable for this toolchain."
+msgstr "As ferramentas do Rust estável estão prontas. Use cargo +stable para utilizá-las."
+
+msgid "The website app files have changed. Nothing was removed."
+msgstr "Os arquivos do aplicativo de site foram alterados. Nada foi removido."
+
+msgid "The website app folder is not safe to change."
+msgstr "Não é seguro alterar a pasta do aplicativo de site."
+
+msgid "These development kit packages will be removed. Shared system packages stay installed."
+msgstr "Estes pacotes do kit de desenvolvimento serão removidos. Os pacotes compartilhados do sistema continuarão instalados."
+
+msgid "This website app is invalid."
+msgstr "Este aplicativo de site é inválido."
+
+msgid "This website app no longer exists."
+msgstr "Este aplicativo de site não existe mais."
+
+msgid "Website app added. Find it in the launcher."
+msgstr "Aplicativo de site adicionado. Encontre-o no iniciador."
+
+msgid "Website app removed."
+msgstr "Aplicativo de site removido."
+
+msgid "Undo restores the whole system to the snapshot before this development kit was installed, including Docker access and socket settings, and discards system changes made since then. Restart to use it. Your home files and Rust toolchains stay untouched."
+msgstr "Desfazer restaura todo o sistema para o snapshot anterior à instalação deste kit de desenvolvimento, incluindo o acesso ao Docker e as configurações do socket, e descarta as alterações no sistema feitas desde então. Reinicie para usar o sistema restaurado. Seus arquivos pessoais e as ferramentas do Rust não são alterados."
+
+msgid "The installed packages %(packages)s conflict with this development kit; remove them first if you want to use this kit."
+msgstr "Os pacotes instalados %(packages)s entram em conflito com este kit de desenvolvimento; remova-os primeiro se quiser usar este kit."
+
+msgid "Rust packages are installed, but the stable toolchain did not finish. Choose Finish setup to retry."
+msgstr "Os pacotes do Rust estão instalados, mas a instalação das ferramentas estáveis não foi concluída. Escolha Concluir configuração para tentar de novo."
+
+msgid "Install the Rust packages before finishing setup."
+msgstr "Instale os pacotes do Rust antes de concluir a configuração."
+
+msgid "The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged."
+msgstr "O kit de desenvolvimento foi removido. As imagens e os contêineres do Docker, os projetos pessoais e as ferramentas do Rust não foram alterados."
+
+msgid "Website app added. Its name or icon could not be fetched; a generated icon is used when needed."
+msgstr "Aplicativo de site adicionado. Não foi possível obter seu nome ou ícone; um ícone gerado é usado quando necessário."
+
+
+#, python-brace-format
+msgid "AppStream metadata is unreadable: {path}: {error}"
+msgstr "Não é possível ler os metadados do AppStream: {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata could not be parsed (parser unavailable): {path}: {error}"
+msgstr "Não foi possível analisar os metadados do AppStream (analisador indisponível): {path}: {error}"
+
+#, python-brace-format
+msgid "AppStream metadata is invalid: {path}: {error}"
+msgstr "Os metadados do AppStream são inválidos: {path}: {error}"
+
+#, python-brace-format
+msgid "{value} MB"
+msgstr "{value} MB"
+
+#, python-brace-format
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#, python-brace-format
+msgid "Individual snapshots hold at least {size} of exclusive space; space shared between snapshots is unavailable."
+msgstr "Os snapshots individuais ocupam pelo menos {size} de espaço exclusivo; não é possível determinar o espaço compartilhado entre snapshots."
+
+#, python-brace-format
+msgid "{value} B"
+msgstr "{value} B"

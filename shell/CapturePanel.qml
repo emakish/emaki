@@ -301,7 +301,7 @@ Item {
                         WelcomeButton {
                             text: parent.modelData.label
                             selected: panel.controller.target === parent.modelData.value
-                            enabled: panel.controller.ready && !panel.controller.busy
+                            enabled: panel.controller.ready && !panel.controller.busy && (!panel.controller.recognizing || parent.modelData.value === "area")
                             onClicked: panel.controller.selectTarget(parent.modelData.value)
                         }
                     }
@@ -319,6 +319,16 @@ Item {
                     text: CaptureText.recording()
                     selected: panel.controller.mode === "recording"
                     onClicked: panel.controller.selectMode("recording")
+                }
+                WelcomeButton {
+                    text: CaptureText.text()
+                    selected: panel.controller.mode === "text"
+                    onClicked: panel.controller.selectMode("text")
+                }
+                WelcomeButton {
+                    text: CaptureText.qr()
+                    selected: panel.controller.mode === "qr"
+                    onClicked: panel.controller.selectMode("qr")
                 }
             }
             Text {

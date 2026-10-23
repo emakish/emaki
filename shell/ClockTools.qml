@@ -71,6 +71,9 @@ Item {
     readonly property color ink: glass ? glass.ink : LiquidPalette.ink
     readonly property color dim: glass ? glass.dim : LiquidPalette.dim
     readonly property color accent: glass ? glass.accent : LiquidPalette.accent
+    property string worldQuery: ""
+    readonly property var localizedSearch: Translation.searchTimeZones(worldQuery, Qt.uiLanguage)
+    readonly property var worldSearch: localizedSearch.concat(snapshot.search || []).filter((zone, index, zones) => zones.indexOf(zone) === index).slice(0, 40)
     property string error: ""
     property bool editing: false
     property var alarmId: null
@@ -555,13 +558,13 @@ Item {
                     objectName: "clock-world-search"
                     width: parent.width
                     placeholderText: tools.words.search
-                    onTextEdited: tools.send({
-                        op: "world_search",
-                        query: text
-                    })
+                    onTextEdited: {
+                        tools.worldQuery = text;
+                        tools.send({op: "world_search", query: text});
+                    }
                 }
                 Repeater {
-                    model: tools.snapshot.search || []
+                    model: tools.worldSearch
                     Row {
                         id: resultRow
                         required property string modelData
@@ -571,7 +574,7 @@ Item {
                             width: parent.width - add.width - 8
                             height: 34
                             verticalAlignment: Text.AlignVCenter
-                            text: resultRow.modelData.replace(/_/g, " ")
+                            text: Translation.timeZoneLabel(resultRow.modelData, Qt.uiLanguage)
                             elide: Text.ElideRight
                             wrapMode: Text.NoWrap
                         }
@@ -605,7 +608,7 @@ Item {
                                 width: parent.width - remove.width - 8
                                 height: 34
                                 verticalAlignment: Text.AlignVCenter
-                                text: worldRow.modelData.time + "  " + worldRow.modelData.zone.replace(/_/g, " ")
+                                text: worldRow.modelData.time + "  " + Translation.timeZoneLabel(worldRow.modelData.zone, Qt.uiLanguage)
                                 font.pixelSize: 17
                                 elide: Text.ElideRight
                                 wrapMode: Text.NoWrap

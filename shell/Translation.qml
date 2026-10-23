@@ -9,7 +9,17 @@ QtObject {
     readonly property var bridge: load()
     function load(): var {
         try {
-            return Qt.createQmlObject('import QtQml; import Emaki.I18n; QtObject { function identify(window, appId) { return WindowIdentity.identify(window, appId); } }', translation, "TranslationBridge");
+            return Qt.createQmlObject(`import QtQml
+                import Emaki.I18n
+                QtObject {
+                    function identify(window, appId) { return WindowIdentity.identify(window, appId); }
+                    function zoneLabel(zone, language) {
+                        return typeof TimeZones === "undefined" ? "" : TimeZones.label(zone, language);
+                    }
+                    function zoneSearch(query, language) {
+                        return typeof TimeZones === "undefined" ? [] : TimeZones.search(query, language);
+                    }
+                }`, translation, "TranslationBridge");
         } catch (_) {
             return null;
         }
@@ -27,6 +37,12 @@ QtObject {
             .replace(/\(ies\)/g, singular ? "y" : "ies");
     }
     function initialize(): bool { return bridge !== null; }
+    function timeZoneLabel(zone: string, language: string): string {
+        return (bridge ? bridge.zoneLabel(zone, language) : "") || zone.replace(/_/g, " ");
+    }
+    function searchTimeZones(query: string, language: string): var {
+        return bridge ? bridge.zoneSearch(query, language) : [];
+    }
     function identify(window: var, appId: string): bool {
         return bridge !== null && window !== null && bridge.identify(window, appId);
     }

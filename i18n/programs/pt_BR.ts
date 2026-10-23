@@ -6,6 +6,11 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>ManagerLogic</name>
         <message>
+            <source>d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern; keep the time in 24-hour form.</extracomment>
+            <translation>d MMM yyyy, HH:mm</translation>
+        </message>
+        <message>
             <source>Internet</source>
             <translation>Internet</translation>
         </message>
@@ -106,27 +111,27 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>permanece</translation>
         </message>
         <message numerus="yes">
-            <source>%1 need(s) what it added.</source>
+            <source>This install can no longer be taken back as it was. %1 need(s) what it added.</source>
             <translation>
-                <numerusform>%1 precisa do que foi adicionado.</numerusform>
-                <numerusform>%1 precisam do que foi adicionado.</numerusform>
+                <numerusform>Esta instalação não pode mais ser desfeita como antes. %1 precisa do que foi adicionado.</numerusform>
+                <numerusform>Esta instalação não pode mais ser desfeita como antes. %1 precisam do que foi adicionado.</numerusform>
             </translation>
         </message>
         <message>
-            <source>It is now part of the system.</source>
-            <translation>Agora faz parte do sistema.</translation>
+            <source>This install can no longer be taken back as it was. It is now part of the system.</source>
+            <translation>Esta instalação não pode mais ser desfeita como antes. O programa agora faz parte do sistema.</translation>
         </message>
         <message>
-            <source>It is now part of Emaki.</source>
-            <translation>Agora faz parte do Emaki.</translation>
+            <source>This install can no longer be taken back as it was. It is now part of Emaki.</source>
+            <translation>Esta instalação não pode mais ser desfeita como antes. O programa agora faz parte do Emaki.</translation>
         </message>
         <message>
-            <source>You installed it yourself since.</source>
-            <translation>Você instalou por conta própria desde então.</translation>
+            <source>This install can no longer be taken back as it was. You installed it yourself since.</source>
+            <translation>Esta instalação não pode mais ser desfeita como antes. Você instalou o programa por conta própria desde então.</translation>
         </message>
         <message>
-            <source>It is no longer installed.</source>
-            <translation>Não está mais instalado.</translation>
+            <source>This install can no longer be taken back as it was. It is no longer installed.</source>
+            <translation>Esta instalação não pode mais ser desfeita como antes. O programa não está mais instalado.</translation>
         </message>
         <message>
             <source>0 MB</source>
@@ -386,8 +391,13 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>ManagerUpdates</name>
         <message>
-            <source>installing %1 of %2</source>
-            <translation>instalando %1 de %2</translation>
+            <source>ddd d MMM yyyy, HH:mm</source>
+            <extracomment>Qt date/time pattern; keep the time in 24-hour form.</extracomment>
+            <translation>ddd d MMM yyyy, HH:mm</translation>
+        </message>
+        <message>
+            <source>Installing %1 of %2</source>
+            <translation>Instalando %1 de %2</translation>
         </message>
         <message>
             <source>Getting ready…</source>
@@ -625,6 +635,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Restore</source>
             <translation>Restaurar</translation>
         </message>
+        <message>
+            <source>Restore the system as it was before this removal (snapshot %1)</source>
+            <translation>Restaurar o sistema como estava antes desta remoção (snapshot %1)</translation>
+        </message>
     </context>
     <context>
         <name>ManagerView</name>
@@ -694,7 +708,7 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
         <message>
             <source>Installed</source>
-            <translation>Instalados</translation>
+            <translation>Instalado</translation>
         </message>
         <message>
             <source>Download size unknown</source>
@@ -1106,7 +1120,37 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Got it, open the AUR</source>
             <translation>Entendi, abrir o AUR</translation>
         </message>
-    </context>
+        <message>
+            <source>Development kits</source>
+            <translation>Kits de desenvolvimento</translation>
+        </message>
+        <message>
+            <source>Websites as apps</source>
+            <translation>Sites como aplicativos</translation>
+        </message>
+        <message>
+            <source>Adding you to the Docker group gives you root-level control of this computer.</source>
+            <translation>Ao entrar no grupo Docker, você passa a ter controle de nível root sobre este computador.</translation>
+        </message>
+        <message>
+            <source>The group takes effect after you sign out and sign back in.</source>
+            <translation>O grupo passa a valer depois que você sair da sessão e entrar novamente.</translation>
+        </message>
+        <message>
+            <source>Finish setting up %1?</source>
+            <translation>Concluir a configuração de %1?</translation>
+        </message>
+        <message>
+            <source>Finish setup</source>
+            <translation>Concluir configuração</translation>
+        </message>
+
+    <message>
+      <source>Installed</source>
+      <comment>list of installed programs</comment>
+      <translation>Instalados</translation>
+    </message>
+  </context>
     <context>
         <name>ProgramCard</name>
         <message>
@@ -1306,6 +1350,116 @@ Não foi possível ocultar o lembrete. Pressione Mais tarde novamente.</translat
         <message>
             <source>Programs &amp; Updates</source>
             <translation>Programas e atualizações</translation>
+        </message>
+    </context>
+    <context>
+        <name>ManagerDevelopment</name>
+        <message>
+            <source>Tools for building software, installed together from Arch.</source>
+            <translation>Ferramentas para desenvolver software, instaladas juntas a partir do Arch.</translation>
+        </message>
+        <message>
+            <source>Installed</source>
+            <translation>Instalado</translation>
+        </message>
+        <message>
+            <source>The stable Rust toolchain is downloaded for your account after the packages are installed. Toolchains in your home folder stay when you remove the kit.</source>
+            <translation>As ferramentas do Rust estável são baixadas para sua conta após a instalação dos pacotes. As ferramentas na sua pasta pessoal são mantidas ao remover o kit.</translation>
+        </message>
+        <message>
+            <source>Allow Docker without an administrator password</source>
+            <translation>Usar o Docker sem senha de administrador</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>Remover</translation>
+        </message>
+        <message>
+            <source>Install</source>
+            <translation>Instalar</translation>
+        </message>
+        <message>
+            <source>Undo this install</source>
+            <translation>Desfazer esta instalação</translation>
+        </message>
+        <message>
+            <source>Development kits</source>
+            <translation>Kits de desenvolvimento</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>Carregando…</translation>
+        </message>
+        <message>
+            <source>Members of the Docker group can control this computer as root.</source>
+            <translation>Membros do grupo Docker podem controlar este computador como root.</translation>
+        </message>
+        <message>
+            <source>Installing enables the Docker socket. Removing restores the previous socket and group settings. Images and containers stay on this computer.</source>
+            <translation>A instalação ativa o socket do Docker. A remoção restaura as configurações anteriores do socket e do grupo. As imagens e os contêineres permanecem neste computador.</translation>
+        </message>
+        <message>
+            <source>Finish setup</source>
+            <translation>Concluir configuração</translation>
+        </message>
+    </context>
+    <context>
+        <name>ManagerWebApps</name>
+        <message>
+            <source>Websites as apps</source>
+            <translation>Sites como aplicativos</translation>
+        </message>
+        <message>
+            <source>Add a website as an app in Firefox. It has its own profile and launcher entry, which you can pin in the dock.</source>
+            <translation>Adicione um site como aplicativo no Firefox. Ele tem seu próprio perfil e uma entrada no iniciador, que você pode fixar no dock.</translation>
+        </message>
+        <message>
+            <source>Website address</source>
+            <translation>Endereço do site</translation>
+        </message>
+        <message>
+            <source>Name (optional)</source>
+            <translation>Nome (opcional)</translation>
+        </message>
+        <message>
+            <source>Add</source>
+            <translation>Adicionar</translation>
+        </message>
+        <message>
+            <source>Close the app first. Removing deletes its launcher, profile, sign-ins and saved site data.</source>
+            <translation>Feche o aplicativo primeiro. A remoção exclui sua entrada no iniciador, perfil, sessões e dados salvos do site.</translation>
+        </message>
+        <message>
+            <source>Remove app and its data</source>
+            <translation>Remover aplicativo e seus dados</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>Remover</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>Cancelar</translation>
+        </message>
+        <message>
+            <source>Links to other sites open in this app too. Point at the top edge or press Ctrl+L to see the address.</source>
+            <translation>Links para outros sites também abrem neste aplicativo. Aponte para a borda superior ou pressione Ctrl+L para ver o endereço.</translation>
+        </message>
+        <message>
+            <source>When you press Add, Emaki loads the page and its icon to read the site name and save its icon.</source>
+            <translation>Ao escolher Adicionar, o Emaki carrega a página e seu ícone para ler o nome do site e salvar seu ícone.</translation>
+        </message>
+        <message>
+            <source>Adding…</source>
+            <translation>Adicionando…</translation>
+        </message>
+        <message>
+            <source>Loading…</source>
+            <translation>Carregando…</translation>
+        </message>
+        <message>
+            <source>No website apps yet.</source>
+            <translation>Ainda não há aplicativos de sites.</translation>
         </message>
     </context>
 </TS>
