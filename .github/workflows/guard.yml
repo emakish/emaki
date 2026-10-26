@@ -1,0 +1,36 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Publication policy
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+permissions:
+  contents: read
+  checks: write
+  pull-requests: read
+concurrency:
+  group: publication-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  publication-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Inspect objects and report checks on the requested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_PUBLISHER_LOGIN: ${{ vars.PUBLIC_PUBLISHER_LOGIN }}
+          PUBLIC_REVIEWED_HEAD: ${{ vars.PUBLIC_REVIEWED_HEAD }}
+          PUBLIC_REHEARSAL_OUTSIDE_HEAD: ${{ vars.PUBLIC_REHEARSAL_OUTSIDE_HEAD }}
+        run: >-
+          python3 -B scripts/public/ci.py
+          --repo "$GITHUB_WORKSPACE" --event "$GITHUB_EVENT_PATH"
+          --repository "$GITHUB_REPOSITORY"
+          --publisher-login "$PUBLIC_PUBLISHER_LOGIN"
+          --approved-infrastructure-head "$PUBLIC_REVIEWED_HEAD"
+          --rehearsal-outside-head "$PUBLIC_REHEARSAL_OUTSIDE_HEAD" --report-checks

@@ -420,3 +420,7 @@ i18n/ru-unchanged.json	Translator reference (terms kept identical across a langu
 i18n/pt_BR-unchanged.json	Translator reference (terms kept identical across a language); not part of the installed system.	i18n/README.md
 i18n/check_catalogues.py	Completeness gate for every shipped translation; used only during source checks.	Makefile:check-i18n; tests/test-i18n-catalogues.py
 update-manager/tests/test_display_messages.py	Localized snapshot bounds and complete undo-message regression tests.	Makefile:check-i18n
+scripts/public/reviewed-baseline.json	Exact reviewed source lines awaiting a public policy decision; not installed.	scripts/public/guard.py
+scripts/public/ci.py	Source-only contribution checks; not part of the installed system.	.github/workflows/check.yml; .github/workflows/guard.yml
+scripts/public/guard.py	Source-only public content and history gate; not part of the installed system.	.github/workflows/guard.yml; tests/test-public-guard.py
+scripts/public/policy.json	Reviewed policy for source-only public checks; not part of the installed system.	scripts/public/guard.py

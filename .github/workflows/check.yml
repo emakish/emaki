@@ -1,0 +1,121 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Code checks
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: code-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  arch-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: archlinux:latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      LANG: en_US.UTF-8
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_BACKEND: software
+      CARGO_HOME: ${{ github.workspace }}/.cache/cargo-home
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cache/target
+    steps:
+      - name: Install tools in the disposable container
+        run: >-
+          pacman -Syu --noconfirm --needed niri make python python-gobject python-pillow
+          python-numpy git rust base-devel shellcheck systemd dbus glib2 cliphist pipewire
+          qt6-declarative qt6-shadertools qt6-tools cmake ninja gettext adwaita-fonts
+          noto-fonts terminus-font fastfetch imagemagick nodejs desktop-file-utils
+          kio kcolorscheme kservice qt6ct kconfig kitty fuzzel openssl openssh gnupg
+      - name: Generate test locales
+        run: |
+          for locale in en_US en_GB es_MX pt_BR de_DE fr_FR ru_RU; do
+            printf '%s.UTF-8 UTF-8\n' "$locale" >> /etc/locale.gen
+          done
+          locale-gen
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the current base in the tested source history
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD"
+          git merge-base --is-ancestor "$PR_BASE" "$PR_HEAD"
+      - name: Prepare local build directories
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" .cache/tmp .cache/xdg-cache .cache/ci-logs
+      - name: Install the shipped forks
+        run: |
+          install -Dm644 -t /usr/share/pacman/keyrings packaging/emaki-keyring/emaki.gpg packaging/emaki-keyring/emaki-trusted packaging/emaki-keyring/emaki-revoked
+          pacman-key --init
+          pacman-key --populate emaki
+          printf '\n[emaki]\nSigLevel = Required TrustedOnly\n' >> /etc/pacman.conf
+          cat packaging/emaki-mirrorlist/testing.conf >> /etc/pacman.conf
+          pacman -Syu --noconfirm --needed niri-emaki quickshell-emaki emaki-font-iosevka
+          python3 tests/ci-check-forks.py
+          python3 tests/test-ci-forks.py ForkChecks
+      - name: Prepare an ordinary test account
+        run: |
+          useradd --create-home --user-group builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          install -d -o builder -g builder -m 700 /tmp/emaki-check-runtime
+      - name: Public PR subset
+        run: |
+          runuser -u builder -- env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u NIRI_SOCKET \
+            HOME=/home/builder XDG_RUNTIME_DIR=/tmp/emaki-check-runtime \
+            CARGO_HOME="$CARGO_HOME" CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
+            TMPDIR="$GITHUB_WORKSPACE/.cache/tmp" XDG_CACHE_HOME="$GITHUB_WORKSPACE/.cache/xdg-cache" \
+            bash -eo pipefail -c '
+              make paths check-core check-i18n
+              python3 tests/test-fork-assumptions.py
+              python3 tests/test-rust-notices.py
+              python3 tests/test-shim-notices.py
+              python3 tests/test-licence-headers.py
+              python3 tests/test-quickshell-fork.py
+              python3 tests/test-quickshell-fork-guard.py
+              node tests/test-appearance.mjs
+              node tests/test-appearance-icons.mjs
+              node tests/test-switcher-logic.mjs
+              node tests/test-switcher-animation.mjs
+              python3 tests/test-theme-palette.py
+              python3 tests/test-shared-canvas.py Static
+              python3 tests/test-kitty-look.py KittyLook FontPackage.test_only_four_faces_and_upstream_notices_are_packaged FontPackage.test_font_is_in_release_build_and_source_inventory FontPackage.test_source_is_pinned_and_full_font_can_coexist
+              python3 tests/check-portability.py --self-test
+              python3 tests/check-portability.py
+              python3 tests/check-system-map.py --self-test
+              python3 tests/check-system-map.py
+              python3 scripts/check-delivery.py
+              niri validate -c niri/default.kdl
+              niri validate -c greetd/niri.kdl
+              niri-emaki validate -c niri/fork-rules.kdl
+            ' 2>&1 | tee .cache/ci-logs/check.log
+          printf '%s\n' 'This check runs the explicit public PR subset. Full make check, omitted visual and privileged checks, package/image checks, and VM/hardware acceptance remain release requirements.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publication checks
+        run: |
+          runuser -u builder -- python3 -B tests/test-public-guard.py
+          runuser -u builder -- python3 -B tests/test-public-ci.py
+      - name: No skipped tests
+        run: |
+          if grep -E -n "skipped=[1-9]|\.\.\. skipped |^SKIP|Skipping |source audit skipped|skip fork configs:|UNVERIFIED" .cache/ci-logs/*.log > .cache/ci-logs/skips.txt; then
+            echo 'A required test did not run.'
+            exit 1
+          fi
+      - name: Generated files are up to date
+        run: |
+          runuser -u builder -- env HOME=/home/builder bash -eo pipefail -c '
+            make paths
+            ./scripts/render-theme
+            python3 scripts/render-shell-palette
+            python3 scripts/render-kde-theme
+          '
+          git diff --exit-code

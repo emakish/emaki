@@ -1,0 +1,1724 @@
+{
+  "copyright": "Copyright (C) 2026 Artur Yakymenko",
+  "license": "GPL-3.0-or-later",
+  "spdx": "SPDX-License-Identifier: GPL-3.0-or-later",
+  "version": 1,
+  "baseline": "84158401802f2bcc5ba5779c797e4d93a8c0d5e5",
+  "groups": [
+    {
+      "name": "product-integrations",
+      "reason": "Existing shipped integration implementation, setup instructions and tests; no production-process attribution.",
+      "status": "owner-decision-pending",
+      "lines": [
+        {
+          "path": "Makefile",
+          "sha256": "2db0eb4c777f1e5599a9fd50468e2acdcd49d3d8ab8832ffced943c3100368f6",
+          "label": 1327
+        },
+        {
+          "path": "Makefile",
+          "sha256": "1ebed5ad5512e18e7cfb2b54e754d47b56ba0651860db152e833609b9d8c57af",
+          "label": 1328
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "9f0f116abd34b846efde8c7b52554f5fd7f631e2c682ad1849dfcb1f96391564",
+          "label": 17
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "5dc3d87ee42c16d15d08d20bf74ea9e173e962d8229d95d805a9a8ff871f7afc",
+          "label": 19
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "f61c688d3e23b3fbb3e3da8b9a4f8607ce394d759696bbe3cd2e3ea9605d166a",
+          "label": 22
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "328fe8b1668ac8bb0a8108ed53f3dd51f1bb579af34b9ae465d6687a17369d89",
+          "label": 23
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "ef9de9ecc41e4567bf89229af851fb3167147cce1c50a8f4c91ba1794105befa",
+          "label": 25
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "773d30f9c4c852ed0d434d7435eb0679fa14dbf027f8237f1fbdce2377e27581",
+          "label": 27
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "f5ece010fdc95f92234b5134f8e95dec73abcdac4a5a03af200abd6ac04185bd",
+          "label": 28
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "c0f375d0568f767a9d12646083a73eeae067fcc13de4df8cbbc74184600d88f2",
+          "label": 32
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "99f78a04b6438f0150ada5b574157572359c3e7345c141b3407c15a1a3aae9c6",
+          "label": 34
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "e084fd37a96e709a73fae9a4a9d42e60d4fc346241264222c4e2c3fb37bd518f",
+          "label": 35
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "cae0ad707affbf1bc44d5c636356ea359f0f647be23ee335a64caacfc01b3786",
+          "label": 39
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "b84c02bb45372486e6084bd1e7e92bff3284772b90656d0fc4e9fd11ce4d16d8",
+          "label": 1924
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "d913e6e5a7c697f6d31452d6fc4898678b4d45b5ad7d8435a184f43ed86b3f81",
+          "label": 1937
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "36121bb7c6a24e7924fe438d980d69da422481ce088b412e34e8a83e2eb155f3",
+          "label": 1938
+        },
+        {
+          "path": "packaging/emaki-sudo-key/expected-files.list",
+          "sha256": "c9eb4e189a175447ca9d56078ed4c5d17e4d1222c1eadfe8666ea52d27f397ae",
+          "label": 6
+        },
+        {
+          "path": "packaging/emaki-sudo-key/expected-files.list",
+          "sha256": "38188d541e137e1b126b7322a7f71573bc5e4fa5c28b7d8da50e6787d5d5b8f2",
+          "label": 7
+        },
+        {
+          "path": "scripts/emaki-sudo-turn",
+          "sha256": "6a61bf7dc48ed908e07151b3cb2ca16a89bdbc19003e88a35ef840033ba888e0",
+          "label": 20
+        },
+        {
+          "path": "scripts/emaki-sudo-turn",
+          "sha256": "e73203dc4e069f9662089d1c8685a4f0b5c478fa68555fb551e0682f9f2971cd",
+          "label": 22
+        },
+        {
+          "path": "scripts/emaki-sudo-turn",
+          "sha256": "e73203dc4e069f9662089d1c8685a4f0b5c478fa68555fb551e0682f9f2971cd",
+          "label": 35
+        },
+        {
+          "path": "sudo/broker.cpp",
+          "sha256": "820eee161c3747e2dc2d1775451ddc5474e0e9e55d4ccb97658d238793dded94",
+          "label": 171
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "3804da91527b404e75a830f96fb56ca650b6ff989270c81e08baf5db2ab3f113",
+          "label": 290
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "4fd6357e8c165cccad8518dc1fea52aab7c46be592e63cc6bc5002d0334f7037",
+          "label": 291
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "752f8ef7876f1cb1ed58503dc84fff3ba4853107961c63eff9b548b02f028a44",
+          "label": 292
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "aa3617aaed0508c02083b7e457b20cd2b610d1dcde7e4d3892feb4ffdbd38ada",
+          "label": 293
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "ed53c49e19e175a8eec20dcff57b7df5da1a99ad74c187525f094244b64bc8d1",
+          "label": 295
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "0a20ede5353c52db2e3462e7efa8a1d6f1ee61f88171a84c44e49c492416f540",
+          "label": 303
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "89e71acdbb886554d4e13d34eec2d60a1d59a17a5628647a4404da943651affb",
+          "label": 310
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "0a20ede5353c52db2e3462e7efa8a1d6f1ee61f88171a84c44e49c492416f540",
+          "label": 311
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "e97bfb8f8fdbc9da5435b603955de89997a329e231d796cec83e3b253f417303",
+          "label": 312
+        },
+        {
+          "path": "sudo/core.cpp",
+          "sha256": "2f6e6d9c5c0e31131ecbdf5d0d78cad3769124f53d052bc9e4763f7ec79e9be1",
+          "label": 313
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "3858750eedb4b51a590f677a19565ab6c6286e83830b77eaecd4972ea0417cd4",
+          "label": 100
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "272110ebf6f31c8891d73575ca3e9f7cd4b19e64ccefe2dc8f1ff82c43e8a0c4",
+          "label": 101
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "8c420f4eae5dc8797f5b4c614ae717b4c6c03f7af682bee83b7ac7dce1c10efb",
+          "label": 103
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "53116ee5cf68cf29a7ea5d123b269aebe7dd9b0c8de5ece49c9079df4430387b",
+          "label": 348
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "a8e080b5fb4f947f74bd0f8dcba480a714006d460dafc094c58e233f2c538cba",
+          "label": 413
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "35302b53bb79f82c5435cebf75c71bc28570a536f659cf8b9a6e9a82bcf7f088",
+          "label": 648
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "87ac015f958954c838b645b848ab2101e5097ab609d133f6cd3d9a7129f891e3",
+          "label": 675
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "bfbf093aeb07110d6654e2b0666df0a0c3a1de419c0f15694d1b53cb522cc5ca",
+          "label": 681
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "a0a6abe78d5e77451c142392d5cafd4ce79d21a5adafe97c8608dbc68503bc40",
+          "label": 1310
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "a0b7f8266f328d8e7b8b1c11ddf3b369befb9519b0145099c5e350cde5d2a539",
+          "label": 1393
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "512f333f95b9af00da15b4ed554b1063cb407504b69d7d73ba2f064228ca97ff",
+          "label": 1407
+        },
+        {
+          "path": "sudo/lifecycle-tests.cpp",
+          "sha256": "1f5ab105dbf2df12be363fa8e2304c5ba206a9af6a739e9c179f960a3c71095b",
+          "label": 1469
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "d45796d658e10b64e304c5c71f8cc6296e89ce293d34660aebf7c3f1928be84d",
+          "label": 229
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "2a9149e41dc5eb6a837f5da40a88909686abfd96fecbe311aa3d5addea22189d",
+          "label": 231
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "7c94792f74cfbcaab3b11c93e89c549c0829d2eaa29d3ed60d84b3b1fa373fe6",
+          "label": 232
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "cb618d045db68cded1b51ab69801aeebac20609c2ba6f187e51fb02b2070630a",
+          "label": 233
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "864cba3c565d788c4dc9aec2ae31bdf156f97ad9c56770287550db6aa48b3daa",
+          "label": 235
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "d4cca71694efed12512edb5d9bf7677efef7d053cd4b389ecb026299ceec02ae",
+          "label": 236
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "4eb182a4d11eb0cf53d96c87e412031dca77d196a458010d10feaa71a2042503",
+          "label": 237
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "34f3dfb9fc772e9d1039f52a05d3689399960555cb88b162dd3846aeeaa01263",
+          "label": 238
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "e1c60110afe91c02046f70c93a3518d0e34634ab0f9854e4f04bad8f95f28551",
+          "label": 240
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "e1694e26b421f8a7f72d8d30573e204778d5bf3a998915be0ffda40e3ccf35f6",
+          "label": 241
+        },
+        {
+          "path": "sudo/tests.cpp",
+          "sha256": "fde917fa1768de943e1cdb2a39a2b30854975218b87b1d68bffc17ef5418816f",
+          "label": 243
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "9f0f116abd34b846efde8c7b52554f5fd7f631e2c682ad1849dfcb1f96391564",
+          "label": 15
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "872430848273cc9750fcee06a4dce570301e6a5387d622f9fccf9d08b3cfe242",
+          "label": 17
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "2d779ce52dd43308e5ab44517a203bcd63c48f949fd108e651b0368d368ea918",
+          "label": 24
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "c0f375d0568f767a9d12646083a73eeae067fcc13de4df8cbbc74184600d88f2",
+          "label": 32
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "012b38543d461c60758b0e1fbc8ee7cfdd28f31bb836a7b33404bfd11bb33993",
+          "label": 34
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "8d73a87df30990b6952aa6f1f9c3479b68637bb884fbd0a339f8481651435422",
+          "label": 37
+        },
+        {
+          "path": "sudo/integrations/\u0063\u006c\u0061\u0075\u0064\u0065-hooks.json",
+          "sha256": "d0bf7681bd7de5a8fdc6c6c67f1c2d900de782670b6ceb4cd70bc192a3112c0e",
+          "label": "path"
+        },
+        {
+          "path": "sudo/integrations/\u0063\u006c\u0061\u0075\u0064\u0065-hooks.json",
+          "sha256": "6a290918a5d0f026ddec4058d557c6479caeae0e5b8cf4961267c20e9781418f",
+          "label": 4
+        },
+        {
+          "path": "sudo/integrations/\u0063\u006c\u0061\u0075\u0064\u0065-hooks.json",
+          "sha256": "a991bb329ca9e82478c89f9130c7a28da95f988d42d46157dec146d73b18a709",
+          "label": 5
+        },
+        {
+          "path": "sudo/integrations/\u0063\u006f\u0064\u0065\u0078-notify.toml",
+          "sha256": "1b1b0947ad5b2f2c15b408c04557bb0c9bc7accbb5221fda10da4710b3f92358",
+          "label": "path"
+        },
+        {
+          "path": "sudo/integrations/\u0063\u006f\u0064\u0065\u0078-notify.toml",
+          "sha256": "363541e8ec909c5b16c9af1fecbb96addbc87685dd4c45b74f0db505240434cf",
+          "label": 3
+        },
+        {
+          "path": "tests/sudo-key-vm.py",
+          "sha256": "7e3b6816eacd14e8e121c146329e7c0f744dada6efc1065a10d4956bd6184ebe",
+          "label": 186
+        },
+        {
+          "path": "tests/test-delivery.py",
+          "sha256": "c9e7a41e1c0a55f7a9d0608fc0b76fb2f28128e264707d563948b0f409dbffe7",
+          "label": 55
+        },
+        {
+          "path": "tests/test-sudo-packaging.py",
+          "sha256": "2d326cf4414a302567c7b073a11859cbdcf414bad24fd40874a8a8b27dd8253e",
+          "label": 114
+        },
+        {
+          "path": "tests/test-sudo-packaging.py",
+          "sha256": "c270edb3c75603af74aa537f92b8775dfa3d7c7ba4312a9139f65b0d4e5f6dff",
+          "label": 115
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "9b0fad567843508ac18ad3541bd449c3e4152f23d20753464e8143d43e2d77c3",
+          "label": 30
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "e00271df5fa35f4b68533c4155c5cca1590a325e0a521c681192c1c47cb66fb0",
+          "label": 37
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "514168815f1c9e918790a72656ad497c2a5327d597f116a77303bbfa3cd24fc3",
+          "label": 47
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "9b03d9f7e8a8a254d61328a3b835634ac1b31273eab228b84f641cdacf7b1572",
+          "label": 57
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "7ba2cb1b6e2ea8a4d387863f59a5f820775ceb29c6a99a62929f56402b204667",
+          "label": 58
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "e2de541972302854b8b1022c80450b5f9410040b67553bb66f6b14a1bfde6fb4",
+          "label": 59
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "519d82460632aead5692615c22b97e647e6f47099be76f4f978df32a0eda0c91",
+          "label": 62
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "5df6d893bfc362a3297505a49a90ef348d1f72edc134807cf97f7559a1d817d1",
+          "label": 66
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "83ac122a8956a00622893c42123bec9c0845de4fa5e5c46b7697a266ae08a0c2",
+          "label": 76
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "c2a1f0fce968f09be6f5c44840ad359db72d90ed4ee258a1ebeb3fab88cad036",
+          "label": 85
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "f0b0ad3f70681ff13b0bed645bcad75cb87362a50e112ebdc22f0f629f84e7fb",
+          "label": 115
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "b57393892c3971099e4b50e76e50bd078ab3b6e384ed52ed02903e8633f43150",
+          "label": 123
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "4f80c5485151ac431d3de71189ca5858e2a6f9af9647135ac3b6bf53b46072f2",
+          "label": 125
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "73968dba5954975c07fc7626d74019d48621f1b6efbe021e697558da44614fac",
+          "label": 126
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "e4329dfed625ea512b074481cb0bccc73db3a22d31bfc25cb1be2da97f299c22",
+          "label": 127
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "8070338ccd45d80b95c8f069a6f7d39b9265e03e263ac28275d1779f4049fd99",
+          "label": 135
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "221700e45629e428a9b38e58ffb443d69c107416fe692ad794541b5acb679854",
+          "label": 138
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "2e9d7edba49f972b141ba775f92eb3a557afbe56ec0692545ec674db6c906b98",
+          "label": 139
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "c1bc9d4e1fac4fecca932444316cfcc357db4588d27df4de990a1a3181e583fa",
+          "label": 140
+        },
+        {
+          "path": "Makefile",
+          "sha256": "dcb4c38c9d1658fb727267dbcc3be0b08e4383793013de1d929effab3e4747fb",
+          "label": 559
+        },
+        {
+          "path": "Makefile",
+          "sha256": "9c17fbbf648b471d68cd98937d6b1514ac714bb799c911e4ed705f282d90518d",
+          "label": 560
+        },
+        {
+          "path": "crates/emaki-cli/src/settings.rs",
+          "sha256": "1f0355df19f37fcb7c1a1b22a0f4a57035308b557ace15e0db1c671ad2da370b",
+          "label": 134
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "9a785721cb91450be403a732de5826eb47b8acd325fdb749f20ef7691a2a0eaf",
+          "label": 5
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "046f72a224e187bd585788e6b8165e4f20fb58c04486683e2c5a7510699429ac",
+          "label": 7
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "ac5581a8323b4bfe983a4f4279bd0810afc141d1cefa110f6e5d716cdfd0e126",
+          "label": 8
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "6ad76bccd4b2643cef61b86c518b96992b369ff45324b6d598d4ad3c7be23086",
+          "label": 36
+        },
+        {
+          "path": "docs/agent-rules-setup.md",
+          "sha256": "6620223bc078573450222329a368b67fdc6d2cdda1d78144f8578c611e37803e",
+          "label": 41
+        },
+        {
+          "path": "docs/agent-rules.md",
+          "sha256": "ceae75e5159a92493ae2500eae0f19310dd4d88275b6fd2a03d204c0ba856fe4",
+          "label": 65
+        },
+        {
+          "path": "docs/agent-rules.md",
+          "sha256": "69005c9c9b8c01baeed06b24614854283544310ed3a30ab7ca0f41740023861e",
+          "label": 105
+        },
+        {
+          "path": "docs/agent-rules.md",
+          "sha256": "4668adcd901a1ac3260ef90508bf89d21362430d462650b15df7dedddd82f0e3",
+          "label": 111
+        },
+        {
+          "path": "docs/agent-rules.md",
+          "sha256": "5b5c3426b67788c4e62e1895c7a0f6c1b6a716f3c6193cd52ab7da756eb57cd7",
+          "label": 113
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "61108844dbc6079be3364dd026d43bef33858f4ad9b0d250f504c5f2a5ce2440",
+          "label": 42
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "f02cdc16e383fa5177964d846f9ab26b90ac6b49384fb015d05d1284cd4e3cd2",
+          "label": 46
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "63856f83fa00ccdb115dad78d9f7f900be6781fd030f156288330caab0fa8120",
+          "label": 48
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "bd183a1c55cce70750af06b5a0f6e3bccfce4de647f07c804a93c1875907bbad",
+          "label": 54
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "7dc82095b3ebba4de810d1165af99fc63f97de201a31e4ec4dd8b1d9008acb3b",
+          "label": 57
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "8fa563611c2bb410426b90c7d7fb4a30cd10031195954275c666426cd6305c55",
+          "label": 58
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "e42ff42676cfe2f8e09eb4341db4121f74f64bb4c65484fb32e43279a29f737a",
+          "label": 60
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "45a62705650eed089b53103c3ae5f27fdca8cf64ba522a8d4fcf92ae0f398ec8",
+          "label": 1847
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "49ec612f13cd2a745eb56544a10e09c1e316c1a7bfc7103ed90562b1aa40229b",
+          "label": 1866
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "4668adcd901a1ac3260ef90508bf89d21362430d462650b15df7dedddd82f0e3",
+          "label": 1899
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "f32e1d94f6b38c6bf2a2812cf0d0ae72f86363a3333104af0430c69d46136f8a",
+          "label": 1904
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "48cedb518cc076d1be97032a97ab4508b636c5e5ad2d37f475b6e0c56249aa5c",
+          "label": 1910
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "da3cbaf8346dd03ebb6eeee50669ce4ae9fe3677cc1efb9b5aded73b618df566",
+          "label": 1915
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "e9ad8c22c0f8f16c4f80892f6d0725f050a1a96adc2c7138f70d6b853b2142be",
+          "label": 1927
+        },
+        {
+          "path": "docs/system-map.md",
+          "sha256": "8de119e9dc8b45a9fca89e9581cd2ae4f314553cd0c267778da67ae875a04c29",
+          "label": 1941
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "e2dc8343ea0bce5f81d9d1e14bf55babc86c3c3eeb56f19c206c4904ba980afa",
+          "label": 1904
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "d8a6f49dd1107c01be32c65901660369f7d1207a8d005a5fc6aab5361966b527",
+          "label": 1905
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "4e1d9bedc8ecce2511a615655f6d1d1d1ad2d8885772c1754c18a09d5398570f",
+          "label": 4743
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "31820b096e6c79d623028c6bf56af061561035e63cace332071336645db194bc",
+          "label": 4747
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "79aa959f7565469cc36d40d4a59bf00cc81c5aea30022add72d5c74287a8f936",
+          "label": 4751
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "16de75b0198ee979f3ab3689c9d009017f3d44be339997a3dac698c52bb405cb",
+          "label": 4752
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "b7368e6004f1a1f41d2b64dc3ddfd5dad0483817fbf675bbb010e700b1729ce2",
+          "label": 4755
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "b96bdf533365516f5b769be2a878883d1dbed203de9f0d791787a291e4eeb9d0",
+          "label": 4756
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "8ec721886e1cb17259a9d7866c3a3c007faa3498b1808b737e898da3b0890ff6",
+          "label": 4763
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "c68b954ffcb88471329881e8423e0f7c15555ec1de7565834c37a7c33d280a3d",
+          "label": 4783
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "bd6bb0fb5ee8e941b3d7071776abf902e2527a5e34e07fd35cc1657487b9f1ee",
+          "label": 4787
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "82c7908f45e9c364e20d8c5d50c5aa113b2246dc079aa423c32ebcb81a029855",
+          "label": 4788
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "7f141c612ad9a095ead19a692d53471b0d55d6a03ce707029468128258ae65d0",
+          "label": 6357
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "de136e6230c9324f06b8847d584df144772534a955e58c124824345fa75083ea",
+          "label": 6361
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "8b0b82d6eb582b6fc39c76aa6224ccef3fd800b0cd912e64df4c46dd1373100a",
+          "label": 6816
+        },
+        {
+          "path": "i18n/shell/de.ts",
+          "sha256": "647e6f323780bb61bdfe91c3a650c6cfd00ce343caf89b2bd05b87247aa21b7d",
+          "label": 6844
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "e2dc8343ea0bce5f81d9d1e14bf55babc86c3c3eeb56f19c206c4904ba980afa",
+          "label": 2157
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "3d7ad59d7aeda9e666601bfae6b59ec8392ce144d617d0edf1d535246216bd09",
+          "label": 2158
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "7f141c612ad9a095ead19a692d53471b0d55d6a03ce707029468128258ae65d0",
+          "label": 4956
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "52a1b3192aa9702e976949e52a94a2f64f4dd3b7489ddcb0726f572a5bbd2170",
+          "label": 4957
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "4e1d9bedc8ecce2511a615655f6d1d1d1ad2d8885772c1754c18a09d5398570f",
+          "label": 5180
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "1a377dd1e711c608ada952e05e0e85fcd6dcbc94157aa69a40c053ef5c880a4c",
+          "label": 5181
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "31820b096e6c79d623028c6bf56af061561035e63cace332071336645db194bc",
+          "label": 5184
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "e518aa214c991f71bac32da98ecbdf37867512b4b68c3a94a09acf4859616bdc",
+          "label": 5185
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "79aa959f7565469cc36d40d4a59bf00cc81c5aea30022add72d5c74287a8f936",
+          "label": 5188
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "4a4742f89bd97f7501b7b3a7ede25f292f36277ef1d5ef9a1cd913471fe5cce9",
+          "label": 5189
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "b7368e6004f1a1f41d2b64dc3ddfd5dad0483817fbf675bbb010e700b1729ce2",
+          "label": 5192
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "16c6062af24ec4e3c527d76d2fbd3b2e003d285e56100e73a0ae5ab82df36fb1",
+          "label": 5193
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "8ec721886e1cb17259a9d7866c3a3c007faa3498b1808b737e898da3b0890ff6",
+          "label": 5200
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "ec99725483e0caafe65204bdf6e1d0c8ff085eb94345094fb3886a70c6536f38",
+          "label": 5201
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "c68b954ffcb88471329881e8423e0f7c15555ec1de7565834c37a7c33d280a3d",
+          "label": 5220
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "5924e12bce281f4113be8e50c51c29b8d86818d1894a88e3d2e24da94103156e",
+          "label": 5221
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "bd6bb0fb5ee8e941b3d7071776abf902e2527a5e34e07fd35cc1657487b9f1ee",
+          "label": 5224
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "d247e29acead98e3f1bf877b914a8697c98c50cf61771c10964e33b803e00503",
+          "label": 5225
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "de136e6230c9324f06b8847d584df144772534a955e58c124824345fa75083ea",
+          "label": 6726
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "9832d0341426b65a3ed6fb80a80974fcdc3651a5b48cd07f30577abae7e75edc",
+          "label": 6727
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "8b0b82d6eb582b6fc39c76aa6224ccef3fd800b0cd912e64df4c46dd1373100a",
+          "label": 7125
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "e06c345b723c6cfced90371d11d42063762a17b595d5a797014a723efb98718a",
+          "label": 7126
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "647e6f323780bb61bdfe91c3a650c6cfd00ce343caf89b2bd05b87247aa21b7d",
+          "label": 7153
+        },
+        {
+          "path": "i18n/shell/en.ts",
+          "sha256": "ee0a76b2c63b79f20ec72f5c220ad6f995f686c47293decd466abb5854c125ad",
+          "label": 7154
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "e2dc8343ea0bce5f81d9d1e14bf55babc86c3c3eeb56f19c206c4904ba980afa",
+          "label": 2157
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "7f141c612ad9a095ead19a692d53471b0d55d6a03ce707029468128258ae65d0",
+          "label": 4956
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "4e1d9bedc8ecce2511a615655f6d1d1d1ad2d8885772c1754c18a09d5398570f",
+          "label": 5180
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "31820b096e6c79d623028c6bf56af061561035e63cace332071336645db194bc",
+          "label": 5184
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "79aa959f7565469cc36d40d4a59bf00cc81c5aea30022add72d5c74287a8f936",
+          "label": 5188
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "b7368e6004f1a1f41d2b64dc3ddfd5dad0483817fbf675bbb010e700b1729ce2",
+          "label": 5192
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "8ec721886e1cb17259a9d7866c3a3c007faa3498b1808b737e898da3b0890ff6",
+          "label": 5200
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "c68b954ffcb88471329881e8423e0f7c15555ec1de7565834c37a7c33d280a3d",
+          "label": 5220
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "bd6bb0fb5ee8e941b3d7071776abf902e2527a5e34e07fd35cc1657487b9f1ee",
+          "label": 5224
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "de136e6230c9324f06b8847d584df144772534a955e58c124824345fa75083ea",
+          "label": 6726
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "8b0b82d6eb582b6fc39c76aa6224ccef3fd800b0cd912e64df4c46dd1373100a",
+          "label": 7125
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "647e6f323780bb61bdfe91c3a650c6cfd00ce343caf89b2bd05b87247aa21b7d",
+          "label": 7153
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "04ce1ec390dc79b35c5905a98b992b4bbe77ced1af3729664ba63956d9947e08",
+          "label": 2156
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "e49bbdf9a0595a5c3530b2bb87d539aec23e45d9888dca14f69b572ab666c0fa",
+          "label": 5054
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "224c14bd14bcc91d8250d82dc3980b1f5dbd912dad6464f24e058e384694e6df",
+          "label": 5058
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "36e0fe53bbbe5693385f90454631c2e9820fefeb169b4fd2260f2cbc6f86e514",
+          "label": 5062
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "53e37770ec781b3986014fb2e7fab25ca893c98c1e36edf9f5972f14daee0db6",
+          "label": 5066
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "c607f321e453259754c71a4a64e4d6d3fba3b6287577ccf0280347555a764bb2",
+          "label": 5074
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "538e48af306d81e2c1d7d85cd6bf1daeabeacae27a3e40bf90d9942d418e86f5",
+          "label": 5094
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "926ad6c774dcee40d3d2b5bb209470d9eee3357190ee794f4f088c90098672a4",
+          "label": 5098
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "51b535b6b9e66ff62c3bddc2a1808b3bc0f8e90d6cb852acdecfd9c9f1eb22d6",
+          "label": 6668
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "3ff3552d99270bc1e335c4dc6938239343b8f97f39ce05e6ab8d30b2e367cf0e",
+          "label": 6672
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "d09bfe10a0c34edd9720fc3c2c419b02b358963124dbdeb8e9431551cb37d351",
+          "label": 7126
+        },
+        {
+          "path": "i18n/shell/es.ts",
+          "sha256": "198ba3a4c588a96c14123218436876a13361daae35bd15e856bc83a125cb5a72",
+          "label": 7154
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "e2dc8343ea0bce5f81d9d1e14bf55babc86c3c3eeb56f19c206c4904ba980afa",
+          "label": 1904
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "711b26c6dbf551920c668f30d77ca6f79db30ad452d67c2be72a66b619193ee0",
+          "label": 1905
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "4e1d9bedc8ecce2511a615655f6d1d1d1ad2d8885772c1754c18a09d5398570f",
+          "label": 4743
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "49bb54cedefddb5dd20c379cd395143cbeb8628af2eb42ba5da6c23710566928",
+          "label": 4744
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "31820b096e6c79d623028c6bf56af061561035e63cace332071336645db194bc",
+          "label": 4747
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "88126d71092834a8902524e689106b0c2e4744f65a8bbfc5fa62a16160fe60da",
+          "label": 4748
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "79aa959f7565469cc36d40d4a59bf00cc81c5aea30022add72d5c74287a8f936",
+          "label": 4751
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "435b2856ab2580ce29f9d82695677567afb30800c5d5044bd680cef3fc25a683",
+          "label": 4752
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "b7368e6004f1a1f41d2b64dc3ddfd5dad0483817fbf675bbb010e700b1729ce2",
+          "label": 4755
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "000ce172775677d69b720480cc646a99d0fe00fe79d526573b80580079c2fb73",
+          "label": 4756
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "8ec721886e1cb17259a9d7866c3a3c007faa3498b1808b737e898da3b0890ff6",
+          "label": 4763
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "1aa05346fbd8dddad7d80f7a84869c3ce8ed7542ca7a09819247bc08cc09f4ec",
+          "label": 4764
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "c68b954ffcb88471329881e8423e0f7c15555ec1de7565834c37a7c33d280a3d",
+          "label": 4783
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "50f5af822798a356e51722dc5d8f87556f6a7847564b241fe15e39d233bdde79",
+          "label": 4784
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "bd6bb0fb5ee8e941b3d7071776abf902e2527a5e34e07fd35cc1657487b9f1ee",
+          "label": 4787
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "cd61f52c069faa59bf5c2d57019caab8f062905c8b44e46f46e29e21303c8c1b",
+          "label": 4788
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "7f141c612ad9a095ead19a692d53471b0d55d6a03ce707029468128258ae65d0",
+          "label": 6357
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "b16db1f982b2110b9d63b19b5abde6eacc30f4b3ba5308bb58c90aa03c73c2ea",
+          "label": 6358
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "de136e6230c9324f06b8847d584df144772534a955e58c124824345fa75083ea",
+          "label": 6361
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "3acf80288487fd1b0ae7ca4e6cf00043c639c3ab05941c92e9d7f8286e2c7d75",
+          "label": 6362
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "8b0b82d6eb582b6fc39c76aa6224ccef3fd800b0cd912e64df4c46dd1373100a",
+          "label": 6816
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "6a5559ca2d8fe6a160f8eb972f2b940d778bd07f37500ba95274efa133ba03a6",
+          "label": 6817
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "647e6f323780bb61bdfe91c3a650c6cfd00ce343caf89b2bd05b87247aa21b7d",
+          "label": 6844
+        },
+        {
+          "path": "i18n/shell/fr.ts",
+          "sha256": "5e3c09194da91f7da801d7b79b6f7d4dedf20861906d245095f74b3e5df3db03",
+          "label": 6845
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "e2dc8343ea0bce5f81d9d1e14bf55babc86c3c3eeb56f19c206c4904ba980afa",
+          "label": 2156
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "4e1d9bedc8ecce2511a615655f6d1d1d1ad2d8885772c1754c18a09d5398570f",
+          "label": 5054
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "31820b096e6c79d623028c6bf56af061561035e63cace332071336645db194bc",
+          "label": 5058
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "79aa959f7565469cc36d40d4a59bf00cc81c5aea30022add72d5c74287a8f936",
+          "label": 5062
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "b7368e6004f1a1f41d2b64dc3ddfd5dad0483817fbf675bbb010e700b1729ce2",
+          "label": 5066
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "8ec721886e1cb17259a9d7866c3a3c007faa3498b1808b737e898da3b0890ff6",
+          "label": 5074
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "c68b954ffcb88471329881e8423e0f7c15555ec1de7565834c37a7c33d280a3d",
+          "label": 5094
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "bd6bb0fb5ee8e941b3d7071776abf902e2527a5e34e07fd35cc1657487b9f1ee",
+          "label": 5098
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "7f141c612ad9a095ead19a692d53471b0d55d6a03ce707029468128258ae65d0",
+          "label": 6668
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "de136e6230c9324f06b8847d584df144772534a955e58c124824345fa75083ea",
+          "label": 6672
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "8b0b82d6eb582b6fc39c76aa6224ccef3fd800b0cd912e64df4c46dd1373100a",
+          "label": 7126
+        },
+        {
+          "path": "i18n/shell/pt_BR.ts",
+          "sha256": "647e6f323780bb61bdfe91c3a650c6cfd00ce343caf89b2bd05b87247aa21b7d",
+          "label": 7154
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "e2dc8343ea0bce5f81d9d1e14bf55babc86c3c3eeb56f19c206c4904ba980afa",
+          "label": 1917
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "4e1d9bedc8ecce2511a615655f6d1d1d1ad2d8885772c1754c18a09d5398570f",
+          "label": 4768
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "31820b096e6c79d623028c6bf56af061561035e63cace332071336645db194bc",
+          "label": 4772
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "79aa959f7565469cc36d40d4a59bf00cc81c5aea30022add72d5c74287a8f936",
+          "label": 4776
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "b7368e6004f1a1f41d2b64dc3ddfd5dad0483817fbf675bbb010e700b1729ce2",
+          "label": 4780
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "8ec721886e1cb17259a9d7866c3a3c007faa3498b1808b737e898da3b0890ff6",
+          "label": 4788
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "c68b954ffcb88471329881e8423e0f7c15555ec1de7565834c37a7c33d280a3d",
+          "label": 4808
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "bd6bb0fb5ee8e941b3d7071776abf902e2527a5e34e07fd35cc1657487b9f1ee",
+          "label": 4812
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "7f141c612ad9a095ead19a692d53471b0d55d6a03ce707029468128258ae65d0",
+          "label": 6384
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "de136e6230c9324f06b8847d584df144772534a955e58c124824345fa75083ea",
+          "label": 6388
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "8b0b82d6eb582b6fc39c76aa6224ccef3fd800b0cd912e64df4c46dd1373100a",
+          "label": 6844
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "647e6f323780bb61bdfe91c3a650c6cfd00ce343caf89b2bd05b87247aa21b7d",
+          "label": 6872
+        },
+        {
+          "path": "packaging/emaki-config/expected-files.list",
+          "sha256": "f00d5d70a356cfedf8148ce712e2ac0d1a2af3adb1eedf9439a416a8c3181709",
+          "label": 240
+        },
+        {
+          "path": "packaging/emaki-config/expected-files.list",
+          "sha256": "29e4629130d87210f90293f41d7c676564d12b8b443aef93258da57bddc7c971",
+          "label": 241
+        },
+        {
+          "path": "packaging/emaki-config/expected-files.list",
+          "sha256": "7e4e1a3653dcaacbc532c0f3eb0023669529878f2402d6c9c6e44b44d6f558e5",
+          "label": 690
+        },
+        {
+          "path": "scripts/emaki-sudo-turn",
+          "sha256": "1860e9aa39e1f8b9de8cd724451dade4bd19aab1b94ed1f75cfcbd44081a7a1c",
+          "label": 42
+        },
+        {
+          "path": "scripts/emaki-sudo-turn",
+          "sha256": "8f2b759f6a718ac65c9b566385168e445ff54eef36dabdefdb72bd6c46f6827f",
+          "label": 56
+        },
+        {
+          "path": "scripts/render-system-map",
+          "sha256": "bdd787fc807d90bc85408c705a7c20a161845018d05817dd6be7a5fc89c44e12",
+          "label": 18
+        },
+        {
+          "path": "scripts/render-system-map",
+          "sha256": "421cbae4190fc1c22c24f827c084e44c31c290f01ad33597475756f9733e2cc7",
+          "label": 257
+        },
+        {
+          "path": "shell/Commands.js",
+          "sha256": "8277186d9085a3b9795bdc6a38f5c39eeb205763e30b49b92d90fda21c504666",
+          "label": 80
+        },
+        {
+          "path": "shell/PolkitPromptCard.qml",
+          "sha256": "38fd0e42478ae188be0e3308e81521c01207998c50432b69ceb816a8165f1788",
+          "label": 20
+        },
+        {
+          "path": "shell/PolkitPromptCard.qml",
+          "sha256": "5af158fa7b6ebdc695c5915177ba01784b7b4a4231ff52e3ea361ffbce64dd14",
+          "label": 338
+        },
+        {
+          "path": "shell/PolkitPromptQueue.qml",
+          "sha256": "61acb09fee4422f3e5fe7d3d37416da171a6a93cd77dfcb64d848f53f4497c84",
+          "label": 25
+        },
+        {
+          "path": "shell/SettingsPageRegistry.qml",
+          "sha256": "a3bd9cb08291762261809e975f1f678d5bfbbf8c04f7fa0ba70c44e2ef843df9",
+          "label": 60
+        },
+        {
+          "path": "shell/SudoKeySettingsPage.qml",
+          "sha256": "16397a4d797887a7f73acc3492e577f03a644dfa7b25d2d72e83b83ff5bfff28",
+          "label": 16
+        },
+        {
+          "path": "shell/SudoKeySettingsPage.qml",
+          "sha256": "b0dbe55da8d2d0d3ea0a9ae27cfba77308901dcc8b3c39cb994b17f2f6bc8b9f",
+          "label": 19
+        },
+        {
+          "path": "shell/SudoKeySettingsPage.qml",
+          "sha256": "dfb60b5cdbc762c750c773773aa2b28638490e4c6bd024ca829ce45ff9a6f418",
+          "label": 23
+        },
+        {
+          "path": "shell/SudoKeySettingsPage.qml",
+          "sha256": "770283f1173ddc262e9d3dcf3e68e75d20c26e3d2f036ffa2cf2cb49e65d7f22",
+          "label": 58
+        },
+        {
+          "path": "shell/SudoPromptAdapter.qml",
+          "sha256": "4b88348ac674a513346c626d1816f0331a8cd12b451baec162a590fd1fbc6d7c",
+          "label": 22
+        },
+        {
+          "path": "shell/SudoPromptAdapter.qml",
+          "sha256": "eac4554cd13b62a428b7e3940019fe3cf5d3e901eaa87669e6e72ffedd52933f",
+          "label": 41
+        },
+        {
+          "path": "shell/SudoText.js",
+          "sha256": "cbe95e5ef769ae7c625eeb54f1eca6555724716a3af315db71c90bf50926c4ba",
+          "label": 19
+        },
+        {
+          "path": "shell/SudoText.js",
+          "sha256": "1f530df8c55a394ae72353dbcb24fe336151fb8580ad0fe07e2077bc11563661",
+          "label": 20
+        },
+        {
+          "path": "shell/SudoText.js",
+          "sha256": "f93130a26b4931707f575632242b75d8a3d7b4f57f3b415b393dd815435ed3f1",
+          "label": 21
+        },
+        {
+          "path": "shell/SudoText.js",
+          "sha256": "cbcff6065a0b90955e26b3cfb095ffa4badca5b9a1584c248eeb84e35f82ba14",
+          "label": 22
+        },
+        {
+          "path": "shell/SudoText.js",
+          "sha256": "4f4c01ad1bb74b70a7a7f24a3a75f4fad9cc74a5c9b6c79ad6bebb8d4c2c6c46",
+          "label": 24
+        },
+        {
+          "path": "shell/SudoText.js",
+          "sha256": "36bb61b6358f352aea9dbd3f64c7fb710e9b49182875588db7cab38c18772a14",
+          "label": 30
+        },
+        {
+          "path": "shell/SudoText.js",
+          "sha256": "2698e405e48cdfd7a8f80130d184a105c0c7f4ad6e24fd82f1822e718f542b79",
+          "label": 31
+        },
+        {
+          "path": "shell/settings/SettingsIndex.js",
+          "sha256": "aaad15e9a3123cd550dd9a89fc8fef8a118f4a1808bb997736a7dee7c52494dd",
+          "label": 308
+        },
+        {
+          "path": "shell/settings/SettingsIndex.js",
+          "sha256": "3f38c0ae2372d6a4c0a561dbb2572557d6708ce36efdda8a9a7ada6aa22f57d5",
+          "label": 309
+        },
+        {
+          "path": "shell/settings/SettingsIndex.js",
+          "sha256": "89d03c6da60a1954a94d1e677be4f53f3bd7f93f1a3af6276035e3f9ef5b37d6",
+          "label": 311
+        },
+        {
+          "path": "sudo/ORIGIN.md",
+          "sha256": "9c998d1aaca51171d02b9fb6540d8288d39fe905d391f14f5f42298636381069",
+          "label": 98
+        },
+        {
+          "path": "sudo/broker.cpp",
+          "sha256": "6a8f7dba4afad37f1de92b38884fefbc2778f2f3a595a4c5de3dfc9ec38c1770",
+          "label": 1320
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "0017e20f105d116268f37da797524e3945f21cad5d92446de08a89eead5ced5c",
+          "label": 5
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "239cd26194d646029d4edcbeaa1e74fc4edc17ebf4c96cbd786c91adad11a1a8",
+          "label": 6
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "060a4320f14e93da7d138d98ea16a7cfc361b1e7ef76f726b3725a1d85d4548d",
+          "label": 21
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "31e2e4833a370fee2178a359cbe3b027ad5436676a7bbc83d08ea6b0a6a267b8",
+          "label": 38
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "c7168aa7bd92d3bce4b78fc5e44014c066b4bc8c93b0bb2cf2c62f300bb26960",
+          "label": 41
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "6147b033ce0dcff28e07f1d7a7a52e2279d962fa50607b26a2174dcde7f240e1",
+          "label": 42
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "4f5a5a0102d3dd4dcbaaf15d81a9f1f48fb55f7c383b59624fcee9310b7927bc",
+          "label": 43
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "51ca44f2e7069cc8cffcf0e67d46fc9268baf82cda3747f7f9ca1363d7d2c623",
+          "label": 50
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "831a4fb07a87aa09ae8749d8a92cf849085b1669b8f08993af532a38ec9c9277",
+          "label": 52
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "660c34de4baec6e1703e1ba1068b52d477293004943b2d10722b5e3813caff9a",
+          "label": 54
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "9cdc4d3743b60d93f25bbb69f351725e3c8d9b4f8cc60c7e07b77b866aa9f6fa",
+          "label": 56
+        },
+        {
+          "path": "sudo/turn-reporting.md",
+          "sha256": "4b2d21350f4ac34eda3a80f76ce7655433f4da845892ba0123b4ce5baed76710",
+          "label": 60
+        },
+        {
+          "path": "tests/fixtures/PromptQueueTest.qml",
+          "sha256": "fbaef4432a404e903169aa109f9f78826b7fb3497cd8f672ea4ea25914659f60",
+          "label": 26
+        },
+        {
+          "path": "tests/fixtures/SettingsLauncherTest.qml",
+          "sha256": "9e37ae880f109f34afe0c0eedabe4f61c84b6d581bd472049756427f70ad04a7",
+          "label": 95
+        },
+        {
+          "path": "tests/fixtures/SettingsLauncherTest.qml",
+          "sha256": "8ef45fadd2119a6b5ccf737af5f853d7d6132d221987e96272d9293ea759e16c",
+          "label": 142
+        },
+        {
+          "path": "tests/fixtures/SettingsLauncherTest.qml",
+          "sha256": "a19f4aa321a230f9a02baa9f7fe886ae5bdd86b8096635c639590163e5c733f7",
+          "label": 150
+        },
+        {
+          "path": "tests/fixtures/SettingsLauncherTest.qml",
+          "sha256": "2e3d89c0a6259144a53df11769c9dc3f86166a71cf964c21632acc174b674b34",
+          "label": 160
+        },
+        {
+          "path": "tests/fixtures/SudoPromptTest.qml",
+          "sha256": "bfea463a57a34e5fcd3b3e656d252bc9c9f6d2dc2de3c5f7e21324731c866301",
+          "label": 107
+        },
+        {
+          "path": "tests/sudo-key-vm.py",
+          "sha256": "8418c30ae2dd85983ee205d4f1a0de5de829c1ddde7dd3de08565ee2a3e40a2d",
+          "label": 10
+        },
+        {
+          "path": "tests/sudo-key-vm.py",
+          "sha256": "e5ebf77f3205a29df9b0a27bfebc905d13407e351de44784c1d82b997e88eee7",
+          "label": 182
+        },
+        {
+          "path": "tests/sudo-key-vm.py",
+          "sha256": "d447beff0f49278551860320f5d12bb806ca7cb193b6d59237e2f07638a2e0ea",
+          "label": 184
+        },
+        {
+          "path": "tests/sudo-key-vm.py",
+          "sha256": "fda11615b2681bfab01b434fa45634fa6cc9c083482c187fa55742c5f77bebdf",
+          "label": 422
+        },
+        {
+          "path": "tests/test-paths.py",
+          "sha256": "4f6394bd25a9ddd897da379511bed5fcaa96fc7172f133771572998603162cac",
+          "label": 217
+        },
+        {
+          "path": "tests/test-paths.py",
+          "sha256": "3e91285e9d841e2abbc107d941ee4c90a82d9bee189389c23f9fe34f0f5eda37",
+          "label": 225
+        },
+        {
+          "path": "tests/test-paths.py",
+          "sha256": "08ada9563a6ae80da6cd793714a105c243fd38d9e3f1edd0ab5540e1d6582464",
+          "label": 226
+        },
+        {
+          "path": "tests/test-polkit-prompt.py",
+          "sha256": "dec6d143e64ee33f2dadd0f685a44508e8b39712866c48bcf1f4a4752a918dda",
+          "label": 140
+        },
+        {
+          "path": "tests/test-settings-index.mjs",
+          "sha256": "e6ca7e9f3138b045576fb13b8f009924dc702c2e589871cc0565bb11ad422005",
+          "label": 44
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "c2338fb5830a579d55be038dff33d26a2be9560a3aba51140e58f4e2dfc92bef",
+          "label": 48
+        },
+        {
+          "path": "tests/test-sudo-turn-integration.py",
+          "sha256": "428aefc745bd6d900ebb365581f03f818c41268c6352426f75c195efffde3e40",
+          "label": 64
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "372bfdcdd3303ec7c0dbfc12a69a7cd5ef8eb2f725cb71f1db941d5f32c4cb3e",
+          "label": 2158
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "a89ec6b36960d2d4cdb0b174f07b9234ea559b7de1e848202bb466a13ea0a691",
+          "label": 4957
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "2e15a66a4cfc9294e7cf310c8ce04af35c90e34bd735236e8ec5048e21a847b9",
+          "label": 5181
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "82162b73bcc20498bc33627681cec4045e182b4fde2c0b84262ed0544bfef521",
+          "label": 5185
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "226eed94f5a14d276e44823258226367bf23d79459c0e81f8a76cb1ae41df7f9",
+          "label": 5189
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "c6478cd4fbe40ee4da1f66dc139ed16a011b78407b5edb12471f81b1e47fe8c2",
+          "label": 5193
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "43e0e73d70eca825240126f90d8aa251edb27153605e3e178ddc26448cff3532",
+          "label": 5201
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "ec38fcdc9980ff933936038f4ce974d6edf1dc34ebc3f0349e12f69f832f48a5",
+          "label": 5221
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "10bf3732310e4973c01187b823bf79ad0f80c56eed70eda5c50db73e8ef58b8f",
+          "label": 5225
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "1f592220a550674afe182f871e685f2e9a3dceba7dea4a8777795369139bec59",
+          "label": 6727
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "97a852bda9c969300b394fe2e3100b8dae283d13811d3024ce5f6766e2040fb1",
+          "label": 7126
+        },
+        {
+          "path": "i18n/shell/en_XA.ts",
+          "sha256": "7a7e13f7aad5f6ad7ff667bd242d2db06e82f24dd940464360ba06fc77bc9ad1",
+          "label": 7154
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "6f3490e7e59f14d5ccd464a03498f7e28f6abe4b78aa10a73c146d5e9ef06e6b",
+          "label": 1918
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "71679b36dc52630a8c8d76b53f38b7463d9e6b04e6b712386961a6c86d5003ab",
+          "label": 4769
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "2fdbfbdb4da45dc0349b0d5ac03d536a6eda5fcaeee5b29c4c9f3b0813d5c7ca",
+          "label": 4773
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "0897977ebf4a177fec99eb3f82374fb4b1ba0924f7a68d5dc086b5e2b18fe758",
+          "label": 4777
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "55a19e58122a05a9dc79184ab194987a0c83b97421375eeedefecff6ce94c756",
+          "label": 4781
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "8ed527bee5cb2a4b1ab319eaa1ebfdbb3dca69beabdfed05e77d28b13cb37d7c",
+          "label": 4789
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "643dba1dc08018be35db2a2d572dd0965a338e52760a0eb6554273119b2f35a9",
+          "label": 4809
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "7d17adb97ddd1aa5772e1ef686513c2712d5952e67d2c1e3e7e5b2108a0064c4",
+          "label": 4813
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "3aa123e425bf653131cef0b589ad50d4d9a04700fe2d1547c056106926f2e782",
+          "label": 6385
+        },
+        {
+          "path": "i18n/shell/ru.ts",
+          "sha256": "ae444e0bc01c28d79c0924259983fb0a6edcacb427ac73518ef6325eb9223fb3",
+          "label": 6873
+        }
+      ]
+    },
+    {
+      "name": "private-document-test-references",
+      "reason": "Existing test inputs and comments referring to excluded documents; not exported private work records.",
+      "status": "owner-decision-pending",
+      "lines": [
+        {
+          "path": "tests/test-alongside-docs.py",
+          "sha256": "caa8c395d90f327b5b429d7c2c2b491d1a8a880148036fab1709e6c072779e64",
+          "label": 29
+        },
+        {
+          "path": "tests/test-alongside-docs.py",
+          "sha256": "8ddaee049ed13aa2bfa4fd3410ee2165fc28098613ed9f69f738ade63e9ba6db",
+          "label": 63
+        },
+        {
+          "path": "tests/test-launcher-icon-refresh.py",
+          "sha256": "f53c54e5b495a43c9a3ecb564d18193c072bc89a73e74eb6337d64d104b6c5ae",
+          "label": 46
+        },
+        {
+          "path": "tests/test-quickshell-fork-guard.py",
+          "sha256": "9c4f3490c2d6cabcf596b36a748d3848d365221a88d8aa248a6872ec3c866f8c",
+          "label": 31
+        },
+        {
+          "path": "tests/test-release-inputs.py",
+          "sha256": "287ecc470ffee3b069ffe9f6fea32ee6ad5ea817a620ebdc18c8524dabc91ee9",
+          "label": 184
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "bb1ed9a743825954322bf72e02a4a21fbdd56dc033836c33b93071d108a8792d",
+          "label": 10
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "9eb04bd4cb26c69be49d7473ca3821db6ff23c49e98eb0536bbc86b3e33e5f0d",
+          "label": 246
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "8e80033fa4c6e0da438357be6feab9954aa011e4392c8cfb87bf152f4a8cd4f3",
+          "label": 254
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "8e80033fa4c6e0da438357be6feab9954aa011e4392c8cfb87bf152f4a8cd4f3",
+          "label": 265
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "4507497d6a74ef374616d48e7df38a9ddceb03305e7457913eede8729c8369b5",
+          "label": 270
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "c8f128107148acc4dc08fe752289a2af4cef7a66646976be148677d4f15b0feb",
+          "label": 277
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "18edb76fc0cc2d404d249543b90bde5bc09fd04eca64557036f10d6032d25494",
+          "label": 283
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "c2cd1e3a808bb0dbf1019dd008b2c4cc1d3e8728d062bc746b7969fd9148d971",
+          "label": 289
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "15a346a31a2c9a1575e08679daacac2d69ab04f3354e5a288308f678cabed9b8",
+          "label": 301
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "9b889a694f4c8be21745bb026350d3d30c18d33fda96d6e0fce5937fca5dc71c",
+          "label": 310
+        },
+        {
+          "path": "tests/test-status-words.py",
+          "sha256": "060c4e041fbc54aefca98980da404d4bbd0ac092975dff5ae180a480f89abba2",
+          "label": 316
+        },
+        {
+          "path": "tests/vm/status-words.toml",
+          "sha256": "e4f34c98d4befa07396a1298b468092d40a870919f990589da477c49287dbc4a",
+          "label": 64
+        },
+        {
+          "path": "tests/vm/status-words.toml",
+          "sha256": "af549db11a0b122ba6abbf055cb6ea74493fbdb4dbbf9c5d25560b22ea1724b4",
+          "label": 67
+        }
+      ]
+    },
+    {
+      "name": "synthetic-home-fixtures",
+      "reason": "Existing synthetic home paths in test fixtures; not personal-machine evidence.",
+      "status": "owner-decision-pending",
+      "lines": [
+        {
+          "path": "tests/test-greeter-state.py",
+          "sha256": "ccf676fbfe449ce1f8666f296ebf08097227357888ff33c22efa556690c9f02f",
+          "label": 393
+        },
+        {
+          "path": "tests/test-greeter-wallpaper.py",
+          "sha256": "dff7eabac2648c2cc10db12626c9072c3dd13e0a5526d55c9a2a95b49c529535",
+          "label": 623
+        },
+        {
+          "path": "tests/test-report-redaction.py",
+          "sha256": "c15fe7e755e08edebbd1cbb8cec671bcd983f2bdeb7b78dbed4af5eb6e3e0a38",
+          "label": 428
+        },
+        {
+          "path": "tests/test-settings-reset.py",
+          "sha256": "9b76c2baa767f2721cd263428512070bf6f9f8fbf12813ce8be4f1f50c4c5b61",
+          "label": 88
+        }
+      ]
+    },
+    {
+      "name": "patch-provenance",
+      "reason": "Existing patch-generation headers describing ordinary version-control output.",
+      "status": "owner-decision-pending",
+      "lines": [
+        {
+          "path": "packaging/niri-emaki/0003-emaki-overview-backdrop.patch",
+          "sha256": "4f726ba83bfc525db7497704a1bf045ba39a6d3c141380443c29d3293fb49c04",
+          "label": 14
+        },
+        {
+          "path": "packaging/niri-emaki/0004-crisp-xcursor-at-fractional-scale.patch",
+          "sha256": "81dec8848f9f5fd041eddbb7b8a2dd439cc8339972c8b3cf904dd2c5df007e13",
+          "label": 16
+        },
+        {
+          "path": "packaging/niri-emaki/0006-exit-without-primary-renderer.patch",
+          "sha256": "b0e48f4b8ecb21bf5e08f9113da83021521f3ea930b29d0470388ea325cd9260",
+          "label": 26
+        }
+      ]
+    },
+    {
+      "name": "technical-wording",
+      "reason": "Existing hardware acceptance rows and package dependency wording reviewed as complete lines.",
+      "status": "owner-decision-pending",
+      "lines": [
+        {
+          "path": "README.md",
+          "sha256": "211c65b6a33a6fc2ef497f7b73625b0d61a6c2c0c0b2e984a9ac3eb0b3baebf8",
+          "label": 137
+        },
+        {
+          "path": "README.md",
+          "sha256": "9338f716231e238247c48028fc62ade34a7133f8d4d504de6a9d5b2741184254",
+          "label": 138
+        }
+      ]
+    }
+  ]
+}
