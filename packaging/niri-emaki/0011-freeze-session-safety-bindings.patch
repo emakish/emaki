@@ -2088,7 +2088,7 @@ diff --git a/src/trusted_client.rs b/src/trusted_client.rs
 index c7fa4a78..c43ff645 100644
 --- a/src/trusted_client.rs
 +++ b/src/trusted_client.rs
-@@ -581,7 +581,7 @@ fn start_recovery(
+@@ -917,7 +917,7 @@ fn start_recovery(
          })
  }
  

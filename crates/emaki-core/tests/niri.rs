@@ -91,6 +91,7 @@ struct Fake {
     server: Option<std::thread::JoinHandle<()>>,
     actions: Arc<Mutex<Vec<Value>>>,
     connections: Arc<AtomicU64>,
+    output_reads: Arc<Mutex<Vec<Instant>>>,
 }
 impl Fake {
     fn new() -> Self {
@@ -104,6 +105,7 @@ impl Fake {
             server: None,
             actions: Arc::new(Mutex::new(Vec::new())),
             connections: Arc::new(AtomicU64::new(0)),
+            output_reads: Arc::new(Mutex::new(Vec::new())),
         };
         fake.start();
         fake
@@ -117,6 +119,7 @@ impl Fake {
         let stop = self.stop.clone();
         let actions = self.actions.clone();
         let connections = self.connections.clone();
+        let output_reads = self.output_reads.clone();
         self.server = Some(std::thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
                 let socket = match listener.accept() {
@@ -162,7 +165,10 @@ impl Fake {
                     let mut d = data.lock().unwrap().clone();
                     let response = match line.trim() {
                         "\"Version\"" => json!({"Ok":{"Version":d.version}}),
-                        "\"Outputs\"" => json!({"Ok":{"Outputs":d.outputs}}),
+                        "\"Outputs\"" => {
+                            output_reads.lock().unwrap().push(Instant::now());
+                            json!({"Ok":{"Outputs":d.outputs}})
+                        }
                         "\"Windows\"" => json!({"Ok":{"Windows":d.windows}}),
                         "\"Workspaces\"" => json!({"Ok":{"Workspaces":d.workspaces}}),
                         "\"KeyboardLayouts\"" => json!({"Ok":{"KeyboardLayouts":d.layouts}}),
@@ -353,6 +359,186 @@ fn initial_stream_is_complete_private_and_keeps_ids_separate_from_indices() {
 }
 
 #[test]
+fn idle_watch_waits_for_window_and_workspace_events_without_intermediate_ticks() {
+    for event in [
+        json!({"WindowFocusChanged":{"id":2}}),
+        json!({"WorkspaceActivated":{"id":20,"focused":true}}),
+    ] {
+        let fake = Fake::new();
+        let mut observer = fake.observer();
+        let initial = ready(&mut observer);
+        let (sent, observed, received) = std::thread::scope(|scope| {
+            let sender = scope.spawn(|| {
+                std::thread::sleep(Duration::from_millis(250));
+                let sent = Instant::now();
+                fake.event(event.clone());
+                sent
+            });
+            let observed = observer.poll();
+            let received = Instant::now();
+            (sender.join().unwrap(), observed, received)
+        });
+        let view = observed.expect("idle wait returned before the event or output deadline");
+        assert!(received >= sent);
+        assert!(received.duration_since(sent) < Duration::from_millis(100));
+        assert_eq!(view.sequence, initial.sequence + 1);
+        assert_eq!(view.generation, initial.generation);
+        let model = view.model.unwrap();
+        if event.get("WindowFocusChanged").is_some() {
+            assert!(model.windows[&2].is_focused);
+        } else {
+            assert_eq!(model.focused_output.as_deref(), Some("B"));
+        }
+    }
+}
+
+#[test]
+fn unchanged_outputs_keep_one_second_checks_and_emit_no_duplicates() {
+    let fake = Fake::new();
+    let mut observer = fake.observer();
+    ready(&mut observer);
+    let start = Instant::now();
+    assert!(observer.poll().is_none());
+    assert!(start.elapsed() >= Duration::from_millis(900));
+    assert!(observer.poll().is_none());
+    let reads = fake.output_reads.lock().unwrap();
+    assert_eq!(reads.len(), 2);
+    let interval = reads[1].duration_since(reads[0]);
+    assert!(interval >= Duration::from_secs(1));
+    assert!(interval < Duration::from_millis(1150));
+}
+
+#[test]
+fn output_only_change_arrives_within_one_second_without_idle_ticks() {
+    let fake = Fake::new();
+    let mut observer = fake.observer();
+    let initial = ready(&mut observer);
+    let (changed, view, received, idle_returns) = std::thread::scope(|scope| {
+        let change = scope.spawn(|| {
+            std::thread::sleep(Duration::from_millis(250));
+            fake.data.lock().unwrap().outputs = json!({"B":monitor("B")});
+            Instant::now()
+        });
+        let mut idle_returns = 0;
+        let mut result = None;
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if let Some(view) = observer.poll() {
+                result = Some(view);
+                break;
+            }
+            idle_returns += 1;
+        }
+        let received = Instant::now();
+        (
+            change.join().unwrap(),
+            result.unwrap(),
+            received,
+            idle_returns,
+        )
+    });
+    assert!(received.duration_since(changed) < Duration::from_secs(1));
+    assert!(
+        idle_returns <= 1,
+        "unnecessary idle wakeups: {idle_returns}"
+    );
+    assert_eq!(view.sequence, initial.sequence + 1);
+    assert_eq!(view.generation, initial.generation);
+    assert_eq!(
+        view.model.unwrap().outputs.keys().collect::<Vec<_>>(),
+        vec!["B"]
+    );
+}
+
+#[test]
+fn events_do_not_postpone_output_checks_or_split_the_existing_batch() {
+    let fake = Fake::new();
+    let mut observer = fake.observer();
+    ready(&mut observer);
+    let started = Instant::now();
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            for index in 0..35 {
+                std::thread::sleep(Duration::from_millis(40));
+                if index == 5 {
+                    fake.data.lock().unwrap().outputs = json!({"B":monitor("B")});
+                }
+                fake.event(json!({"OverviewOpenedOrClosed":{"is_open":index % 2 == 0}}));
+            }
+        });
+        let view = model_until(&mut observer, |model| model.outputs.len() == 1);
+        assert!(started.elapsed() < Duration::from_millis(1150));
+        assert_eq!(view.generation, 1);
+        let reads = fake.output_reads.lock().unwrap();
+        assert_eq!(reads.len(), 2);
+        assert!(reads[1].duration_since(reads[0]) < Duration::from_millis(1100));
+    });
+
+    // A queued event after an output read still shares its observation with that read.
+    let fake = Fake::new();
+    let mut observer = fake.observer();
+    let initial = ready(&mut observer);
+    fake.data.lock().unwrap().outputs = json!({"B":monitor("B")});
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while fake.output_reads.lock().unwrap().len() < 2 {
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            fake.event(json!({"WorkspaceActivated":{"id":20,"focused":true}}));
+        });
+        let view = until(&mut observer, |_| true);
+        let model = view.model.unwrap();
+        assert_eq!(view.sequence, initial.sequence + 1);
+        assert_eq!(model.outputs.len(), 1);
+        assert_eq!(model.focused_output.as_deref(), Some("B"));
+    });
+}
+
+#[test]
+fn restart_interrupts_idle_wait_and_resynchronizes_on_the_existing_retry() {
+    let mut fake = Fake::new();
+    let mut observer = fake.observer();
+    ready(&mut observer);
+    let (stopped, lost, received) = std::thread::scope(|scope| {
+        let stop = scope.spawn(|| {
+            std::thread::sleep(Duration::from_millis(250));
+            fake.stop();
+            Instant::now()
+        });
+        let lost = observer.poll();
+        let received = Instant::now();
+        (stop.join().unwrap(), lost, received)
+    });
+    let lost = lost.expect("idle wait returned before the disconnection");
+    assert!(received.saturating_duration_since(stopped) < Duration::from_millis(100));
+    assert_eq!(lost.connection.reason, "connection_closed");
+    assert!(lost.model.is_none());
+    {
+        let mut data = fake.data.lock().unwrap();
+        data.windows = json!([window(99, 77, true)]);
+        data.workspaces = json!([workspace(77, 1, "B", true, Some(99))]);
+    }
+    fake.start();
+    let again = until(&mut observer, |view| {
+        view.connection.status == ConnectionStatus::Connected
+    });
+    assert!(received.elapsed() < Duration::from_millis(650));
+    assert_eq!(again.generation, 2);
+    assert_eq!(
+        again
+            .model
+            .unwrap()
+            .windows
+            .keys()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![99]
+    );
+}
+
+#[test]
 fn missing_initial_snapshot_and_rejected_subscription_never_publish_partial_model() {
     for (initial, reason) in [
         (
@@ -524,9 +710,13 @@ fn split_line_waits_for_completion_and_partial_eof_is_explicit() {
     let mut observer = fake.observer();
     ready(&mut observer);
     fake.raw(b"{\"WindowFocusChanged\":");
-    assert!(observer.poll().is_none());
-    fake.raw(b"{\"id\":2}}\n{\"WorkspaceActivated\":{\"id\":20,\"focused\":true}}\n");
-    model_until(&mut observer, |m| m.windows[&2].is_focused);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            std::thread::sleep(Duration::from_millis(50));
+            fake.raw(b"{\"id\":2}}\n{\"WorkspaceActivated\":{\"id\":20,\"focused\":true}}\n");
+        });
+        model_until(&mut observer, |m| m.windows[&2].is_focused);
+    });
     model_until(&mut observer, |m| m.focused_output.as_deref() == Some("B"));
     fake.raw(b"{\"partial\":");
     fake.streams.lock().unwrap().clear();
@@ -852,7 +1042,10 @@ fn cast_names_its_client_program_and_node_without_exposing_pid() {
     assert_eq!(casts[&1].client.as_deref(), Some(comm.trim_end()));
     assert_eq!(casts[&1].pw_node_id, None);
     assert!(casts[&2].by_parent && casts[&2].client.is_none());
-    assert_eq!((casts[&3].client.as_deref(), casts[&3].pw_node_id), (None, Some(99)));
+    assert_eq!(
+        (casts[&3].client.as_deref(), casts[&3].pw_node_id),
+        (None, Some(99))
+    );
     let json = serde_json::to_string(&view).unwrap();
     assert!(!json.contains("\"pid\"") && !json.contains(&format!(":{me}")));
 }

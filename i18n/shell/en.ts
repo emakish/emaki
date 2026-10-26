@@ -8064,8 +8064,8 @@ Save your work first.</translation>
             <translation>What's new</translation>
         </message>
         <message>
-            <source>What's new in Emaki 0.12</source>
-            <translation>What's new in Emaki 0.12</translation>
+            <source>What's new in Emaki 1.0</source>
+            <translation>What's new in Emaki 1.0</translation>
         </message>
         <message>
             <source>Close what's new</source>
@@ -8084,56 +8084,30 @@ Save your work first.</translation>
             <translation>Could not save update progress. This screen may appear again next login.</translation>
         </message>
         <message>
-            <source>Emaki speaks German, French and Russian</source>
-            <translation>Emaki speaks German, French and Russian</translation>
+            <source>Emaki 1.0, the first beta</source>
+            <translation>Emaki 1.0, the first beta</translation>
         </message>
         <message>
-            <source>German, French and Russian are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time.</source>
-            <translation>German, French and Russian are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time.</translation>
+            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
+            <translation>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</translation>
         </message>
         <message>
-            <source>A command menu and emoji</source>
-            <translation>A command menu and emoji</translation>
+            <source>A lighter launcher</source>
+            <translation>A lighter launcher</translation>
         </message>
         <message>
-            <source>Super+K opens every system action in the launcher: settings pages, appearance, Night Light, restart and more. Super+; finds an emoji by name and copies it.</source>
-            <translation>Super+K opens every system action in the launcher: settings pages, appearance, Night Light, restart and more. Super+; finds an emoji by name and copies it.</translation>
-        </message>
-        <message>
-            <source>Copy text and QR codes from the screen</source>
-            <translation>Copy text and QR codes from the screen</translation>
-        </message>
-        <message>
-            <source>In Capture, choose Text or QR code and select an area: Emaki copies what it reads. Recognition runs on your computer.</source>
-            <translation>In Capture, choose Text or QR code and select an area: Emaki copies what it reads. Recognition runs on your computer.</translation>
-        </message>
-        <message>
-            <source>Developer kits and websites as apps</source>
-            <translation>Developer kits and websites as apps</translation>
-        </message>
-        <message>
-            <source>Programs &amp; Updates installs Python, Node.js, Rust, Go and Docker in one step, and turns a website into its own app in Firefox.</source>
-            <translation>Programs &amp; Updates installs Python, Node.js, Rust, Go and Docker in one step, and turns a website into its own app in Firefox.</translation>
-        </message>
-        <message>
-            <source>Reset Emaki's settings</source>
-            <translation>Reset Emaki's settings</translation>
-        </message>
-        <message>
-            <source>Settings › Updates &amp; Recovery returns Emaki's own settings to their defaults. Your files and app settings stay, and Undo brings everything back.</source>
-            <translation>Settings › Updates &amp; Recovery returns Emaki's own settings to their defaults. Your files and app settings stay, and Undo brings everything back.</translation>
+            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
+            <translation>The launcher keeps nothing loaded while it is closed and opens where you left it.</translation>
         </message>
         <message>
             <source>Fixes</source>
             <translation>Fixes</translation>
         </message>
         <message>
-            <source>• Numbers, sizes and dates follow your language
-• Translated buttons show their whole label
-• Every launcher tab stays within reach</source>
-            <translation>• Numbers, sizes and dates follow your language
-• Translated buttons show their whole label
-• Every launcher tab stays within reach</translation>
+            <source>• Settings can be found in the launcher by its name in your language
+• The account description in Settings is no longer cut short</source>
+            <translation>• Settings can be found in the launcher by its name in your language
+• The account description in Settings is no longer cut short</translation>
         </message>
     </context>
     <context>

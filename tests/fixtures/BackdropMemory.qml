@@ -9,7 +9,26 @@ ShellRoot {
     id: root
     property string texture: ""
     property int stage: 0
-    Component.onCompleted: Qt.callLater(() => texture = Quickshell.env("EMAKI_FIXTURE_WALLPAPER"))
+    property var retainedMaterials: []
+    // Only bypass the software-renderer guard here: exercise production image
+    // loading and lifetime without claiming to test GPU rendering.
+    function enableMaterial(surface) {
+        const loaders = Array.from(surface.children).filter(child => "sourceComponent" in child);
+        if (loaders.length !== 1)
+            throw new Error("Expected one glass material Loader");
+        loaders[0].active = Qt.binding(() => surface.wallpaperTexture !== "");
+    }
+    function showGlass(shown) {
+        welcomeWindow.visible = shown;
+        settingsWindow.visible = shown;
+        secondSettingsWindow.visible = shown;
+    }
+    Component.onCompleted: Qt.callLater(() => {
+        enableMaterial(welcome);
+        enableMaterial(settings);
+        enableMaterial(secondSettings);
+        texture = Quickshell.env("EMAKI_FIXTURE_WALLPAPER");
+    })
     component Backdrop: DockBackdrop {
         property bool bandCrop: false
         mode: "wallpaper"
@@ -22,6 +41,42 @@ ShellRoot {
                 this["sharedWallpaper"] = !(bandCrop && "cacheWallpaper" in this);
             if ("cacheWallpaper" in this)
                 this["cacheWallpaper"] = bandCrop;
+        }
+    }
+    Window {
+        id: welcomeWindow
+        visible: false
+        width: 800
+        height: 600
+        WelcomeGlass {
+            id: welcome
+            anchors.fill: parent
+            wallpaperTexture: root.texture
+            dpr: 1
+        }
+    }
+    Window {
+        id: settingsWindow
+        visible: false
+        width: 960
+        height: 720
+        SettingsGlass {
+            id: settings
+            anchors.fill: parent
+            wallpaperTexture: root.texture
+            dpr: 1
+        }
+    }
+    Window {
+        id: secondSettingsWindow
+        visible: false
+        width: 1200
+        height: 800
+        SettingsGlass {
+            id: secondSettings
+            anchors.fill: parent
+            wallpaperTexture: root.texture
+            dpr: 2
         }
     }
     Window {
@@ -64,16 +119,31 @@ ShellRoot {
         running: true
         repeat: true
         onTriggered: {
-            const ready = dock.ready && bar.ready && launcher.ready && clock.ready && system.ready;
-            if (root.stage < 3 && !ready)
+            const ready = dock.ready && bar.ready && launcher.ready && clock.ready && system.ready
+                && welcome.glassReady && settings.ready && secondSettings.ready;
+            if (root.stage < 5 && !ready)
                 throw new Error("Backdrop was not ready");
+            const materials = [welcome.material, settings.loadedMaterial, secondSettings.loadedMaterial];
+            if (root.stage === 0)
+                root.retainedMaterials = materials;
+            if (root.stage > 0 && root.stage < 5
+                    && materials.some((material, index) => material !== root.retainedMaterials[index]))
+                throw new Error("Hidden glass material was recreated");
             console.log("BACKDROP_SAMPLE", root.stage, ready);
+            if (root.stage === 0)
+                root.showGlass(true);
             if (root.stage === 1)
-                root.texture = Quickshell.env("EMAKI_FIXTURE_WALLPAPER_NEXT");
+                root.showGlass(false);
             if (root.stage === 2)
+                root.texture = Quickshell.env("EMAKI_FIXTURE_WALLPAPER_NEXT");
+            if (root.stage === 3)
+                root.showGlass(true);
+            if (root.stage === 4)
                 root.texture = "";
-            if (root.stage === 3) {
-                if (dock.ready || bar.ready || launcher.ready || clock.ready || system.ready)
+            if (root.stage === 5) {
+                if (dock.ready || bar.ready || launcher.ready || clock.ready || system.ready
+                        || welcome.glassReady || settings.ready || secondSettings.ready
+                        || materials.some(material => material !== null))
                     throw new Error("Revoked backdrop remained ready");
                 console.log("BACKDROP_COMPLETE");
                 Qt.quit();

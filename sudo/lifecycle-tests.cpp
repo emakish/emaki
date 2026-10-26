@@ -13,6 +13,7 @@
 #include <limits>
 #include <optional>
 #include <set>
+#include <signal.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <systemd/sd-login.h>
@@ -27,6 +28,7 @@ struct FixtureTimestampCleanup {
   bool initialize(const char *, const char *) { return available; }
   bool healthy() const { return available; }
   bool busy() const { return false; }
+  bool idle() const { return served.empty(); }
   std::size_t pending(uid_t) const { return ended.size(); }
   bool remember(std::uint64_t key, uid_t uid, TimestampParent parent) {
     if (!available || parent.ppid <= 0 || parent.sid <= 0 || !parent.start)
@@ -142,7 +144,16 @@ std::shared_ptr<Process> fixtureInspectPeer(int, pid_t pid, uid_t uid) {
   auto process = fixtureInspectProcess(pid);
   return process && process->euid == uid ? process : nullptr;
 }
-std::uint64_t fixtureClock() { return fixtureTime; }
+// The run loop reads the clock after its stop-flag check and before poll(), so a
+// stop raised here lands exactly in the window the stop pipe closes.
+bool fixtureStopAtClock = false;
+std::uint64_t fixtureClock() {
+  if (fixtureStopAtClock) {
+    fixtureStopAtClock = false;
+    raise(SIGTERM);
+  }
+  return fixtureTime;
+}
 bool fixtureAuthenticationBlocked(int, uid_t, bool *unavailable = nullptr) {
   if (fixtureMarkerDelay)
     usleep(fixtureMarkerDelay);
@@ -470,6 +481,10 @@ struct BrokerFixture {
   static void reporterLimits();
   static void timestampLifecycle();
   static void warningLifecycle();
+  static void wakeSchedule();
+  static void statusRefresh();
+  static void idleLoop();
+  static void stopBeforePoll(bool pipe);
   void run() {
     int ui = connectUi();
     grant(ui, 420);
@@ -1597,6 +1612,202 @@ void BrokerFixture::warningLifecycle() {
   }
   puts("Production broker warning acceptance checks passed");
 }
+void BrokerFixture::wakeSchedule() {
+  // Deadlines arrive rounded up; an expired one polls without waiting.
+  assert(earlierTimeout(-1, 1200) == 1200);
+  assert(earlierTimeout(-1, 0) == 0);
+  assert(earlierTimeout(-1, -40) == 0);
+  assert(earlierTimeout(RevalidationTick, 1200) == RevalidationTick);
+  assert(earlierTimeout(RevalidationTick, 3) == 3);
+  assert(earlierTimeout(-1, std::numeric_limits<long long>::max()) ==
+         std::numeric_limits<int>::max());
+  BrokerFixture f;
+  // Nothing held: no tick, the next descriptor event is the next work.
+  assert(f.broker.pollInputs().timeout == -1);
+  int ui = f.connectUi();
+  assert(f.broker.pollInputs().timeout == RevalidationTick);
+  f.grant(ui, Session);
+  f.broker.drop(ui);
+  assert(f.broker.clients.empty() && f.broker.keys.size() == 1);
+  // A key's owner, session and package are re-read on every tick.
+  assert(f.broker.pollInputs().timeout == RevalidationTick);
+  fixtureDead.insert(4001);
+  f.broker.reap();
+  fixtureDead.clear();
+  assert(f.broker.keys.empty());
+  const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!f.broker.identityChildren.empty()) {
+    // An uncollected helper is reaped only by a later tick.
+    assert(f.broker.pollInputs().timeout == RevalidationTick);
+    assert(std::chrono::steady_clock::now() < limit);
+    f.broker.collectChildren();
+    usleep(1000);
+  }
+  assert(f.broker.pollInputs().timeout == -1);
+  // Timestamp journals wait for worker and retry deadlines.
+  f.broker.timestamps.served[99] = {fixtureUid, {}};
+  assert(f.broker.pollInputs().timeout == RevalidationTick);
+  f.broker.timestamps.served.clear();
+  // A reporter's process, session and silence deadline are re-read too.
+  f.reportingTree();
+  f.matureReporter();
+  assert(f.broker.clients.empty() && !f.broker.reporters.empty());
+  assert(f.broker.pollInputs().timeout == RevalidationTick);
+  fixtureTime += TurnHardCap;
+  f.broker.reap();
+  assert(f.broker.reporters.empty());
+  while (!f.broker.identityChildren.empty()) {
+    assert(std::chrono::steady_clock::now() < limit);
+    f.broker.collectChildren();
+    usleep(1000);
+  }
+  assert(f.broker.pollInputs().timeout == -1);
+  puts("Production broker sleeps without held state and ticks with it");
+}
+void BrokerFixture::statusRefresh() {
+  BrokerFixture f;
+  int ui = f.connectUi();
+  auto quiet = [&] {
+    pollfd item{f.peers.at(ui).get(), POLLIN, 0};
+    return poll(&item, 1, 0) == 0;
+  };
+  auto refreshed = [&](const char *expected) {
+    Packet packet;
+    assert(receivePacket(f.peers.at(ui).get(), packet));
+    assert(packet.header.type == Type::Keys);
+    const std::string body(reinterpret_cast<const char *>(packet.body.data()),
+                           packet.body.size());
+    assert(body == f.broker.status(fixtureUid));
+    assert(body.find(expected) != std::string::npos);
+    assert(quiet());
+  };
+  assert(quiet());
+  // The provider already shows this snapshot.
+  f.broker.refreshStatus();
+  assert(quiet());
+  f.grant(ui, 420);
+  f.broker.refreshStatus();
+  assert(quiet());
+  // A visible countdown changes every whole second.
+  ++fixtureTime;
+  f.broker.refreshStatus();
+  refreshed("\"remainingSeconds\":419");
+  f.broker.refreshStatus();
+  assert(quiet());
+  // A lock is delivered by the next refresh, as before.
+  f.send(ui, Type::Lock);
+  assert(quiet());
+  f.broker.refreshStatus();
+  refreshed("\"promptAvailable\":false");
+  // A heartbeat reply is a snapshot the provider shows.
+  f.send(ui, Type::Unlock);
+  f.drain(ui);
+  f.send(ui, Type::Status);
+  f.drain(ui);
+  f.broker.refreshStatus();
+  assert(quiet());
+  // Request metadata overwrites part of the provider's view: resend in full.
+  f.send(ui, Type::RevokeAll);
+  f.drain(ui);
+  assert(f.request() == Type::Waiting);
+  f.drain(ui);
+  f.broker.refreshStatus();
+  refreshed("\"promptAvailable\":true");
+  // A new provider starts from an unknown view.
+  f.broker.drop(ui);
+  ui = f.connectUi();
+  f.broker.refreshStatus();
+  assert(quiet());
+  f.broker.users.at(fixtureUid).shown.clear();
+  f.broker.refreshStatus();
+  refreshed("\"keys\":[]");
+  puts("Production broker refreshes status only when the provider's view changes");
+}
+void BrokerFixture::idleLoop() {
+  BrokerFixture f;
+  int pair[2];
+  assert(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, pair) == 0);
+  f.broker.listener.reset(pair[0]);
+  Fd peer(pair[1]);
+  const pid_t child = fork();
+  assert(child >= 0);
+  if (!child) {
+    installStopHandlers();
+    _exit(f.broker.run());
+  }
+  // Field 3 counts the times the task was scheduled in, i.e. its wake-ups.
+  auto wakes = [&] {
+    const auto path = "/proc/" + std::to_string(child) + "/schedstat";
+    unsigned long long count = 0;
+    FILE *file = fopen(path.c_str(), "re");
+    if (file && fscanf(file, "%*u %*u %llu", &count) != 1)
+      count = 0;
+    if (file)
+      fclose(file);
+    return count;
+  };
+  usleep(200000);
+  const auto before = wakes();
+  usleep(1000000);
+  const auto after = wakes();
+  const bool alive = waitpid(child, nullptr, WNOHANG) == 0;
+  // A signal must still end an unbounded wait promptly.
+  const auto signalled = std::chrono::steady_clock::now();
+  kill(child, SIGTERM);
+  int status = 0;
+  pid_t reaped = 0;
+  while (!(reaped = waitpid(child, &status, WNOHANG)) &&
+         std::chrono::steady_clock::now() - signalled < std::chrono::seconds(2))
+    usleep(1000);
+  if (!reaped) {
+    kill(child, SIGKILL);
+    waitpid(child, nullptr, 0);
+  }
+  const auto stopped = std::chrono::steady_clock::now() - signalled;
+  std::printf("Idle broker loop: %llu wake-ups in 1 s, stopped in %lld ms\n",
+              after - before,
+              static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(stopped).count()));
+  assert(alive && before > 0);
+  assert(after - before <= 1);
+  assert(reaped == child && WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  assert(stopped < std::chrono::milliseconds(500));
+}
+// SIGTERM after the flag check and before an unbounded poll(): the stop pipe must end
+// the wait; without the pipe the loop must fall back to the bounded revalidation tick.
+void BrokerFixture::stopBeforePoll(bool pipe) {
+  BrokerFixture f;
+  int pair[2];
+  assert(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, pair) == 0);
+  f.broker.listener.reset(pair[0]);
+  Fd peer(pair[1]);
+  const auto started = std::chrono::steady_clock::now();
+  const pid_t child = fork();
+  assert(child >= 0);
+  if (!child) {
+    installStopHandlers();
+    if (!pipe) {
+      close(stopRead);
+      close(stopWrite);
+      stopRead = stopWrite = -1;
+    }
+    fixtureStopAtClock = true;
+    _exit(f.broker.run());
+  }
+  int status = 0;
+  pid_t reaped = 0;
+  while (!(reaped = waitpid(child, &status, WNOHANG)) &&
+         std::chrono::steady_clock::now() - started < std::chrono::seconds(2))
+    usleep(1000);
+  if (!reaped) {
+    kill(child, SIGKILL);
+    waitpid(child, nullptr, 0);
+  }
+  const auto stopped = std::chrono::steady_clock::now() - started;
+  std::printf("Stop before poll (%s): stopped in %lld ms\n", pipe ? "stop pipe" : "no pipe, tick",
+              static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(stopped).count()));
+  assert(reaped == child && WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  assert(stopped < std::chrono::milliseconds(pipe ? 100 : 500));
+}
 }
 int main(int argc, char **argv) {
   assert(fixtureUid != 0);
@@ -1632,4 +1843,9 @@ int main(int argc, char **argv) {
   BrokerFixture::logoutLifecycle();
   BrokerFixture::reporterLimits();
   BrokerFixture::timestampLifecycle();
+  BrokerFixture::wakeSchedule();
+  BrokerFixture::statusRefresh();
+  BrokerFixture::idleLoop();
+  BrokerFixture::stopBeforePoll(true);
+  BrokerFixture::stopBeforePoll(false);
 }

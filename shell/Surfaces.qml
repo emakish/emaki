@@ -411,6 +411,7 @@ Scope {
         screen: surfaces.controller.output
         wallpaperTexture: dockWallpaper.texture
         cacheWallpaper: true
+        damageAwareCapture: true
         screenWidth: surfaces.controller.viewportWidth
         screenHeight: surfaces.controller.viewportHeight
         dpr: surfaces.controller.output?.devicePixelRatio ?? 1

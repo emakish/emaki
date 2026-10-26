@@ -159,15 +159,15 @@ ShellRoot {
             view.Window.window.height = Number(Quickshell.env("WHATSNEW_HEIGHT") || "660");
             controller.window.present();
             wait(100);
-            equal(view.count, 6);
+            equal(view.count, 3);
             if (mode === "render") {
                 const language = Quickshell.env("EMAKI_LANGUAGE");
                 equal(qsTranslate("Shell", "Settings"), ({en: "Settings", es: "Configuración", pt_BR: "Configurações", de: "Einstellungen", fr: "Paramètres", ru: "Настройки"})[language]);
-                for (let page = 0; page < 6; ++page) {
+                for (let page = 0; page < 3; ++page) {
                     equal(view.page, page);
                     wait(300);
                     checkPage(language + "-" + Quickshell.env("WHATSNEW_THEME") + "-" + Quickshell.env("WHATSNEW_SIZE") + "-" + (page + 1));
-                    if (page < 5)
+                    if (page < 2)
                         mouseClick(control("next"));
                 }
                 mouseClick(control("next"));
@@ -199,9 +199,11 @@ ShellRoot {
             controller.window.view.Window.window.height = 660;
             controller.window.view.page = 0;
             wait(300);
-            mouseClick(control("action"));
-            tryCompare(test, "languageOpens", 1);
+            // No 1.0 page offers an action, so the window shows no action button.
+            check(!control("action") || !shown(control("action")), "No page action");
+            keyClick(Qt.Key_Escape);
             tryCompare(controller, "opened", false);
+            equal(test.languageOpens, 0);
         }
     }
 }

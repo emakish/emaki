@@ -30,7 +30,9 @@ requires_night_launcher = unittest.skipUnless(
 CACHE = ROOT / '.cache'
 CACHE.mkdir(exist_ok=True)
 # Records the command; on call STUB_KILL_AT it first ends the QEMU named by STUB_KILL_PIDFILE (the
-# VM going away between two contacts) and leaves STUB_LOG.killed behind. Exits STUB_SSH_EXIT.
+# VM going away between two contacts) and leaves STUB_LOG.killed behind. STUB_KILL_GATE holds
+# that call until the test writes "retry" to stdin, after the replacement listener is ready.
+# Exits STUB_SSH_EXIT.
 STUB_SSH = r'''#!/usr/bin/env bash
 printf "%s\n" "${!#}" >>"$STUB_LOG"
 if [[ -n ${STUB_KILL_AT:-} && $(wc -l <"$STUB_LOG") == "$STUB_KILL_AT" ]]; then
@@ -42,6 +44,9 @@ if [[ -n ${STUB_KILL_AT:-} && $(wc -l <"$STUB_LOG") == "$STUB_KILL_AT" ]]; then
         sleep 0.05
     done
     : >"$STUB_LOG.killed"
+    if [[ -n ${STUB_KILL_GATE:-} ]]; then
+        IFS= read -r -t 120 release && [[ $release == retry ]] || exit 124
+    fi
 fi
 exit "${STUB_SSH_EXIT:-0}"
 '''
@@ -412,24 +417,39 @@ class VmOwnerTests(unittest.TestCase):
 
     def test_wait_ssh_retry_never_reaches_the_vm_that_took_the_port(self):
         # RD1 must 2: the first attempt fails, the VM goes away and another process takes the
-        # port before the retry. The retry must be refused before it connects.
+        # port before the retry. Hold that attempt until the foreign listener is ready instead
+        # of racing iso-wait-ssh.sh's three-second sleep. The retry must refuse before connecting.
         directory = self.vm_dir()
-        self.launch(directory)
+        qemu = self.launch(directory)
         self.wait_owned(directory)
-        wait = subprocess.Popen(['bash', str(VM / 'iso-wait-ssh.sh'), '--dir', str(directory)],
+        # The release gate exports a default SSH port; the fixture's explicit port must win.
+        wait = subprocess.Popen(['bash', str(VM / 'iso-wait-ssh.sh'), '--dir', str(directory),
+                                 '--ssh-port', str(self.port)],
                                 env=self.env(STUB_SSH_EXIT='255', STUB_KILL_AT='1',
+                                             STUB_KILL_GATE='1',
+                                             EMAKI_ISO_SSH_PORT=str(self.port % 65535 + 1),
                                              STUB_KILL_PIDFILE=str(directory / 'qemu.pid')),
-                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
-            self.assertTrue(wait_for(Path(f'{self.ssh_log}.killed').exists))
+            killed = Path(f'{self.ssh_log}.killed')
+            # Startup and ownership scans can be slow under load; this is a watchdog, not the
+            # window in which the port must change hands. Report an early exit immediately.
+            wait_for(lambda: killed.exists() or wait.poll() is not None, seconds=120)
+            if not killed.exists():
+                if wait.poll() is None:
+                    wait.kill()
+                stdout, stderr = wait.communicate(timeout=30)
+                self.fail(f'first SSH attempt did not stop QEMU: {stdout}{stderr}')
+            self.assertEqual(qemu.wait(timeout=120), 0, 'the original QEMU must exit before port takeover')
             with socket.socket() as foreign:
                 foreign.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 foreign.bind(('127.0.0.1', self.port))
                 foreign.listen()
-                _, stderr = wait.communicate(timeout=30)
+                _, stderr = wait.communicate(input='retry\n', timeout=120)
         finally:
             if wait.poll() is None:
                 wait.kill()
+            wait.communicate(timeout=30)
         self.assertNotEqual(wait.returncode, 0)
         self.assertIn('held by PID', stderr)
         self.assertIn('refusing to talk to a VM', stderr)

@@ -27,6 +27,7 @@ Item {
                 id: wallpaperBackdrop
                 mode: "wallpaper"
                 wallpaperTexture: root.wallpaperTexture
+                cacheWallpaper: true
                 screenWidth: material.width
                 screenHeight: material.height
                 dpr: root.dpr

@@ -223,11 +223,9 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                # The image records the new committed tree in emaki-config 0.12.0-2;
-                # its marker pins that config. Installer and apps follow image version 0.12.0.
-                # emaki-nvidia keeps the tested 0.9.0-2 build.
-                self.assertEqual(info['pkgver'], ['0.12.0'] if name in ('emaki', 'emaki-config', 'emaki-apps', 'emaki-installer') else ['0.9.0'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['2'] if name in ('emaki-config', 'emaki-nvidia') else ['1'])
+                # One 1.0.0 source commit for the packages and image; retain signed unchanged inputs.
+                self.assertEqual(info['pkgver'], ['1.0.0'] if name in ('emaki', 'emaki-config', 'emaki-apps', 'emaki-installer') else ['0.9.0'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['2'] if name in ('emaki-config', 'emaki-apps', 'emaki-installer', 'emaki-nvidia', 'emaki-desktop') else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera);
                 # emaki-config also ships Plymouth's password prompt pictures (GPL-2.0-or-later).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
@@ -236,11 +234,11 @@ class MetadataTests(unittest.TestCase):
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         self.assertTrue({'kimageformats', 'libjxl'} <= set(self.recipes['emaki-config']['depends']))
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.12.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '1.0.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.12.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'1.0.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.12.0-2', 'emaki-desktop=0.9.0-1', 'niri-emaki=26.04-28',
+            'emaki-config=1.0.0-2', 'emaki-desktop=0.9.0-2', 'niri-emaki=26.04-30',
             'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.9.0-1', 'emaki-mirrorlist>=0.9.0-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
@@ -370,7 +368,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools', 'qt6-tools', 'gettext', 'cmake', 'gcc', 'pkgconf'})
         self.assertEqual(set(info['checkdepends']), {'niri', 'nodejs'})
         required = {
-            'niri-emaki=26.04-28', 'quickshell-emaki>=0.3.1-13', 'python', 'python-gobject', 'python-pillow',
+            'niri-emaki=26.04-30', 'quickshell-emaki>=0.3.1-14', 'python', 'python-gobject', 'python-pillow',
             'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'udiskie', 'kitty', 'grim', 'gstreamer', 'gst-plugin-pipewire', 'gst-plugins-base',
             'gst-plugins-base-libs', 'gst-plugins-good', 'gst-plugins-bad', 'libglvnd', 'ffmpeg',
             'tesseract', 'tesseract-data-eng', 'tesseract-data-spa', 'tesseract-data-por',
@@ -451,7 +449,7 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('swayidle', desktop['depends'])
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
         niri = self.recipes['niri-emaki']
-        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['28']))
+        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['30']))
         self.assertTrue({'niri>=26.04', 'libdisplay-info.so=3-64', 'libinput.so=10-64',
                          'libseat.so=1-64', 'mesa'} <= set(niri['depends']))
         self.assertIn('export NIRI_BUILD_COMMIT="v$pkgver+emaki.$pkgrel"',
@@ -647,8 +645,8 @@ class MetadataTests(unittest.TestCase):
         for name in ('snapper', 'snap-pac', 'grub-btrfs', 'zram-generator'):
             self.assertNotIn(name, depends)
         # The installer UI imports the shell modules and shaders under /usr/share/emaki/shell, and
-        # Emaki.I18n includes the installer language switch and the 0.12 language choices.
-        self.assertIn('emaki-config>=0.12.0-1', depends)
+        # Emaki.I18n, which emaki-config ships from 0.11 on; its installer-only language switch is required by the rebuilt installer.
+        self.assertIn('emaki-config>=1.0.0-2', depends)
 
     def test_snapguard_recipe_pins_its_public_release(self):
         info = self.recipes['snapguard']
@@ -1661,7 +1659,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.12.0 [channel: unknown]\n')
+                         'emaki 1.0.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1700,7 +1698,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.12.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=1.0.0\nLABEL=beta\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',

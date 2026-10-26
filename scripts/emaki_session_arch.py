@@ -139,6 +139,12 @@ def transaction_running(lock=None):
     return False
 
 
+def state_sources():
+    """What a transaction writes that `transaction_running` and `desktop_id` read: the lock comes
+    and goes with every transaction, and the database gains or loses an entry per package."""
+    return [LOCK, PACKAGES]
+
+
 def desktop_packages(packages=None):
     """Installed name-version-release entries of the packages a session runs from."""
     packages = PACKAGES if packages is None else packages

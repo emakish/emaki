@@ -734,15 +734,15 @@ package_shell-tools() {
         # The marker pins whatever release the active recipe carries.
         release = re.search(r'^pkgrel=(\d+)$', active, re.M).group(1)
         expected = {
-            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki=26.04-28', 'quickshell-emaki>=0.3.1-13', 'kwallet>=6.30', 'systemd>=256',
+            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki=26.04-30', 'quickshell-emaki>=0.3.1-14', 'kwallet>=6.30', 'systemd>=256',
                              # Emaki.I18n is built against Qt 6.12 (0.11).
                              'qt6-declarative>=6.12', 'qt6-base>=6.12.0', 'qt6-base<6.13',
                              'libicui18n.so=78-64', 'libicuuc.so=78-64'},
             'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12'},
-            'emaki-installer': {'archinstall=4.5-1', 'emaki-config>=0.12.0-1'},
+            'emaki-installer': {'archinstall=4.5-1', 'emaki-config>=1.0.0-2'},
             'emaki-sudo-key': {'emaki-config>=0.9.0-1'},
-            'emaki': {'emaki-config=0.12.0-2', 'emaki-desktop=0.9.0-1', 'emaki-keyring>=0.9.0-1',
-                      'emaki-mirrorlist>=0.9.0-1', 'niri-emaki=26.04-28', f'quickshell-emaki=0.3.1-{release}'},
+            'emaki': {'emaki-config=1.0.0-2', 'emaki-desktop=0.9.0-2', 'emaki-keyring>=0.9.0-1',
+                      'emaki-mirrorlist>=0.9.0-1', 'niri-emaki=26.04-30', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},
             'quickshell-emaki': {'libEGL.so', 'libOpenGL.so', 'libgcc_s.so',

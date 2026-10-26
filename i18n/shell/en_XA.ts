@@ -8064,8 +8064,8 @@ Save your work first.</source>
             <translation>[Ŵĥàţ'š ñéŵ··]</translation>
         </message>
         <message>
-            <source>What's new in Emaki 0.12</source>
-            <translation>[Ŵĥàţ'š ñéŵ îñ Éɱàķî 0.12·······]</translation>
+            <source>What's new in Emaki 1.0</source>
+            <translation>[Ŵĥàţ'š ñéŵ îñ Éɱàķî 1.0·······]</translation>
         </message>
         <message>
             <source>Close what's new</source>
@@ -8084,56 +8084,30 @@ Save your work first.</source>
             <translation>[Çöûļð ñöţ šàṽé ûþðàţé þŕöĝŕéšš. Ţĥîš šçŕééñ ɱàÿ àþþéàŕ àĝàîñ ñéẋţ ļöĝîñ.························]</translation>
         </message>
         <message>
-            <source>Emaki speaks German, French and Russian</source>
-            <translation>[Éɱàķî šþéàķš Ĝéŕɱàñ, Ƒŕéñçĥ àñð Ŕûššîàñ············]</translation>
+            <source>Emaki 1.0, the first beta</source>
+            <translation>[Éɱàķî 1.0, ţĥé ƒîŕšţ ƀéţà·······]</translation>
         </message>
         <message>
-            <source>German, French and Russian are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time.</source>
-            <translation>[Ĝéŕɱàñ, Ƒŕéñçĥ àñð Ŕûššîàñ àŕé àṽàîļàƀļé àçŕöšš ţĥé ðéšķţöþ, Þŕöĝŕàɱš &amp; Ûþðàţéš, ţĥé îñšţàļļéŕ àñð Ñöţéš. Çĥööšé ÿöûŕ ļàñĝûàĝé îñ Šéţţîñĝš › Ŕéĝîöñ &amp; Ţîɱé.·····················································]</translation>
+            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
+            <translation>[Éɱàķî îš ŕéàðÿ ƒöŕ éṽéŕÿðàÿ ûšé. Éṽéŕÿ ûþðàţé çàñ šţîļļ ƀé ûñðöñé ƒŕöɱ ţĥé ƀööţ ɱéñû, àñð öñ à çöɱþûţéŕ ŵé ĥàṽéñ'ţ ţéšţéð šöɱéţĥîñĝ çàñ šţîļļ ƀŕéàķ: ţéļļ ûš ŵîţĥ Ŕéþöŕţ à þŕöƀļéɱ.·····························································]</translation>
         </message>
         <message>
-            <source>A command menu and emoji</source>
-            <translation>[À çöɱɱàñð ɱéñû àñð éɱöĵî·······]</translation>
+            <source>A lighter launcher</source>
+            <translation>[À ļîĝĥţéŕ ļàûñçĥéŕ·····]</translation>
         </message>
         <message>
-            <source>Super+K opens every system action in the launcher: settings pages, appearance, Night Light, restart and more. Super+; finds an emoji by name and copies it.</source>
-            <translation>[Šûþéŕ+Ķ öþéñš éṽéŕÿ šÿšţéɱ àçţîöñ îñ ţĥé ļàûñçĥéŕ: šéţţîñĝš þàĝéš, àþþéàŕàñçé, Ñîĝĥţ Ļîĝĥţ, ŕéšţàŕţ àñð ɱöŕé. Šûþéŕ+; ƒîñðš àñ éɱöĵî ƀÿ ñàɱé àñð çöþîéš îţ.·····················································]</translation>
-        </message>
-        <message>
-            <source>Copy text and QR codes from the screen</source>
-            <translation>[Çöþÿ ţéẋţ àñð ǪŔ çöðéš ƒŕöɱ ţĥé šçŕééñ············]</translation>
-        </message>
-        <message>
-            <source>In Capture, choose Text or QR code and select an area: Emaki copies what it reads. Recognition runs on your computer.</source>
-            <translation>[Îñ Çàþţûŕé, çĥööšé Ţéẋţ öŕ ǪŔ çöðé àñð šéļéçţ àñ àŕéà: Éɱàķî çöþîéš ŵĥàţ îţ ŕéàðš. Ŕéçöĝñîţîöñ ŕûñš öñ ÿöûŕ çöɱþûţéŕ.·······································]</translation>
-        </message>
-        <message>
-            <source>Developer kits and websites as apps</source>
-            <translation>[Ðéṽéļöþéŕ ķîţš àñð ŵéƀšîţéš àš àþþš···········]</translation>
-        </message>
-        <message>
-            <source>Programs &amp; Updates installs Python, Node.js, Rust, Go and Docker in one step, and turns a website into its own app in Firefox.</source>
-            <translation>[Þŕöĝŕàɱš &amp; Ûþðàţéš îñšţàļļš Þÿţĥöñ, Ñöðé.ĵš, Ŕûšţ, Ĝö àñð Ðöçķéŕ îñ öñé šţéþ, àñð ţûŕñš à ŵéƀšîţé îñţö îţš öŵñ àþþ îñ Ƒîŕéƒöẋ.···········································]</translation>
-        </message>
-        <message>
-            <source>Reset Emaki's settings</source>
-            <translation>[Ŕéšéţ Éɱàķî'š šéţţîñĝš······]</translation>
-        </message>
-        <message>
-            <source>Settings › Updates &amp; Recovery returns Emaki's own settings to their defaults. Your files and app settings stay, and Undo brings everything back.</source>
-            <translation>[Šéţţîñĝš › Ûþðàţéš &amp; Ŕéçöṽéŕÿ ŕéţûŕñš Éɱàķî'š öŵñ šéţţîñĝš ţö ţĥéîŕ ðéƒàûļţš. Ÿöûŕ ƒîļéš àñð àþþ šéţţîñĝš šţàÿ, àñð Ûñðö ƀŕîñĝš éṽéŕÿţĥîñĝ ƀàçķ.·················································]</translation>
+            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
+            <translation>[Ţĥé ļàûñçĥéŕ ķééþš ñöţĥîñĝ ļöàðéð ŵĥîļé îţ îš çļöšéð àñð öþéñš ŵĥéŕé ÿöû ļéƒţ îţ.···························]</translation>
         </message>
         <message>
             <source>Fixes</source>
             <translation>[Ƒîẋéš]</translation>
         </message>
         <message>
-            <source>• Numbers, sizes and dates follow your language
-• Translated buttons show their whole label
-• Every launcher tab stays within reach</source>
-            <translation>[• Ñûɱƀéŕš, šîžéš àñð ðàţéš ƒöļļöŵ ÿöûŕ ļàñĝûàĝé
-• Ţŕàñšļàţéð ƀûţţöñš šĥöŵ ţĥéîŕ ŵĥöļé ļàƀéļ
-• Éṽéŕÿ ļàûñçĥéŕ ţàƀ šţàÿš ŵîţĥîñ ŕéàçĥ············································]</translation>
+            <source>• Settings can be found in the launcher by its name in your language
+• The account description in Settings is no longer cut short</source>
+            <translation>[• Šéţţîñĝš çàñ ƀé ƒöûñð îñ ţĥé ļàûñçĥéŕ ƀÿ îţš ñàɱé îñ ÿöûŕ ļàñĝûàĝé
+• Ţĥé àççöûñţ ðéšçŕîþţîöñ îñ Šéţţîñĝš îš ñö ļöñĝéŕ çûţ šĥöŕţ············································]</translation>
         </message>
     </context>
     <context>

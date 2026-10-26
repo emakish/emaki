@@ -31,9 +31,9 @@ settle = re.search(r'readonly property int settleFrames: (\d+)', source)
 need(settle and int(settle.group(1)) >= 2, 'settleFrames missing or below 2')
 need(re.search(r'captureSettled: capture\.hasContent && contentFrames >= settleFrames', source),
      'captureSettled does not wait for settleFrames after content')
-need(re.search(r'onHasContentChanged: backdrop\.contentFrames = 0', source),
+need(re.search(r'onHasContentChanged:\s*(?:\{\s*)?backdrop\.contentFrames = 0', source),
      'the frame count does not restart with new capture content')
-need(re.search(r'onActiveChanged: contentFrames = 0', source),
+need(re.search(r'onActiveChanged:\s*(?:\{\s*)?contentFrames = 0', source),
      'the frame count does not restart when the backdrop is activated again')
 counter = re.search(r'FrameAnimation \{\s*running: ([^\n]*)\n\s*onTriggered: \+\+backdrop\.contentFrames', source)
 need(counter and 'capture.hasContent' in counter.group(1) and 'contentFrames < backdrop.settleFrames' in counter.group(1),

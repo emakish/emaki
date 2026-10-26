@@ -8080,8 +8080,30 @@ Salve seu trabalho primeiro.</translation>
             <translation>Novidades</translation>
         </message>
         <message>
-            <source>What's new in Emaki 0.12</source>
-            <translation>Novidades do Emaki 0.12</translation>
+            <source>What's new in Emaki 1.0</source>
+            <translation>Novidades do Emaki 1.0</translation>
+        </message>
+        <message>
+            <source>Emaki 1.0, the first beta</source>
+            <translation>Emaki 1.0, a primeira beta</translation>
+        </message>
+        <message>
+            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
+            <translation>O Emaki está pronto para o uso diário. Qualquer atualização ainda pode ser desfeita pelo menu de inicialização, e em um computador que não testamos algo ainda pode dar errado: avise-nos em Relatar um problema.</translation>
+        </message>
+        <message>
+            <source>A lighter launcher</source>
+            <translation>Um iniciador mais leve</translation>
+        </message>
+        <message>
+            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
+            <translation>O iniciador não mantém nada carregado enquanto está fechado e abre onde você parou.</translation>
+        </message>
+        <message>
+            <source>• Settings can be found in the launcher by its name in your language
+• The account description in Settings is no longer cut short</source>
+            <translation>• As Configurações podem ser encontradas no iniciador pelo nome no seu idioma
+• A descrição da conta em Configurações não é mais cortada</translation>
         </message>
         <message>
             <source>Close what's new</source>
@@ -8096,56 +8118,8 @@ Salve seu trabalho primeiro.</translation>
             <translation>Alterar idioma</translation>
         </message>
         <message>
-            <source>Emaki speaks German, French and Russian</source>
-            <translation>O Emaki fala alemão, francês e russo</translation>
-        </message>
-        <message>
-            <source>German, French and Russian are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time.</source>
-            <translation>O alemão, o francês e o russo estão disponíveis em toda a área de trabalho, em Programas e atualizações, no instalador e no Notas. Escolha seu idioma em Configurações › Região e hora.</translation>
-        </message>
-        <message>
-            <source>A command menu and emoji</source>
-            <translation>Um menu de comandos e emojis</translation>
-        </message>
-        <message>
-            <source>Super+K opens every system action in the launcher: settings pages, appearance, Night Light, restart and more. Super+; finds an emoji by name and copies it.</source>
-            <translation>Super+K abre todas as ações do sistema no iniciador: páginas de configurações, aparência, Luz noturna, reiniciar e muito mais. Super+; busca um emoji pelo nome e o copia.</translation>
-        </message>
-        <message>
-            <source>Copy text and QR codes from the screen</source>
-            <translation>Copie texto e códigos QR da tela</translation>
-        </message>
-        <message>
-            <source>In Capture, choose Text or QR code and select an area: Emaki copies what it reads. Recognition runs on your computer.</source>
-            <translation>Em Capturar, escolha Texto ou Código QR e selecione uma área: o Emaki copia o que lê. O reconhecimento é feito no seu computador.</translation>
-        </message>
-        <message>
-            <source>Developer kits and websites as apps</source>
-            <translation>Kits de desenvolvimento e sites como aplicativos</translation>
-        </message>
-        <message>
-            <source>Programs &amp; Updates installs Python, Node.js, Rust, Go and Docker in one step, and turns a website into its own app in Firefox.</source>
-            <translation>Programas e atualizações instala Python, Node.js, Rust, Go e Docker em uma só etapa e transforma um site em um aplicativo próprio no Firefox.</translation>
-        </message>
-        <message>
-            <source>Reset Emaki's settings</source>
-            <translation>Redefina as configurações do Emaki</translation>
-        </message>
-        <message>
-            <source>Settings › Updates &amp; Recovery returns Emaki's own settings to their defaults. Your files and app settings stay, and Undo brings everything back.</source>
-            <translation>Configurações › Atualizações e recuperação restaura os valores padrão das configurações próprias do Emaki. Seus arquivos e as configurações dos aplicativos são mantidos, e Desfazer traz tudo de volta.</translation>
-        </message>
-        <message>
             <source>Fixes</source>
             <translation>Correções</translation>
-        </message>
-        <message>
-            <source>• Numbers, sizes and dates follow your language
-• Translated buttons show their whole label
-• Every launcher tab stays within reach</source>
-            <translation>• Números, tamanhos e datas seguem seu idioma
-• Os botões traduzidos mostram o texto completo
-• Todas as abas do iniciador ficam ao alcance</translation>
         </message>
     </context>
 </TS>

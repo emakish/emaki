@@ -18,7 +18,8 @@ pub const IPC_RELEASE: &str = "26.04";
 pub const SCHEMA_VERSION: u32 = 1;
 const OUTPUT_POLL: Duration = Duration::from_secs(1);
 const RETRY: Duration = Duration::from_millis(500);
-const TICK: Duration = Duration::from_millis(100);
+// Keep the existing output/event batching only when an output change needs publishing.
+const OUTPUT_EVENT_WAIT: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -236,16 +237,19 @@ impl Session {
     }
 
     fn advance(&mut self, path: &Path, timeout: Duration) -> Result<(), Failure> {
+        let mut outputs_changed = false;
         // 26.04 has no OutputsChanged event. Poll separately; do not pretend this
         // and the event-stream workspace state form one atomic monitor snapshot.
         if Instant::now() >= self.next_outputs {
             let deadline = Instant::now() + timeout;
             let mut socket = connect(path, deadline)?;
-            self.model.outputs = read_outputs(&mut socket, deadline)?;
+            let outputs = read_outputs(&mut socket, deadline)?;
+            outputs_changed = outputs != self.model.outputs;
+            self.model.outputs = outputs;
             self.model.refresh_links();
             self.next_outputs = Instant::now() + OUTPUT_POLL;
         }
-        let deadline = (Instant::now() + TICK).min(self.next_outputs);
+        let deadline = event_deadline(Instant::now(), self.next_outputs, outputs_changed);
         if let Some(bytes) = self.lines.next(deadline)? {
             self.model.apply(parse_event(&bytes)?)?;
         }
@@ -269,7 +273,8 @@ fn snapshot_at(path: Option<PathBuf>, timeout: Duration) -> Observation {
 }
 
 /// Poll from a single consumer; no background threads, unbounded queues or filesystem writes.
-/// Each call may wait for a tick, or up to the configured timeout during resynchronization.
+/// Each call may wait until the next output check, or up to the configured timeout
+/// during resynchronization. Stream events and disconnects interrupt the idle wait.
 pub struct Observer {
     path: Option<PathBuf>,
     timeout: Duration,
@@ -313,11 +318,7 @@ impl Observer {
             }
         } else {
             if Instant::now() < self.next_retry {
-                std::thread::sleep(
-                    self.next_retry
-                        .saturating_duration_since(Instant::now())
-                        .min(TICK),
-                );
+                std::thread::sleep(self.next_retry.saturating_duration_since(Instant::now()));
                 return None;
             }
             match self
@@ -352,5 +353,50 @@ impl Observer {
         self.last.connection = connection;
         self.last.model = model;
         Some(self.last.clone())
+    }
+}
+
+fn event_deadline(now: Instant, next_outputs: Instant, outputs_changed: bool) -> Instant {
+    if outputs_changed {
+        // Previously an output read and the following event were emitted together.
+        // Preserve that window: publishing immediately could expose a transient model
+        // that existing consumers never saw. Unchanged outputs need no such wait.
+        (now + OUTPUT_EVENT_WAIT).min(next_outputs)
+    } else {
+        next_outputs
+    }
+}
+
+#[cfg(test)]
+mod wait_tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_outputs_wait_until_the_existing_poll_deadline() {
+        let now = Instant::now();
+        let next_outputs = now + OUTPUT_POLL;
+        for elapsed in [0, 250, 700, 950] {
+            assert_eq!(
+                event_deadline(now + Duration::from_millis(elapsed), next_outputs, false),
+                next_outputs,
+                "an unchanged model must not schedule an intermediate wakeup"
+            );
+        }
+    }
+
+    #[test]
+    fn changed_outputs_keep_the_existing_event_batching_window() {
+        let now = Instant::now();
+        assert_eq!(
+            event_deadline(now, now + OUTPUT_POLL, true),
+            now + Duration::from_millis(100)
+        );
+    }
+
+    #[test]
+    fn event_batching_never_postpones_an_output_check() {
+        let now = Instant::now();
+        let next_outputs = now + Duration::from_millis(20);
+        assert_eq!(event_deadline(now, next_outputs, true), next_outputs);
     }
 }

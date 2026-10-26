@@ -23,6 +23,8 @@ public:
   bool drain(std::chrono::milliseconds timeout);
   bool healthy() const;
   bool busy() const;
+  // True when poll() has nothing to do until remember() records a parent.
+  bool idle() const;
   std::size_t pending(uid_t uid) const;
 };
 } // namespace emaki::sudo_channel

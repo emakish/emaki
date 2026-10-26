@@ -27,8 +27,8 @@ REVIEWED = {
         '0b200bab287266d2d03ed090abafba62de33b24ec838d13ef734136d959795b4',
         'startup safety capture, exact packaged identity and missing-bind recovery (B2b2)'),
     'src/trusted_client.rs': (
-        'c686a83241bba6c26355b3796e3514513ca0c268ac5466306d4491e1c69d68ec',
-        'private connection, immutable launch environment, bounded IPC heartbeat restart and the shell PID on its casts and one-shot login delivery (A6, N81S, FX9, FX19)'),
+        'b57bb2eac0ac97ccf04ebcd8391aeb7d17377e4c7be03dd042d8800ad95376de',
+        'private connection, immutable launch environment, bounded in-process Quickshell IPC heartbeat restart and the shell PID on its casts and one-shot login delivery (A6, N81S, FX9, FX19)'),
     'src/trusted_prompt.rs': (
         'd1ee11d459499068f9d93efae92c93014f896dc92238f3a8f8fd81d11b6643b5',
         'trusted role input boundary, lock gating and proof rendering (A6)'),

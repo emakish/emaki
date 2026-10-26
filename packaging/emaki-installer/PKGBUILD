@@ -4,15 +4,15 @@
 # shellcheck disable=SC2034,SC2154
 # Build from the local checkout; no source downloads or disk access in check().
 pkgname=emaki-installer
-pkgver=0.12.0
-pkgrel=1
+pkgver=1.0.0
+pkgrel=2
 pkgdesc='Emaki live ISO installation worker and protocol CLI'
 arch=('any')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later' 'ODbL-1.0' 'Bitstream-Vera')
 depends=(python archinstall=4.5-1 arch-install-scripts btrfs-progs dosfstools
          e2fsprogs grub efibootmgr device-mapper
-         ntfs-3g ntfsprogs gptfdisk parted util-linux os-prober quickshell-emaki 'emaki-config>=0.12.0-1'
+         ntfs-3g ntfsprogs gptfdisk parted util-linux os-prober quickshell-emaki 'emaki-config>=1.0.0-2'
          hicolor-icon-theme)
 makedepends=('git' 'gettext' 'qt6-tools' 'pkgconf')
 source=()

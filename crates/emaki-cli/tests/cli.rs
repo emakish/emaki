@@ -289,6 +289,131 @@ fn niri_watch_flushes_status_lines_before_exit() {
 
 #[cfg(unix)]
 #[test]
+fn niri_watch_exits_on_sigterm_with_an_idle_event_stream() {
+    use serde_json::json;
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::{Child, ExitStatus, Stdio};
+    use std::time::{Duration, Instant};
+
+    fn wait_until(child: &mut Child, deadline: Instant) -> Option<ExitStatus> {
+        loop {
+            if let Some(status) = child.try_wait().expect("inspect owned child") {
+                return Some(status);
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    struct OwnedChild(Child);
+    impl Drop for OwnedChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = wait_until(&mut self.0, Instant::now() + Duration::from_secs(2));
+        }
+    }
+    struct SocketDirectory(std::path::PathBuf);
+    impl Drop for SocketDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(self.0.join("n.sock"));
+            let _ = std::fs::remove_dir(&self.0);
+        }
+    }
+
+    let root = SocketDirectory(socket_dir::short_socket_dir());
+    let path = root.0.join("n.sock");
+    let listener = UnixListener::bind(&path).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    // A socket-backed stdout gives reads a deadline without a reader thread.
+    let (stdout, child_stdout) = UnixStream::pair().unwrap();
+    stdout
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let _spawn = CHILD_SPAWN.lock().unwrap();
+    let mut child = OwnedChild(
+        Command::new(env!("CARGO_BIN_EXE_emaki"))
+            .args(["niri", "watch", "--json"])
+            .env_clear()
+            .env("NIRI_SOCKET", &path)
+            .stdout(Stdio::from(OwnedFd::from(child_stdout)))
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let stream = loop {
+        match listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(Instant::now() < deadline, "watch never connected");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("{error}"),
+        }
+    };
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    stream
+        .set_write_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut server = BufReader::new(stream);
+    for (expected, reply) in [
+        ("Version", json!({"Ok":{"Version":"26.04 (fixture)"}})),
+        ("Outputs", json!({"Ok":{"Outputs":{}}})),
+        (
+            "OverviewState",
+            json!({"Ok":{"OverviewState":{"is_open":false}}}),
+        ),
+        ("EventStream", json!({"Ok":"Handled"})),
+    ] {
+        let mut line = String::new();
+        server.read_line(&mut line).unwrap();
+        assert_eq!(serde_json::from_str::<String>(&line).unwrap(), expected);
+        writeln!(server.get_mut(), "{reply}").unwrap();
+    }
+    let mut events = niri_initial_events_without_casts(false);
+    events.push(json!({"ConfigLoaded":{"failed":false}}));
+    events.push(json!({"CastsChanged":{"casts":[]}}));
+    for event in events {
+        writeln!(server.get_mut(), "{event}").unwrap();
+    }
+    let mut stdout = BufReader::new(stdout);
+    for expected in ["connecting", "connected"] {
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        let view: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(view["connection"]["status"], expected, "{view}");
+        if expected == "connected" {
+            assert!(view["model"].is_object(), "{view}");
+        }
+    }
+    // Leave the subscription open and silent long enough to enter its idle read.
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(child.0.try_wait().unwrap().is_none());
+    let deadline = Instant::now() + Duration::from_millis(250);
+    let mut signal = OwnedChild(
+        Command::new("kill")
+            .args(["-TERM", &child.0.id().to_string()])
+            .spawn()
+            .unwrap(),
+    );
+    assert!(wait_until(&mut signal.0, deadline).unwrap().success());
+    let status = wait_until(&mut child.0, deadline)
+        .expect("idle watch must exit within 250 milliseconds of SIGTERM");
+    assert!(Instant::now() < deadline, "SIGTERM exit exceeded 250 ms");
+    assert_eq!(status.signal(), Some(15), "watch must terminate on SIGTERM");
+    // Keep the server alive until after exit: EOF must not wake the watcher.
+    drop(server);
+}
+
+#[cfg(unix)]
+#[test]
 fn non_utf8_argument_is_a_usage_error_not_a_panic() {
     let _spawn = CHILD_SPAWN.lock().unwrap();
     use std::ffi::OsString;

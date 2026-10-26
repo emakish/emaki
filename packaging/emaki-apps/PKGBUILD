@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-apps
-pkgver=0.12.0
-pkgrel=1
+pkgver=1.0.0
+pkgrel=2
 pkgdesc='Emaki Rich application set and multimedia codecs'
 arch=('any')
 url='https://github.com/emakish/emaki'

@@ -7755,8 +7755,30 @@ Enregistrez d’abord votre travail.</translation>
             <translation>Nouveautés</translation>
         </message>
         <message>
-            <source>What's new in Emaki 0.12</source>
-            <translation>Nouveautés d’Emaki 0.12</translation>
+            <source>What's new in Emaki 1.0</source>
+            <translation>Nouveautés d’Emaki 1.0</translation>
+        </message>
+        <message>
+            <source>Emaki 1.0, the first beta</source>
+            <translation>Emaki 1.0, la première bêta</translation>
+        </message>
+        <message>
+            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
+            <translation>Emaki est prêt pour un usage quotidien. Chaque mise à jour peut toujours être annulée depuis le menu de démarrage, et sur un ordinateur que nous n’avons pas testé, quelque chose peut encore ne pas fonctionner : prévenez-nous avec « Signaler un problème ».</translation>
+        </message>
+        <message>
+            <source>A lighter launcher</source>
+            <translation>Un lanceur plus léger</translation>
+        </message>
+        <message>
+            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
+            <translation>Le lanceur ne garde rien en mémoire tant qu’il est fermé et s’ouvre là où vous l’aviez laissé.</translation>
+        </message>
+        <message>
+            <source>• Settings can be found in the launcher by its name in your language
+• The account description in Settings is no longer cut short</source>
+            <translation>• Les Paramètres se trouvent dans le lanceur sous leur nom dans votre langue
+• La description du compte dans les Paramètres n’est plus tronquée</translation>
         </message>
         <message>
             <source>Close what's new</source>
@@ -7775,56 +7797,8 @@ Enregistrez d’abord votre travail.</translation>
             <translation>Impossible d’enregistrer l’avancement de la mise à jour. Cet écran pourrait réapparaître à la prochaine connexion.</translation>
         </message>
         <message>
-            <source>Emaki speaks German, French and Russian</source>
-            <translation>Emaki parle allemand, français et russe</translation>
-        </message>
-        <message>
-            <source>German, French and Russian are available across the desktop, Programs &amp; Updates, the installer and Notes. Choose your language in Settings › Region &amp; Time.</source>
-            <translation>L’allemand, le français et le russe sont disponibles dans tout le bureau, Programmes et mises à jour, le programme d’installation et Notes. Choisissez votre langue dans Paramètres › Région et heure.</translation>
-        </message>
-        <message>
-            <source>A command menu and emoji</source>
-            <translation>Un menu de commandes et des émojis</translation>
-        </message>
-        <message>
-            <source>Super+K opens every system action in the launcher: settings pages, appearance, Night Light, restart and more. Super+; finds an emoji by name and copies it.</source>
-            <translation>Super+K ouvre toutes les actions du système dans le lanceur : pages des paramètres, apparence, éclairage nocturne, redémarrage et plus encore. Super+; trouve un émoji par son nom et le copie.</translation>
-        </message>
-        <message>
-            <source>Copy text and QR codes from the screen</source>
-            <translation>Copier du texte et des codes QR depuis l’écran</translation>
-        </message>
-        <message>
-            <source>In Capture, choose Text or QR code and select an area: Emaki copies what it reads. Recognition runs on your computer.</source>
-            <translation>Dans Capture, choisissez Texte ou Code QR et sélectionnez une zone : Emaki copie ce qu’il reconnaît. La reconnaissance s’effectue sur votre ordinateur.</translation>
-        </message>
-        <message>
-            <source>Developer kits and websites as apps</source>
-            <translation>Des kits de développement et des sites web comme applications</translation>
-        </message>
-        <message>
-            <source>Programs &amp; Updates installs Python, Node.js, Rust, Go and Docker in one step, and turns a website into its own app in Firefox.</source>
-            <translation>Programmes et mises à jour installe Python, Node.js, Rust, Go et Docker en une seule étape et transforme un site web en application à part entière dans Firefox.</translation>
-        </message>
-        <message>
-            <source>Reset Emaki's settings</source>
-            <translation>Réinitialiser les paramètres d’Emaki</translation>
-        </message>
-        <message>
-            <source>Settings › Updates &amp; Recovery returns Emaki's own settings to their defaults. Your files and app settings stay, and Undo brings everything back.</source>
-            <translation>Paramètres › Mises à jour et récupération rétablit les paramètres par défaut d’Emaki. Vos fichiers et les paramètres de vos applications sont conservés, et « Annuler la modification » permet de tout restaurer.</translation>
-        </message>
-        <message>
             <source>Fixes</source>
             <translation>Correctifs</translation>
-        </message>
-        <message>
-            <source>• Numbers, sizes and dates follow your language
-• Translated buttons show their whole label
-• Every launcher tab stays within reach</source>
-            <translation>• Les nombres, les tailles et les dates suivent votre langue
-• Les boutons traduits affichent leur libellé en entier
-• Tous les onglets du lanceur restent accessibles</translation>
         </message>
     </context>
     <context>

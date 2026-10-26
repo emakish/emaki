@@ -18,6 +18,12 @@ ShellRoot {
         id: service
         binary: ""
     }
+    // A short catalog: the first 24 of the fixture's apps, four rows that all fit once the
+    // launcher is as tall as it asks to be.
+    AppCatalog {
+        id: shortCatalog
+        readonly property var entries: DesktopEntries.applications.values.filter(entry => shown(entry)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 24)
+    }
     Window {
         id: window
         width: 740
@@ -43,6 +49,15 @@ ShellRoot {
                 niri: service
                 onDismissed: window.dismissals++
                 onSettingsRequested: window.settingsOpened++
+            }
+        }
+        Component {
+            id: shortLauncher
+            LauncherBody {
+                width: 700
+                height: 350
+                niri: service
+                sharedCatalog: shortCatalog
             }
         }
         // A launcher made the way the shell makes it at start: closed, opened later.
@@ -282,6 +297,154 @@ ShellRoot {
                 console.log("LAUNCHER_FIRST_OPEN_MODE " + JSON.stringify(drop));
                 check(Math.abs(r.x - p.x) < .5 && Math.abs(r.y - p.y) < .5 && Math.abs(r.width - tab.width) < .5 && Math.abs(r.height - tab.height) < .5, "mode rect " + r + " is the Apps tab " + p.x + "," + p.y + " " + tab.width + "x" + tab.height);
                 check(Math.abs(drop.x - (p.x - 4)) <= 1 && Math.abs(drop.y - (p.y - 4)) <= 1 && Math.abs(drop.width - (tab.width + 8)) <= 1 && Math.abs(drop.height - (tab.height + 8)) <= 1, "mode drop " + JSON.stringify(drop) + " stands on the Apps tab");
+            }
+            // A launcher off the screen holds no app tiles (each with its icons); showing it
+            // builds them, hiding it releases them (1.0 lightness).
+            function test_closed_launcher_builds_no_tiles() {
+                const fresh = createTemporaryObject(freshLauncher, stage, {
+                    expansion: 0,
+                    opened: false,
+                    visible: false
+                });
+                verify(fresh !== null, "fresh launcher");
+                tryVerify(() => fresh.results.length >= 70, 3000, "apps loaded while closed");
+                const grid = findChild(fresh, "launcher-grid");
+                verify(grid !== null, "app grid");
+                wait(100);
+                equal(grid.count, 0);
+                fresh.visible = true;
+                fresh.opened = true;
+                fresh.expansion = 1;
+                tryVerify(() => grid.count > 0 && grid.count === fresh.results.length - fresh.frequentCount, 3000, "tiles built on open");
+                // Scrolled down, closed the way ShellScene's closeTimer closes it (hidden,
+                // then reset) and reopened: the grid is where the person left it.
+                wait(300); // the opening reveal of the selection settles first
+                grid.contentY = grid.originY + grid.contentHeight - grid.height;
+                wait(50);
+                const scrolled = grid.contentY;
+                verify(scrolled > 0, "grid scrolled");
+                fresh.opened = false;
+                fresh.expansion = 0;
+                fresh.visible = false;
+                fresh.reset();
+                tryVerify(() => grid.count === 0, 2000, "tiles released when hidden");
+                fresh.visible = true;
+                fresh.opened = true;
+                fresh.expansion = 1;
+                tryVerify(() => grid.count > 0, 2000, "tiles rebuilt on reopen");
+                wait(50);
+                equal(grid.contentY, scrolled, "scroll position kept across close and reopen");
+                // A grid at the top stays at the top.
+                grid.contentY = grid.originY;
+                wait(50);
+                const top = grid.contentY;
+                fresh.visible = false;
+                fresh.reset();
+                fresh.visible = true;
+                tryVerify(() => grid.count > 0, 2000, "tiles rebuilt again");
+                wait(50);
+                equal(grid.contentY, top, "top kept");
+            }
+            // Only the grid that was hidden gets its scroll back. A reset search, another
+            // mode or a search typed at once opens at the top, as changed results always did.
+            function openGrid() {
+                const fresh = createTemporaryObject(freshLauncher, stage, {
+                    expansion: 1,
+                    opened: true
+                });
+                verify(fresh !== null, "fresh launcher");
+                tryVerify(() => fresh.results.length >= 70, 3000, "apps loaded");
+                const grid = findChild(fresh, "launcher-grid");
+                verify(grid !== null, "app grid");
+                tryVerify(() => grid.count > 0, 3000, "tiles built");
+                wait(300); // the opening reveal of the selection settles first
+                return [fresh, grid];
+            }
+            // ShellScene's close (hidden, then reset) and a reopen.
+            function closeAndReopen(fresh, grid) {
+                fresh.opened = false;
+                fresh.expansion = 0;
+                fresh.visible = false;
+                fresh.reset();
+                tryVerify(() => grid.count === 0, 2000, "tiles released when hidden");
+                fresh.visible = true;
+                fresh.opened = true;
+                fresh.expansion = 1;
+                tryVerify(() => grid.count > 0, 2000, "tiles rebuilt on reopen");
+                wait(50);
+            }
+            function test_reopened_grid_after_a_reset_search_is_at_the_top() {
+                const [fresh, grid] = openGrid();
+                fresh.setQuery("Fixture");
+                tryVerify(() => grid.count > 0, 2000, "search results");
+                wait(50);
+                grid.contentY = Math.min(300, grid.originY + grid.contentHeight - grid.height);
+                wait(50);
+                verify(grid.contentY > grid.originY, "search grid scrolled");
+                closeAndReopen(fresh, grid);
+                compare(fresh.queryText, "");
+                equal(grid.contentY, grid.originY, "a reset search reopens All at the top");
+            }
+            function test_reopened_grid_after_another_mode_stays_at_the_top() {
+                const [fresh, grid] = openGrid();
+                grid.contentY = 300;
+                wait(50);
+                verify(grid.contentY > grid.originY, "All scrolled");
+                verify(fresh.setMode("Windows"), "Windows mode");
+                wait(50);
+                closeAndReopen(fresh, grid);
+                equal(grid.contentY, grid.originY, "Apps after another mode opens at the top");
+                closeAndReopen(fresh, grid);
+                equal(grid.contentY, grid.originY, "a grid left at the top stays at the top");
+            }
+            function test_search_typed_on_reopen_cancels_the_restore() {
+                const [fresh, grid] = openGrid();
+                grid.contentY = 300;
+                wait(50);
+                verify(grid.contentY > grid.originY, "All scrolled");
+                fresh.visible = false;
+                tryVerify(() => grid.count === 0, 2000, "tiles released");
+                fresh.visible = true;
+                fresh.setQuery("Fixture");
+                tryVerify(() => grid.count > 0, 2000, "search results");
+                wait(50);
+                equal(grid.contentY, grid.originY, "a search typed at once opens at its top");
+            }
+            // ShellScene clamps the closed launcher to the output's height. A grid that a taller
+            // display shows whole opens at its top and keeps no older offset: back on the
+            // shorter display it still opens at the top.
+            function test_grid_shown_whole_on_a_taller_display_forgets_its_offset() {
+                const fresh = createTemporaryObject(shortLauncher, stage, {
+                    expansion: 1,
+                    opened: true
+                });
+                verify(fresh !== null, "short launcher");
+                const grid = findChild(fresh, "launcher-grid");
+                verify(grid !== null, "app grid");
+                tryVerify(() => grid.count === 24, 3000, "short catalog tiles built");
+                wait(300); // the opening reveal of the selection settles first
+                grid.contentY = 100;
+                wait(50);
+                equal(grid.contentY, 100, "short grid scrolled");
+                const reopen = height => {
+                    fresh.opened = false;
+                    fresh.expansion = 0;
+                    fresh.visible = false;
+                    fresh.reset();
+                    tryVerify(() => grid.count === 0, 2000, "tiles released when hidden");
+                    fresh.height = height;
+                    fresh.visible = true;
+                    fresh.opened = true;
+                    fresh.expansion = 1;
+                    tryVerify(() => grid.count > 0, 2000, "tiles rebuilt on reopen");
+                    wait(50);
+                };
+                reopen(fresh.desiredHeight);
+                verify(grid.contentHeight <= grid.height, "the taller display shows every row");
+                equal(grid.contentY, grid.originY, "a grid shown whole opens at its top");
+                reopen(350);
+                verify(grid.contentHeight > grid.height, "the shorter display scrolls again");
+                equal(grid.contentY, grid.originY, "back on the shorter display it stays at the top");
             }
             // One frame of the launcher with the focused control's rectangle, for the pixel
             // check in test-launcher-keyboard.py (hover look, no dark outline).

@@ -723,7 +723,7 @@ rollback: Use settings history and undo for managed values. Restore separately b
 
 ## desktop-update-signal
 
-Tells a running desktop session that the desktop under it was updated, so the panel can ask the person to sign out and sign in again. A package hook records each desktop update (which session components changed, when, and the action it needs); `state` answers in JSON: schema, busy (a system transaction is running), desktop (an opaque identity that changes with every installed, replaced or removed desktop package) and update (null, or id, at, components, action). A record from another boot or root counts as no update. Running sessions are never restarted.
+Tells a running desktop session that the desktop under it was updated, so the panel can ask the person to sign out and sign in again. A package hook records each desktop update (which session components changed, when, and the action it needs); `state` answers in JSON: schema, busy (a system transaction is running), desktop (an opaque identity that changes with every installed, replaced or removed desktop package) and update (null, or id, at, components, action). A record from another boot or root counts as no update. Running sessions are never restarted. `sources` answers {schema, paths}: the files whose change can change `state` (the update record, the transaction lock, the package database), which the session watches.
 
 - Files: `/usr/bin/emaki-session-update`, `/usr/libexec/emaki/emaki_session_arch.py`, `/usr/share/libalpm/hooks/zzz-emaki-session-update.hook`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -734,7 +734,7 @@ Tells a running desktop session that the desktop under it was updated, so the pa
 
 ```system-map
 component: desktop-update-signal
-what: Tells a running desktop session that the desktop under it was updated, so the panel can ask the person to sign out and sign in again. A package hook records each desktop update (which session components changed, when, and the action it needs); `state` answers in JSON: schema, busy (a system transaction is running), desktop (an opaque identity that changes with every installed, replaced or removed desktop package) and update (null, or id, at, components, action). A record from another boot or root counts as no update. Running sessions are never restarted.
+what: Tells a running desktop session that the desktop under it was updated, so the panel can ask the person to sign out and sign in again. A package hook records each desktop update (which session components changed, when, and the action it needs); `state` answers in JSON: schema, busy (a system transaction is running), desktop (an opaque identity that changes with every installed, replaced or removed desktop package) and update (null, or id, at, components, action). A record from another boot or root counts as no update. Running sessions are never restarted. `sources` answers {schema, paths}: the files whose change can change `state` (the update record, the transaction lock, the package database), which the session watches.
 files:
   /usr/bin/emaki-session-update
   /usr/libexec/emaki/emaki_session_arch.py

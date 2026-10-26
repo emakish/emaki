@@ -263,7 +263,7 @@ FocusScope {
             x: 26
             y: 30
             width: parent.width - 52
-            height: 46
+            height: Math.max(46, accountDetails.implicitHeight)
             // The account row opens Users (approved settings mockup, note 10).
             MouseArea {
                 objectName: "settings-account-row"
@@ -360,6 +360,7 @@ FocusScope {
                 border.color: Qt.rgba(1, 1, 1, .35)
             }
             Column {
+                id: accountDetails
                 x: 54
                 width: parent.width - 54
                 anchors.verticalCenter: parent.verticalCenter
@@ -377,7 +378,7 @@ FocusScope {
                 Text {
                     width: parent.width
                     text: root.service.accountAdministrator ? qsTranslate("SettingsView", "Administrator · this computer") : qsTranslate("SettingsView", "This computer")
-                    elide: Text.ElideRight
+                    wrapMode: Text.WordWrap
                     font.family: SettingsTheme.fontFamily
                     font.pixelSize: 12
                     color: SettingsTheme.dim

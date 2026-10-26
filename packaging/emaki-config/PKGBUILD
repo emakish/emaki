@@ -4,7 +4,7 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.12.0
+pkgver=1.0.0
 pkgrel=2
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
@@ -13,7 +13,7 @@ license=('GPL-3.0-or-later' 'Bitstream-Vera' 'OFL-1.1' 'GPL-2.0-or-later')  # GP
 depends=(
     'pacman' 'pacman-contrib' 'fakeroot' 'reflector' 'polkit'
     'glibc' 'libgcc' 'icu' 'libicui18n.so=78-64' 'libicuuc.so=78-64' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative>=6.12' 'qt6-base>=6.12.0' 'qt6-base<6.13'
-    'niri-emaki=26.04-28' 'quickshell-emaki>=0.3.1-13'
+    'niri-emaki=26.04-30' 'quickshell-emaki>=0.3.1-14'
     'python' 'python-gobject' 'python-pillow' 'gtk3' 'libnotify'
     'appstream' 'archlinux-appstream-data' 'kimageformats' 'libjxl'
     'wpaperd' 'wl-clipboard' 'cliphist' 'udiskie'

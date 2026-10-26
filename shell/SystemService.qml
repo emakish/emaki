@@ -608,10 +608,14 @@ Item {
             service.actionState = code === 0 ? "requested" : "wifi_restart_failed";
         }
     }
+    // Both monitors write only on an event, so a closed pipe does not end them after the shell
+    // exits (QS does not stop its children): the kernel sends them SIGTERM when it does. A shell
+    // that exits before the signal is set leaves a new parent, so the helper ends at once.
+    readonly property var exitGuard: ["setpriv", "--pdeathsig", "TERM", "--", "sh", "-c", '[ "$PPID" = "$0" ] || exit 0; exec "$@"', String(Quickshell.processId)]
     Process {
         id: backlightMonitor
         running: service.helpersEnabled
-        command: [Quickshell.env("EMAKI_UDEVADM") || "udevadm", "monitor", "--udev", "--subsystem-match=backlight"]
+        command: service.exitGuard.concat([Quickshell.env("EMAKI_UDEVADM") || "udevadm", "monitor", "--udev", "--subsystem-match=backlight"])
         stdout: SplitParser {
             onRead: line => {
                 if (String(line).includes("change"))
@@ -635,7 +639,7 @@ Item {
     Process {
         id: vpnMonitor
         running: service.helpersEnabled
-        command: [Quickshell.env("EMAKI_NMCLI") || "nmcli", "monitor"]
+        command: service.exitGuard.concat([Quickshell.env("EMAKI_NMCLI") || "nmcli", "monitor"])
         stdout: SplitParser {
             onRead: _line => vpnDebounce.restart()
         }

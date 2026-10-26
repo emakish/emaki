@@ -52,7 +52,7 @@ def packaging():
                       r'block-out-from "screen-capture"\s*\}', rules),
             'trusted prompt needs exclusion from external screenshots and recordings')
     pkg = (PACKAGE / 'PKGBUILD').read_text()
-    require(re.search(r'^pkgrel=28$', pkg, re.M), 'lock-capture package must be release 28')
+    require(re.search(r'^pkgrel=30$', pkg, re.M), 'lock-capture package must be release 30')
     sources = array(pkg, 'source')
     require(sources.count(PATCH) == 1, f'{PATCH} must appear once in source')
     patches = [name for name in sources if name.endswith('.patch')]

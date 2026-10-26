@@ -28,6 +28,11 @@ Item {
     // A dedicated window with a small band can cache that crop instead of uploading
     // the full shared image. This is independent of the opt-in full-image UV path.
     property bool cacheWallpaper: false
+    // Keep the full capture and its request cadence; refresh only the cropped texture
+    // when a completed frame can change it. Other backends and simultaneous captures
+    // sharing the protocol manager conservatively refresh.
+    property bool damageAwareCapture: false
+    readonly property bool damageTracking: damageAwareCapture && typeof capture.damageIntersects === "function"
     // Image is a texture provider; it must belong to this window. The owner retains
     // its in-memory result and supplies readiness. No cross-window GPU sharing occurs.
     property Image frozenSource: null
@@ -61,7 +66,10 @@ Item {
     readonly property int settleFrames: 2
     property int contentFrames: 0
     readonly property bool captureSettled: capture.hasContent && contentFrames >= settleFrames
-    onActiveChanged: contentFrames = 0
+    onActiveChanged: {
+        contentFrames = 0;
+        captureSource.scheduleUpdate();
+    }
     readonly property bool shadersReady: halfPass.status !== ShaderEffect.Error && quarterPass.status !== ShaderEffect.Error && clearHPass.status !== ShaderEffect.Error && clearVPass.status !== ShaderEffect.Error && regularHPass.status !== ShaderEffect.Error && regularVPass.status !== ShaderEffect.Error
     // Mockup: Clear blur is σ 9 texels of a 1280-wide map of the wallpaper; the wallpaper
     // covers the screen, so σ is 9/1280 of the screen width. Regular is σ 30 logical px.
@@ -103,7 +111,21 @@ Item {
         captureSource: backdrop.capturing && backdrop.active ? backdrop.screen : null
         live: backdrop.capturing && backdrop.active
         paintCursor: false
-        onHasContentChanged: backdrop.contentFrames = 0
+        onHasContentChanged: {
+            backdrop.contentFrames = 0;
+            captureSource.scheduleUpdate();
+        }
+        onSourceSizeChanged: captureSource.scheduleUpdate()
+        onWidthChanged: captureSource.scheduleUpdate()
+        onHeightChanged: captureSource.scheduleUpdate()
+    }
+    Connections {
+        target: capture
+        ignoreUnknownSignals: true
+        function onFrameCaptured(): void {
+            if (backdrop.damageTracking && capture.damageIntersects(captureSource.sourceRect))
+                captureSource.scheduleUpdate();
+        }
     }
     // Counts the frames after the capture's first content; runs only while it settles.
     FrameAnimation {
@@ -116,8 +138,11 @@ Item {
         height: backdrop.regionHeight
         sourceItem: capture
         sourceRect: backdrop.whole ? Qt.rect(0, 0, 0, 0) : backdrop.region
+        onSourceRectChanged: scheduleUpdate()
+        onTextureSizeChanged: scheduleUpdate()
+        onLiveChanged: scheduleUpdate()
         hideSource: true
-        live: true
+        live: !backdrop.damageTracking
         visible: false
         textureSize: Qt.size(Math.round(backdrop.regionWidth * backdrop.dpr), Math.round(backdrop.regionHeight * backdrop.dpr))
     }

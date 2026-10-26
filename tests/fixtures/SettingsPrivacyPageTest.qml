@@ -6,6 +6,8 @@ import QtTest
 import Quickshell
 
 ShellRoot {
+    // As in shell.qml: the Translation singleton exists before any page reads a plural label.
+    readonly property bool translationsReady: Translation.initialize()
     QtObject {
         id: fakeBackend
         property bool connected: true

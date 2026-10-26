@@ -4,12 +4,13 @@
 # repaired polkit service (one request at a time, no cookie in logs, wiped replies), a
 # desktop entry watch that follows application directories created later, theme icons
 # found when installed after startup (bindings are told when a missed icon arrives), and
-# a query of the keyboard modifiers held now (the Alt+Tab window switcher).
+# a query of the keyboard modifiers held now (the Alt+Tab window switcher), and
+# completed-frame capture damage for cropped glass textures.
 
 _pkgname=quickshell
 pkgname=quickshell-emaki
 pkgver=0.3.1
-pkgrel=13
+pkgrel=14
 pkgdesc='Flexible toolkit for making desktop shells with QtQuick (Emaki patched build)'
 arch=(x86_64 aarch64)
 url="https://git.outfoxxed.me/$_pkgname/$_pkgname"
@@ -52,6 +53,7 @@ source=("$_archive.tar.gz::$url/archive/v$pkgver.tar.gz"
         0007-core-desktopentry-watch-directories-created-later.patch
         0008-core-find-theme-icons-installed-after-startup.patch
         0009-core-query-keyboard-modifiers.patch
+        0010-screencopy-completed-frame-damage.patch
         expected-files.list)
 sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             'b32f0be7920e0dd10cf89bb0fecdd0a7c0ac73f0f113fc93e3b235ad36e894c7'
@@ -63,6 +65,7 @@ sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             '5786bb33ebd625d181b6f51f85c8fab828a3da0305f065b070d2cc782416b599'
             '979342b98e21c517843e8b6e957cf9cf6f8d6a0c46bc347f0ed0d7d55462fcf1'
             'd7227add293f3e69752d7c8a8f903b1f2caf14f110473695bdaa5446e8464e5e'
+            '70b21d7553f7347de7d92be03c60261c234aad7f488e3d08cb7d6403285b1355'
             'e6d94b7b429509ef67f81f56e69aef932307cb984705267bc89e13ea0f7efd7b')
 
 prepare() {
@@ -76,6 +79,7 @@ prepare() {
 	patch -Np1 -i "$srcdir/0007-core-desktopentry-watch-directories-created-later.patch"
 	patch -Np1 -i "$srcdir/0008-core-find-theme-icons-installed-after-startup.patch"
 	patch -Np1 -i "$srcdir/0009-core-query-keyboard-modifiers.patch"
+	patch -Np1 -i "$srcdir/0010-screencopy-completed-frame-damage.patch"
 }
 
 # Keep the runtime floor equal to the Qt release used for this rebuild.

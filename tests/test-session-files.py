@@ -11,8 +11,10 @@ import runpy
 from pathlib import Path
 import subprocess
 import selectors
+import shutil
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -246,6 +248,213 @@ class SessionFiles(unittest.TestCase):
             self.update.mark_update(self.marker)
             self.helper.watch(self.source, installed_source=True)
         self.assertEqual(json.loads(output.call_args.args[0]), dict(schema=1, restart=True))
+
+    @contextmanager
+    def observer(self, sources=True, installed_source=False, target=None, first=None):
+        """The generation's observer in a thread, counting state questions; yields (thread, notices, asked).
+        first: 'busy' or 'error' makes the first state answer a running transaction or a failure."""
+        asked, notices = [], []
+        def query(request='state'):
+            asked.append(request)
+            if request == 'sources':
+                if not sources:
+                    raise subprocess.CalledProcessError(1, ['emaki-session-update', 'sources'])
+                return json.dumps(self.update.state_sources(self.marker))
+            if first is not None and asked.count('state') == 1:
+                if first == 'error':
+                    raise subprocess.CalledProcessError(1, ['emaki-session-update', 'state'])
+                return json.dumps(dict(self.update.desktop_state(self.marker), busy=True))
+            return json.dumps(self.update.desktop_state(self.marker))
+        if target is None:
+            target = self.source if installed_source else self.prepare().parent
+        with patch.object(self.helper, 'query_state', side_effect=query), \
+                patch.object(self.helper.state, 'LIVE', self.base / 'absent-live'), \
+                patch.object(self.helper, 'POLL', 0.3), \
+                patch.object(self.helper, 'print', create=True, side_effect=lambda line, **_: notices.append(line)):
+            thread = threading.Thread(target=self.helper.watch, args=(target, installed_source), daemon=True)
+            thread.start()
+            try:
+                yield thread, notices, asked
+            finally:
+                if thread.is_alive():
+                    # Release a waiting observer: any answer it reads now is an update.
+                    self.update.mark_update(self.marker)
+                    (self.source / 'release').write_text('end of test')
+                thread.join(10)
+
+    def assert_notice(self, thread, notices, within=8):
+        thread.join(within)
+        self.assertFalse(thread.is_alive(), f'no notice {within} s after the update')
+        self.assertEqual([json.loads(line) for line in notices], [dict(schema=1, restart=True)])
+
+    def test_observer_waits_on_the_update_files_instead_of_polling(self):
+        for change in ('marker', 'shell file', 'core', 'package'):
+            with self.subTest(change), self.observer() as (thread, notices, asked):
+                thread.join(1.0)
+                settled_questions = len(asked)
+                # At idle: no question, no notice; the first case waits past the old 5 s poll.
+                thread.join(6.0 if change == 'marker' else 1.5)
+                self.assertEqual(len(asked), settled_questions)
+                self.assertTrue(thread.is_alive())
+                self.assertEqual(notices, [])
+                if change == 'marker':
+                    self.update.mark_update(self.marker)
+                elif change == 'shell file':
+                    (self.source / 'helper.py').write_text('new helper')
+                elif change == 'core':
+                    self.binary.write_text('#!/bin/sh\necho new-core\n')
+                else:
+                    package = self.packages / 'quickshell-emaki-0.3.1-14/desc'
+                    package.parent.mkdir(parents=True, exist_ok=True)
+                    package.write_text('%NAME%\nquickshell-emaki\n')
+                self.assert_notice(thread, notices, within=3)
+            self.marker.unlink(missing_ok=True)
+            (self.source / 'helper.py').write_text('print("old helper")')
+            self.binary.write_text('#!/bin/sh\necho old-core\n')
+            shutil.rmtree(self.packages, ignore_errors=True)
+            shutil.rmtree(self.base / 'runtime', ignore_errors=True)
+            (self.source / 'release').unlink(missing_ok=True)
+
+    def test_observer_polls_only_while_a_transaction_runs(self):
+        # The end of a transaction seen only through its holder writes no watched file.
+        generation = self.prepare().parent
+        with self.lock_holder(), self.observer(target=generation) as (thread, notices, asked):
+            thread.join(0.5)
+            self.update.mark_update(self.marker)
+            thread.join(1.5)
+            self.assertEqual(notices, [])
+            polled = len(asked)
+            thread.join(1.0)
+            self.assertGreater(len(asked), polled, 'no poll while the transaction runs')
+            self.holder.joinpath('fd/3').unlink()
+            self.assert_notice(thread, notices)
+            self.holder.joinpath('fd/3').symlink_to(self.lock)
+
+    def test_observer_without_a_named_source_polls(self):
+        # An installed state command that cannot name its files (or no inotify): the old poll.
+        with self.observer(sources=False) as (thread, notices, asked):
+            thread.join(1.0)
+            polled = len(asked)
+            thread.join(1.0)
+            self.assertGreater(len(asked), polled)
+            self.update.mark_update(self.marker)
+            self.assert_notice(thread, notices)
+
+    def test_observer_checks_again_after_a_transient_answer(self):
+        # The update is on disk before the observer starts, so no watched file changes later; the
+        # first answer is a transaction or a failure and every later one is settled. The check that
+        # saw no settled desktop must be repeated, not followed by an unbounded wait.
+        for installed_source in (False, True):
+            for first in ('busy', 'error'):
+                with self.subTest(installed_source=installed_source, first=first):
+                    if installed_source:
+                        target = self.source
+                        self.helper.remember(self.helper.runtime(self.source) / 'session.json', self.helper.answer())
+                    else:
+                        target = self.prepare().parent
+                    self.update.mark_update(self.marker)
+                    with self.observer(installed_source=installed_source, target=target, first=first) \
+                            as (thread, notices, _asked):
+                        self.assert_notice(thread, notices, within=3)
+                    self.marker.unlink(missing_ok=True)
+                    shutil.rmtree(self.base / 'runtime', ignore_errors=True)
+                    (self.source / 'release').unlink(missing_ok=True)
+
+    def test_observer_follows_a_moved_parent_directory(self):
+        # The core's directory is replaced by one with an identical core (no notice), then that core
+        # changes: only watches re-armed on the new directory can see it before the safety check.
+        folder = self.base / 'bin'
+        folder.mkdir()
+        self.binary = self.binary.rename(folder / 'emaki')
+        replacement = self.base / 'new-bin'
+        replacement.mkdir()
+        shutil.copy2(self.binary, replacement / 'emaki')
+        with patch.object(self.helper, 'SAFETY', 600), self.observer() as (thread, notices, asked):
+            thread.join(1.0)
+            settled_questions = len(asked)
+            folder.rename(self.base / 'old-bin')
+            replacement.rename(folder)
+            thread.join(2.0)
+            self.assertGreater(len(asked), settled_questions, 'the moved directory was not checked')
+            self.assertTrue(thread.is_alive())
+            self.assertEqual(notices, [])
+            checked = len(asked)
+            thread.join(1.0)
+            self.assertEqual(len(asked), checked, 'the observer polls instead of waiting')
+            self.binary.write_text('#!/bin/sh\necho new-core\n')
+            self.assert_notice(thread, notices, within=3)
+
+    def test_observer_follows_a_symlinked_core_to_its_target(self):
+        target = self.base / 'build/emaki'
+        target.parent.mkdir()
+        self.binary = self.binary.rename(target)
+        link = self.base / 'emaki-link'
+        link.symlink_to(target)
+        self.binary = link
+        with patch.object(self.helper, 'SAFETY', 600), self.observer() as (thread, notices, asked):
+            thread.join(1.0)
+            target.write_text('#!/bin/sh\necho new-core\n')
+            self.assert_notice(thread, notices, within=3)
+
+    def test_safety_check_sees_what_inotify_cannot(self):
+        # A moved ancestor of the core's directory, and an intermediate symlink pointed at another
+        # directory: no watched directory gets an event, the stat comparison finds the new core.
+        for case in ('ancestor', 'symlink'):
+            with self.subTest(case):
+                root = self.base / case
+                old = root / 'old/bin/emaki'
+                new = root / 'new/bin/emaki'
+                for path, text in ((old, 'old-core'), (new, 'new-core')):
+                    path.parent.mkdir(parents=True)
+                    path.write_text(f'#!/bin/sh\necho {text}\n')
+                if case == 'ancestor':
+                    (root / 'old').rename(root / 'current')
+                else:
+                    (root / 'current').symlink_to(root / 'old')
+                self.binary = root / 'current/bin/emaki'
+                try:
+                    with patch.object(self.helper, 'SAFETY', 1.0), self.observer() as (thread, notices, asked):
+                        thread.join(1.5)
+                        settled_questions = len(asked)
+                        self.assertTrue(thread.is_alive())
+                        self.assertEqual(notices, [])
+                        if case == 'ancestor':
+                            (root / 'current').rename(root / 'moved-away')
+                            (root / 'new').rename(root / 'current')
+                        else:
+                            (root / 'next').symlink_to(root / 'new')
+                            (root / 'next').replace(root / 'current')
+                        self.assert_notice(thread, notices, within=3)
+                        self.assertGreater(len(asked), settled_questions)
+                finally:
+                    self.marker.unlink(missing_ok=True)
+                    shutil.rmtree(self.base / 'runtime', ignore_errors=True)
+                    (self.source / 'release').unlink(missing_ok=True)
+
+    def test_safety_check_at_idle_asks_nothing_and_hashes_nothing(self):
+        with patch.object(self.helper, 'SAFETY', 0.2), self.observer() as (thread, notices, asked):
+            thread.join(1.0)
+            settled_questions = len(asked)
+            with patch.object(self.helper, 'digest', wraps=self.helper.digest) as digest, \
+                    patch.object(self.helper, 'mark', wraps=self.helper.mark) as mark:
+                thread.join(2.0)
+                self.assertGreater(mark.call_count, 0, 'no safety check ran')
+                self.assertEqual(digest.call_count, 0)
+            self.assertEqual(len(asked), settled_questions)
+            self.assertTrue(thread.is_alive())
+            (self.source / 'shell.qml').write_text('new QML')
+            self.assert_notice(thread, notices, within=3)
+
+    def test_installed_observer_waits_on_the_state_files(self):
+        self.helper.remember(self.helper.runtime(self.source) / 'session.json', self.helper.answer())
+        with self.observer(installed_source=True) as (thread, notices, asked):
+            thread.join(2.0)
+            settled_questions = len(asked)
+            thread.join(1.5)
+            self.assertEqual(len(asked), settled_questions)
+            self.assertEqual(notices, [])
+            self.update.mark_update(self.marker)
+            self.assert_notice(thread, notices)
 
     def test_no_notice_until_transaction_and_later_hooks_exit(self):
         shell = self.prepare()

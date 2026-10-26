@@ -127,6 +127,7 @@ check: paths check-assumptions check-core check-i18n
 	python3 tests/test-quickshell-fork-guard.py
 	python3 tests/test-dispersion.py
 	python3 tests/test-backdrop-first-frame.py
+	python3 tests/test-backdrop.py
 	node tests/test-appearance.mjs
 	node tests/test-appearance-icons.mjs
 	node tests/test-switcher-logic.mjs
@@ -238,6 +239,7 @@ check: paths check-assumptions check-core check-i18n
 	python3 tests/test-shell-generations.py
 	python3 tests/test-desktop-state.py
 	python3 tests/test-session-update-notice.py
+	python3 tests/test-shell-helpers-exit.py
 	python3 tests/test-updates-notice.py
 	python3 tests/test-session-update-hook.py
 	python3 tests/test-update-errors.py
@@ -1008,6 +1010,8 @@ check-i18n: paths build-i18n
 	python3 tests/test-i18n-shell-messages.py
 	python3 tests/test-i18n-timezones.py
 	python3 tests/test-i18n-long-dates.py
+	python3 tests/test-i18n-launcher-settings.py
+	python3 tests/test-settings-profile-layout.py
 	python3 tests/test-i18n-buttons.py
 	python3 tests/test-i18n-programs-formats.py
 	python3 update-manager/tests/test_display_messages.py
@@ -1044,7 +1048,13 @@ $(SHADERS) &: $(SHADER_SRC)
 
 # No live Wayland; fixtures use .cache/, with short temporary Unix-socket paths. The qs in PATH
 # must carry the packaged quickshell-emaki patches (tests/test-quickshell-fork.py).
-.PHONY: check-shell shell-shots shell-shaders
+.PHONY: check-shell shell-shots shell-shaders check-damage-capture-source
+# QUICKSHELL_SOURCE_DIR must name a prepared source tree with the packaged patches.
+# No downloads or package builds: these fixtures compile only the methods under test.
+check-damage-capture-source:
+	python3 tests/test-damage-capture.py
+	python3 tests/test-damage-capture-cadence.py
+
 check-shell: paths shell-shaders check-sudo-build build-i18n
 	python3 tests/test-quickshell-fork.py
 	python3 tests/test-quickshell-fork-guard.py
@@ -1160,6 +1170,8 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python tests/test-recent-files.py
 	python tests/test-wallpaper.py
 	python tests/test-backdrop.py
+	python3 tests/test-damage-capture-pixels.py
+	python3 tests/test-glass-decode-frames.py
 	python tests/test-dock-region.py
 	python3 tests/test-dock-drop.py
 	python tests/test-greeter-wallpaper.py

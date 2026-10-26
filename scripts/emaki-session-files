@@ -6,11 +6,14 @@
 Whether a system transaction is running and whether the desktop changed since login come only
 from the desktop state command (`emaki-session-update state`), never from the package manager.
 """
+import ctypes
 import hashlib
 import json
 import os
 from pathlib import Path
+import select
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -28,15 +31,31 @@ STATE_SCHEMA = 1
 STATE = 'emaki-session-update'
 START_WAIT = 2
 RUNTIMES = Path('/run/user')
+# The observer's poll while the state is not settled, and how it waits for an update's writes to pause.
+POLL = 5
+SETTLE, SETTLE_LIMIT = 0.5, 5
+# How often an idle observer compares the watched files' stat with the last check (see Changes).
+SAFETY = 60
 
 
-def query_state():
+def query_state(request='state'):
     # Beside an installed or development copy of this script, else by name: a captured
     # generation keeps asking the installed command, which describes the system now.
     beside = Path(__file__).resolve().with_name(STATE)
     command = str(beside) if os.access(beside, os.X_OK) else STATE
-    return subprocess.run([command, 'state'], stdin=subprocess.DEVNULL, capture_output=True,
+    return subprocess.run([command, request], stdin=subprocess.DEVNULL, capture_output=True,
                           text=True, timeout=10, check=True).stdout
+
+
+def state_sources():
+    """The files whose change can change the state answer, or None when the command cannot say."""
+    try:
+        value = json.loads(query_state('sources'))
+        if value['schema'] == STATE_SCHEMA and all(isinstance(path, str) for path in value['paths']):
+            return [Path(path) for path in value['paths']]
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        pass
+    return None
 
 
 def backend():
@@ -88,10 +107,23 @@ def digest(path):
     return value.hexdigest()
 
 
+def tree_files(path):
+    return (file for file in sorted(path.rglob('*')) if file.is_file()
+            and '__pycache__' not in file.parts and file.suffix not in ('.pyc', '.pyo'))
+
+
 def tree(path):
-    return {str(file.relative_to(path)): digest(file)
-            for file in sorted(path.rglob('*')) if file.is_file()
-            and '__pycache__' not in file.parts and file.suffix not in ('.pyc', '.pyo')}
+    return {str(file.relative_to(path)): digest(file) for file in tree_files(path)}
+
+
+def mark(path):
+    """What stat says about the file behind `path`, symlinks followed: a changed file or target has
+    another inode, size, mtime or ctime. None when it cannot be read."""
+    try:
+        value = path.stat()
+    except OSError:
+        return None
+    return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
 
 
 def identity(source):
@@ -224,13 +256,15 @@ def recorded(baseline, value):
     return None
 
 
-def changed(generation):
+def compare(generation):
+    """(stale, complete): the notice is due, and the check saw a settled desktop throughout.
+    An incomplete check (a transaction ran, or no answer) proves nothing about later answers."""
     value = settled()
     if value is None:
-        return False
+        return False, False
     record = json.loads((generation / 'generation.json').read_text())
     if record['schema'] != SCHEMA:
-        return True
+        return True, True
     baseline = (runtime(Path(record['source']), create=False) if record.get('trusted')
                 else generation.parent) / 'session.json'
     before = recorded(baseline, value)
@@ -238,28 +272,189 @@ def changed(generation):
     stale = (before is not None and differs(before, installed(value))
              or tree(Path(record['source'])) != record['files']
              or digest(Path(record['binary'])) != record['core'])
-    return stale and settled() is not None
+    return confirmed(stale)
+
+
+def compare_installed(source):
+    value = settled()
+    if value is None:
+        return False, False
+    before = recorded(runtime(source, create=False) / 'session.json', value)
+    stale = before is not None and differs(before, installed(value))
+    return confirmed(stale)
+
+
+def confirmed(stale):
+    """A stale answer counts only if the desktop is still settled after the comparison."""
+    if not stale:
+        return False, True
+    after = settled() is not None
+    return after, after
+
+
+def changed(generation):
+    return compare(generation)[0]
 
 
 def changed_installed(source):
-    value = settled()
-    if value is None:
-        return False
-    before = recorded(runtime(source, create=False) / 'session.json', value)
-    stale = before is not None and differs(before, installed(value))
-    return stale and settled() is not None
+    return compare_installed(source)[0]
+
+
+class Changes:
+    """inotify on every file an update writes; `active` is False when one of them cannot be watched.
+
+    A file is watched through its directory, filtered by its name, so a replaced or recreated
+    file is seen too; a directory is also watched itself; a tree is watched directory by directory.
+    A watched directory that is moved or deleted counts whatever its filter, so the watches follow
+    the path, not the old directory; watches left from an earlier arm are removed and ignored.
+    A file that is a symlink is also watched at its final target.
+
+    inotify cannot see everything: a moved or replaced ancestor above the watched directories, an
+    intermediate symlink pointed elsewhere, or a tree file that links outside the tree. So every
+    SAFETY seconds an idle wait compares, in process, the stat of each watched file and tree file
+    with the marks taken before the last check (`note`), and counts a difference as an event.
+    """
+    IN_ATTRIB, IN_CLOSE_WRITE, IN_MOVED_FROM, IN_MOVED_TO = 0x4, 0x8, 0x40, 0x80
+    IN_CREATE, IN_DELETE, IN_DELETE_SELF, IN_MOVE_SELF = 0x100, 0x200, 0x400, 0x800
+    IN_Q_OVERFLOW, IN_IGNORED = 0x4000, 0x8000
+    MASK = (IN_ATTRIB | IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE | IN_DELETE
+            | IN_DELETE_SELF | IN_MOVE_SELF)
+    HEADER = struct.Struct('iIII')
+
+    def __init__(self, files, trees=()):
+        self.files, self.trees, self.filters, self.fd, self.seen = files, list(trees), {}, -1, None
+        try:
+            self.libc = ctypes.CDLL(None, use_errno=True)
+            self.fd = self.libc.inotify_init1(os.O_CLOEXEC | os.O_NONBLOCK)
+        except (OSError, AttributeError):
+            pass
+        self.active = files is not None and self.fd >= 0 and self.arm()
+
+    def add(self, path, name=None):
+        wd = self.libc.inotify_add_watch(self.fd, os.fsencode(path), self.MASK)
+        if wd < 0:
+            return False
+        names = self.filters.get(wd, set())
+        self.filters[wd] = None if name is None or names is None else names | {name}
+        return True
+
+    def arm(self):
+        old = set(self.filters)
+        self.filters.clear()
+        armed = True
+        for path in self.files:
+            armed = self.add(path.parent, path.name) and armed
+            if path.is_dir():
+                armed = self.add(path) and armed
+            target = path.resolve()
+            if target != path:
+                # A dangling target is left to the safety check.
+                self.add(target.parent, target.name)
+        for tree in self.trees:
+            self.add(tree.parent, tree.name)
+            for folder in [tree, *sorted(folder for folder in tree.rglob('*') if folder.is_dir())]:
+                armed = self.add(folder) and armed
+        for wd in old - set(self.filters):
+            self.libc.inotify_rm_watch(self.fd, wd)
+        return armed
+
+    def relevant(self):
+        try:
+            data = os.read(self.fd, 65536)
+        except BlockingIOError:
+            return False
+        found, offset = False, 0
+        while offset + self.HEADER.size <= len(data):
+            wd, mask, _cookie, length = self.HEADER.unpack_from(data, offset)
+            name = data[offset + self.HEADER.size:offset + self.HEADER.size + length].rstrip(b'\0')
+            offset += self.HEADER.size + length
+            if mask & self.IN_Q_OVERFLOW:
+                found = True
+            elif wd in self.filters:
+                names = self.filters[wd]
+                found = found or bool(mask & (self.IN_IGNORED | self.IN_DELETE_SELF | self.IN_MOVE_SELF)) \
+                    or names is None or os.fsdecode(name) in names
+        return found
+
+    def marks(self):
+        if self.files is None:
+            return None
+        return ([mark(path) for path in self.files],
+                [{str(file.relative_to(tree)): mark(file) for file in tree_files(tree)} for tree in self.trees])
+
+    def note(self):
+        """Take the marks the safety check compares with; called before each check."""
+        self.seen = self.marks()
+
+    def wait(self, timeout):
+        """Until a watched file changed and writes paused, or `timeout` seconds (None: no limit)."""
+        if not self.active:
+            time.sleep(POLL)
+            # A watched directory may be back (or was only being replaced): try the watches again.
+            if self.fd >= 0 and self.files is not None:
+                while select.select([self.fd], [], [], 0)[0]:
+                    self.relevant()
+                self.active = self.arm()
+            return
+        deadline = None if timeout is None else time.monotonic() + timeout
+        # By the clock, not by quiet: filtered-out events must not postpone the safety check.
+        safety = time.monotonic() + SAFETY
+        while True:
+            now = time.monotonic()
+            if deadline is not None and deadline <= now:
+                return
+            if safety <= now:
+                if self.seen is not None and self.marks() != self.seen:
+                    break
+                safety = now + SAFETY
+            remaining = safety - now if deadline is None else min(deadline, safety) - now
+            if select.select([self.fd], [], [], remaining)[0] and self.relevant():
+                break
+        # One update writes many files: ask once it paused, at most SETTLE_LIMIT later.
+        limit = time.monotonic() + SETTLE_LIMIT
+        while time.monotonic() < limit and select.select([self.fd], [], [], SETTLE)[0]:
+            self.relevant()
+        self.active = self.arm()
+
+    def close(self):
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+
+
+def watched(generation, installed_source):
+    """What an update can change for this observer: (files, trees), files None when unknown."""
+    files = state_sources()
+    if installed_source or files is None:
+        return files, ()
+    record = json.loads((generation / 'generation.json').read_text())
+    return files + [Path(record['binary'])], (Path(record['source']),)
 
 
 def watch(generation, installed_source=False):
-    while True:
-        try:
-            stale = changed_installed(generation) if installed_source else changed(generation)
-        except (OSError, ValueError, KeyError):
-            stale = settled() is not None
-        if stale:
-            print(json.dumps(dict(schema=SCHEMA, restart=True)), flush=True)
-            return
-        time.sleep(5)
+    # Waits on the files an update writes instead of asking every five seconds. The state is
+    # still polled after a check that did not see it settled throughout (a transaction ran, or
+    # no answer): the end of a transaction found only by its process, or an answer that failed
+    # once, writes nothing, and the update itself may already be on disk with its events read.
+    # Without inotify (or a state command that cannot name its files) the poll is all there is.
+    # Behind inotify, a stat comparison every SAFETY seconds catches what it cannot see.
+    try:
+        events = Changes(*watched(generation, installed_source))
+    except (OSError, ValueError, KeyError, TypeError):
+        events = Changes(None)
+    try:
+        while True:
+            events.note()
+            try:
+                stale, complete = compare_installed(generation) if installed_source else compare(generation)
+            except (OSError, ValueError, KeyError):
+                stale, complete = settled() is not None, False
+            if stale:
+                print(json.dumps(dict(schema=SCHEMA, restart=True)), flush=True)
+                return
+            events.wait(None if events.active and complete else POLL)
+    finally:
+        events.close()
 
 
 def main():

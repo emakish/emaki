@@ -26,7 +26,9 @@ Scope {
     Process {
         id: observer
         running: !notice.live && (notice.generation !== "" || (notice.source !== "" && notice.watcher !== "")) && !notice.pending
-        command: notice.generation !== "" ? [Platform.python, "-I", "-B", notice.generation + "/watch.py", "watch", notice.generation] : [Platform.python, "-I", "-B", notice.watcher, "watch-installed", notice.source]
+        // The watcher writes only after an update, so it ends with the shell by signal, not by pipe;
+        // started after the shell already exited, it has another parent and ends at once.
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "sh", "-c", '[ "$PPID" = "$0" ] || exit 0; exec "$@"', String(Quickshell.processId), Platform.python, "-I", "-B"].concat(notice.generation !== "" ? [notice.generation + "/watch.py", "watch", notice.generation] : [notice.watcher, "watch-installed", notice.source])
         stdout: SplitParser {
             onRead: data => {
                 try {

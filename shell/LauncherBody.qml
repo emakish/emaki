@@ -421,6 +421,19 @@ Item {
     // categories belong to the untouched grid, Frequent only to the category All.
     readonly property bool gridMode: modeIndex === 1
     readonly property bool listMode: !gridMode
+    // The Apps grid's scroll position while its tiles are unloaded (a closed launcher).
+    // Reopening puts back only the grid that was hidden: the same results, as when the
+    // kept tiles saw no change of their results. A reset query or category, another mode
+    // or a new catalog opens at the top, as changed results always did.
+    property real gridScroll: 0
+    property var gridHidden: null
+    property int gridHiddenSkip: 0
+    onVisibleChanged: {
+        if (!visible) {
+            gridHidden = gridMode ? results : null;
+            gridHiddenSkip = frequentCount;
+        }
+    }
     readonly property int frequentCount: gridMode && queryText.length === 0 && category === "All" ? apps.frequent.length : 0
     readonly property bool categoriesShown: !settingsActive && gridMode && queryText.length === 0
     readonly property var categories: ["All", "Development", "Internet", "Media", "Games", "Learning", "Office", "System"]
@@ -531,15 +544,16 @@ Item {
         return total;
     }
     function settingsScore(words: var): int {
+        const name = qsTranslate("LauncherBody", "Settings").toLocaleLowerCase();
+        const aliases = [name, "settings", "preferences", "control", "panel"];
         let total = 0;
         for (const word of words) {
             if (word.length < 3)
                 return 0;
-            const aliases = ["settings", "preferences", "control", "panel"];
             const matches = aliases.filter(alias => alias.startsWith(word));
             if (!matches.length)
                 return 0;
-            total += Math.max(...matches.map(alias => fieldScore(alias, word, alias === "settings" ? 3 : 1)));
+            total += Math.max(...matches.map(alias => fieldScore(alias, word, alias === name || alias === "settings" ? 3 : 1)));
         }
         return total;
     }
@@ -1003,6 +1017,15 @@ Item {
     readonly property var heightSpring: Liquid.spring(Metrics.islandHeight)
     property int tick: 0
     property bool animating: false
+    function restoreGridScroll(): void {
+        if (!visible || grid.count === 0)
+            return;
+        const same = gridMode && gridHidden !== null && gridHidden === results && gridHiddenSkip === frequentCount;
+        gridHidden = null;
+        if (same)
+            grid.contentY = Math.max(grid.originY, Math.min(gridScroll, grid.originY + grid.contentHeight - grid.height));
+        gridScroll = grid.contentY;
+    }
     function wake(): void {
         animating = true;
     }
@@ -1881,6 +1904,7 @@ Item {
                     }
                     GridView {
                         id: grid
+                        objectName: "launcher-grid"
                         visible: body.gridMode
                         x: 24
                         y: body.gridTop
@@ -1889,9 +1913,21 @@ Item {
                         clip: true
                         cellWidth: body.gridCell
                         cellHeight: 86
-                        model: body.gridMode ? body.results.slice(body.frequentCount) : []
-                        onContentYChanged: body.wake()
-                        onCountChanged: body.wake()
+                        // Tiles exist only while the launcher is on screen: a closed launcher
+                        // kept a screenful of them with their icons (about 70 MB).
+                        model: body.gridMode && body.visible ? body.results.slice(body.frequentCount) : []
+                        onContentYChanged: {
+                            if (body.visible && count > 0 && body.gridHidden === null)
+                                body.gridScroll = contentY;
+                            body.wake();
+                        }
+                        onCountChanged: {
+                            // The view returns to its top after this handler when the tiles come
+                            // back; results that changed meanwhile keep that top.
+                            if (body.visible && count > 0)
+                                Qt.callLater(body.restoreGridScroll);
+                            body.wake();
+                        }
                         delegate: TileDelegate {
                             offset: body.frequentCount
                             width: grid.cellWidth

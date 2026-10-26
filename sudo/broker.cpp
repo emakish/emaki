@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <linux/capability.h>
+#include <limits>
 #include <map>
 #include <poll.h>
 #include <pwd.h>
@@ -41,7 +42,40 @@
 using namespace emaki::sudo_channel;
 namespace {
 volatile sig_atomic_t stopping = 0;
-void stop(int) { stopping = 1; }
+// A self-pipe wakes a poll that has no timeout: a signal landing between the
+// flag check and poll() would otherwise leave the loop asleep until traffic.
+int stopRead = -1, stopWrite = -1;
+pid_t stopOwner = 0;
+void stop(int) {
+  stopping = 1;
+  // Forked helpers run with this handler until they reset it; their copy of
+  // the descriptor number may name an unrelated file, so only the broker writes.
+  if (stopWrite >= 0 && getpid() == stopOwner) {
+    const int saved = errno;
+    if (write(stopWrite, "", 1) < 0) {
+    }
+    errno = saved;
+  }
+}
+void installStopHandlers() {
+  int fds[2];
+  if (!pipe2(fds, O_NONBLOCK | O_CLOEXEC)) {
+    stopRead = fds[0];
+    stopWrite = fds[1];
+    stopOwner = getpid();
+  }
+  signal(SIGTERM, stop);
+  signal(SIGINT, stop);
+}
+// How late reap() may act on host state it can only poll (Broker::revalidating).
+constexpr int RevalidationTick = 250;
+// The poll() timeout for whichever comes first; -1 waits for descriptors only.
+// Callers round remaining time up, so a deadline is never polled before it.
+int earlierTimeout(int timeout, long long remaining) {
+  const int bounded = static_cast<int>(
+      std::clamp<long long>(remaining, 0, std::numeric_limits<int>::max()));
+  return timeout < 0 ? bounded : std::min(timeout, bounded);
+}
 std::string basename(const std::string &p) {
   return p.substr(p.rfind('/') == std::string::npos ? 0 : p.rfind('/') + 1);
 }
@@ -574,6 +608,9 @@ struct User {
   bool locked = true, warning = false;
   std::string session;
   std::uint64_t generation = 0;
+  // The last status snapshot this provider received; the per-second refresh
+  // resends only a different one. Empty means the provider's view is unknown.
+  std::string shown;
 };
 struct IdentityCheck {
   using Clock = std::chrono::steady_clock;
@@ -1063,7 +1100,13 @@ public:
            (available ? "true" : "false") + "}";
   }
   void sendStatus(int fd, Type type, uid_t uid) {
-    const auto body = status(uid);
+    sendStatus(fd, type, uid, status(uid));
+  }
+  void sendStatus(int fd, Type type, uid_t uid, const std::string &body) {
+    auto u = users.find(uid);
+    const bool provider = u != users.end() && u->second.ui == fd;
+    if (provider)
+      u->second.shown.clear();
     if (body.size() > MaxBody) {
       std::fprintf(stderr, "sudo status: snapshot exceeds protocol limit\n");
       error(fd, "status-too-large");
@@ -1072,11 +1115,24 @@ public:
     }
     if (!sendText(fd, type, body))
       std::fprintf(stderr, "sudo status: cannot send snapshot: %s\n", std::strerror(errno));
+    else if (provider)
+      u->second.shown = body;
   }
   void broadcast(uid_t uid) {
     auto u = users.find(uid);
     if (u != users.end() && u->second.ui >= 0)
       sendStatus(u->second.ui, Type::Keys, uid);
+  }
+  // Countdowns are whole CLOCK_BOOTTIME seconds. Each new second, send every
+  // provider the snapshot it would have been sent, unless it already shows it.
+  void refreshStatus() {
+    for (auto &[uid, u] : users) {
+      if (u.ui < 0)
+        continue;
+      const auto body = status(uid);
+      if (body != u.shown)
+        sendStatus(u.ui, Type::Keys, uid, body);
+    }
   }
   void eraseKeys(uid_t uid) {
     for (auto it = keys.begin(); it != keys.end();)
@@ -1117,6 +1173,7 @@ public:
       auto uid = c->second.uid;
       auto &u = users.at(uid);
       u.ui = -1;
+      u.shown.clear();
       u.locked = true;
       ++u.generation;
       cancelAll(uid, discoveryFailure ? Type::Fallback : Type::Denied);
@@ -1328,6 +1385,8 @@ public:
         ",\"keyEligible\":" + (keyOwnerEligible(*identity) ? "true" : "false") +
         ",\"turnEligible\":" + (eligibleReporter ? "true" : "false") +
         ",\"warningAccepted\":" + (u.warning ? "true" : "false") + "}";
+    // The provider folds request metadata into its status view.
+    u.shown.clear();
     if (!validateIdentity(*identity) || !sendPacket(fd, Type::Waiting, id) ||
         !sendText(u.ui, Type::Request, metadata, id)) {
       fallback(fd);
@@ -1595,6 +1654,7 @@ public:
       auto &u = users[c.uid];
       c.ui = true;
       u.ui = fd;
+      u.shown.clear();
       u.locked = true;
       if (u.session != login) {
         eraseKeys(c.uid);
@@ -1757,22 +1817,33 @@ public:
       handle(it->fd);
     }
   }
+  // reap() and timestamps.poll() re-read host state that has no wake-up
+  // source: pinned processes, login sessions, the controller record, helper
+  // and cleanup children, and the expiry of keys, reporters, requests and
+  // heartbeats. While the broker holds any of it, the loop keeps its tick.
+  // Without it, reap() can change only users' warning flags, which nothing
+  // reads before the reap() that follows the next accepted connection.
+  bool revalidating() const {
+    return !clients.empty() || !keys.empty() || !pending.empty() ||
+           !reporters.empty() || !identityChildren.empty() || !timestamps.idle();
+  }
   struct PollInputs {
     std::vector<pollfd> descriptors;
     std::size_t clientCount;
-    int timeout = 250;
+    int timeout = RevalidationTick;
   };
   PollInputs pollInputs() {
     PollInputs inputs{{{listener.get(), POLLIN, 0}}, clients.size() + 1};
+    inputs.timeout = revalidating() ? RevalidationTick : -1;
     for (const auto &[fd, c] : clients)
       inputs.descriptors.push_back({fd, static_cast<short>(c.check ? 0 : POLLIN), 0});
     for (const auto &[fd, c] : clients) {
       if (!c.check)
         continue;
       inputs.descriptors.push_back({c.check->result.get(), POLLIN, 0});
-      const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(
-          c.check->deadline - IdentityCheck::Clock::now()).count();
-      inputs.timeout = std::min(inputs.timeout, static_cast<int>(std::max(0L, remaining)));
+      inputs.timeout = earlierTimeout(inputs.timeout,
+          std::chrono::ceil<std::chrono::milliseconds>(
+              c.check->deadline - IdentityCheck::Clock::now()).count());
     }
     return inputs;
   }
@@ -1785,12 +1856,18 @@ public:
       if (now == UINT64_MAX)
         return 1;
       if (updated != now) {
-        for (auto &[uid, u] : users)
-          broadcast(uid);
+        refreshStatus();
         updated = now;
       }
       auto inputs = pollInputs();
       auto &fds = inputs.descriptors;
+      // Only the stop pipe makes an unbounded wait safe against a signal that
+      // lands between the flag check and poll(). It follows every slot that
+      // dispatch reads, so the resize below discards it.
+      if (stopRead >= 0)
+        fds.push_back({stopRead, POLLIN, 0});
+      else
+        inputs.timeout = earlierTimeout(inputs.timeout, RevalidationTick);
       if (poll(fds.data(), fds.size(), inputs.timeout) < 0) {
         if (errno == EINTR)
           continue;
@@ -1828,8 +1905,7 @@ int main(int argc, char **argv) {
     }
     return timestamps.drain(std::chrono::seconds(30)) ? 0 : 1;
   }
-  signal(SIGTERM, stop);
-  signal(SIGINT, stop);
+  installStopHandlers();
   Broker broker;
   return broker.run();
 }

@@ -61,6 +61,12 @@ def desktop_state(marker=None):
     return dict(schema=SCHEMA, busy=arch.transaction_running(), desktop=arch.desktop_id(), update=update)
 
 
+def state_sources(marker=None):
+    """The answer of `sources`: the files whose change can change the answer of `state`."""
+    return dict(schema=SCHEMA, paths=[str(path) for path in [MARKER if marker is None else marker,
+                                                             *arch.state_sources()]])
+
+
 def targets():
     # The hook passes the matched package names on standard input, one per line.
     try:
@@ -158,6 +164,10 @@ def main():
         except OSError as error:
             print(f'The desktop state could not be read: {error} [Emaki].', file=sys.stderr)
             return 75
+        return 0
+    if sys.argv[1:] == ['sources']:
+        # Read-only as well: the session waits on these files instead of polling `state`.
+        print(json.dumps(state_sources(), sort_keys=True), flush=True)
         return 0
     if sys.argv[1:] == ['--notify']:
         if os.getuid() == 0:

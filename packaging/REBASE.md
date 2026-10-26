@@ -825,18 +825,19 @@ launches after any launcher rebase, and retain application-scope stripping as a 
 Run the package's new `trusted_prompt`, `trusted_client`, niri-config `trusted` and niri-ipc
 `trusted_shell` tests, alongside the existing layer, cursor, lock and capture suites. The source
 fingerprint guard now includes the private launcher, input handlers, IPC routes and prompt renderer.
-The supervisor also probes the exact unreaped shell PID through `qs ipc --pid` and
-`system ping`; a successful process existence check is not responsiveness. Preserve
-15-second probe intervals, the 45-second deadline, the initial startup allowance, and a fresh observation window
-when the supervisor stalls or resumes. A heartbeat failure revokes the private
-connection before termination and consumes the existing bounded restart budget;
-an explicit restart retains its budget-reset behavior. Probe children receive no private
-Wayland descriptor. The executable is an absolute build-time path independent of the login
-PATH. Probe spawning, polling and reaping stay on a worker; polling errors must retire that
-probe and permit later attempts without blocking compositor dispatch. Run
-`python3 tests/test-shell-heartbeat.py` for delayed replies, supervisor gaps and a
-real stopped child with isolated mock transport. This does not replace a nested
-session test of the actual shell IPC.
+The supervisor probes the exact unreaped shell PID over Quickshell's own IPC socket: it
+repeats `qs ipc --pid N call system ping` in process (by-pid/N/instance.lock held, the instance
+id from that file, by-id/<id>/ipc.sock, the 33-byte StringCallCommand, success once any whole
+reply is read or the connection ends). A successful process existence check is not
+responsiveness. Preserve 15-second probe intervals, the 45-second deadline, the initial startup
+allowance, and a fresh observation window when the supervisor stalls or resumes. A heartbeat
+failure revokes the private connection before termination and consumes the existing bounded
+restart budget; an explicit restart retains its budget-reset behavior. No probe process is
+started. Connecting, writing and waiting stay on a worker and every wait observes cancel. After
+a Quickshell update, re-check src/ipc, src/io/ipccomm and src/core/paths against the probe
+(wire format, instance paths, the discarded call result). Run
+`python3 tests/test-shell-heartbeat.py` for delayed replies, supervisor gaps and a real stopped
+child with a mock instance, and the `trusted_client` tests for the protocol cases.
 
 Run `python3 tests/test-trusted-shell-launch.py` for the preparation wrapper, and
 `python3 tests/vm/run-trusted-prompt.py --help` for actual guest acceptance. The VM runner requires a

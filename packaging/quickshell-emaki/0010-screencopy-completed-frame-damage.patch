@@ -1,0 +1,290 @@
+From: Emaki contributors <emaki@localhost>
+Subject: [PATCH] screencopy: expose completed-frame damage to cropped consumers
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: LGPL-3.0-only
+
+Keep full-output capture, the shared manager, request cadence and context lifetime
+unchanged. Snapshot reliable normal-buffer damage before publishing each completed
+frame. Consumers can skip refreshing a crop that cannot change; first copies,
+absent metadata and transformed buffers retain full updates. The query maps logical
+item coordinates to the completed buffer and pads for linear filtering.
+
+Protocol damage belongs to the manager, not a capture context. Trust it only while
+one context uses that manager; a membership epoch also invalidates frames across
+peers joining and leaving between completions. Regional and other-output peers
+count too. This keeps existing capture timing and makes concurrent captures refresh
+conservatively, with no additional compositor trackers.
+
+diff --git a/src/wayland/screencopy/manager.hpp b/src/wayland/screencopy/manager.hpp
+--- a/src/wayland/screencopy/manager.hpp
++++ b/src/wayland/screencopy/manager.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <qobject.h>
++#include <qregion.h>
+ #include <qtclasshelpermacros.h>
+ #include <qtmetamacros.h>
+ 
+@@ -8,12 +9,20 @@
+ 
+ namespace qs::wayland::screencopy {
+ 
++// Damage belongs to the completed frontbuffer, in physical buffer pixels.
++// Backends without reliable metadata keep known false.
++struct ScreencopyDamage {
++	QRegion region;
++	bool known = false;
++};
++
+ class ScreencopyContext: public QObject {
+ 	Q_OBJECT;
+ 
+ public:
+ 	[[nodiscard]] buffer::WlBufferSwapchain& swapchain() { return this->mSwapchain; }
+ 	virtual void captureFrame() = 0;
++	[[nodiscard]] virtual ScreencopyDamage frameDamage() const { return {}; }
+ 
+ signals:
+ 	void frameCaptured();
+diff --git a/src/wayland/screencopy/view.hpp b/src/wayland/screencopy/view.hpp
+--- a/src/wayland/screencopy/view.hpp
++++ b/src/wayland/screencopy/view.hpp
+@@ -49,6 +49,10 @@
+ 	/// Capture a single frame. Has no effect if @@live is true.
+ 	Q_INVOKABLE void captureFrame();
+ 
++	/// Whether completed-frame damage may affect a rectangle in this item's coordinates.
++	/// An empty rectangle means the whole item; unknown damage always returns true.
++	Q_INVOKABLE bool damageIntersects(const QRectF& sourceRect) const;
++
+ 	[[nodiscard]] QObject* captureSource() const { return this->mCaptureSource; }
+ 	void setCaptureSource(QObject* captureSource);
+ 
+@@ -65,6 +69,9 @@
+ signals:
+ 	/// The compositor has ended the video stream. Attempting to restart it may or may not work.
+ 	void stopped();
++
++	/// Emitted for every completed frame, including consecutive identical damage regions.
++	void frameCaptured();
+ 
+ 	void captureSourceChanged();
+ 	void paintCursorsChanged();
+@@ -99,6 +106,7 @@
+ 	bool mLive = false;
+ 	ScreencopyContext* context = nullptr;
+ 	bool completed = false;
++	ScreencopyDamage completedDamage;
+ };
+ 
+ } // namespace qs::wayland::screencopy
+diff --git a/src/wayland/screencopy/view.cpp b/src/wayland/screencopy/view.cpp
+--- a/src/wayland/screencopy/view.cpp
++++ b/src/wayland/screencopy/view.cpp
+@@ -1,4 +1,5 @@
+ #include "view.hpp"
++#include <cmath>
+ 
+ #include <qnamespace.h>
+ #include <qobject.h>
+@@ -107,6 +108,7 @@
+ 	auto hadContext = this->context != nullptr;
+ 	delete this->context;
+ 	this->context = nullptr;
++	this->completedDamage = {};
+ 	this->bHasContent = false;
+ 	this->bSourceSize = QSize();
+ 	if (hadContext && update) this->update();
+@@ -126,8 +128,29 @@
+ 	auto size = frontbuffer->size();
+ 	if (frontbuffer->transform.flipSize()) size.transpose();
+ 
++	this->completedDamage = this->context->frameDamage();
+ 	this->bSourceSize = size;
+ 	this->bHasContent = true;
++	emit this->frameCaptured();
++}
++
++bool ScreencopyView::damageIntersects(const QRectF& sourceRect) const {
++	if (!this->bHasContent || !this->completedDamage.known) return true;
++	const auto size = this->bSourceSize.value();
++	if (size.isEmpty() || this->width() <= 0 || this->height() <= 0) return true;
++	const auto rect = sourceRect.isEmpty() ? this->boundingRect() : sourceRect;
++	const auto sx = size.width() / this->width();
++	const auto sy = size.height() / this->height();
++	const QRectF physical(rect.x() * sx, rect.y() * sy, rect.width() * sx, rect.height() * sy);
++	if (!std::isfinite(physical.left()) || !std::isfinite(physical.top())
++	    || !std::isfinite(physical.right()) || !std::isfinite(physical.bottom()))
++		return true;
++	// Linear source sampling can reach the neighbouring texel at the crop boundary.
++	// Clamp to the full buffer before rounding so out-of-output crops stay conservative.
++	const auto bounds = QRectF(QPointF(), QSizeF(size));
++	const auto clipped = physical.adjusted(-1, -1, 1, 1).intersected(bounds);
++	if (clipped.isEmpty()) return true;
++	return this->completedDamage.region.intersects(clipped.toAlignedRect());
+ }
+ 
+ void ScreencopyView::componentComplete() {
+diff --git a/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.hpp b/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.hpp
+--- a/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.hpp
++++ b/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.hpp
+@@ -19,6 +19,14 @@
+ private:
+ 	explicit WlrScreencopyManager();
+ 
++	// Damage history belongs to the shared manager, even across outputs and regions.
++	// Preserve request timing and trust damage only across exclusive intervals.
++	quint64 captureEpoch = 0;
++	uint captureCount = 0;
++	void captureStarted();
++	void captureStopped();
++	bool damageExclusive(quint64& epoch) const;
++
+ 	friend class WlrScreencopyContext;
+ };
+ 
+diff --git a/src/wayland/screencopy/wlr_screencopy/wlr_screencopy_p.hpp b/src/wayland/screencopy/wlr_screencopy/wlr_screencopy_p.hpp
+--- a/src/wayland/screencopy/wlr_screencopy/wlr_screencopy_p.hpp
++++ b/src/wayland/screencopy/wlr_screencopy/wlr_screencopy_p.hpp
+@@ -27,6 +27,7 @@
+ 	Q_DISABLE_COPY_MOVE(WlrScreencopyContext);
+ 
+ 	void captureFrame() override;
++	[[nodiscard]] ScreencopyDamage frameDamage() const override { return this->completedDamage; }
+ 	void updateTransform(bool previouslyUnset);
+ 
+ protected:
+@@ -34,6 +35,7 @@
+ 	void zwlr_screencopy_frame_v1_buffer(uint32_t format, uint32_t width, uint32_t height, uint32_t stride) override;
+ 	void zwlr_screencopy_frame_v1_linux_dmabuf(uint32_t format, uint32_t width, uint32_t height) override;
+ 	void zwlr_screencopy_frame_v1_flags(uint32_t flags) override;
++	void zwlr_screencopy_frame_v1_damage(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
+ 	void zwlr_screencopy_frame_v1_buffer_done() override;
+ 	void zwlr_screencopy_frame_v1_ready(uint32_t tvSecHi, uint32_t tvSecLo, uint32_t tvNsec) override;
+ 	void zwlr_screencopy_frame_v1_failed() override;
+@@ -79,6 +81,12 @@
+ 	WlrScreencopyManager* manager;
+ 	buffer::WlBufferRequest request;
+ 	bool copiedFirstFrame = false;
++	bool requestedDamage = false;
++	bool sawDamage = false;
++	bool invalidDamage = false;
++	QRegion pendingDamage;
++	ScreencopyDamage completedDamage;
++	quint64 damageEpoch = 0;
+ 	OutputTransformQuery transform {this};
+ 	bool yInvert = false;
+ 
+diff --git a/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.cpp b/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.cpp
+--- a/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.cpp
++++ b/src/wayland/screencopy/wlr_screencopy/wlr_screencopy.cpp
+@@ -1,5 +1,6 @@
+ #include "wlr_screencopy.hpp"
+ #include <cstdint>
++#include <limits>
+ 
+ #include <private/qwaylanddisplay_p.h>
+ #include <private/qwaylandscreen_p.h>
+@@ -33,6 +34,22 @@
+ 	return instance;
+ }
+ 
++void WlrScreencopyManager::captureStarted() {
++	++this->captureEpoch;
++	++this->captureCount;
++}
++
++void WlrScreencopyManager::captureStopped() {
++	++this->captureEpoch;
++	--this->captureCount;
++}
++
++bool WlrScreencopyManager::damageExclusive(quint64& epoch) const {
++	const auto exclusive = this->captureCount == 1 && this->captureEpoch == epoch;
++	epoch = this->captureEpoch;
++	return exclusive;
++}
++
+ ScreencopyContext*
+ WlrScreencopyManager::captureOutput(QScreen* screen, bool paintCursors, QRect region) {
+ 	if (!dynamic_cast<QtWaylandClient::QWaylandScreen*>(screen->handle())) return nullptr;
+@@ -49,12 +66,14 @@
+     , screen(dynamic_cast<QtWaylandClient::QWaylandScreen*>(screen->handle()))
+     , paintCursors(paintCursors)
+     , region(region) {
++	this->manager->captureStarted();
+ 	this->transform.setScreen(this->screen);
+ 	QObject::connect(screen, &QObject::destroyed, this, &WlrScreencopyContext::onScreenDestroyed);
+ }
+ 
+ WlrScreencopyContext::~WlrScreencopyContext() {
+ 	if (this->object()) this->destroy();
++	this->manager->captureStopped();
+ }
+ 
+ void WlrScreencopyContext::onScreenDestroyed() {
+@@ -67,6 +86,10 @@
+ 	if (this->object()) return;
+ 
+ 	this->request.reset();
++	this->pendingDamage = QRegion();
++	this->sawDamage = false;
++	this->invalidDamage = false;
++	this->requestedDamage = false;
+ 
+ 	if (this->region.isEmpty()) {
+ 		this->init(this->manager->capture_output(this->paintCursors ? 1 : 0, this->screen->output()));
+@@ -109,6 +132,26 @@
+ 	this->yInvert = flags & ZWLR_SCREENCOPY_FRAME_V1_FLAGS_Y_INVERT;
+ }
+ 
++void WlrScreencopyContext::zwlr_screencopy_frame_v1_damage(
++    uint32_t x,
++    uint32_t y,
++    uint32_t width,
++    uint32_t height
++) {
++	this->sawDamage = true;
++	const auto limit = static_cast<uint32_t>(std::numeric_limits<int>::max());
++	if (x > limit || y > limit || width > limit - x || height > limit - y) {
++		this->invalidDamage = true;
++		return;
++	}
++	this->pendingDamage += QRect(
++	    static_cast<int>(x),
++	    static_cast<int>(y),
++	    static_cast<int>(width),
++	    static_cast<int>(height)
++	);
++}
++
+ void WlrScreencopyContext::zwlr_screencopy_frame_v1_buffer_done() {
+ 	auto* backbuffer = this->mSwapchain.createBackbuffer(this->request);
+ 
+@@ -121,6 +164,7 @@
+ 		return;
+ 	}
+ 
++	this->requestedDamage = this->copiedFirstFrame;
+ 	if (this->copiedFirstFrame) {
+ 		this->copy_with_damage(backbuffer->buffer());
+ 	} else {
+@@ -156,6 +200,16 @@
+ 
+ 	this->destroy();
+ 	this->mSwapchain.swapBuffers();
++	// A shared manager's damage is relative to its previous copy, not this context's.
++	// The membership epoch also detects peers that joined and left during a request.
++	const auto exclusive = this->manager->damageExclusive(this->damageEpoch);
++	// A plain first copy, absent metadata, and transformed buffers are conservative.
++	// Snapshot before notifying consumers: captureFrame resets the pending region.
++	this->completedDamage = {
++	    this->pendingDamage.intersected(QRect(QPoint(), this->mSwapchain.frontbuffer()->size())),
++	    exclusive && this->requestedDamage && this->sawDamage && !this->invalidDamage
++	        && this->transform.transform == buffer::WlBufferTransform::Normal0 && !this->yInvert
++	};
+ 	emit this->frameCaptured();
+ }
+ 

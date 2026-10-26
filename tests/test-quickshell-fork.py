@@ -11,7 +11,7 @@ check fails first, names each missing patch and says how to get the right qs.
 
 Probed offscreen: 0005 (no WAYLAND_SOCKET in children), 0006 (OnlyShowIn/NotShowIn),
 0007 (the desktop-entry watcher), 0008 (Quickshell.iconThemeRevision), 0009
-(Quickshell.queryKeyboardModifiers). Not observable here:
+(Quickshell.queryKeyboardModifiers), 0010 (completed-frame damage API). Not observable here:
 0001 (needs a compositor's screencopy), 0002 (needs NetworkManager), 0003 (a build fix),
 0004 (needs polkitd)."""
 import os
@@ -26,7 +26,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent.parent
 ENTRY = '[Desktop Entry]\nType=Application\nName={}\nExec=true\n'
-PROBED = {'0005', '0006', '0007', '0008', '0009'}
+PROBED = {'0005', '0006', '0007', '0008', '0009', '0010'}
 # The patches this check was reviewed against: what the recipe applies, in order, with the
 # sha256 the PKGBUILD pins. Any change (a patch added, removed, renamed, reordered, applied
 # twice or edited) fails here, so that someone decides whether the probe can observe it and
@@ -50,6 +50,8 @@ REVIEWED = (
      '979342b98e21c517843e8b6e957cf9cf6f8d6a0c46bc347f0ed0d7d55462fcf1'),
     ('0009-core-query-keyboard-modifiers.patch',
      'd7227add293f3e69752d7c8a8f903b1f2caf14f110473695bdaa5446e8464e5e'),
+    ('0010-screencopy-completed-frame-damage.patch',
+     '70b21d7553f7347de7d92be03c60261c234aad7f488e3d08cb7d6403285b1355'),
 )
 # tests/build-quickshell-fork.sh installs qs into <directory>/bin.
 REMEDY = 'tests/build-quickshell-fork.sh <directory>, then PATH=<directory>/bin:$PATH'
@@ -101,7 +103,10 @@ def main():
         (system / 'applications/elsewhere.desktop').write_text(ENTRY.format('Elsewhere') + 'OnlyShowIn=GNOME;\n')
         for name in ('home', 'config', 'cache', 'state', 'shell'):
             (base / name).mkdir(mode=0o700)
-        (base / 'shell/shell.qml').write_text((ROOT / 'tests/fixtures/QuickshellForkProbe.qml').read_text())
+        (base / 'shell/shell.qml').write_text(
+            (ROOT / 'tests/fixtures/QuickshellForkProbe.qml').read_text().replace(
+                '    id: root', '    id: root\n    DamageCaptureApi {}', 1))
+        shutil.copyfile(ROOT / 'tests/fixtures/DamageCaptureApi.qml', base / 'shell/DamageCaptureApi.qml')
         env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(base / 'config'),
                    XDG_CONFIG_DIRS=str(base / 'config'), XDG_DATA_HOME=str(home / '.local/share'),
                    XDG_DATA_DIRS=str(system), XDG_CACHE_HOME=str(base / 'cache'),
@@ -123,7 +128,7 @@ def main():
                 lines.put(line)
 
         threading.Thread(target=read, daemon=True).start()
-        seen = {'ids': None, 'scans': 0, 'revision': None, 'socket': None, 'modifiers': None}
+        seen = {'ids': None, 'scans': 0, 'revision': None, 'socket': None, 'modifiers': None, 'damage': None}
 
         def drain(seconds, until=lambda: False):
             end = time.monotonic() + seconds
@@ -134,7 +139,7 @@ def main():
                     return
                 for key, marker in (('ids', 'FORK_IDS ['), ('scans', 'FORK_SCANS '),
                                     ('revision', 'FORK_REVISION '), ('socket', 'FORK_CHILD_SOCKET '),
-                                    ('modifiers', 'FORK_MODIFIERS ')):
+                                    ('modifiers', 'FORK_MODIFIERS '), ('damage', 'FORK_DAMAGE ')):
                     if marker in line:
                         value = line.split(marker, 1)[1].strip()
                         seen[key] = value.rstrip(']').split() if key == 'ids' else int(value) if key == 'scans' else value
@@ -152,6 +157,8 @@ def main():
                 missing.append(('0008', f'typeof Quickshell.iconThemeRevision is {seen["revision"]!r}'))
             if seen['modifiers'] != 'function 0':
                 missing.append(('0009', f'Quickshell.queryKeyboardModifiers is {seen["modifiers"]!r}'))
+            if seen['damage'] != 'function function true':
+                missing.append(('0010', f'completed-frame damage API is {seen["damage"]!r}'))
             drain(.6)
             before = seen['scans']
             # A file saved into a parent of a desktop-entry directory (the home folder, /usr/share).

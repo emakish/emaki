@@ -7,7 +7,7 @@
 # and their dependencies are also declared by emaki-config for standalone use.
 pkgname=emaki-desktop
 pkgver=0.9.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Emaki desktop applications, dependencies and lock PAM configuration'
 arch=('any')
 url='https://github.com/emakish/emaki'

@@ -201,6 +201,8 @@ TimestampCleanup::TimestampCleanup() = default;
 TimestampCleanup::~TimestampCleanup() = default;
 bool TimestampCleanup::healthy() const { return state_ && state_->valid; }
 bool TimestampCleanup::busy() const { return state_ && state_->busy; }
+// Without journals poll() has no worker to collect and no retry to start.
+bool TimestampCleanup::idle() const { return !state_ || state_->jobs.empty(); }
 std::size_t TimestampCleanup::pending(uid_t uid) const {
   if (!state_)
     return 0;

@@ -130,6 +130,8 @@ import QtQuick
 import QtTest
 import Quickshell
 ShellRoot {
+    // As in shell.qml: the Translation singleton exists before any page reads a plural label.
+    readonly property bool translationsReady: Translation.initialize()
     SystemService { id: service }
     QtObject { id: catalog; property bool writing: false; function row(key) { return {value: null}; } }
     Item {

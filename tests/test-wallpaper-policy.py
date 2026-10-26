@@ -238,6 +238,16 @@ c.clock(Duration::from_secs(202),false);
 assert_eq!(c.now,3.);
 }''')
 
+    def test_animation_draws_every_vblank(self):
+        render = source("src/render_helpers/emaki_wallpaper/mod.rs")
+        niri = source("src/niri.rs")
+        # A visible animation redraws on every vblank after DRM and winit rendering alike:
+        # a slower animation clock made the trains move in visible steps (1.0.0-1).
+        redraws = re.findall(r"\.unfinished_animations_remain\s*\|=\s*"
+                             r"self\.emaki_wallpaper\.borrow\(\)\.animated\(&output\.name\(\)\);", niri)
+        self.assertEqual(len(redraws), 2)
+        self.assertNotRegex(render, r"\bFPS\b|fn step_time\(|fn next_step\(|fn step_ceil\(")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -146,6 +146,17 @@ class Writer(Fixture):
         self.assertIsInstance(answer['busy'], bool)
         self.assertRegex(answer['desktop'], r'\A[0-9a-f]{24}\Z')
 
+    def test_sources_command_names_every_file_the_state_reads(self):
+        result = subprocess.run([sys.executable, '-I', '-B', str(ROOT / 'scripts/emaki-session-update'), 'sources'],
+                                capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        answer = json.loads(result.stdout)
+        self.assertEqual(answer, dict(schema=1, paths=['/run/emaki-session-update', '/var/lib/pacman/db.lck',
+                                                         '/var/lib/pacman/local']))
+        # In-process the same answer follows the backend's paths (here the fixture's).
+        self.assertEqual(update.state_sources()['paths'],
+                         [str(self.marker), str(self.base / 'db.lck'), str(self.packages)])
+
 
 class Reader(Fixture):
     def setUp(self):
