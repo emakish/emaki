@@ -6,13 +6,13 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 1.0.0 late alpha — not for everyday use yet.** See [Release stages](#release-stages).
+**Status: 1.0.0 beta — ready for everyday use.** See [Release stages](#release-stages).
 Releases are tested in QEMU with UEFI firmware (OVMF) and on two real computers, an AMD
 laptop and a MacBook, see [Tested hardware](#tested-hardware). Where the project is heading:
 [PLANS.md](PLANS.md).
 
-Since 0.11, Emaki speaks English, Latin American Spanish and Brazilian Portuguese: in the
-installer, the desktop, Programs & Updates and Notes.
+Since 0.12, Emaki speaks English, Latin American Spanish, Brazilian Portuguese, German, French
+and Russian: in the installer, the desktop, Programs & Updates and Notes.
 
 ![The Emaki desktop](docs/screenshots/desktop.png)
 
@@ -63,11 +63,11 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## The ISO
 
-Download: https://dl.emaki.sh/iso/0.11.0/emaki-0.11.0-x86_64.iso. Its checksum and signature
+Download: https://dl.emaki.sh/iso/1.0.0/emaki-1.0.0-x86_64.iso. Its checksum and signature
 are at the same address with `.sha256` and `.sig` added; the key that signed it is
-https://dl.emaki.sh/iso/0.11.0/emaki-signing-key.asc.
+https://dl.emaki.sh/iso/1.0.0/emaki-signing-key.asc.
 
-`emaki-0.11.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-1.0.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
@@ -134,6 +134,9 @@ session without your password.
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.10.0 | Update from 0.9.1 from the testing channel, the lock screen wallpaper, Emaki Notes, the clock shade | No new issues found |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.11.0 | Update from 0.10.0 from the testing channel, choosing Spanish or Portuguese after the update; then a fresh installation from USB in Brazilian Portuguese, login, desktop | The live session from USB shows a red "FAILED" line and Broadcom Wi-Fi lines at boot; the language picker in Welcome looks unfinished and the time-zone map in the installer is slightly crooked |
 | ThinkPad P14s Gen 7 AMD | 0.11.0 | Everyday use: Emaki added to an existing Arch installation at 0.9.0 with `pacman -Syu`, then updated from the testing channel to 0.9.1, 0.10.0 and 0.11.0, no failed services | Not installed from USB; this laptop starts with rEFInd, so Emaki's boot menu refresh after updates does not run on it |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.12.0 | Update from 0.11.0 from the testing channel, restart, login, desktop in Brazilian Portuguese, all six languages available, no failed services | During the update from 0.11.0 the update space check prints its warning in English; Firefox stays in English on a Portuguese system |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.12.0 | Fresh installation from USB in Russian, login, desktop, Wi-Fi, no failed services | No new issues found |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 1.0.0 | Fresh installation from USB, login, desktop, Wi-Fi, the installed version checked | No new issues found |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
@@ -149,6 +152,9 @@ MacBook is a trademark of Apple Inc. and ThinkPad a trademark of Lenovo; Emaki i
 - Machines that still update from the old GitHub address print
   "emaki: missing required signature" once after moving to `pkgs.emaki.sh`; the next update is
   clean.
+- In the installer, most keyboard layouts are shown only by a short code such as "al" in every
+  language except English; searching by the English name still finds them.
+- The boot menu of the installed system stays in English in every language.
 
 ## Updates
 
