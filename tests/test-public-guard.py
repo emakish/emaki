@@ -22,18 +22,139 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
-def sample(value):
-    return bytes.fromhex(value).decode()
+SYNTHETIC_RULES = {
+    'expressions': {
+        'strict': r'fixedmarker',
+        'secret': r'fixture-key-',
+        'internal': r'private-entry|Private-trailer:|Fixture origin (?!git diff\b)',
+        'attribution': r'forbiddenword[a-d]',
+        'ambiguous': r'uncertainword',
+        'path': r'(?:^|/)PRIVATE-DOC-',
+    },
+    'guards': [
+        {'expression': r'private-location|Signed-off-by:', 'flags': 2, 'skip': []},
+        {'expression': r'forbiddenword[a-d]', 'flags': 2, 'skip': []},
+        {'expression': r'uncertainword', 'flags': 2, 'skip': ['LICENSE']},
+    ],
+    'core': r'forbiddenword[a-d]',
+}
+
+
+def fixture_policy():
+    policy = json.loads((MODULE.POLICY_HOME / 'policy.json').read_text())
+    policy['rules_sha256'] = MODULE.digest(MODULE.canonical_rules(SYNTHETIC_RULES))
+    return policy
 
 
 class PublicGuardTests(unittest.TestCase):
     def guard(self, origin='ours'):
-        guard = MODULE.Guard(origin)
-        guard.policy = copy.deepcopy(guard.policy)
+        guard = MODULE.Guard(origin, policy=fixture_policy(), rules=copy.deepcopy(SYNTHETIC_RULES))
         return guard
 
     def rules(self, guard):
         return {item['rule'] for item in guard.findings}
+
+    def test_explicit_rules_need_no_local_file_or_secret(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            (home / 'policy.json').write_text(json.dumps(fixture_policy()))
+            (home / 'reviewed-baseline.json').write_bytes(
+                (MODULE.POLICY_HOME / 'reviewed-baseline.json').read_bytes())
+            with mock.patch.object(MODULE, 'POLICY_HOME', home), mock.patch.dict(os.environ, {}, clear=True):
+                guard = MODULE.Guard(rules=copy.deepcopy(SYNTHETIC_RULES))
+                guard.content('README.md', b'Welcome')
+                self.assertEqual(guard.result()['result'], 'PASS')
+
+    def test_rules_missing_empty_malformed_or_mismatched(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            (home / 'policy.json').write_text(json.dumps(fixture_policy()))
+            (home / 'reviewed-baseline.json').write_bytes(
+                (MODULE.POLICY_HOME / 'reviewed-baseline.json').read_bytes())
+            with mock.patch.object(MODULE, 'POLICY_HOME', home):
+                for value in (None, '', '{}', '{', json.dumps(dict(SYNTHETIC_RULES, core='changed'))):
+                    with self.subTest(value=value):
+                        if value is not None:
+                            (home / 'rules.local.json').write_text(value)
+                        with self.assertRaises((ValueError, OSError)):
+                            MODULE.Guard()
+
+    def test_rules_schema_and_expressions_fail_closed(self):
+        examples = [None, [], {}, dict(SYNTHETIC_RULES, extra='unexpected'),
+                    dict(SYNTHETIC_RULES, guards=[]), dict(SYNTHETIC_RULES, core='[')]
+        missing = copy.deepcopy(SYNTHETIC_RULES)
+        del missing['expressions']['strict']
+        examples.append(missing)
+        for rules in examples:
+            with self.subTest(rules=rules):
+                policy = fixture_policy()
+                policy['rules_sha256'] = MODULE.digest(MODULE.canonical_rules(rules))
+                with self.assertRaises((ValueError, TypeError, OSError)):
+                    MODULE.Guard(policy=policy, rules=rules)
+
+    def test_rules_canonical_formatting(self):
+        first = MODULE.canonical_rules(SYNTHETIC_RULES)
+        reordered = dict(reversed(list(SYNTHETIC_RULES.items())))
+        second = MODULE.canonical_rules(json.loads(json.dumps(reordered, indent=4)))
+        self.assertEqual(first, second)
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            (home / 'policy.json').write_text(json.dumps(fixture_policy()))
+            (home / 'reviewed-baseline.json').write_bytes(
+                (MODULE.POLICY_HOME / 'reviewed-baseline.json').read_bytes())
+            (home / 'rules.local.json').write_text(json.dumps(reordered, indent=4))
+            with mock.patch.object(MODULE, 'POLICY_HOME', home):
+                guard = MODULE.Guard()
+                guard.content('README.md', b'forbiddenworda')
+                self.assertIn('wording', self.rules(guard))
+
+    def test_cli_rules_input_never_falls_back_or_exposes_invalid_values(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            trusted, candidate = root / 'trusted', root / 'candidate'
+            trusted.mkdir()
+            candidate.mkdir()
+            for name in ('guard.py', 'reviewed-baseline.json'):
+                (trusted / name).write_bytes((MODULE.POLICY_HOME / name).read_bytes())
+            (trusted / 'policy.json').write_text(json.dumps(fixture_policy()))
+            # A valid local file must never rescue explicitly supplied bad input.
+            (trusted / 'rules.local.json').write_text(json.dumps(SYNTHETIC_RULES))
+            command = [sys.executable, '-B', str(trusted / 'guard.py'),
+                       '--tree', str(candidate), '--rules-stdin', '--json', str(root / 'result.json')]
+            invalid = (b'', b'null', b'[]', b'{}', b'{"private-marker":', b'\xff',
+                       json.dumps(dict(SYNTHETIC_RULES, core='private-marker')).encode())
+            for value in invalid:
+                with self.subTest(value=value):
+                    result = subprocess.run(command, input=value, capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertNotIn(b'private-marker', result.stdout + result.stderr)
+                    self.assertEqual(result.stderr, b'')
+                    output = json.loads((root / 'result.json').read_text())
+                    self.assertEqual(output['result'], 'BLOCK')
+                    self.assertEqual(output['findings'][0]['rule'], 'rules-unavailable')
+            result = subprocess.run(command, input=json.dumps(SYNTHETIC_RULES).encode(),
+                                    capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_candidate_rules_cannot_replace_trusted_rules(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'scripts/public').mkdir(parents=True)
+            (root / 'scripts/public/rules.local.json').write_text('{}')
+            (root / 'README.md').write_text('forbiddenworda')
+            guard = self.guard()
+            guard.tree(root)
+            self.assertIn('wording', self.rules(guard))
+            self.assertIn('path-private', self.rules(guard))
+
+    def test_local_rules_path_cannot_be_reviewed_away(self):
+        guard = self.guard()
+        path = 'scripts/public/rules.local.json'
+        guard.policy['paths'].append(path)
+        guard.baseline_paths.add((path, MODULE.digest(path.encode())))
+        guard.approved_infrastructure = True
+        guard.blob(path, '100644', b'{}')
+        self.assertIn('path-private', self.rules(guard))
 
     def test_clean(self):
         guard = self.guard()
@@ -46,7 +167,7 @@ class PublicGuardTests(unittest.TestCase):
             self.assertTrue(group['reason'])
             self.assertEqual(group['status'], 'owner-decision-pending')
         path = 'README.md'
-        line = sample('414920417373697374616e7473')
+        line = 'forbiddenworda'
         exact = (path, MODULE.digest(line.encode()))
         guard = self.guard()
         guard.baseline_lines.add(exact)
@@ -60,28 +181,27 @@ class PublicGuardTests(unittest.TestCase):
                 self.assertEqual(guard.result()['result'], 'FLAG')
 
     def test_new_product_words_need_review(self):
-        for line in (sample('414920417373697374616e7473'), sample('436c6175646520436f6465'),
-                     sample('436f646578'), sample('4f70656e4149')):
+        for line in ('forbiddenworda', 'forbiddenwordb',
+                     'forbiddenwordc', 'forbiddenwordd'):
             with self.subTest(line=line):
                 guard = self.guard()
                 guard.content('README.md', ('Configure ' + line + ' here.').encode())
                 self.assertEqual(guard.result()['result'], 'FLAG', guard.findings)
 
-    def test_shipped_baseline_entry_reopens_on_edit(self):
-        path = sample('646f63732f6167656e742d72756c65732d73657475702e6d64')
+    def test_baseline_entry_reopens_on_edit(self):
+        path, line = 'docs/example.md', 'private-entry instructions'
         guard = self.guard()
-        lines = (ROOT / path).read_text().splitlines()
-        line = next(line for line in lines
-                    if (path, MODULE.digest(line.encode())) in guard.baseline_lines
-                    and guard.rules['internal'].search(line))
+        exact = (path, MODULE.digest(line.encode()))
+        guard.baseline_lines.add(exact)
         guard.content(path, line.encode())
         self.assertEqual(guard.result()['result'], 'PASS')
         guard = self.guard()
+        guard.baseline_lines.add(exact)
         guard.content(path, (line + ' changed').encode())
         self.assertEqual(guard.result()['result'], 'BLOCK')
 
     def test_filename_review_does_not_cover_body_text(self):
-        name = sample('636c61756465')
+        name = 'forbiddenworda'
         guard = self.guard()
         guard.baseline_paths.add((name, MODULE.digest(name.encode())))
         guard.text(name, 'path', name)
@@ -90,7 +210,7 @@ class PublicGuardTests(unittest.TestCase):
         self.assertEqual(guard.result()['result'], 'FLAG')
 
     def test_new_work_record_blocks_even_in_existing_path(self):
-        line = sample('4e69676874207265706f72743a20414920617373697374616e747320776f726b656420616c6c206e696768742e')
+        line = 'private-entry forbiddenworda'
         for path in ('README.md', 'docs/record.md'):
             with self.subTest(path=path):
                 guard = self.guard()
@@ -98,33 +218,33 @@ class PublicGuardTests(unittest.TestCase):
                 self.assertEqual(guard.result()['result'], 'BLOCK')
 
     def test_named_work_attribution_still_blocks(self):
-        name = sample('436c61756465')
+        name = 'forbiddenworda'
         for line in (name + ' wrote this file', 'Written by ' + name,
                      'Reviewed with ' + name, 'Generated using ' + name,
-                     sample('41492d67656e657261746564'), sample('6d616368696e652d67656e657261746564')):
+                     'private-entry generated', 'private-entry generated'):
             with self.subTest(line=line):
                 guard = self.guard()
                 guard.content('README.md', line.encode())
                 self.assertEqual(guard.result()['result'], 'BLOCK', guard.findings)
 
     def test_diff_provenance_is_not_a_work_trailer(self):
-        line = sample('47656e6572617465642077697468206769742064696666202d2d6e6f2d696e646578')
+        line = 'Fixture origin git diff --no-index'
         guard = self.guard()
         guard.content('README.md', line.encode())
         self.assertEqual(guard.result()['result'], 'PASS')
-        for suffix in ('diffuse', sample('436c61756465'), sample('436f646578'),
-                       sample('4750542d35'), sample('616e20617373697374616e74')):
+        for suffix in ('diffuse', 'forbiddenworda', 'forbiddenwordc',
+                       'forbiddenwordb', 'forbiddenwordc'):
             guard = self.guard()
-            guard.content('README.md', (sample('47656e657261746564207769746820') + suffix).encode())
+            guard.content('README.md', ('Fixture origin ' + suffix).encode())
             self.assertEqual(guard.result()['result'], 'BLOCK', guard.findings)
 
     def test_baseline_cannot_allow_secrets_or_private_paths(self):
-        line = sample('6768705f') + '01234567890123456789'
+        line = 'fixture-key-' + '01234567890123456789'
         guard = self.guard()
         guard.baseline_lines.add(('README.md', MODULE.digest(line.encode())))
         guard.content('README.md', line.encode())
         self.assertIn('secret', self.rules(guard))
-        name = sample('5441534b2d39392e6d64')
+        name = 'PRIVATE-DOC-99.md'
         guard.baseline_paths.add((name, MODULE.digest(name.encode())))
         guard.path(name, '100644')
         self.assertIn('path-private', self.rules(guard))
@@ -156,34 +276,34 @@ class PublicGuardTests(unittest.TestCase):
 
     def test_path_shape(self):
         guard = self.guard()
-        guard.blob(sample('5441534b2d39392e6d64'), '100644', b'Hello\n')
+        guard.blob('PRIVATE-DOC-99.md', '100644', b'Hello\n')
         self.assertIn('path-private', self.rules(guard))
 
-    def test_renamed_report(self):
+    def test_renamed_record(self):
         guard = self.guard()
-        guard.content('README.md', sample('2d2030333a3132204c31302066696e6973686564').encode())
+        guard.content('README.md', 'private-entry completed'.encode())
         self.assertIn('internal', self.rules(guard))
 
     def test_renamed_instructions(self):
         guard = self.guard()
-        guard.content('README.md', sample('596f752061726520746865206167656e742e20466f6c6c6f7720746865206c65616420616e642072657475726e20612072657669657720766572646963742e').encode())
+        guard.content('README.md', 'private-entry instructions'.encode())
         self.assertEqual(guard.result()['result'], 'BLOCK')
         self.assertIn('internal', self.rules(guard))
 
     def test_provenance_phrase(self):
         guard = self.guard()
-        guard.content('README.md', sample('546865206d6f64656c2077726f746520746869732066696c65').encode())
+        guard.content('README.md', 'private-entry wrote this file'.encode())
         self.assertEqual(guard.result()['result'], 'BLOCK')
         self.assertIn('internal', self.rules(guard))
 
     def test_product_wording(self):
         guard = self.guard()
-        guard.content('README.md', sample('636c61756465').encode())
+        guard.content('README.md', 'forbiddenworda'.encode())
         self.assertEqual(guard.result()['result'], 'FLAG')
 
     def test_outside_wording_is_review(self):
         guard = self.guard('outside')
-        guard.content('pr-body', sample('636c61756465').encode())
+        guard.content('pr-body', 'forbiddenworda'.encode())
         self.assertEqual(guard.result()['result'], 'FLAG')
 
     def test_outside_structure_still_blocks(self):
@@ -192,7 +312,7 @@ class PublicGuardTests(unittest.TestCase):
         self.assertEqual(guard.result()['result'], 'BLOCK')
 
     def test_ambiguous_and_exact_exception(self):
-        line = sample('7373682d6167656e74')
+        line = 'uncertainword'
         guard = self.guard()
         guard.content('README.md', line.encode())
         self.assertEqual(guard.result()['result'], 'FLAG')
@@ -205,16 +325,16 @@ class PublicGuardTests(unittest.TestCase):
 
     def test_split_word(self):
         guard = self.guard()
-        guard.content('README.md', sample('636c612d0a2f2f20756465').encode())
+        guard.content('README.md', 'forbidden-\n// worda'.encode())
         self.assertIn('split', self.rules(guard))
 
     def test_unicode_obfuscation(self):
         guard = self.guard()
-        guard.content('README.md', sample('636ce2808b61756465').encode())
+        guard.content('README.md', 'forbidden\u200bworda'.encode())
         self.assertEqual(guard.result()['result'], 'BLOCK')
 
     def test_split_across_exception(self):
-        first, second = sample('636c61'), sample('756465')
+        first, second = 'forbidden', 'worda'
         guard = self.guard()
         guard.lines.add(('README.md', MODULE.digest(first.encode())))
         guard.content('README.md', (first + '\n' + second).encode())
@@ -222,13 +342,13 @@ class PublicGuardTests(unittest.TestCase):
 
     def test_credentials_outside(self):
         guard = self.guard('outside')
-        guard.content('README.md', sample('6768705f').encode() + b'01234567890123456789')
+        guard.content('README.md', 'fixture-key-'.encode() + b'01234567890123456789')
         self.assertIn('secret', self.rules(guard))
         self.assertEqual(guard.result()['result'], 'BLOCK')
 
     def test_trailer(self):
         guard = self.guard()
-        guard.content('commit:example', sample('436f2d617574686f7265642d62793a20506572736f6e').encode())
+        guard.content('commit:example', 'Private-trailer: Person'.encode())
         self.assertIn('internal', self.rules(guard))
 
     def test_changed_policy(self):
@@ -255,7 +375,7 @@ class PublicGuardTests(unittest.TestCase):
         guard.policy['binary']['art/example.png'] = MODULE.digest(image)
         guard.content('art/example.png', image)
         self.assertEqual(guard.result()['result'], 'PASS')
-        guard.content('art/example.png', image + sample('636c61756465').encode())
+        guard.content('art/example.png', image + 'forbiddenworda'.encode())
         self.assertIn('binary-review', self.rules(guard))
         self.assertIn('wording', self.rules(guard))
 
@@ -310,22 +430,17 @@ class PublicGuardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.inflate(zlib.compress(b'x' * (MODULE.MAX_BYTES + 1)))
 
-    def test_public_checker_sources(self):
-        guard = self.guard()
-        for name in ('scripts/public/guard.py', 'scripts/public/policy.json',
-                     'scripts/public/reviewed-baseline.json',
-                     'scripts/public/hooks/pre-push', 'scripts/public/hooks/install.py',
-                     'tests/test-public-guard.py'):
-            if (ROOT / name).is_file():
-                guard.content(name, (ROOT / name).read_bytes())
-        self.assertEqual(guard.findings, [])
+    def test_policy_contains_only_rules_fingerprint(self):
+        policy = json.loads((MODULE.POLICY_HOME / 'policy.json').read_text())
+        self.assertNotIn('expressions', policy)
+        self.assertRegex(policy['rules_sha256'], r'^[0-9a-f]{64}$')
 
     def test_untracked_ignored_material(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / 'README.md').write_text('Welcome')
             (root / 'untracked').mkdir()
-            (root / 'untracked/notes.txt').write_text(sample('4e69676874207265706f7274'))
+            (root / 'untracked/notes.txt').write_text('private-entry')
             guard = self.guard()
             guard.tree(root)
             self.assertIn('internal', self.rules(guard))
@@ -333,21 +448,23 @@ class PublicGuardTests(unittest.TestCase):
 
     def test_reviewed_credential_fixtures(self):
         guard = self.guard()
-        for name in ('tests/fixtures/report-redaction.json', 'tests/test-r2-client.py'):
-            if (ROOT / name).is_file():
-                guard.content(name, (ROOT / name).read_bytes())
+        line = 'fixture-key-example'
+        guard.credentials.add(('README.md', MODULE.digest(line.encode())))
+        guard.content('README.md', line.encode())
         self.assertNotIn('secret', self.rules(guard))
+        guard.content('README.md', (line + ' changed').encode())
+        self.assertIn('secret', self.rules(guard))
 
     def test_review_cannot_hide_strict_material(self):
         guard = self.guard()
-        line = sample('24466f726d61743a')
+        line = 'fixedmarker'
         guard.lines.add(('README.md', MODULE.digest(line.encode())))
         guard.content('README.md', line.encode())
         self.assertIn('strict', self.rules(guard))
 
-    def test_review_cannot_hide_coarse_report(self):
+    def test_review_cannot_hide_restricted_record(self):
         guard = self.guard()
-        line = sample('4e69676874207265706f7274')
+        line = 'private-entry'
         guard.lines.add(('README.md', MODULE.digest(line.encode())))
         guard.content('README.md', line.encode())
         self.assertIn('internal', self.rules(guard))
@@ -360,18 +477,18 @@ class PublicGuardTests(unittest.TestCase):
     def test_embedded_text(self):
         import base64
         guard = self.guard()
-        value = sample('636c61756465').encode()
+        value = 'forbiddenworda'.encode()
         guard.content('README.md', b'data:text/plain;base64,' + base64.b64encode(value))
         self.assertIn('wording', self.rules(guard))
 
     def test_utf16_binary(self):
         guard = self.guard()
-        guard.content('art/example.dat', sample('636c61756465').encode('utf-16-le'))
+        guard.content('art/example.dat', 'forbiddenworda'.encode('utf-16-le'))
         self.assertIn('wording', self.rules(guard))
 
     def test_pdf_string(self):
         guard = self.guard()
-        guard.content('art/example.pdf', b'%PDF-1.4\n(' + sample('636c61756465').encode() + b')\n%%EOF')
+        guard.content('art/example.pdf', b'%PDF-1.4\n(' + 'forbiddenworda'.encode() + b')\n%%EOF')
         self.assertIn('wording', self.rules(guard))
 
     def test_canonical_signoff_history(self):
@@ -413,10 +530,10 @@ class PublicGuardTests(unittest.TestCase):
     def test_signoff_retains_other_checks(self):
         line = 'Signed-off-by: ' + self.guard().policy['identities'][0]
         guard = self.guard()
-        extra = sample('436f2d617574686f7265642d62793a20506572736f6e')
+        extra = 'Private-trailer: Person'
         guard.content('commit:example', (line + '\n' + extra).encode(), commit_message=True)
         self.assertIn('internal', self.rules(guard))
-        guard.content('commit:example', sample('6768705f').encode(), commit_message=True)
+        guard.content('commit:example', 'fixture-key-'.encode(), commit_message=True)
         self.assertIn('secret', self.rules(guard))
 
     def test_history_remembers_deleted_file_and_identity(self):
@@ -436,7 +553,7 @@ class PublicGuardTests(unittest.TestCase):
             run('add', '.')
             run('commit', '-qm', 'Start')
             base = run('rev-parse', 'HEAD')
-            (repo / 'README.md').write_text(sample('636c61756465'))
+            (repo / 'README.md').write_text('forbiddenworda')
             run('add', '.')
             run('commit', '-qm', 'Update')
             (repo / 'README.md').write_text('Welcome\n')
@@ -445,8 +562,13 @@ class PublicGuardTests(unittest.TestCase):
             head = run('rev-parse', 'HEAD')
             if (ROOT / 'scripts/public/hooks/install.py').is_file():
                 trusted = repo.parent / (repo.name + '-guard')
+                import shutil
+                source = repo.parent / (repo.name + '-source')
+                shutil.copytree(ROOT / 'scripts/public', source, ignore=shutil.ignore_patterns('rules.local.json', 'test-rules-local.py', '__pycache__'))
+                (source / 'rules.local.json').write_text(json.dumps(SYNTHETIC_RULES))
+                (source / 'policy.json').write_text(json.dumps(fixture_policy()))
                 try:
-                    subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/public/hooks/install.py'),
+                    subprocess.run([sys.executable, '-B', str(source / 'hooks/install.py'),
                                     '--repo', str(repo), '--destination', str(trusted), '--base', base],
                                    env=env, check=True, stdout=subprocess.DEVNULL)
                     transport = f'refs/heads/topic {head} refs/heads/topic {base}\n'
@@ -459,6 +581,7 @@ class PublicGuardTests(unittest.TestCase):
                     import shutil
                     if trusted.exists():
                         shutil.rmtree(trusted)
+                    shutil.rmtree(source)
             guard = self.guard()
             guard.history(repo, base, head)
             self.assertIn('wording', self.rules(guard))
@@ -483,7 +606,7 @@ class PublicGuardTests(unittest.TestCase):
             guard.history(repo, head, policy_head)
             self.assertNotIn('infrastructure', self.rules(guard))
             self.assertIn('identity', self.rules(guard))
-            guard.blob('docs/unreviewed.md', '100644', sample('6768705f').encode())
+            guard.blob('docs/unreviewed.md', '100644', 'fixture-key-'.encode())
             self.assertIn('secret', self.rules(guard))
             self.assertIn('path-review', self.rules(guard))
             guard = self.guard()

@@ -3,7 +3,7 @@
   "license": "GPL-3.0-or-later",
   "spdx": "SPDX-License-Identifier: GPL-3.0-or-later",
   "version": 1,
-  "baseline": "84158401802f2bcc5ba5779c797e4d93a8c0d5e5",
+  "baseline": "39549d61dc2ed673e7051556608346209a621384",
   "groups": [
     {
       "name": "product-integrations",
@@ -1554,103 +1554,6 @@
           "path": "i18n/shell/ru.ts",
           "sha256": "ae444e0bc01c28d79c0924259983fb0a6edcacb427ac73518ef6325eb9223fb3",
           "label": 6873
-        }
-      ]
-    },
-    {
-      "name": "private-document-test-references",
-      "reason": "Existing test inputs and comments referring to excluded documents; not exported private work records.",
-      "status": "owner-decision-pending",
-      "lines": [
-        {
-          "path": "tests/test-alongside-docs.py",
-          "sha256": "caa8c395d90f327b5b429d7c2c2b491d1a8a880148036fab1709e6c072779e64",
-          "label": 29
-        },
-        {
-          "path": "tests/test-alongside-docs.py",
-          "sha256": "8ddaee049ed13aa2bfa4fd3410ee2165fc28098613ed9f69f738ade63e9ba6db",
-          "label": 63
-        },
-        {
-          "path": "tests/test-launcher-icon-refresh.py",
-          "sha256": "f53c54e5b495a43c9a3ecb564d18193c072bc89a73e74eb6337d64d104b6c5ae",
-          "label": 46
-        },
-        {
-          "path": "tests/test-quickshell-fork-guard.py",
-          "sha256": "9c4f3490c2d6cabcf596b36a748d3848d365221a88d8aa248a6872ec3c866f8c",
-          "label": 31
-        },
-        {
-          "path": "tests/test-release-inputs.py",
-          "sha256": "287ecc470ffee3b069ffe9f6fea32ee6ad5ea817a620ebdc18c8524dabc91ee9",
-          "label": 184
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "bb1ed9a743825954322bf72e02a4a21fbdd56dc033836c33b93071d108a8792d",
-          "label": 10
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "9eb04bd4cb26c69be49d7473ca3821db6ff23c49e98eb0536bbc86b3e33e5f0d",
-          "label": 246
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "8e80033fa4c6e0da438357be6feab9954aa011e4392c8cfb87bf152f4a8cd4f3",
-          "label": 254
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "8e80033fa4c6e0da438357be6feab9954aa011e4392c8cfb87bf152f4a8cd4f3",
-          "label": 265
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "4507497d6a74ef374616d48e7df38a9ddceb03305e7457913eede8729c8369b5",
-          "label": 270
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "c8f128107148acc4dc08fe752289a2af4cef7a66646976be148677d4f15b0feb",
-          "label": 277
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "18edb76fc0cc2d404d249543b90bde5bc09fd04eca64557036f10d6032d25494",
-          "label": 283
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "c2cd1e3a808bb0dbf1019dd008b2c4cc1d3e8728d062bc746b7969fd9148d971",
-          "label": 289
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "15a346a31a2c9a1575e08679daacac2d69ab04f3354e5a288308f678cabed9b8",
-          "label": 301
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "9b889a694f4c8be21745bb026350d3d30c18d33fda96d6e0fce5937fca5dc71c",
-          "label": 310
-        },
-        {
-          "path": "tests/test-status-words.py",
-          "sha256": "060c4e041fbc54aefca98980da404d4bbd0ac092975dff5ae180a480f89abba2",
-          "label": 316
-        },
-        {
-          "path": "tests/vm/status-words.toml",
-          "sha256": "e4f34c98d4befa07396a1298b468092d40a870919f990589da477c49287dbc4a",
-          "label": 64
-        },
-        {
-          "path": "tests/vm/status-words.toml",
-          "sha256": "af549db11a0b122ba6abbf055cb6ea74493fbdb4dbbf9c5d25560b22ea1724b4",
-          "label": 67
         }
       ]
     },

@@ -5,9 +5,9 @@
 a check only in the vocabulary of tests/vm/status-words.toml.
 
   test-status-words.py           check this tree, then test the checker on planted lines
-  test-status-words.py FILE...   check FILE (a night journal, release notes) as a status document
+  test-status-words.py FILE...   check FILE (a dated journal, release notes) as a status document
 
-Documents (STATUS.md, ROADMAP.md, acceptance sheets): in a checked line a claim word (verified,
+Documents (docs/check-results.md, docs/check-plan.md, acceptance sheets): in a checked line a claim word (verified,
 works, OK, ...) stands only next to a positive phrase with its evidence, and a word that is never
 alone (done, passed, ...) only with a phrase or evidence in its paragraph; "script passed", "seen
 in VM" and "seen on hardware by" always carry their evidence. Blocks dated before the list's
@@ -198,7 +198,7 @@ def report(findings, out=print):
 # ---- tests of the checker on planted lines ----------------------------------------------------
 STATUS = '''# Where we are now
 
-**2026-10-04 — the night before the list.**
+**2026-10-04 — the day before the list.**
 - encrypted install: verified on the test laptop, everything OK.
 
 **2026-10-06 — after the list.**
@@ -232,7 +232,7 @@ class Checker(unittest.TestCase):
         if private:
             (root / 'scripts').mkdir()
             (root / 'scripts/make-public.sh').write_text('')
-            files = {'ROADMAP.md': '# Plan\n', **files}
+            files = {'docs/check-plan.md': '# Plan\n', **files}
         for name, text in files.items():
             (root / name).parent.mkdir(parents=True, exist_ok=True)
             (root / name).write_text(text)
@@ -243,7 +243,7 @@ class Checker(unittest.TestCase):
         return [f'{f[0]}:{f[1]}: {f[3]}' for f in findings]
 
     def test_allowed_forms_and_history_pass(self):
-        findings, _ = self.tree({'STATUS.md': STATUS})
+        findings, _ = self.tree({'docs/check-results.md': STATUS})
         self.assertEqual(self.messages(findings), [])
 
     def test_a_planted_claim_fails(self):
@@ -251,7 +251,7 @@ class Checker(unittest.TestCase):
                      '- проверено.', '- the walk is done.', '- install passed.', '- a clean run.',
                      '- accepted by the owner.', '- erase-btrfs verified (`tests/vm/iso-install.sh`, log `a.log`).'):
             with self.subTest(line=line):
-                findings, _ = self.tree({'STATUS.md': STATUS + line + '\n'})
+                findings, _ = self.tree({'docs/check-results.md': STATUS + line + '\n'})
                 self.assertEqual(len(findings), 1, self.messages(findings))
                 self.assertEqual(findings[0][1], STATUS.count('\n') + 1)
 
@@ -262,43 +262,43 @@ class Checker(unittest.TestCase):
                      '- the first two items are done: patch 0001 of `packaging/quickshell-emaki`.',
                      '- script failed: iso-encrypt-check rc=1 at resume; the unlock assertions passed before it.'):
             with self.subTest(line=line):
-                findings, _ = self.tree({'STATUS.md': STATUS + line + '\n'})
+                findings, _ = self.tree({'docs/check-results.md': STATUS + line + '\n'})
                 self.assertEqual(self.messages(findings), [])
 
     def test_an_update_paragraph_is_checked_inside_an_old_entry(self):
         old = '**2026-10-04 — old.**\nverified then.\n*Update 2026-10-05:* verified now.\n\nverified then.\n'
-        findings, _ = self.tree({'STATUS.md': old})
+        findings, _ = self.tree({'docs/check-results.md': old})
         self.assertEqual([f[1] for f in findings], [3])
 
     def test_a_phrase_without_its_evidence_fails(self):
         for line in ('- erase-btrfs: script passed.', '- installer: seen in VM.',
                      '- lid: seen on hardware by the owner, test laptop.'):
             with self.subTest(line=line):
-                findings, _ = self.tree({'STATUS.md': STATUS + '\n' + line + '\n'})
+                findings, _ = self.tree({'docs/check-results.md': STATUS + '\n' + line + '\n'})
                 self.assertEqual(len(findings), 1, self.messages(findings))
                 self.assertIn('without its evidence', findings[0][3])
 
     def test_negations_quotes_and_code_claim_nothing(self):
         text = STATUS + 'Not verified yet; nobody knows whether it works; `clean`; "OK" on the button.\n'
-        findings, _ = self.tree({'STATUS.md': text})
+        findings, _ = self.tree({'docs/check-results.md': text})
         self.assertEqual(self.messages(findings), [])
 
     def test_roadmap_checks_only_its_dated_status_lines(self):
         roadmap = ('**C4. Theme.** It works in Firefox.\n**Done when:** Firefox opens in the palette.\n'
                    '*Closed 2026-09-17:* accepted.\n\n*Update 2026-10-06:* the theme works.\n')
-        findings, _ = self.tree({'STATUS.md': STATUS, 'ROADMAP.md': roadmap})
-        self.assertEqual([(f[0], f[1]) for f in findings], [('ROADMAP.md', 5)])
+        findings, _ = self.tree({'docs/check-results.md': STATUS, 'docs/check-plan.md': roadmap})
+        self.assertEqual([(f[0], f[1]) for f in findings], [('docs/check-plan.md', 5)])
 
-    def test_a_journal_section_takes_the_date_of_its_night(self):
+    def test_a_journal_section_takes_the_date_of_its_heading(self):
         tmp = tempfile.TemporaryDirectory(prefix='status-words-test.')
         self.addCleanup(tmp.cleanup)
         journal = Path(tmp.name) / 'JOURNAL.md'
-        journal.write_text('# Night 2026-10-02 → 03\n## State\nall OK.\n# Night 2026-10-05 → 06\n## State\nall OK.\n')
+        journal.write_text('# Entry 2026-10-02 → 03\n## State\nall OK.\n# Entry 2026-10-05 → 06\n## State\nall OK.\n')
         vocabulary = Vocabulary(tomllib.loads((ROOT / LIST).read_text(encoding='utf-8')))
         self.assertEqual([f[1] for f in vocabulary.document(journal, 'JOURNAL.md', 'check')], [6])
 
     def test_acceptance_sheets_are_checked(self):
-        findings, _ = self.tree({'STATUS.md': STATUS, 'docs/history/acceptance-0.2.0.md': 'Emaki 0.2.0: verified.\n'})
+        findings, _ = self.tree({'docs/check-results.md': STATUS, 'docs/history/acceptance-0.2.0.md': 'Emaki 0.2.0: verified.\n'})
         self.assertEqual([f[0] for f in findings], ['docs/history/acceptance-0.2.0.md'])
 
     def test_gate_result_and_shot_lines(self):
@@ -307,13 +307,13 @@ class Checker(unittest.TestCase):
                           ("out(f'RESULT: PASSED (walk record of {sha[:12]})')", False),
                           ('echo "RESULT: NOT TESTED at release-walk"', False)):
             with self.subTest(line=line):
-                findings, _ = self.tree({'STATUS.md': STATUS}, gate=GATE + line + '\n')
+                findings, _ = self.tree({'docs/check-results.md': STATUS}, gate=GATE + line + '\n')
                 self.assertEqual(len(findings), 2 if bad else 0, self.messages(findings))
 
     def test_the_public_export_skips_the_status_documents_visibly(self):
         findings, lines = self.tree({}, private=False)
         self.assertEqual(self.messages(findings), [])
-        self.assertIn('SKIPPED: STATUS.md: a private status document, not in the public export', lines)
+        self.assertIn('SKIPPED: docs/check-results.md: a private status document, not in the public export', lines)
 
     def test_a_private_tree_without_status_fails(self):
         findings, _ = self.tree({})

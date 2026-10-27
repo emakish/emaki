@@ -556,7 +556,7 @@ install: install-upkeep
 	install -Dm644 art/icons/emaki-welcome.svg $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg
 	install -Dm644 art/icons/emaki-report.svg $(ICONS)/hicolor/scalable/apps/emaki-report.svg
 	install -Dm644 docs/ZONES.md $(DESTDIR)$(PREFIX)/share/doc/emaki/ZONES.md
-	# Rendered from MANIFEST.md by `make render`; `make check` refuses a stale copy.
+	# Rendered from the source inventory by `make render`; `make check` refuses a stale copy.
 	install -Dm644 docs/system-map.md $(SHARE)/system-map.md
 	install -Dm644 docs/agent-rules.md $(SHARE)/agent-rules.md
 	install -Dm644 docs/agent-rules-setup.md $(SHARE)/agent-rules-setup.md

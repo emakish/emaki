@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='emaki-launcher-icon-', dir=QUIET) as te
     for name in ('home', 'config/qt6ct', 'cache', 'state'):
         (base / name).mkdir(parents=True, mode=0o700)
     # The offscreen platform has no icon theme; qt6ct with an empty configuration gives the
-    # generic hicolor lookup (GOTCHAS.md).
+    # generic hicolor lookup.
     env = dict(os.environ, HOME=str(base / 'home'), XDG_CONFIG_HOME=str(base / 'config'),
                XDG_CONFIG_DIRS=str(base / 'config'), XDG_DATA_HOME=str(base / 'home/.local/share'),
                XDG_DATA_DIRS=str(data), XDG_CACHE_HOME=str(base / 'cache'),

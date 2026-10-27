@@ -21,9 +21,6 @@ class ArchiveFallbackTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         guide = (root / 'docs/mirror.md').read_text()
         self.assertIn('libfakekey 0.3-4 is collected from the Arch sourceball', guide)
-        decisions = (root / 'DECISIONS.md').read_text()
-        old = decisions.split('Keep libfakekey refused without exact downloadable bytes', 1)[1].split('\n## ', 1)[0]
-        self.assertIn('Superseded', old)
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

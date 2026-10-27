@@ -28,10 +28,6 @@ advice = re.findall(r'PATH=<directory>/(\S*)bin:\$PATH', SOURCE.read_text())
 if not advice or any(advice):
     failures.append(f'the advice puts <directory>/{advice}bin first in PATH, the helper installs into '
                     '<directory>/bin')
-GOTCHAS = ROOT / 'GOTCHAS.md'  # not in the public export
-if GOTCHAS.exists() and 'PATH=<dir>/bin:$PATH' not in GOTCHAS.read_text():
-    failures.append('GOTCHAS no longer gives PATH=<dir>/bin:$PATH')
-
 # The reviewed patch list: the real recipe passes, any change to it fails.
 if 'def recipe_patches(' not in SOURCE.read_text():
     failures.append('test-quickshell-fork.py has no recipe_patches(): the patch list is not pinned')

@@ -109,19 +109,6 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('Rebase all fourteen patches on updates.',
                       (ROOT / 'packaging/niri-emaki/PKGBUILD').read_text())
 
-    def test_roadmap_records_enabled_alongside_release(self):
-        roadmap = (ROOT / 'ROADMAP.md').read_text()
-        old = roadmap.index('*Update 2026-10-11:* the retained 0.6 alongside')
-        current = roadmap.index('*Update 2026-10-13:* install alongside Windows is enabled in 0.8.0', old)
-        self.assertIn('`14ad386`', roadmap[current:current + 400])
-        self.assertIn('release-key-signed exception', roadmap[current:current + 600])
-
-    def test_manifest_names_the_tree_niri_version(self):
-        niri = self.recipes['niri-emaki']
-        version = niri['pkgver'][0] + '-' + niri['pkgrel'][0]
-        manifest = (ROOT / 'MANIFEST.md').read_text()
-        self.assertEqual(re.findall(r'\((\d+\.\d+-\d+) in the tree;', manifest), [version])
-
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for fork dependency resolution')
     def test_config_rejects_forks_without_window_positions(self):
         dependencies = [value for value in self.recipes['emaki-config']['depends']

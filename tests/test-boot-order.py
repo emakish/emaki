@@ -744,7 +744,7 @@ class Recovery(unittest.TestCase):
 
 class Documentation(unittest.TestCase):
     def test_the_installed_map_names_the_status_without_a_record(self):
-        # The installed system map is rendered from MANIFEST.md.
+        # The installed system map is rendered from the source inventory.
         page = (ROOT / 'docs/system-map.md').read_text()
         block = page.split('component: alongside-test-boot-safety\n', 1)[1].split('```', 1)[0]
         change = ' '.join(next(line for line in block.splitlines() if line.startswith('change:')).split())

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Render the system map and rules template from the ```system-map blocks of MANIFEST.md.
+"""Render the system map and rules template from the ```system-map blocks of docs/system-map-source.md.
 
 The rendered page ships in emaki-config; it repeats each block verbatim under its plain-language
-section, so the page itself stays machine-readable where MANIFEST.md is not exported.
+section, so the page itself stays machine-readable where docs/system-map-source.md is not exported.
 `--check` exits 1 when either committed document differs from a fresh render.
 """
 import argparse
@@ -13,7 +13,7 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = 'MANIFEST.md'
+SOURCE = 'docs/system-map-source.md'
 PAGE = 'docs/system-map.md'
 RULES = 'docs/agent-rules.md'
 FENCE = 'system-map'

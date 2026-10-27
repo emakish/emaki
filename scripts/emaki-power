@@ -14,7 +14,7 @@
 # Esc in any menu exits without taking action.
 #
 # This is a manual action. The machine never suspends automatically: the idle
-# policy (emaki-idle) deliberately excludes suspend; see DECISIONS.md.
+# policy (emaki-idle) deliberately excludes suspend.
 set -eu
 
 # fuzzel appearance: our file in /usr/share/emaki (system /etc/xdg/fuzzel belongs to the

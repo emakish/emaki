@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Check trusted inspection boundaries and sign-off requirements."""
 import importlib.util
+import base64
 import copy
 import json
 from pathlib import Path
@@ -15,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("public_ci", ROOT / "scripts/public/ci.py")
 ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
+RULES = json.dumps({"attribution": "forbidden-word-a", "internal": "forbidden-word-b",
+                    "path": "PRIVATE-DOC-"}).encode("utf-8")
+ENCODED_RULES = base64.b64encode(RULES).decode("ascii")
 
 
 def event():
@@ -52,7 +56,7 @@ class Inspection(unittest.TestCase):
             self.assertIn(package, workflow)
         self.assertLess(workflow.index("useradd --create-home"), workflow.index("make paths check-core check-i18n"))
 
-    def test_public_fork_checks_do_not_run_kitchen_workflow_assertions(self):
+    def test_public_fork_checks_select_portable_assertions(self):
         workflow = self.build_workflow()
         self.assertIn("python3 tests/test-ci-forks.py ForkChecks", workflow)
         self.assertIn("python3 tests/ci-check-forks.py", workflow)
@@ -153,7 +157,8 @@ class Inspection(unittest.TestCase):
         with patch.object(ci, "git", return_value=""), self.assertRaises(ci.Refused):
             ci.signoff_failures(Path("."), "a" * 40, "b" * 40)
 
-    def inspect_fixture(self, *, changed=False, approved="", result=0, rehearsal="", signoffs=None):
+    def inspect_fixture(self, *, changed=False, approved="", result=0, rehearsal="", signoffs=None,
+                        rules=ENCODED_RULES):
         data = event()
         data["repository"]["private"] = True
         current = copy.deepcopy(data["pull_request"])
@@ -177,7 +182,8 @@ class Inspection(unittest.TestCase):
                     patch.object(ci, "api", side_effect=request), \
                     patch.object(ci, "signoff_failures", return_value=signoffs or []), \
                     patch.object(ci.subprocess, "run", return_value=SimpleNamespace(returncode=result)) as run, \
-                    patch.dict(ci.os.environ, {"GH_TOKEN": "synthetic"}):
+                    patch.dict(ci.os.environ, {"GH_TOKEN": "synthetic", "GITHUB_TOKEN": "synthetic-other",
+                                               "PUBLIC_GUARD_RULES": rules}, clear=True):
                 error = None
                 try:
                     outcome = ci.inspect(args)
@@ -193,7 +199,50 @@ class Inspection(unittest.TestCase):
         self.assertEqual({payload["name"] for payload in created}, {"public-guard", "dco"})
         self.assertTrue(all(payload["head_sha"] == "b" * 40 for payload in created))
         self.assertNotIn("GH_TOKEN", command.kwargs["env"])
+        self.assertNotIn("GITHUB_TOKEN", command.kwargs["env"])
+        self.assertNotIn("PUBLIC_GUARD_RULES", command.kwargs["env"])
+        self.assertNotIn(ENCODED_RULES, repr(command.args))
+        self.assertNotIn(RULES.decode(), repr(command.args))
+        self.assertIn("--rules-stdin", command.args[0])
+        self.assertEqual(command.kwargs["input"], RULES)
+        self.assertEqual(Path(command.args[0][2]), ROOT / "scripts/public/guard.py")
+        self.assertNotIn(ENCODED_RULES, json.dumps(calls))
+        self.assertNotIn("forbidden-word-a", json.dumps(calls))
         self.assertTrue(all(payload["conclusion"] == "success" for route, method, payload in calls if method == "PATCH"))
+
+    def test_rules_require_strict_nonempty_base64_json_object(self):
+        invalid = ("", " ", "%%%", "a", ENCODED_RULES + "\n", ENCODED_RULES + "=",
+                   *[base64.b64encode(value).decode("ascii")
+                     for value in (b"", b" ", b"not json", b"{}", b"[]", b"null", b'"text"', b"\xff")])
+        for value in invalid:
+            with self.subTest(value=value), patch.dict(ci.os.environ, {"PUBLIC_GUARD_RULES": value}, clear=True):
+                with self.assertRaisesRegex(ci.Refused, "^Required check configuration is unavailable$"):
+                    ci.rules_input()
+        with patch.dict(ci.os.environ, {}, clear=True), self.assertRaises(ci.Refused):
+            ci.rules_input()
+        with patch.dict(ci.os.environ, {"PUBLIC_GUARD_RULES": ENCODED_RULES}, clear=True):
+            self.assertEqual(ci.rules_input(), RULES)
+
+    def test_invalid_rules_finalize_started_checks_without_running_guard(self):
+        for value in ("", "%%%", base64.b64encode(b"{}").decode()):
+            with self.subTest(value=value):
+                outcome, error, calls, command = self.inspect_fixture(rules=value)
+                self.assertEqual(outcome, 1)
+                self.assertIsInstance(error, ci.Refused)
+                self.assertIsNone(command)
+                completed = [payload for _, method, payload in calls if method == "PATCH"]
+                self.assertEqual(len(completed), 2)
+                self.assertTrue(all(payload["status"] == "completed" and payload["conclusion"] == "failure"
+                                    for payload in completed))
+
+    def test_git_never_inherits_rules_or_credentials(self):
+        with patch.dict(ci.os.environ, {"GH_TOKEN": "synthetic", "GITHUB_TOKEN": "synthetic-other",
+                                       "PUBLIC_GUARD_RULES": ENCODED_RULES, "GIT_CONFIG_COUNT": "9"}, clear=True), \
+                patch.object(ci.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="")) as run:
+            ci.git(Path("."), "rev-parse", "HEAD")
+        for key in ("GH_TOKEN", "GITHUB_TOKEN", "PUBLIC_GUARD_RULES", "GIT_CONFIG_COUNT"):
+            self.assertNotIn(key, run.call_args.kwargs["env"])
+        self.assertNotIn(ENCODED_RULES, repr(run.call_args))
 
     def test_metadata_race_cannot_report_success(self):
         outcome, error, calls, _ = self.inspect_fixture(changed=True)
@@ -236,6 +285,7 @@ class Inspection(unittest.TestCase):
         self.assertNotIn("pull_request.head.sha", guard)
         self.assertNotIn("make check", guard)
         self.assertIn("checks: write", guard)
+        self.assertIn("PUBLIC_GUARD_RULES: ${{ secrets.PUBLIC_GUARD_RULES }}", guard)
         self.assertIn("PUBLIC_REHEARSAL_OUTSIDE_HEAD: ${{ vars.PUBLIC_REHEARSAL_OUTSIDE_HEAD }}", guard)
         self.assertIn('--rehearsal-outside-head "$PUBLIC_REHEARSAL_OUTSIDE_HEAD"', guard)
         self.assertIn("pull_request:", build)
