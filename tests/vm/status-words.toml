@@ -53,19 +53,19 @@ carries = "reason and the hardware line or run that will cover it"
 [[phrase]]
 text = "not applicable"
 when = "the feature is not in this image (stage result NOT APPLICABLE)"
-carries = "the DECISIONS entry or the frame showing its absence"
+carries = "the release-policy entry or the frame showing its absence"
 
 # Status documents: path or glob -> how an undated line is treated ("check" or "skip").
 # A block's date: a heading dates everything up to the next heading, with its own date or else
-# the date of the heading above it (# Night 2026-10-05 dates its ## sections); a line that
+# the date of the heading above it (# Entry 2026-10-05 dates its ## sections); a line that
 # opens with a bold span holding a date (**2026-10-04 — ...**) dates everything up to the next
 # such line or heading; a line that opens with an italic span holding a date (*Update
 # 2026-10-05:*) dates its own paragraph only (up to a blank line, a list item or a bold-led line).
-# STATUS.md is status throughout; ROADMAP.md is a plan whose status lines are its dated ones.
-# Files named on the command line (a night journal, release notes) are read as "check".
+# docs/check-results.md is status throughout; docs/check-plan.md is a plan whose status lines are its dated ones.
+# Files named on the command line (a dated journal, release notes) are read as "check".
 [documents]
-"STATUS.md" = "check"
-"ROADMAP.md" = "skip"
+"docs/check-results.md" = "check"
+"docs/check-plan.md" = "skip"
 "docs/history/acceptance-*.md" = "check"
 
 # Release gates: every printed RESULT line is one of `result_lines`; every SHOT line says

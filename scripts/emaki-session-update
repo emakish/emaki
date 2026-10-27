@@ -4,7 +4,7 @@
 """The desktop state: record desktop upgrades, answer `state` in JSON, notify sessions.
 
 `emaki-session-update state` is the one interface the session reads to learn that the desktop
-changed under it; it prints {"schema": 1, "busy", "desktop", "update"} (see MANIFEST.md,
+changed under it; it prints {"schema": 1, "busy", "desktop", "update"} (see docs/system-map.md,
 component desktop-update-signal). Running sessions are never restarted.
 """
 

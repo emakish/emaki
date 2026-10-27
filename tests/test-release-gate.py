@@ -233,7 +233,7 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
             self.assertRegex(self.line(result, job), r'\bPASS\b')
         self.assertIn('command-line installation [CLI]', self.line(result, 'accept-erase-btrfs'))
         self.assertIn('NOT APPLICABLE', self.line(result, 'alongside-btrfs'))
-        self.assertIn('DECISIONS.md 2026-10-04', self.line(result, 'alongside-btrfs'))
+        self.assertIn('release policy dated 2026-10-04', self.line(result, 'alongside-btrfs'))
         self.assertIn(f'on release image {self.release} sha256 {self.sha(self.release)}', result.stdout)
         self.assertIn(f'on test image {self.test} sha256 {self.sha(self.test)}', result.stdout)
         # Every VM job ran on the test image; only the walk gate saw the release image.

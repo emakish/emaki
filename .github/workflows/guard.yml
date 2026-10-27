@@ -24,6 +24,7 @@ jobs:
       - name: Inspect objects and report checks on the requested commit
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLIC_GUARD_RULES: ${{ secrets.PUBLIC_GUARD_RULES }}
           PUBLIC_PUBLISHER_LOGIN: ${{ vars.PUBLIC_PUBLISHER_LOGIN }}
           PUBLIC_REVIEWED_HEAD: ${{ vars.PUBLIC_REVIEWED_HEAD }}
           PUBLIC_REHEARSAL_OUTSIDE_HEAD: ${{ vars.PUBLIC_REHEARSAL_OUTSIDE_HEAD }}

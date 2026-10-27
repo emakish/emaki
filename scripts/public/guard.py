@@ -12,9 +12,6 @@ import sys
 import unicodedata
 import zlib
 from pathlib import Path
-GUARDS = [("\x5c\x62\x61\x72\x74\x68\x75\x72\x5c\x62\x7c\u0430\u0440\u0442\u0443\u0440\x7c\x61\x75\x72\x65\x6c\x69\x61\x7c\x5c\x62\x6b\x65\x6e\x5c\x62\x7c\x74\x70\x2d\x6c\x69\x6e\x6b\x7c\x63\x32\x31\x32\x7c\x78\x66\x69\x6e\x69\x74\x79\x7c\x74\x65\x6e\x6e\x65\x73\x73\x65\x65\x7c\x63\x68\x69\x63\x61\x67\x6f\x7c\x2f\x68\x6f\x6d\x65\x2f\x61\x72\x74\x68\x75\x72\x7c\x63\x6c\x61\x75\x64\x65\x7c\x61\x6e\x74\x68\x72\x6f\x70\x69\x63\x7c\x63\x68\x61\x74\x67\x70\x74\x7c\u0445\u043c\u0443\u0440\u0447\u0438\u043a", re.I, ()), ("\x5c\x62\x61\x69\x5c\x62\x7c\x5c\x62\x4c\x4c\x4d\x73\x3f\x5c\x62\x7c\x61\x72\x74\x69\x66\x69\x63\x69\x61\x6c\x20\x69\x6e\x74\x65\x6c\x6c\x69\x67\x65\x6e\x63\x65\x7c\x6f\x70\x65\x6e\x61\x69\x7c\x63\x6f\x70\x69\x6c\x6f\x74\x7c\x63\x6f\x64\x65\x78\x7c\x63\x68\x61\x74\x67\x70\x74\x7c\x5c\x62\x67\x70\x74\x2d\x3f\x5b\x30\x2d\x39\x5d\x7c\x67\x65\x6d\x69\x6e\x69\x7c\x76\x69\x62\x65\x2e\x3f\x63\x6f\x64\x7c\x6d\x61\x63\x68\x69\x6e\x65\x2e\x67\x65\x6e\x65\x72\x61\x74\x65\x64\x7c\x61\x69\x2d\x28\x67\x65\x6e\x65\x72\x61\x74\x65\x64\x7c\x61\x73\x73\x69\x73\x74\x65\x64\x29", re.I, ()), ("\x63\x6c\x61\x75\x64\x65\x7c\x61\x6e\x74\x68\x72\x6f\x70\x69\x63\x7c\x63\x6f\x64\x65\x78\x7c\x5c\x62\x61\x73\x74\x72\x61\x5c\x62\x7c\x67\x70\x74\x7c\x6f\x70\x65\x6e\x61\x69\x7c\x5c\x62\x6c\x6c\x6d\x7c\x66\x61\x62\x6c\x65\x7c\x6f\x70\x75\x73\x7c\x73\x6f\x6e\x6e\x65\x74\x7c\x61\x73\x73\x69\x73\x74\x61\x6e\x74\x7c\x61\x67\x65\x6e\x74\x7c\x5c\x62\x6d\x6f\x64\x65\x6c\x73\x3f\x5c\x62\x7c\x6c\x61\x6e\x67\x75\x61\x67\x65\x2e\x6d\x6f\x64\x65\x6c\x7c\x6e\x65\x75\x72\x61\x6c\x7c\x6d\x61\x63\x68\x69\x6e\x65\x2e\x6c\x65\x61\x72\x6e\x69\x6e\x67\x7c\x64\x65\x65\x70\x2e\x6c\x65\x61\x72\x6e\x69\x6e\x67\x7c\x63\x68\x61\x74\x62\x6f\x74\x7c\x6e\x6f\x74\x65\x62\x6f\x6f\x6b\x6c\x6d\x7c\x6d\x69\x64\x6a\x6f\x75\x72\x6e\x65\x79\x7c\x73\x74\x61\x62\x6c\x65\x2e\x64\x69\x66\x66\x75\x73\x69\x6f\x6e\x7c\x64\x61\x6c\x6c\x2d\x3f\x65\x5c\x62\x7c\x64\x65\x65\x70\x73\x65\x65\x6b\x7c\x6d\x69\x73\x74\x72\x61\x6c\x7c\x6c\x6c\x61\x6d\x61\x7c\x71\x77\x65\x6e\x7c\x70\x65\x72\x70\x6c\x65\x78\x69\x74\x79\x7c\x5c\x62\x67\x72\x6f\x6b\x5c\x62\x7c\x68\x75\x67\x67\x69\x6e\x67\x2e\x3f\x66\x61\x63\x65", re.I, ('LICENSE',)), ("\x61\x72\x74\x68\x75\x72\x7c\u0430\u0440\u0442\u0443\u0440\x7c\x79\x61\x6b\x79\x6d\x7c\x79\x61\x6b\x69\x6d\x7c\x79\x61\x6b\x79\x6d\x61\x6e\x7c\x61\x75\x72\x65\x6c\x69\x61\x7c\x5c\x62\x6b\x65\x6e\x5c\x62\x7c\x74\x70\x2d\x6c\x69\x6e\x6b\x7c\x63\x32\x31\x32\x7c\x78\x66\x69\x6e\x69\x74\x79\x7c\x74\x65\x6e\x6e\x65\x73\x73\x65\x65\x7c\x63\x68\x69\x63\x61\x67\x6f\x7c\x2f\x68\x6f\x6d\x65\x2f\x61\x72\x74\x68\x75\x72\x7c\x7e\x2f\x28\x6c\x69\x66\x65\x7c\x50\x69\x63\x74\x75\x72\x65\x73\x7c\x50\x72\x6f\x6a\x65\x63\x74\x73\x29", re.I, ()), ('[a-z0-9._%+-]+(?:@|\\s*[(\\[{]\\s*at\\s*[)\\]}]\\s*)(?!(?:example\\.(?:com|org)|localhost\\.invalid)(?![a-z0-9.-]))[a-z0-9-]+(?:(?:\\.|\\s*[(\\[{]\\s*dot\\s*[)\\]}]\\s*)[a-z0-9-]+)*(?:\\.|\\s*[(\\[{]\\s*dot\\s*[)\\]}]\\s*)[a-z]{2,}', re.I, ('LICENSE',)), ("\x5c\x62\x61\x72\x74\x75\x72", re.I, ()), ("\x5c\x62\u0438\u0438\x5c\x62\x7c\u043d\u0435\u0439\u0440\u043e\u0441\u0435\u0442\x7c\u043d\u0435\u0439\u0440\u043e\u043d\u043d\x7c\x5c\x62\u043a\u043b\u043e\u0434\x7c\x5c\x62\u0430\u0433\u0435\u043d\u0442\x7c\u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043d\u0442\x7c\x5c\x62\u043a\u043e\u0434\u0435\u043a\u0441\x7c\x5c\x62\u0430\u0441\u0442\u0440\x28\x3f\x3a\u0430\x7c\u044b\x7c\u0435\x7c\u0443\x7c\u043e\u0439\x7c\u043e\u044e\x29\x5c\x62\x7c\u043c\u043e\u0434\u0435\u043b", re.I, ()), ("\x6f\x6d\x61\x72\x63\x68\x79\x7c\x72\x79\x6f\x6b\x75\x7c\x72\x79\x6f\x73\x74\x6f\x72\x65\x7c\x62\x61\x73\x65\x63\x61\x6d\x70\x7c\x68\x65\x69\x6e\x65\x6d\x65\x69\x65\x72\x7c\x5c\x62\x64\x68\x68\x5c\x62\x7c\x6e\x79\x78\x75\x72\x69\x7c\x7a\x69\x72\x63\x6f\x6e\x69\x75\x6d\x7c\x5c\x62\x69\x6e\x69\x72\x5c\x62\x7c\x63\x61\x65\x6c\x65\x73\x74\x69\x61\x7c\x64\x61\x6e\x6b\x6d\x61\x74\x65\x72\x69\x61\x6c\x7c\x6e\x6f\x63\x74\x61\x6c\x69\x61\x7c\x69\x69\x2d\x70\x33\x64\x72\x6f\x76\x66\x78", re.I, ()), ("\x6d\x61\x63\x20\x3f\x62\x6f\x6f\x6b\x7c\x74\x68\x69\x6e\x6b\x70\x61\x64\x7c\x5c\x62\x70\x31\x34\x73\x5c\x62\x7c\x5c\x62\x70\x69\x78\x65\x6c\x20\x3f\x5c\x64\x2b\x28\x3f\x3a\x20\x3f\x28\x3f\x3a\x70\x72\x6f\x7c\x78\x6c\x7c\x66\x6f\x6c\x64\x7c\x61\x29\x29\x3f\x5c\x62\x7c\x67\x6f\x6f\x67\x6c\x65\x20\x3f\x70\x69\x78\x65\x6c\x7c\x69\x70\x68\x6f\x6e\x65\x7c\x74\x72\x65\x7a\x6f\x72\x7c\x68\x61\x6c\x63\x79\x6f\x6e\x7c\x5c\x62\x65\x6c\x6f\x72\x61\x5c\x62\x7c\x6d\x74\x37\x39\x32\x35", re.I, ()), ("\x5b\x2d\u2212\x5d\x30\x5b\x35\x36\x5d\x3a\x3f\x30\x30\x5c\x62\x7c\x5c\x62\x43\x5b\x53\x44\x5d\x54\x5c\x62\x7c\x5c\x62\x43\x53\x54\x36\x43\x44\x54\x5c\x62\x7c\x28\x3f\x69\x3a\x61\x6d\x65\x72\x69\x63\x61\x2f\x63\x68\x69\x63\x61\x67\x6f\x7c\x75\x73\x2f\x63\x65\x6e\x74\x72\x61\x6c\x7c\x63\x65\x6e\x74\x72\x61\x6c\x20\x28\x3f\x3a\x73\x74\x61\x6e\x64\x61\x72\x64\x20\x7c\x64\x61\x79\x6c\x69\x67\x68\x74\x20\x29\x3f\x74\x69\x6d\x65\x7c\x5c\x62\x28\x3f\x3a\x75\x74\x63\x7c\x67\x6d\x74\x29\x20\x3f\x5b\x2d\u2212\x5d\x20\x3f\x30\x3f\x5b\x35\x36\x5d\x5c\x62\x29", 0, ())]
-GUARDS = [(re.compile(expression, flags), skip) for expression, flags, skip in GUARDS]
-CORE = re.compile("\x63\x6c\x61\x75\x64\x65\x7c\x63\x6f\x64\x65\x78\x7c\x61\x6e\x74\x68\x72\x6f\x70\x69\x63\x7c\x6f\x70\x65\x6e\x61\x69", re.I)
 JOINERS = re.compile('[\\s\\-/#*;\\\'"`+\\\\]+')
 XMP_PRIVATE = re.compile("\x47\x50\x53\x28\x3f\x3a\x4c\x61\x74\x69\x74\x75\x64\x65\x7c\x4c\x6f\x6e\x67\x69\x74\x75\x64\x65\x7c\x41\x6c\x74\x69\x74\x75\x64\x65\x7c\x44\x65\x73\x74\x4c\x61\x74\x69\x74\x75\x64\x65\x7c\x44\x65\x73\x74\x4c\x6f\x6e\x67\x69\x74\x75\x64\x65\x29\x7c\x5c\x62\x74\x69\x66\x66\x3a\x28\x3f\x3a\x4d\x61\x6b\x65\x7c\x4d\x6f\x64\x65\x6c\x29\x5c\x62\x7c\x5c\x62\x28\x3f\x3a\x65\x78\x69\x66\x45\x58\x7c\x61\x75\x78\x29\x3a\x28\x3f\x3a\x42\x6f\x64\x79\x53\x65\x72\x69\x61\x6c\x4e\x75\x6d\x62\x65\x72\x7c\x53\x65\x72\x69\x61\x6c\x4e\x75\x6d\x62\x65\x72\x7c\x4c\x65\x6e\x73\x5c\x77\x2a\x29\x5c\x62")
 TO_LATIN = str.maketrans("\u0430\u0435\u043e\u0440\u0441\u0443\u0445\u0456\u0458\u0455\u0501\u051b\u051d\u04bb\u04cf\u0261\u0410\u0412\u0415\u041a\u041c\u041d\u041e\u0420\u0421\u0422\u0423\u0425\u0406\u0408\u0405\u051a\u051c\u04ba\u04c0\u03b1\u03b2\u03b3\u03b5\u03b9\u03ba\u03bd\u03bf\u03c1\u03c4\u03c5\u03c7\u03c9\u0391\u0392\u0395\u0396\u0397\u0399\u039a\u039c\u039d\u039f\u03a1\u03a4\u03a5\u03a7", 'aeopcyxijsdqwhlgABEKMHOPCTYXIJSQWHIabyeiknoptuxwABEZHIKMNOPTYX')
@@ -391,6 +388,50 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def canonical_rules(rules):
+    return json.dumps(rules, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
+
+
+def load_rules(rules, policy):
+    """Authenticate the complete external rule set before compiling any expression."""
+    try:
+        expected = policy.get('rules_sha256')
+        if ('expressions' in policy or not isinstance(expected, str)
+                or not re.fullmatch('[0-9a-f]{64}', expected)
+                or digest(canonical_rules(rules)) != expected):
+            raise ValueError
+        required = {'expressions', 'guards', 'core'}
+        if (not isinstance(rules, dict) or not required <= rules.keys()
+                or rules.keys() - required - {'copyright', 'spdx'}):
+            raise ValueError
+        expressions = rules['expressions']
+        names = {'strict', 'secret', 'ambiguous', 'internal', 'path', 'attribution'}
+        if not isinstance(expressions, dict) or expressions.keys() != names:
+            raise ValueError
+        if any(not isinstance(value, str) or not value for value in expressions.values()):
+            raise ValueError
+        if not isinstance(rules['core'], str) or not rules['core']:
+            raise ValueError
+        if not isinstance(rules['guards'], list) or len(rules['guards']) < 3:
+            raise ValueError
+        guards = []
+        for entry in rules['guards']:
+            if not isinstance(entry, dict) or entry.keys() != {'expression', 'flags', 'skip'}:
+                raise ValueError
+            if not isinstance(entry['expression'], str) or not entry['expression']:
+                raise ValueError
+            if type(entry['flags']) is not int or entry['flags'] & ~int(re.I | re.M | re.U):
+                raise ValueError
+            if not isinstance(entry['skip'], list) or any(not isinstance(path, str) for path in entry['skip']):
+                raise ValueError
+            guards.append((re.compile(entry['expression'], entry['flags']), tuple(entry['skip'])))
+        return ({key: re.compile(value, re.I | re.M) for key, value in expressions.items()},
+                guards, re.compile(rules['core'], re.I))
+    except (TypeError, ValueError, KeyError, re.error):
+        # Parser and regex diagnostics can contain private input.
+        raise ValueError('Required rule set is unavailable or invalid') from None
+
+
 def git(repo, *args):
     # No checkout, filters, hooks, configuration includes or candidate programs.
     env = dict(((key, value) for key, value in os.environ.items() if not key.startswith('GIT_')), GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
@@ -404,7 +445,7 @@ def git(repo, *args):
 
 
 class Guard:
-    def __init__(self, origin='ours', policy=None):
+    def __init__(self, origin='ours', policy=None, rules=None):
         policy_bytes = (POLICY_HOME / 'policy.json').read_bytes()
         self.policy = policy or json.loads(policy_bytes)
         self.policy_digest = digest(policy_bytes)
@@ -414,8 +455,8 @@ class Guard:
         self.findings = []
         self.reviewed = set()
         self.seen = set()
-        self.rules = {key: re.compile(bytes.fromhex(value).decode(), re.I | re.M)
-                      for key, value in self.policy['expressions'].items()}
+        supplied = json.loads((POLICY_HOME / 'rules.local.json').read_bytes()) if rules is None else rules
+        self.rules, self.guards, self.core = load_rules(supplied, self.policy)
         self.lines = {(path, value) for path, values in self.policy['lines'].items() for value in values}
         self.credentials = {tuple(value) for value in self.policy['credentials']}
         baseline_bytes = (POLICY_HOME / 'reviewed-baseline.json').read_bytes()
@@ -456,17 +497,17 @@ class Guard:
                 internal = self.rules['attribution'].search(value)
             if internal and not baseline:
                 self.add('internal', path, label)
-            if CORE.search(value) and not baseline:
+            if self.core.search(value) and not baseline:
                 self.add('product-review', path, label, ambiguous=True)
             if self.rules['ambiguous'].search(value) and not permitted:
                 self.add('ambiguous', path, label, ambiguous=True)
-            for expression, skipped in GUARDS:
+            for expression, skipped in self.guards:
                 if path not in skipped and expression.search(value) and not permitted:
                     # A short technical term asks for review; longer contextual hits block.
                     hits = list(expression.finditer(value))
                     serious = any(not self.rules['ambiguous'].fullmatch(m.group()) for m in hits)
                     if serious:
-                        product = all(any(pattern.fullmatch(m.group()) for pattern, _ in GUARDS[1:3])
+                        product = all(any(pattern.fullmatch(m.group()) for pattern, _ in self.guards[1:3])
                                       for m in hits)
                         self.add('wording', path, label, ambiguous=product)
         if permitted:
@@ -498,14 +539,14 @@ class Guard:
                       for line in data.decode('utf-8', 'replace').split('\n')]
             # Literal product terms already requested review above; retain detection of
             # concealed terms assembled across separators and line boundaries.
-            joined = ''.join(JOINERS.sub('', clean(CORE.sub('', line)).translate(TO_LATIN))
+            joined = ''.join(JOINERS.sub('', clean(self.core.sub('', line)).translate(TO_LATIN))
                              for line, (_, covered) in zip(data.decode('utf-8', 'replace').split('\n'), pieces)
                              if not covered)
-            if CORE.search(joined):
+            if self.core.search(joined):
                 self.add('split', path)
             whole = ''.join(value for value, covered in pieces)
             mask = ''.join(('1' if covered else '0') * len(value) for value, covered in pieces)
-            overlap = re.compile(f'(?=({CORE.pattern}))', CORE.flags)
+            overlap = re.compile(f'(?=({self.core.pattern}))', self.core.flags)
             if any(len(set(mask[m.start(1):m.end(1)])) == 2 for m in overlap.finditer(whole)):
                 self.add('split-boundary', path)
         if reader_of(path, data) or b'\0' in data:
@@ -519,7 +560,7 @@ class Guard:
         if any(part in ('', '.', '..') for part in parts) or any(ord(c) < 32 or ord(c) == 127 for c in name):
             self.add('path-invalid', name, structural=True)
             return
-        if self.rules['path'].search(name):
+        if 'rules.local.json' in parts or self.rules['path'].search(name):
             self.add('path-private', name, structural=True)
         parent = posixpath.dirname(name)
         suffix = Path(name).suffix
@@ -673,8 +714,27 @@ def main():
     parser.add_argument('--pr-title-file', type=Path)
     parser.add_argument('--pr-body-file', type=Path)
     parser.add_argument('--json', type=Path)
+    parser.add_argument('--rules-stdin', action='store_true')
     args = parser.parse_args()
-    guard = Guard(args.origin)
+    try:
+        rules = None
+        if args.rules_stdin:
+            raw = sys.stdin.buffer.read(128 * 1024 + 1)
+            if not raw or len(raw) > 128 * 1024:
+                raise ValueError
+            rules = json.loads(raw)
+            if not isinstance(rules, dict):
+                raise ValueError
+        guard = Guard(args.origin, rules=rules)
+    except (OSError, ValueError, TypeError, KeyError):
+        result = {'version': 1, 'result': 'BLOCK', 'origin': args.origin,
+                  'findings': [{'level': 'BLOCK', 'rule': 'rules-unavailable',
+                                'path': 'input', 'line': ''}], 'reviewed_lines': 0}
+        rendered = json.dumps(result, indent=2) + '\n'
+        if args.json:
+            args.json.write_text(rendered)
+        print(rendered, end='')
+        return 1
     guard.approved_head = args.approved_infrastructure_head
     try:
         if args.tree and guard.approved_head:

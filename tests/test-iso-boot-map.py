@@ -73,8 +73,6 @@ class MapStateTests(unittest.TestCase):
 
     def test_installed_programs_state_has_no_placeholders_or_consent_requirement(self):
         paths = ['docs/system-map.md']
-        if (ROOT / 'MANIFEST.md').exists():
-            paths.append('MANIFEST.md')
         for path in paths:
             commands = boot.map_state_commands((ROOT / path).read_text())
             self.assertEqual([command for name, command in commands

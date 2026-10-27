@@ -4,6 +4,7 @@
 """Inspect pull request objects without executing their contents."""
 import argparse
 import base64
+import binascii
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,26 @@ import urllib.request
 
 class Refused(Exception):
     pass
+
+
+def rules_input():
+    value = os.environ.get("PUBLIC_GUARD_RULES", "")
+    try:
+        raw = base64.b64decode(value, validate=True)
+        if not raw or base64.b64encode(raw).decode("ascii") != value:
+            raise ValueError
+        parsed = json.loads(raw.decode("utf-8"))
+        if not isinstance(parsed, dict) or not parsed:
+            raise ValueError
+    except (ValueError, UnicodeError, binascii.Error):
+        raise Refused("Required check configuration is unavailable") from None
+    return raw
+
+
+def child_environment():
+    return {key: value for key, value in os.environ.items()
+            if not key.startswith("GIT_")
+            and key not in {"GH_TOKEN", "GITHUB_TOKEN", "PUBLIC_GUARD_RULES"}}
 
 
 def event_values(event, repository, publisher, rehearsal_outside_head=""):
@@ -46,8 +67,7 @@ def event_values(event, repository, publisher, rehearsal_outside_head=""):
 
 
 def git(repo, *args, token=None):
-    env = {key: value for key, value in os.environ.items()
-           if not key.startswith("GIT_") and key not in {"GH_TOKEN", "GITHUB_TOKEN"}}
+    env = child_environment()
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
                GIT_NO_REPLACE_OBJECTS="1", GIT_TERMINAL_PROMPT="0")
     if token:
@@ -125,6 +145,7 @@ def inspect(args):
                 response = api(args.repository, token, "/check-runs", "POST",
                                {"name": name, "head_sha": pr["head"]["sha"], "status": "in_progress"})
                 check_ids[name] = response["id"]
+        rules = rules_input()
         ref = "refs/public-check/" + str(pr["number"])
         git(repo, "fetch", "--no-tags", "https://github.com/" + args.repository + ".git",
             "+refs/pull/" + str(pr["number"]) + "/head:" + ref, token=token)
@@ -135,18 +156,18 @@ def inspect(args):
             stage = Path(directory)
             (stage / "title").write_text(pr.get("title") or "")
             (stage / "body").write_text(pr.get("body") or "")
-            env = {key: value for key, value in os.environ.items() if key not in {"GH_TOKEN", "GITHUB_TOKEN"}}
+            env = child_environment()
             command = [sys.executable, "-B", str(trusted / "guard.py"),
                                      "--repo", str(repo), "--base", pr["base"]["sha"],
                                      "--head", pr["head"]["sha"], "--origin", origin,
                                      "--pr-title-file", str(stage / "title"),
                                      "--pr-body-file", str(stage / "body"),
-                                     "--json", str(stage / "guard.json")]
+                                     "--json", str(stage / "guard.json"), "--rules-stdin"]
             if args.approved_infrastructure_head:
                 if not re.fullmatch(r"[0-9a-f]{40}", args.approved_infrastructure_head):
                     raise Refused("Invalid reviewed infrastructure commit")
                 command.extend(["--approved-infrastructure-head", args.approved_infrastructure_head])
-            result = subprocess.run(command, env=env, capture_output=True, timeout=600)
+            result = subprocess.run(command, env=env, input=rules, capture_output=True, timeout=600)
             results["public-guard"] = check_result(result.returncode, origin)
             if (stage / "guard.json").exists():
                 report = json.loads((stage / "guard.json").read_text())

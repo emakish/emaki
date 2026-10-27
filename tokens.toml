@@ -8,9 +8,8 @@
 # Regenerate configs after editing: make render
 #
 # Theme and accent choices use these values, independently of wallpaper colors.
-# See DECISIONS.md, 2026-09-22: wallpaper-derived colors were cancelled.
 
-# What a person sees before choosing anything (DECISIONS.md, 2026-10-14).
+# What a person sees before choosing anything.
 [defaults]
 accent = "rose"  # a key of [accents.*]; [color] accent and on_accent repeat its base and text
 

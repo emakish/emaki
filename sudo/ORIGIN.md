@@ -110,7 +110,7 @@ Native buffer wiping does not prove erasure of QML string allocations. Executabl
 and session checks also do not by themselves prove trusted compositor input. The
 production module runs under the rendered service through real libpam, alongside
 failure-injection fixtures and shell tests. These establish implementation contracts;
-the lead must run
+run
 `tests/sudo-key-vm.py` against the packaged stack for terminal fallback, password
 success/failure, cancellation, grants and revocation acceptance.
 

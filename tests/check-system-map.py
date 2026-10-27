@@ -5,7 +5,7 @@
 
 Installed paths come from the packages' expected-files lists (emaki-config's is the whole
 `make install install-niri-emaki` payload, diffed in its package()). Components are the
-```system-map blocks of MANIFEST.md; where MANIFEST.md is not part of the tree, the blocks
+```system-map blocks of docs/system-map-source.md; where docs/system-map-source.md is not part of the tree, the blocks
 repeated in the rendered docs/system-map.md. Today's uncovered paths are listed, grouped
 with a reason, in tests/system-map-allow.txt; that list may only shrink. No root, network
 or installed-system access.
@@ -82,7 +82,7 @@ def problems(entries, installed, allow, allow_name=ALLOW):
                           'a path belongs to exactly one')
         elif not found and path not in allow:
             errors.append(f'{path}: installed ({installed[path]}) but in no component; add it to the '
-                          'files of a system-map block in MANIFEST.md (the allow list only shrinks)')
+                          'files of a system-map block in docs/system-map-source.md (the allow list only shrinks)')
     for path in sorted(allow):
         if path not in installed:
             errors.append(f'{allow_name}: {path} is no longer installed; delete its line')
@@ -159,7 +159,7 @@ def check(root):
     elif (root / 'scripts/make-public.sh').exists():
         return [f'{renderer.SOURCE} is missing; it is the source of the system map']
     else:
-        # A tree without MANIFEST.md (the public sources): the rendered page carries the blocks.
+        # A tree without docs/system-map-source.md (the public sources): the rendered page carries the blocks.
         entries, errors = renderer.components((root / renderer.PAGE).read_text(), renderer.PAGE)
     if not errors:
         rules = root / renderer.RULES
@@ -252,7 +252,7 @@ def self_test():
           and 'emaki-shell call settings status --json' not in rules)
     print(f'{"ok" if ok else "FAILED"}: rules preserve the map state command exactly')
     failed += not ok
-    # Whole trees: a stale page fails; without MANIFEST.md the page's blocks are checked.
+    # Whole trees: a stale page fails; without docs/system-map-source.md the page's blocks are checked.
     with tempfile.TemporaryDirectory() as directory:
         tree = Path(directory)
         (tree / 'scripts').mkdir()
@@ -263,7 +263,7 @@ def self_test():
         (tree / 'tests/system-map-allow.txt').write_text(allow_text)
         (tree / 'packaging/emaki-config').mkdir(parents=True)
         (tree / 'packaging/emaki-config/expected-files.list').write_text('\n'.join(installed) + '\n')
-        (tree / 'MANIFEST.md').write_text(COMPLETE)
+        (tree / 'docs/system-map-source.md').write_text(COMPLETE)
         (tree / 'docs/system-map.md').write_text(system_map.render(entries))
         (tree / system_map.RULES).write_text(system_map.render_rules(entries))
         (tree / CLI).mkdir(parents=True)
@@ -290,10 +290,10 @@ def self_test():
         (tree / system_map.RULES).unlink()
         cases.append(('a missing rules template fails', check(tree), 'is stale; run make render'))
         (tree / system_map.RULES).write_text(system_map.render_rules(entries))
-        (tree / 'MANIFEST.md').write_text(COMPLETE.replace('Edit the file.', 'Edit it.'))
+        (tree / 'docs/system-map-source.md').write_text(COMPLETE.replace('Edit the file.', 'Edit it.'))
         cases.append(('a stale rendered page fails', check(tree), 'is stale; run make render'))
-        (tree / 'MANIFEST.md').unlink()
-        cases.append(('a private tree without MANIFEST.md fails', check(tree), 'MANIFEST.md is missing'))
+        (tree / 'docs/system-map-source.md').unlink()
+        cases.append(('a private tree without docs/system-map-source.md fails', check(tree), 'docs/system-map-source.md is missing'))
         (tree / 'scripts/make-public.sh').unlink()
         cases.append(('a public tree checks the blocks of its page', check(tree), None))
         (tree / system_map.RULES).write_text('old public instructions\n')

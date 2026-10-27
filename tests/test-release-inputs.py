@@ -181,7 +181,7 @@ class ReleaseInputs(unittest.TestCase):
 
     def test_excluded_notes_do_not_change_config_or_installer(self):
         self.write('README.md', 'changed private text\n')
-        self.write('nested/STATUS.md', 'private status\n')
+        self.write('nested/docs/history/check.md', 'archived note\n')
         head = self.commit()
         for name in self.metadata['packages']:
             self.assertFalse(release.changed_inputs(self.repo, name, self.old, head))

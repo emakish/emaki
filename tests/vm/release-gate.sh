@@ -229,7 +229,7 @@ alongside_job() {
         bash tests/vm/iso-alongside-check.sh btrfs "$name") >"$out/$job.log" 2>&1 || rc=$?
     local evidence=$base/btrfs-$name
     if ((rc == 77)) && [[ -f $evidence/NOT-APPLICABLE ]]; then
-        record "$job" 'NOT APPLICABLE' "the image's installer refuses install alongside Windows (DECISIONS.md 2026-10-04 \"No experimental options\"; evidence $evidence/offer.ndjson)" "$(test_label)"
+        record "$job" 'NOT APPLICABLE' "the image's installer refuses install alongside Windows (release policy dated 2026-10-04 \"No experimental options\"; evidence $evidence/offer.ndjson)" "$(test_label)"
     elif ((rc == 0)) && [[ -f $evidence/PASS ]]; then
         review[$job]="$evidence (unlock, menu and desktop frames)"
         review_dir[$job]=$evidence
