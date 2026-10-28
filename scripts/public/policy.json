@@ -1712,6 +1712,7 @@
       "fd13e5c5248932b0b00a9a8b4e891d1988b7971b61d8576d6dcedc6b7efa23cf"
     ],
     "i18n/installer/fr.ts": [
+      "10e77191226d4d733542cf77957f8ad6027a0ba33b2345fb1226f21f3aabe9f0",
       "3ba30f20a04cc2c0101f2e36d0e611016fceca7d123b407e59b1ec61acfb34d3",
       "4e450e4c33b2096635dca0f51829db8c370c29807dd42a408d28a81e557993bb",
       "722c92a852de34baf940a208cf0bc7e50afac9d96e3ddf90e33e51e439e321dc",
@@ -2144,8 +2145,12 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "installer/emaki_installer/arch_backend.py": [
+      "04ab44cf1f7704db07465eb1390ca2df5dc57e4151c8246e6df03ea7e8e7d9f9",
+      "1f59dfe53e05b606c92630f5b9257519c1c8cfc4be6d07a722fa826cead54317",
+      "2ba0ef490d13b03cf59f891c355272d1bbf13e0df1283b010055d9a925bfda63",
       "2d6e66c80b970e7a34fd576e034bb880f1e5d6d05c575c005e49042351c97202",
       "2f38f64c45aedf21368ad6ddb1d9ea0175079886aedff2a9736763c7191c1591",
+      "376c6db3ef43090bde75d12fcedf3cfaebe0249bc59d88544bc964c88a4b8f52",
       "3b6a1ef3b5c74013276d2228a5e9f5d9e7ae899f5e150c17746ffce4b651ba5d",
       "3c702918008f9d75508f12edf5496a761cd628c009b46730a5039a889189f77b",
       "4ca221d67893652b78d9ba5e5a4a9bdf42bdc8820e3819478743de3cbfa94249",
@@ -2161,13 +2166,17 @@
       "7adc9142331d3646390e86c0429453449768f4f008d1cfb11a4783585c3813be",
       "825d555c12a92d194c2db9e163e101d24718c96b9874405f9948f9ac87e1d258",
       "8605c32143794193db90d10dd2a85ae45724216d7fb72d5451f41a7cd5e266a2",
+      "8d23adc1e5eac9b9d99322229b46474aa39d67202c8e020818ca66de8c775308",
       "94de334e395734467b6973130bb840b9b2b5f20d088909689e7916dc7208b85e",
       "98492496f7a4b6dc943ca92d0f42a69a2e52957fa6c657329af2faf2e017946c",
       "986e1d0e4537a0b28dd91dfdaf92cb16c318efae7759775fcf4e27e2b708de28",
       "a0ed3fd9fd213769136389a5d5c2b10eefa59c6154bf8818239d95fbd314a10f",
+      "a5eb4f712aa3d1c4bd155801341950a3da9e97b06d7c8698d287c01f89db6f24",
       "abfb933f5079fedd5a6b716373d81cce7a5a5afb23e350c55b6bfd132c90dbf0",
       "b359bf912c290b9c810796817fdfa05f15b9f9a6f219658f9b7453a35de9cc34",
       "bd0d002e7c31e823c3313835bd9c40c36f7bde4c33e70d6892147dbe8245f4de",
+      "c520d63704b87e59d9dd78cd20ef0e7e98de38c640e9110fb2f6d0ebc413c5ba",
+      "c714d3dc2ad50f7ffe4e33dc63b05731791ae71f3f8f55f9e84ec1633a503f78",
       "daddb277764155a280862f382b8daee6bebe65a78e2f0f9b75034f0bc3e591f1",
       "e2303ec19b0ddbdf6ffdceb57569340153068c1d01e9ca8321d5f91dce8810a4",
       "e7da331140bb71311fafe6e5159ebd5c17d50f22ecaa99b3b3d1a587b87ee5b8",
@@ -2667,6 +2676,16 @@
     "installer/tests/test_security.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "installer/tests/test_stale_zfs_alongside.py": [
+      "12bde9a0a49213d998b97aa730e6307bc455da01a889ba4d893056d4a0473843",
+      "14d34d44d447ee632e2826e45b2561efe056df9d0a3b5d9a442e3d82c24cd409",
+      "172ef350edacc8106051f24de24d87cc416a273c08a4c58a3016e7735abc904d",
+      "3afa7709a942d57db1fe3639d6ae3f29eaed07881c7fd664e4a5b72f27647322",
+      "48bfffbb32edaf65d7da25d5ac066866f1d0713c76b8f70de39a07bef2c68e94",
+      "740526b42878ca2619bc3eb26696bfe93e5dbbd95add6c6ffd089f9478d4ef0f",
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6",
+      "98fbf9fa958acfd26bf9c94d0a8da7c1706057d82df2525d9f7110b8756ca5ae"
+    ],
     "installer/tests/test_storage.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -2678,6 +2697,13 @@
       "3e317d2aef3049ae8fe9d4869ea59e89c3b9f08a51824e1d2aa966a6d6bd37e8",
       "3f6ade0b50f4f736fb42fe9e98a8efb10f4e232f1222d6865d2f3849821454cb",
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "installer/tests/test_zfs_signature_image.py": [
+      "079738178d89139fa6b8dd95848b5821004d9d80ee7bbfe4001cce8afddfa713",
+      "4a181e264e45e0e634dfbe75d71676aa10f0636fd7611fbae587b2879a6f44de",
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6",
+      "9568997de70f7155c9f9f52d3ec323631e1e1fd1ab69d278cd4dade9d652ea24",
+      "f3e7c8d91eecc053f7143bbaa09b71436463d3fc3e4613d3a59a110781a2140d"
     ],
     "installer/ui/GlassPane.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
@@ -9465,9 +9491,11 @@
     "installer/tests/test_secureboot.py",
     "installer/tests/test_secureboot_install.py",
     "installer/tests/test_security.py",
+    "installer/tests/test_stale_zfs_alongside.py",
     "installer/tests/test_storage.py",
     "installer/tests/test_transport.py",
     "installer/tests/test_worker.py",
+    "installer/tests/test_zfs_signature_image.py",
     "installer/tmpfiles.d/emaki-installer.conf",
     "installer/ui/GlassPane.qml",
     "installer/ui/InstallerController.qml",
