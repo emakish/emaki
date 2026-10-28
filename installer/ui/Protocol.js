@@ -560,8 +560,16 @@ function alongsideDefault(p) {
     return p ? Math.min(p.shrink.max_free_bytes, Math.max(32 * 1073741824,
         Math.floor(p.shrink.max_free_bytes / 2 / 1048576) * 1048576)) : 0;
 }
-function alongsideReview(p, freed, language) {
-    return p ? qsTranslate("Protocol", "Windows keeps %1 GB, Emaki gets %2 GB; back up your files first.").arg(number((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9, 2, language)).arg(number(freed / 1e9, 2, language)) : qsTranslate("Protocol", "Windows shrink is unavailable. Refresh the disk list.");
+function alongsideAgreement(d) {
+    return d?.stale_label
+        ? qsTranslate("InstallerView", "I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized")
+        : qsTranslate("InstallerView", "I have backed up my files and understand Windows will be resized");
+}
+function alongsideReview(p, freed, language, d) {
+    const review = p ? qsTranslate("Protocol", "Windows keeps %1 GB, Emaki gets %2 GB; back up your files first.").arg(number((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9, 2, language)).arg(number(freed / 1e9, 2, language)) : qsTranslate("Protocol", "Windows shrink is unavailable. Refresh the disk list.");
+    return p && d?.stale_label
+        ? review + " " + qsTranslate("Protocol", "The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.")
+        : review;
 }
 
 function phaseSkipped(s, phase) {

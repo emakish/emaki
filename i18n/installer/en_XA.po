@@ -1071,6 +1071,10 @@ msgid "Removed the stale pacman lock; no pacman runs in the target."
 msgstr "[Ŕéɱöṽéð ţĥé šţàļé þàçɱàñ ļöçķ; ñö þàçɱàñ ŕûñš îñ ţĥé ţàŕĝéţ.···················]"
 
 #, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr "[Ŕéɱöṽîñĝ ţĥé šţàļé ŽƑŠ šîĝñàţûŕé; ƀàçķûþš: {value1}.·················]"
+
+#, python-brace-format
 msgid "Repairing the installed Emaki on {root} with the startup partition {esp}."
 msgstr "[Ŕéþàîŕîñĝ ţĥé îñšţàļļéð Éɱàķî öñ {root} ŵîţĥ ţĥé šţàŕţûþ þàŕţîţîöñ {esp}.························]"
 
@@ -1555,6 +1559,9 @@ msgstr "[Ţĥé šĥûţðöŵñ ŕàɱƒš îš ûñàṽàîļàƀļé.···�
 msgid "The signed GRUB image does not carry its early config and memdisk."
 msgstr "[Ţĥé šîĝñéð ĜŔÛƁ îɱàĝé ðöéš ñöţ çàŕŕÿ îţš éàŕļÿ çöñƒîĝ àñð ɱéɱðîšķ.······················]"
 
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr "[Ţĥé šţàļé ŽƑŠ ļàƀéļ çöûļð ñöţ ƀé ŕéɱöṽéð šàƒéļÿ. Îñšţàļļàţîöñ šţöþþéð ƀéƒöŕé çŕéàţîñĝ Éɱàķî þàŕţîţîöñš; îñšþéçţ ţĥé îñšţàļļàţîöñ ļöĝ.·············································]"
+
 #, python-brace-format
 msgid "The startup copy {value1} could not be read back after it was written."
 msgstr "[Ţĥé šţàŕţûþ çöþÿ {value1} çöûļð ñöţ ƀé ŕéàð ƀàçķ àƒţéŕ îţ ŵàš ŵŕîţţéñ.·······················]"
@@ -1913,6 +1920,10 @@ msgstr "[Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ ŕéàð ƒàîļéð
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr "[Ŵîñðöŵš' šţàŕţûþ þàŕţîţîöñ šĥà256 ƀéƒöŕé ţĥé ƒîŕšţ ðîšķ ŵŕîţé: {value1}; ñöŵ: {value2}.·····························]"
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr "[Ŵîþîñĝ ţĥé šţàļé ŽƑŠ ļàƀéļ öƒ {value1}.············]"
+
 msgid "Worker failed: "
 msgstr "[Ŵöŕķéŕ ƒàîļéð: ····]"
 
@@ -2214,6 +2225,10 @@ msgstr "[{value1} Ŵî-Ƒî çöññéçţîöñš àŕé àçţîṽé àñð �
 #, python-brace-format
 msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
 msgstr "[{value1} àñð ţĥé šûƀṽöļûɱé {value2} àŕé ŕéšéŕṽéð ƒöŕ ţĥé Šéçûŕé Ɓööţ ķéÿ.························]"
+
+#, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
+msgstr "[{value1} çàŕŕîéš à šţàļé ŽƑŠ ļàƀéļ ƒŕöɱ àñ éàŕļîéŕ šÿšţéɱ; îţš þàŕţîţîöñš ðö ñöţ ûšé ŽƑŠ. Éŕàšîñĝ ţĥé ðîšķ ŵîþéš ţĥîš ļàƀéļ. Îñšţàļļîñĝ àļöñĝšîðé Ŵîñðöŵš ŕéɱöṽéš ţĥé ļàƀéļ ƀéƒöŕé ŕéšîžîñĝ Ŵîñðöŵš.···································································]"
 
 #, python-brace-format
 msgid "{value1} carries a {value2} signature and may be part of a multi-device set."

@@ -134,6 +134,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>InstallerView</name>
         <message>
+            <source>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</source>
+            <translation>J’ai sauvegardé mes fichiers et je comprends que l’étiquette ZFS obsolète du disque entier sera supprimée avant le redimensionnement de Windows</translation>
+        </message>
+        <message>
             <source>I understand the selected disk will be erased</source>
             <translation>Je comprends que le disque sélectionné sera effacé</translation>
         </message>
@@ -404,6 +408,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>I understand the deleted partitions lose all their files</source>
             <translation>Je comprends que les partitions supprimées perdent tous leurs fichiers</translation>
+        </message>
+        <message>
+            <source>I understand %1 will be erased, including its stale ZFS label</source>
+            <translation>Je comprends que %1 sera effacé, y compris son étiquette ZFS obsolète</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased, including its stale ZFS label</source>
+            <translation>Je comprends que le disque sélectionné sera effacé, y compris son étiquette ZFS obsolète</translation>
         </message>
         <message>
             <source>I understand %1 will be erased</source>
@@ -1120,6 +1132,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     </context>
     <context>
         <name>Protocol</name>
+        <message>
+            <source>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</source>
+            <translation>L’étiquette ZFS obsolète du disque entier sera supprimée avant le redimensionnement de Windows ; les partitions existantes seront conservées.</translation>
+        </message>
         <message>
             <source>Connecting to the installer…</source>
             <translation>Connexion au programme d’installation…</translation>

@@ -134,6 +134,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>InstallerView</name>
         <message>
+            <source>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</source>
+            <translation>Fiz backup dos meus arquivos e entendo que o rótulo ZFS obsoleto do disco inteiro será removido antes de redimensionar o Windows</translation>
+        </message>
+        <message>
             <source>I understand the selected disk will be erased</source>
             <translation>Entendo que o disco selecionado será apagado</translation>
         </message>
@@ -404,6 +408,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>I understand the deleted partitions lose all their files</source>
             <translation>Entendo que as partições excluídas perderão todos os arquivos</translation>
+        </message>
+        <message>
+            <source>I understand %1 will be erased, including its stale ZFS label</source>
+            <translation>Entendo que %1 será apagado, incluindo seu rótulo ZFS obsoleto</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased, including its stale ZFS label</source>
+            <translation>Entendo que o disco selecionado será apagado, incluindo seu rótulo ZFS obsoleto</translation>
         </message>
         <message>
             <source>I understand %1 will be erased</source>
@@ -1120,6 +1132,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     </context>
     <context>
         <name>Protocol</name>
+        <message>
+            <source>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</source>
+            <translation>O rótulo ZFS obsoleto do disco inteiro será removido antes de redimensionar o Windows; as partições existentes serão preservadas.</translation>
+        </message>
         <message>
             <source>another system</source>
             <translation>outro sistema</translation>

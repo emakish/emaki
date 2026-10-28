@@ -741,7 +741,7 @@ package_shell-tools() {
             'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12'},
             'emaki-installer': {'archinstall=4.5-1', 'emaki-config>=1.0.0-2'},
             'emaki-sudo-key': {'emaki-config>=0.9.0-1'},
-            'emaki': {'emaki-config=1.0.0-2', 'emaki-desktop=0.9.0-2', 'emaki-keyring>=0.9.0-1',
+            'emaki': {'emaki-config=1.0.1-2', 'emaki-desktop=0.9.0-2', 'emaki-keyring>=0.9.0-1',
                       'emaki-mirrorlist>=0.9.0-1', 'niri-emaki=26.04-30', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},

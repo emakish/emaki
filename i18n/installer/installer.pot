@@ -1071,6 +1071,10 @@ msgid "Removed the stale pacman lock; no pacman runs in the target."
 msgstr ""
 
 #, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr ""
+
+#, python-brace-format
 msgid "Repairing the installed Emaki on {root} with the startup partition {esp}."
 msgstr ""
 
@@ -1555,6 +1559,9 @@ msgstr ""
 msgid "The signed GRUB image does not carry its early config and memdisk."
 msgstr ""
 
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr ""
+
 #, python-brace-format
 msgid "The startup copy {value1} could not be read back after it was written."
 msgstr ""
@@ -1913,6 +1920,10 @@ msgstr ""
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr ""
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr ""
+
 msgid "Worker failed: "
 msgstr ""
 
@@ -2213,6 +2224,10 @@ msgstr ""
 
 #, python-brace-format
 msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
+msgstr ""
+
+#, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
 msgstr ""
 
 #, python-brace-format

@@ -59,8 +59,10 @@ Image {
         smooth: false
         mipmap: false
         readonly property real dpr: icon.Window.window ? icon.Window.window.devicePixelRatio : 1
-        // 26 device pixels, or a whole multiple of them when the box holds more.
-        readonly property int factor: Math.max(1, Math.floor(Math.min(icon.width, icon.height) * dpr / 26))
+        // 26 device pixels, or a whole multiple of them when the box holds more. At output scale 2
+        // and above it grows by the whole part of the scale, so the bar button's E keeps its size
+        // instead of shrinking to half its pill (FR11 P3-e).
+        readonly property int factor: Math.max(1, Math.floor(dpr), Math.floor(Math.min(icon.width, icon.height) * dpr / 26))
         width: 26 * factor / dpr
         height: width
         // Snap in window coordinates, including fractional positions of all ancestors.

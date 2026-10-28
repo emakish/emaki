@@ -1345,6 +1345,33 @@ ShellRoot {
                 test.check(agreement.text.indexOf("Manual disk") >= 0 && agreement.text.indexOf("will be erased") >= 0, "the agreement names the disk and the erase (" + agreement.text + ")");
                 input.mouseClick(agreement, 12, agreement.height / 2);
                 test.check(controller.agreed, "clicking the agreement agrees");
+                // Issue #3: Erase also wipes a stale whole-disk ZFS label, and the agreement says so.
+                const plain = controller.session.inventory;
+                const stale = JSON.parse(JSON.stringify(plain));
+                stale.disks[0].stale_label = "/dev/vda carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label.";
+                controller.session.inventory = stale;
+                controller.publish();
+                test.check(agreement.text.indexOf("Manual disk") >= 0 && agreement.text.indexOf("will be erased, including its stale ZFS label") >= 0, "the agreement names the stale ZFS label it wipes (" + agreement.text + ")");
+                const savedPlan = controller.session.plan;
+                const savedDeadline = controller.session.deadline;
+                controller.mode = "alongside";
+                // Changing the mode invalidates the review; supply a fresh reviewed plan.
+                controller.session.plan = Object.assign({}, savedPlan, {token: "alongside-fixture"});
+                controller.session.deadline = Date.now() + 600000;
+                controller.publish();
+                input.wait(50);
+                test.check(agreement.visible && agreement.text.indexOf("stale whole-disk ZFS label will be removed before Windows is resized") >= 0, "alongside agreement names the label removed before resizing Windows (" + agreement.text + ")");
+                const alongsideArea = agreement.mapToItem(content, 0, 0, agreement.width, agreement.height);
+                const alongsideFooterTop = footer.mapToItem(content, 0, 0).y;
+                test.check(alongsideArea.x >= 0 && alongsideArea.y >= 0 && alongsideArea.x + alongsideArea.width <= content.width && alongsideArea.y + alongsideArea.height <= alongsideFooterTop + 0.5, "the long alongside agreement remains on screen above the buttons");
+                controller.session.inventory = plain;
+                controller.publish();
+                test.check(agreement.visible && agreement.text === "I have backed up my files and understand Windows will be resized", "clearing the stale label restores the ordinary alongside agreement");
+                controller.mode = "erase";
+                controller.session.plan = savedPlan;
+                controller.session.deadline = savedDeadline;
+                controller.publish();
+                test.check(agreement.text.indexOf("stale ZFS label") < 0, "no stale label, no mention (" + agreement.text + ")");
                 controller.step = "you";
             } else if (test.stage === 34) {
                 test.check(!test.findItem(content, "agreementCheck").visible, "no agreement outside Review");

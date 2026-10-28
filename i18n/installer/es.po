@@ -1784,6 +1784,10 @@ msgstr "Falló la lectura de la partición de arranque de Windows: "
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr "sha256 de la partición de arranque de Windows antes de la primera escritura en disco: {value1}; ahora: {value2}."
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr "Eliminando la etiqueta ZFS obsoleta de {value1}."
+
 msgid "Worker failed: "
 msgstr "Falló el proceso de trabajo: "
 
@@ -2159,6 +2163,10 @@ msgid "{value1} Wi-Fi connections are active and the Network page joined none of
 msgstr "hay {value1} conexiones Wi-Fi activas y ninguna se conectó desde la página Red"
 
 #, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
+msgstr "{value1} contiene una etiqueta ZFS obsoleta de un sistema anterior; sus particiones no usan ZFS. Al borrar el disco se elimina esta etiqueta. Al instalar junto a Windows, se elimina la etiqueta antes de cambiar el tamaño de Windows."
+
+#, python-brace-format
 msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
 msgstr "{value1} contiene una firma {value2} y puede formar parte de un conjunto de varios dispositivos."
 
@@ -2343,3 +2351,10 @@ msgstr "Una partición nueva necesita al menos 1 GiB."
 #, python-brace-format
 msgid "Wi-Fi country left unset: timezone {timezone} has no country."
 msgstr "No se definió el país de Wi-Fi: la zona horaria {timezone} no tiene un país asociado."
+
+#, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr "Eliminando la firma ZFS obsoleta; copias de seguridad: {value1}."
+
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr "No se pudo eliminar la etiqueta ZFS obsoleta de forma segura. La instalación se detuvo antes de crear las particiones de Emaki; revisa el registro de instalación."

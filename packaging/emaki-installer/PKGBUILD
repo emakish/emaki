@@ -4,7 +4,7 @@
 # shellcheck disable=SC2034,SC2154
 # Build from the local checkout; no source downloads or disk access in check().
 pkgname=emaki-installer
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=2
 pkgdesc='Emaki live ISO installation worker and protocol CLI'
 arch=('any')

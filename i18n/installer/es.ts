@@ -133,6 +133,10 @@
     <context>
         <name>InstallerView</name>
         <message>
+            <source>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</source>
+            <translation>Ya hice una copia de seguridad de mis archivos y entiendo que se eliminará la etiqueta ZFS obsoleta del disco completo antes de cambiar el tamaño de Windows</translation>
+        </message>
+        <message>
             <source>I understand the selected disk will be erased</source>
             <translation>Entiendo que se borrará el disco seleccionado</translation>
         </message>
@@ -403,6 +407,14 @@
         <message>
             <source>I understand the deleted partitions lose all their files</source>
             <translation>Entiendo que las particiones eliminadas perderán todos sus archivos</translation>
+        </message>
+        <message>
+            <source>I understand %1 will be erased, including its stale ZFS label</source>
+            <translation>Entiendo que se borrará %1, incluida su etiqueta ZFS obsoleta</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased, including its stale ZFS label</source>
+            <translation>Entiendo que se borrará el disco seleccionado, incluida su etiqueta ZFS obsoleta</translation>
         </message>
         <message>
             <source>I understand %1 will be erased</source>
@@ -1119,6 +1131,10 @@
     </context>
     <context>
         <name>Protocol</name>
+        <message>
+            <source>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</source>
+            <translation>Se eliminará la etiqueta ZFS obsoleta del disco completo antes de cambiar el tamaño de Windows; se conservarán las particiones existentes.</translation>
+        </message>
         <message>
             <source>another system</source>
             <translation>otro sistema</translation>

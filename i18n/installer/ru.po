@@ -1805,6 +1805,10 @@ msgstr "Ошибка чтения загрузочного раздела Window
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr "sha256 загрузочного раздела Windows перед первой записью на диск: {value1}; сейчас: {value2}."
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr "Удаление устаревшей метки ZFS с {value1}."
+
 msgid "Worker failed: "
 msgstr "Ошибка рабочего процесса: "
 
@@ -2108,6 +2112,10 @@ msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key.
 msgstr "{value1} и подтом {value2} зарезервированы для ключа Secure Boot."
 
 #, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
+msgstr "{value1} содержит устаревшую метку ZFS от прежней системы; его разделы не используют ZFS. При стирании диска эта метка будет удалена. При установке рядом с Windows метка будет удалена перед изменением размера раздела Windows."
+
+#, python-brace-format
 msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
 msgstr "{value1} содержит сигнатуру {value2} и может быть частью набора из нескольких устройств."
 
@@ -2342,3 +2350,10 @@ msgstr "Для нового раздела требуется не менее 1 
 #, python-brace-format
 msgid "Wi-Fi country left unset: timezone {timezone} has no country."
 msgstr "Страна Wi-Fi не задана: часовой пояс {timezone} не относится ни к одной стране."
+
+#, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr "Удаление устаревшей сигнатуры ZFS; резервные копии: {value1}."
+
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr "Не удалось безопасно удалить устаревшую метку ZFS. Установка остановлена до создания разделов Emaki; проверьте журнал установки."

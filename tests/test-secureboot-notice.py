@@ -144,6 +144,10 @@ with tempfile.TemporaryDirectory(prefix='sb-notice-', dir=CACHE) as temporary:
         failures.append(f"history after login: {[entry['summary'] for entry in history()['entries']]}")
     # Ordinary notices: one-line rows unchanged, long bodies on three lines.
     run('wrap', MISSING_OFF)
+    # The desktop update notice keeps its whole title (FR11 P3-a).
+    run('session', ENROLLED)
+    # Two such notices at once: each title's second line counts, no body over a title.
+    run('pair', ENROLLED)
     assert not failures, '\n'.join(failures)
 print('PASS: Secure Boot notice previews after Welcome, stays until acted on or dismissed, returns at '
       'each login while the problem remains, whole text in the preview and the drawer; ordinary '

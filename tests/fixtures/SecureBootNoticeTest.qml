@@ -179,6 +179,37 @@ ShellRoot {
         console.log("NOTICE PASS " + mode);
         Qt.quit();
     }
+    // A critical notice's title: whole, beside its label, the body under it, inside the panel.
+    function wholeTitle(card: var, entry: var): void {
+        check(card !== null && entry !== null, "desktop update card missing");
+        const summary = find(card, item => item.text === entry.summary);
+        check(summary !== null && !summary.truncated && summary.lineCount <= 2, "title cut: " + (summary ? summary.lineCount + " lines, truncated " + summary.truncated : "missing"));
+        check(summary.height + 0.5 >= summary.contentHeight, "title clipped: " + summary.height + " < " + summary.contentHeight);
+        const label = find(card, item => item.text === scene.notifications.displayApp(entry.app) + " · now");
+        check(label !== null && summary.x + summary.width + 8 <= label.x + 0.5, "title runs under the label");
+        const message = find(card, item => item.text === entry.body);
+        // As in a one-line row (title 7..27, body from 25): the body follows the title's last line.
+        check(message !== null && message.y - (summary.y + summary.height) >= -2.5, "body over the title: title " + summary.y + "+" + summary.height + ", body " + (message ? message.y : "missing"));
+        const position = card.mapToItem(scene.clockBody, 0, 0);
+        check(position.y + card.height <= (scene.drawerOpen ? scene.clockBody.drawerHeight : scene.clockPanel.targetHeight) + 0.5, "card clipped by the panel");
+        check(message.y + message.height <= card.height + 0.5, "body outside its card");
+        console.log("NOTICE CARD " + card.key.split("-")[0] + " title " + summary.lineCount + " lines, card " + card.height);
+    }
+    // Two critical rows built in one tick: both titles whole on two lines, each body under its
+    // title, the cards apart.
+    function pairCards(): void {
+        const cards = [];
+        for (const app of ["Desktop update", "System update"]) {
+            const note = scene.notifications.entries.find(e => e.app === app) ?? null;
+            check(note !== null, app + " notice missing");
+            const card = row("note-", note.id);
+            wholeTitle(card, note);
+            check(find(card, item => item.text === note.summary).lineCount === 2, app + " title not wrapped");
+            cards.push(card.mapToItem(scene.clockBody, 0, 0).y, card.height);
+        }
+        const [firstY, firstHeight, secondY, secondHeight] = cards;
+        check(firstY + firstHeight <= secondY + 0.5 || secondY + secondHeight <= firstY + 0.5, "cards overlap: " + cards);
+    }
     // Ordinary notices in the drawer: a body that fits keeps its one-line row; a longer one
     // wraps to three lines at most, its line breaks run together.
     function wrapCases(): void {
@@ -241,6 +272,50 @@ ShellRoot {
                         if (root.ticks < 4)
                             return;
                         root.checkWrap();
+                        root.done();
+                    }
+                    return;
+                }
+                if (root.mode === "session") {
+                    // The desktop update notice (FR11 P3-a): its title is whole, wrapped, in the
+                    // preview and in the drawer; this shell is the old one during the next update.
+                    const update = scene.notifications.entries.find(e => e.app === "Desktop update") ?? null;
+                    switch (root.phase) {
+                    case 0:
+                        root.publish();
+                        root.noticeId = scene.notifications.localNotice("Desktop update", "Sign out and sign in again to finish updating the desktop.", "Save your work first.", false, true);
+                        root.next();
+                        break;
+                    case 1:
+                        if (!scene.peekOpen || root.ticks < 4)
+                            return;
+                        root.wholeTitle(root.row("peek-", root.noticeId), update);
+                        scene.openDrawer();
+                        root.next();
+                        break;
+                    case 2:
+                        if (root.ticks < 4)
+                            return;
+                        root.wholeTitle(root.row("note-", root.noticeId), update);
+                        root.done();
+                    }
+                    return;
+                }
+                if (root.mode === "pair") {
+                    // Two critical notices arrive together, the drawer opened before their rows
+                    // exist: every row's title height counts, not only the last one reported.
+                    switch (root.phase) {
+                    case 0:
+                        root.publish();
+                        scene.notifications.localNotice("Desktop update", "Sign out and sign in again to finish updating the desktop.", "Save your work first.", false, true);
+                        scene.notifications.localNotice("System update", "Restart the computer to finish updating the system and its kernel.", "Save your work first.", false, true);
+                        scene.openDrawer();
+                        root.next();
+                        break;
+                    case 1:
+                        if (root.ticks < 4)
+                            return;
+                        root.pairCards();
                         root.done();
                     }
                     return;

@@ -1805,6 +1805,10 @@ msgstr "Lesen der Windows-Startpartition fehlgeschlagen: "
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr "SHA256 der Windows-Startpartition vor dem ersten Schreibzugriff auf den Datenträger: {value1}; jetzt: {value2}."
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr "Die veraltete ZFS-Kennung von {value1} wird entfernt."
+
 msgid "Worker failed: "
 msgstr "Arbeitsprozess fehlgeschlagen: "
 
@@ -2108,6 +2112,10 @@ msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key.
 msgstr "{value1} und das Subvolume {value2} sind für den Secure-Boot-Schlüssel reserviert."
 
 #, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
+msgstr "{value1} trägt eine veraltete ZFS-Kennung eines früheren Systems; seine Partitionen verwenden kein ZFS. Beim Löschen des Datenträgers wird diese Kennung entfernt. Bei der Installation neben Windows wird die Kennung vor der Größenänderung von Windows entfernt."
+
+#, python-brace-format
 msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
 msgstr "{value1} trägt eine {value2}-Signatur und gehört möglicherweise zu einem Verbund mehrerer Geräte."
 
@@ -2342,3 +2350,10 @@ msgstr "Eine neue Partition benötigt mindestens 1 GiB."
 #, python-brace-format
 msgid "Wi-Fi country left unset: timezone {timezone} has no country."
 msgstr "Das WLAN-Land wurde nicht festgelegt: Der Zeitzone {timezone} ist kein Land zugeordnet."
+
+#, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr "Die veraltete ZFS-Signatur wird entfernt; Sicherungen: {value1}."
+
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr "Die veraltete ZFS-Kennung konnte nicht sicher entfernt werden. Die Installation wurde vor dem Erstellen der Emaki-Partitionen angehalten; prüfen Sie das Installationsprotokoll."

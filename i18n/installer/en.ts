@@ -253,6 +253,22 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>%1 GiB</translation>
         </message>
         <message>
+            <source>I understand %1 will be erased, including its stale ZFS label</source>
+            <translation>I understand %1 will be erased, including its stale ZFS label</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased, including its stale ZFS label</source>
+            <translation>I understand the selected disk will be erased, including its stale ZFS label</translation>
+        </message>
+        <message>
+            <source>I understand %1 will be erased</source>
+            <translation>I understand %1 will be erased</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased</source>
+            <translation>I understand the selected disk will be erased</translation>
+        </message>
+        <message>
             <source>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</source>
             <translation>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</translation>
         </message>
@@ -385,20 +401,8 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Hide</translation>
         </message>
         <message>
-            <source>I have backed up my files and understand Windows will be resized</source>
-            <translation>I have backed up my files and understand Windows will be resized</translation>
-        </message>
-        <message>
             <source>I understand the deleted partitions lose all their files</source>
             <translation>I understand the deleted partitions lose all their files</translation>
-        </message>
-        <message>
-            <source>I understand %1 will be erased</source>
-            <translation>I understand %1 will be erased</translation>
-        </message>
-        <message>
-            <source>I understand the selected disk will be erased</source>
-            <translation>I understand the selected disk will be erased</translation>
         </message>
         <message>
             <source>Try again</source>
@@ -1115,6 +1119,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Show details</source>
             <translation>Show details</translation>
         </message>
+        <message>
+            <source>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</source>
+            <translation>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</translation>
+        </message>
+        <message>
+            <source>I have backed up my files and understand Windows will be resized</source>
+            <translation>I have backed up my files and understand Windows will be resized</translation>
+        </message>
     </context>
     <context>
         <name>Protocol</name>
@@ -1598,6 +1610,10 @@ Install alongside Windows is not possible here. %1</translation>
         <message>
             <source>Windows shrink is unavailable. Refresh the disk list.</source>
             <translation>Windows shrink is unavailable. Refresh the disk list.</translation>
+        </message>
+        <message>
+            <source>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</source>
+            <translation>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</translation>
         </message>
         <message>
             <source>Skipped: snapshots need btrfs</source>

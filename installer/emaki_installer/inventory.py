@@ -9,6 +9,7 @@ the private identity and geometry again before permitting a write.
 from .i18n import _ as translate
 from .i18n import _, N_
 
+import fcntl
 import json
 import hashlib
 import os
@@ -16,9 +17,11 @@ from pathlib import Path
 import re
 import shlex
 import stat
+import struct
 import tempfile
 import threading
 from urllib.request import urlopen
+import zlib
 
 from . import constants
 from .boot_media import BootMedia
@@ -317,6 +320,105 @@ def verify_gpt(runner, disk):
     output = FIRST_USABLE_GAP.sub('', output)
     require('No problems found.' in output and not re.search(r'warning|error|caution', output, re.I),
             Code.UNSAFE_DISK, _('GPT validation failed; Windows will not be resized.'))
+
+
+BLKSSZGET = 0x1268
+GPT_MAX_ENTRY_BYTES = 1 * MIB
+MBR_EXTENDED_TYPES = frozenset({0x05, 0x0f, 0x85})
+
+
+def _pread(fd, offset, length):
+    data = os.pread(fd, length, offset)
+    if len(data) != length:
+        raise EOFError(offset)
+    return data
+
+
+def _gpt_header(fd, sector, lba, total):
+    """The GPT header at lba with its entry array, or None when either does not verify."""
+    raw = _pread(fd, lba * sector, sector)
+    if raw[:8] != b'EFI PART':
+        return None
+    (size, crc, my_lba, other_lba, first, last, entries_lba, count, entry_size,
+     entries_crc) = struct.unpack_from('<I I 4x Q Q Q Q 16x Q I I I', raw, 12)
+    if not 92 <= size <= sector or my_lba != lba:
+        return None
+    if zlib.crc32(raw[:16] + bytes(4) + raw[20:size]) != crc:
+        return None
+    length = count * entry_size
+    if (entry_size < 128 or entry_size & (entry_size - 1) or not 0 < length <= GPT_MAX_ENTRY_BYTES
+            or not 2 <= entries_lba < total or not 0 < first <= last < total or other_lba >= total):
+        return None
+    entries = _pread(fd, entries_lba * sector, length)
+    if zlib.crc32(entries) != entries_crc:
+        return None
+    return {'other': other_lba, 'first': first, 'last': last, 'guid': raw[56:72], 'entries_lba': entries_lba,
+            'shape': (count, entry_size, entries_crc), 'entries': entries}
+
+
+def _gpt_extents(fd, sector, total):
+    primary = _gpt_header(fd, sector, 1, total)
+    if primary is None or primary['other'] <= primary['last']:
+        return None
+    backup = _gpt_header(fd, sector, primary['other'], total)
+    if backup is None or backup['other'] != 1 or any(
+            backup[key] != primary[key] for key in ('first', 'last', 'guid', 'shape')):
+        return None
+    extents = {}
+    entries, (count, entry_size, _crc) = primary['entries'], primary['shape']
+    for index in range(count):
+        entry = entries[index * entry_size:(index + 1) * entry_size]
+        if not any(entry[:16]):
+            continue
+        start, end = struct.unpack_from('<Q Q', entry, 32)
+        if not primary['first'] <= start <= end <= primary['last']:
+            return None
+        extents[index + 1] = (start * sector, (end - start + 1) * sector)
+    return extents
+
+
+def _mbr_extents(fd, sector, total):
+    raw = _pread(fd, 0, 512)
+    if raw[510:] != b'\x55\xaa':
+        return None
+    extents = {}
+    for index in range(4):
+        flag, kind, start, count = struct.unpack_from('<B 3x B 3x I I', raw, 446 + 16 * index)
+        if flag not in (0, 0x80) or kind == 0xee:
+            return None
+        if not kind or not count:
+            continue
+        if not start or start + count > total:
+            return None
+        # Logical partitions live in EBRs this does not follow; their disk stays refused.
+        extents[index + 1] = None if kind in MBR_EXTENDED_TYPES else (start * sector, count * sector)
+    return extents
+
+
+def read_partition_table(path, pttype):
+    """Partition number -> (start, size) in bytes from a GPT or MBR read on the device itself.
+
+    None unless the table verifies. GPT: the primary and backup headers carry their signature,
+    header and entry-array CRCs and agree with each other. MBR: the boot signature and valid
+    entries. Reads at most a few sectors and GPT_MAX_ENTRY_BYTES twice; lsblk is not consulted.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        mode = os.fstat(fd).st_mode
+        sector = struct.unpack('=I', fcntl.ioctl(fd, BLKSSZGET, bytes(4)))[0] if stat.S_ISBLK(mode) else 512
+        if sector < 512 or sector & (sector - 1):
+            return None
+        total = os.lseek(fd, 0, os.SEEK_END) // sector
+        reader = {'gpt': _gpt_extents, 'dos': _mbr_extents}.get(pttype)
+        extents = reader(fd, sector, total) if reader and total > 2 else None
+    except (OSError, EOFError, struct.error):
+        return None
+    finally:
+        os.close(fd)
+    return extents or None
 
 
 EFI_MANIFEST_MAX_ENTRIES = 4096
@@ -922,6 +1024,28 @@ class Inventory:
         return _('{value1} carries a {value2} signature and may be part of a multi-device set.').format(value1=path, value2=fs)
 
     @staticmethod
+    def _stale_label(disk, tags):
+        """A whole-disk signature that the disk's own partition table has outlived, or None.
+
+        ZFS writes two labels at the end of a whole-disk member; a later system that partitions
+        the disk rewrites only its start, so blkid keeps reporting zfs_member for the whole disk
+        (issue #3). It is stale only over a GPT or MBR table with partitions that verifies on the
+        device itself and lists exactly lsblk's partitions, and only once every partition's own
+        signature has passed _member_reason and one carries a filesystem; the caller checks that.
+        """
+        if disk["_fs"] != "zfs_member" or disk["_pttype"] not in ("gpt", "dos") or not disk["partitions"]:
+            return None
+        # lsblk's PTTYPE and partitions come from the udev database; fresh blkid must not disagree.
+        if tags.get("PTTYPE", disk["_pttype"]) != disk["_pttype"]:
+            return None
+        extents = read_partition_table(disk["path"], disk["_pttype"])
+        listed = {part["number"]: (part["start_bytes"], part["size_bytes"])
+                  for part in disk["partitions"] if part["_geometry_known"]}
+        if not extents or len(listed) != len(disk["partitions"]) or listed != extents:
+            return None
+        return disk["_fs"]
+
+    @staticmethod
     def _refuse(disk, reason):
         disk["_busy"] = True
         disk.setdefault("reason", reason)
@@ -1148,14 +1272,17 @@ class Inventory:
             # parse_lsblk keeps a filesystem type for partitions only, so a
             # whole-disk member of a set spanning other disks is caught here.
             tags = self._signature(disk["path"])
+            stale = None
             if tags is None:
                 self._refuse(disk, _('Cannot read the signature of {value1}; it may be part of a multi-device set.').format(value1=disk['path']))
             else:
                 disk["_fs"] = tags.get("TYPE") or disk["_fs"]
                 self._record_encrypted(disk, disk["path"], disk["_fs"], tags)
-                reason = self._member_reason(disk["path"], disk["_fs"])
+                stale = self._stale_label(disk, tags)
+                reason = not stale and self._member_reason(disk["path"], disk["_fs"])
                 if reason:
                     self._refuse(disk, reason)
+            signed = False
             for part in disk["partitions"]:
                 if disk["_busy"]:
                     break
@@ -1166,6 +1293,7 @@ class Inventory:
                     break
                 if tags.get("TYPE"):
                     part["fs"] = tags["TYPE"]
+                    signed = signed or tags["TYPE"] != "zfs_member"
                 if tags.get("UUID"):
                     part["uuid"] = tags["UUID"]
                     part["_identity"]["uuid"] = tags["UUID"]
@@ -1181,6 +1309,13 @@ class Inventory:
                     self._refuse(disk, reason)
                     break
                 self._inspect(disk, part)
+            if stale and not disk["_busy"] and not signed:
+                # No partition shows a filesystem of its own: nothing outlived the label.
+                self._refuse(disk, self._member_reason(disk["path"], disk["_fs"]))
+            if stale and not disk["_busy"]:
+                # Erase wipes the label areas; alongside removes only unallocated signature bytes.
+                disk["_stale_label"] = stale
+                disk["stale_label"] = _('{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows.').format(value1=disk['path'])
             self._alongside(disk, boot_known)
         for disk in disks:
             for part in disk["partitions"]:
