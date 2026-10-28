@@ -99,7 +99,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 1.0.0: BIOS boot, installing alongside another Linux.
+media codecs. Not in 1.0.1: BIOS boot, installing alongside another Linux.
 
 ## Security notes
 
@@ -142,7 +142,7 @@ Installed Emaki on another machine? Reports are welcome in the issues.
 
 MacBook is a trademark of Apple Inc. and ThinkPad a trademark of Lenovo; Emaki is an independent project.
 
-### Known issues in 1.0.0
+### Known issues in 1.0.1
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.

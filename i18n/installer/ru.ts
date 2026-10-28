@@ -134,6 +134,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>InstallerView</name>
         <message>
+            <source>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</source>
+            <translation>Я создал резервную копию своих файлов и понимаю, что устаревшая метка ZFS всего диска будет удалена перед изменением размера раздела Windows</translation>
+        </message>
+        <message>
             <source>I understand the selected disk will be erased</source>
             <translation>Я понимаю, что выбранный диск будет стёрт</translation>
         </message>
@@ -404,6 +408,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>I understand the deleted partitions lose all their files</source>
             <translation>Я понимаю, что все файлы на удаляемых разделах будут потеряны</translation>
+        </message>
+        <message>
+            <source>I understand %1 will be erased, including its stale ZFS label</source>
+            <translation>Я понимаю, что этот диск будет стёрт вместе с устаревшей меткой ZFS: %1</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased, including its stale ZFS label</source>
+            <translation>Я понимаю, что выбранный диск будет стёрт вместе с устаревшей меткой ZFS</translation>
         </message>
         <message>
             <source>I understand %1 will be erased</source>
@@ -1121,6 +1133,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     </context>
     <context>
         <name>Protocol</name>
+        <message>
+            <source>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</source>
+            <translation>Устаревшая метка ZFS всего диска будет удалена перед изменением размера раздела Windows; существующие разделы будут сохранены.</translation>
+        </message>
         <message>
             <source>Connecting to the installer…</source>
             <translation>Подключение к установщику…</translation>

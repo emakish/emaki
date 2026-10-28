@@ -456,12 +456,26 @@ Item {
             plan = event;
         } else if (mutatingPhase(previous)) {
             succeeded = true; previewOpen = false; plan = null;
+            if (previous === "installing" && method === "execute") showInstalled(params.key);
             messageIsError = false;
             message = event.message || "";
             message += signOutNotice(event);
             transactionFinished(true);
             refreshAfterTransaction();
         }
+    }
+    function showInstalled(key: string): void {
+        // The open page shows a finished install at once. The refresh after it (a repository sync and
+        // an AUR read, often many seconds) brings the exact state: version, Remove, Undo. Until then
+        // it offers nothing; before, it kept "Build and install" under "The program from the AUR is
+        // installed." (VID11).
+        const shown = selectedEdition;
+        if (!shown || (shown.key !== key && shown.catalogKey !== key)) return;
+        const done = Object.assign({}, shown, {installed: true, actions: []});
+        selectedEdition = done;
+        if (selectedProgram)
+            selectedProgram = Object.assign({}, selectedProgram, {installed: true,
+                editions: (selectedProgram.editions || [shown]).map(row => row.key === shown.key ? done : row)});
     }
     function signOutNotice(event: var): string {
         return planTarget === "docker" && event.signOut === true

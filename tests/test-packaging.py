@@ -210,9 +210,9 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                # One 1.0.0 source commit for the packages and image; retain signed unchanged inputs.
-                self.assertEqual(info['pkgver'], ['1.0.0'] if name in ('emaki', 'emaki-config', 'emaki-apps', 'emaki-installer') else ['0.9.0'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['2'] if name in ('emaki-config', 'emaki-apps', 'emaki-installer', 'emaki-nvidia', 'emaki-desktop') else ['1'])
+                # One 1.0.1 source commit for the changed packages and image (config and installer at -2); retain signed unchanged inputs.
+                self.assertEqual(info['pkgver'], ['1.0.1'] if name in ('emaki', 'emaki-config', 'emaki-apps', 'emaki-installer') else ['0.9.0'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['2'] if name in ('emaki-config', 'emaki-installer', 'emaki-nvidia', 'emaki-desktop') else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera);
                 # emaki-config also ships Plymouth's password prompt pictures (GPL-2.0-or-later).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
@@ -221,11 +221,11 @@ class MetadataTests(unittest.TestCase):
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         self.assertTrue({'kimageformats', 'libjxl'} <= set(self.recipes['emaki-config']['depends']))
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '1.0.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '1.0.1')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'1.0.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'1.0.1'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=1.0.0-2', 'emaki-desktop=0.9.0-2', 'niri-emaki=26.04-30',
+            'emaki-config=1.0.1-2', 'emaki-desktop=0.9.0-2', 'niri-emaki=26.04-30',
             'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.9.0-1', 'emaki-mirrorlist>=0.9.0-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
@@ -1646,7 +1646,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 1.0.0 [channel: unknown]\n')
+                         'emaki 1.0.1 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1685,7 +1685,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=1.0.0\nLABEL=beta\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=1.0.1\nLABEL=beta\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',

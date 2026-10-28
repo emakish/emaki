@@ -171,6 +171,32 @@ ShellRoot {
               && Logic.undoRefusal({code: "cannot-undo", reason: "explicit"}) === "This install can no longer be taken back as it was. You installed it yourself since."
               && Logic.undoRefusal({code: "changed"}) === "", "a refused undo says what blocks it");
     }
+    function aurInstallScenario(): void {
+        // VID11: after an AUR build was installed, its page said so above a "Build and install" button.
+        controller.setAur(true, false); settle();
+        controller.readPopular(); settle();
+        const popular = controller.aurPopular[0];
+        check(popular?.key === "aur:code-bin" && !popular.installed, "the AUR program is on the popular list, not installed");
+        controller.openProgram(popular); settle();
+        check(controller.selectedEdition?.key === "aur:code-bin" && !controller.selectedEdition.installed, "its page opens on the AUR edition");
+        controller.prepareInstall(); settle();
+        check(controller.previewOpen && controller.plan?.ok === true, "the build preview opens");
+        controller.executePlan();
+        let left = 5000;
+        while (!controller.succeeded && left > 0) { input.wait(10); left -= 10; }
+        check(controller.succeeded && controller.message === "The program from the AUR is installed.", "the build reports it is installed");
+        check(controller.phase === "catalog" && !controller.catalogReceived, "the refresh after the build is still on its way");
+        const meanwhile = controller.selectedEdition || {};
+        check(!!meanwhile.installed && !(meanwhile.actions || []).includes("install"),
+              "while the refresh runs the page shows the program installed, without Build and install");
+        left = 5000;
+        while ((controller.busy || controller.refreshPending || controller.inventoryLoading || !controller.catalogReceived) && left > 0) { input.wait(20); left -= 20; }
+        check(!controller.busy && controller.catalogReceived && !controller.inventoryLoading, "the refresh after the build finishes");
+        const shown = controller.selectedEdition || {};
+        check(!!shown.installed && !(shown.actions || []).includes("install") && (shown.actions || []).includes("remove"),
+              "after the refresh the page offers Remove, not Build and install");
+        check(controller.message === "The program from the AUR is installed.", "the result line stays after the refresh");
+    }
     TestCase { id: input; when: false; name: "ProgramsProcess" }
     // The longest time the event loop went without running a 16 ms timer: a window cannot draw or
     // answer its IPC for that long.
@@ -408,6 +434,11 @@ ShellRoot {
             }
             if (scenario === "aur") {
                 test.aurScenario();
+                if (!test.failed) console.log("PROGRAMS_OK");
+                Qt.quit(); return;
+            }
+            if (scenario === "aur-install") {
+                test.aurInstallScenario();
                 if (!test.failed) console.log("PROGRAMS_OK");
                 Qt.quit(); return;
             }

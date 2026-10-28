@@ -365,6 +365,54 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(archparts[0].dev_path, Path('/dev/vda1'))
         self.assertEqual(plan.partitions[1].path, '/dev/vda2')
 
+    def erase_with(self, plan):
+        runner = RecordingRunner()
+        query = ('lsblk', '--tree', '-J', '-b', '-o', 'PATH,TYPE,PARTN,START,SIZE,PTTYPE', '/dev/vda')
+        runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': [
+            {'path': f'/dev/vda{p.number}', 'partn': p.number, 'start': p.start // 512, 'size': p.size}
+            for p in plan.partitions]}]})
+        archparts = [SimpleNamespace(dev_path=None) for _ in plan.partitions]
+        _, patches = self.disk_identity(plan, [42] * 6)
+        wiped = []
+        with contextlib.ExitStack() as stack:
+            for item in patches:
+                stack.enter_context(item)
+            stack.enter_context(patch.object(arch_backend, 'zero_zfs_labels',
+                                             side_effect=lambda fd: wiped.append([c[0] for c, _ in runner.commands])))
+            DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=archparts))
+        return wiped
+
+    def test_erase_wipes_a_stale_zfs_label_before_the_partition_table(self):
+        plan = make_plan(config(), inventory())
+        self.assertEqual(self.erase_with(plan), [])
+        plan = make_plan(config(), inventory())
+        plan.disk['_stale_label'] = 'zfs_member'
+        # Once, through the reviewed descriptor, before sfdisk writes the new table.
+        self.assertEqual(self.erase_with(plan), [[]])
+
+    def test_zfs_label_extents_are_the_four_labels(self):
+        size = 40 * 1024 ** 3 + 300 * 1024  # not a multiple of 256 KiB
+        end = 40 * 1024 ** 3 + 256 * 1024
+        self.assertEqual(arch_backend.zfs_label_extents(size),
+                         [(0, 512 * 1024), (end - 512 * 1024, 512 * 1024)])
+
+    def test_zero_zfs_labels_touches_only_the_labels(self):
+        size = 4 * 1024 ** 2 + 300 * 1024
+        with tempfile.NamedTemporaryFile() as image:
+            image.write(b'\xaa' * size)
+            image.flush()
+            fd = os.open(image.name, os.O_RDONLY)
+            try:
+                arch_backend.zero_zfs_labels(fd)
+            finally:
+                os.close(fd)
+            data = Path(image.name).read_bytes()
+        end = size - size % (256 * 1024)
+        self.assertEqual(len(data), size)
+        self.assertEqual(data[:512 * 1024], bytes(512 * 1024))
+        self.assertEqual(data[end - 512 * 1024:end], bytes(512 * 1024))
+        self.assertEqual(set(data[512 * 1024:end - 512 * 1024] + data[end:]), {0xaa})
+
     def test_post_partition_mismatch_fails_before_format(self):
         plan = make_plan(config(), inventory())
         runner = RecordingRunner()

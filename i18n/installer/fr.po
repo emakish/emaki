@@ -1715,6 +1715,10 @@ msgstr "Échec de lecture de la partition de démarrage Windows : "
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr "sha256 de la partition de démarrage Windows avant la première écriture sur le disque : {value1} ; maintenant : {value2}."
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr "Suppression de l’étiquette ZFS obsolète de {value1}."
+
 msgid "Worker failed: "
 msgstr "Échec du processus de travail : "
 
@@ -1985,6 +1989,10 @@ msgstr "{value1} connexions Wi-Fi sont actives et aucune n’a été établie de
 msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
 msgstr "{value1} et le sous-volume {value2} sont réservés à la clé Secure Boot."
 
+#, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
+msgstr "{value1} porte une étiquette ZFS obsolète laissée par un ancien système ; ses partitions n’utilisent pas ZFS. L’effacement du disque supprime cette étiquette. L’installation à côté de Windows supprime l’étiquette avant le redimensionnement de Windows."
+
 msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
 msgstr "{value1} porte une signature {value2} et peut appartenir à un ensemble de plusieurs périphériques."
 
@@ -2200,3 +2208,10 @@ msgstr "Une nouvelle partition nécessite au moins 1 Gio."
 #, python-brace-format
 msgid "Wi-Fi country left unset: timezone {timezone} has no country."
 msgstr "Le pays du Wi-Fi reste indéfini : aucun pays n’est associé au fuseau horaire {timezone}."
+
+#, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr "Suppression de la signature ZFS obsolète ; sauvegardes : {value1}."
+
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr "L’étiquette ZFS obsolète n’a pas pu être supprimée en toute sécurité. L’installation s’est arrêtée avant la création des partitions Emaki ; consultez le journal d’installation."

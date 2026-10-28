@@ -4,10 +4,13 @@
 
 import copy
 import json
+import os
+import struct
 from pathlib import Path
 import tempfile
 import threading
 import unittest
+import zlib
 from unittest.mock import Mock, patch
 
 from emaki_installer.planner import fingerprint, make_plan
@@ -15,7 +18,7 @@ from support import alongside_on, config
 from emaki_installer.errors import Code, InstallError
 from emaki_installer.inventory import (
     BUSY_REASON, GIB, Inventory, MIB, _has_windows, _root_hint, _timezone, _walk,
-    parse_lsblk, public_inventory, unconfirmed_identity_warning,
+    parse_lsblk, public_inventory, read_partition_table, unconfirmed_identity_warning,
 )
 
 
@@ -714,6 +717,56 @@ def failed(status, output=""):
     return InstallError(Code.COMMAND_FAILED, f"exited with status {status}.", output=output, returncode=status)
 
 
+# The lsblk-member-partitions layout of /dev/sde and /dev/sdh: ESP and one data partition.
+TABLE_SIZE = 42949672960
+TABLE_PARTS = ((2048 * 512, 1073741824), (2099200 * 512, 40802189312))  # bytes
+
+
+def gpt_header(lba, other, entries_lba, entries):
+    total = TABLE_SIZE // 512
+    header = bytearray(struct.pack("<8s I I I 4x Q Q Q Q 16s Q I I I", b"EFI PART", 0x10000, 92, 0,
+                                   lba, other, 34, total - 34, b"fixture-disk-gid", entries_lba,
+                                   128, 128, zlib.crc32(entries)))
+    header[16:20] = struct.pack("<I", zlib.crc32(header))
+    return bytes(header).ljust(512, b"\0")
+
+
+def write_gpt(path, parts=TABLE_PARTS):
+    """A sparse disk image with a GPT of 128 entries, both headers and arrays with valid CRCs."""
+    total = TABLE_SIZE // 512
+    entries = bytearray(128 * 128)
+    for index, (start, size) in enumerate(parts):
+        struct.pack_into("<16s 16s Q Q", entries, index * 128, b"fixture-type-gid", bytes([index + 1]) * 16,
+                         start // 512, (start + size) // 512 - 1)
+    entries = bytes(entries)
+    with open(path, "wb") as image:
+        image.truncate(TABLE_SIZE)
+        image.seek(512)
+        image.write(gpt_header(1, total - 1, 2, entries) + entries)
+        image.seek((total - 33) * 512)
+        image.write(entries + gpt_header(total - 1, 1, total - 33, entries))
+    return path
+
+
+def write_mbr(path, parts=TABLE_PARTS):
+    sector = bytearray(512)
+    for index, (start, size) in enumerate(parts):
+        kind = 0xef if index == 0 else 0x07
+        struct.pack_into("<B 3x B 3x I I", sector, 446 + 16 * index, 0, kind, start // 512, size // 512)
+    sector[510:] = b"\x55\xaa"
+    with open(path, "wb") as image:
+        image.truncate(TABLE_SIZE)
+        image.write(sector)
+    return path
+
+
+def corrupt(path, offset, byte=b"\xff"):
+    with open(path, "r+b") as image:
+        image.seek(offset)
+        image.write(byte)
+    return path
+
+
 class MembershipTests(unittest.TestCase):
     """A device that is one of several in a set must never be offered for erasing."""
 
@@ -721,12 +774,15 @@ class MembershipTests(unittest.TestCase):
                  ["pvs", "--readonly"], ["mdadm", "--examine"], ["lspci"], ["mount"],
                  ["ntfs-3g", "-o", "ro,norecover,nodev,nosuid,noexec"])
 
-    def probe(self, name, answers=None, counts=2, edit=None, holders=None):
+    def probe(self, name, answers=None, counts=2, edit=None, holders=None, tables=None):
         """Probe a fixture. blkid repeats the fixture's FSTYPE unless overridden.
 
         `answers` maps (tool, device) to output or to an exception; `counts`
-        is how many devices every multi-device tool reports.
+        is how many devices every multi-device tool reports. `tables` maps a
+        disk to the image file whose partition table is read in its place;
+        every other disk's table is unreadable, so no host device is opened.
         """
+        tables = tables or {}
         data = fixture(name)
         if edit:
             edit(data)
@@ -768,7 +824,9 @@ class MembershipTests(unittest.TestCase):
                 patch.object(inventory, "_holders", return_value=holders or {}), \
                 patch("emaki_installer.inventory.tempfile.mkdtemp",
                       side_effect=lambda **kw: mkdtemp(dir=temp)), \
-                patch("emaki_installer.inventory._online", return_value=False):
+                patch("emaki_installer.inventory._online", return_value=False), \
+                patch("emaki_installer.inventory.read_partition_table",
+                      side_effect=lambda path, pttype: path in tables and read_partition_table(tables[path], pttype)):
             result = inventory.probe()
         result["uefi"] = True
         for argv in self.commands:
@@ -882,6 +940,143 @@ class MembershipTests(unittest.TestCase):
         for argv in (["pvs", "--readonly", "--noheadings", "--options", "pv_count", "/dev/sdb2"],
                      ["mdadm", "--examine", "--export", "/dev/sdc2"]):
             self.assertIn(argv, self.commands)
+
+    STALE_ZFS = "DEVNAME=/dev/sdh\nTYPE=zfs_member\nUSAGE=filesystem\nPTUUID=fixture\nPTTYPE=gpt\n"
+
+    def image(self, write, name="disk.img"):
+        """A sparse image of the fixture disk with its table; removed after the test."""
+        if not hasattr(self, "images"):
+            self.images = tempfile.TemporaryDirectory()
+            self.addCleanup(self.images.cleanup)
+        return write(str(Path(self.images.name) / name))
+
+    def test_partition_tables_are_read_from_the_device(self):
+        self.assertEqual(read_partition_table(self.image(write_gpt), "gpt"),
+                         {1: TABLE_PARTS[0], 2: TABLE_PARTS[1]})
+        self.assertEqual(read_partition_table(self.image(write_mbr, "mbr.img"), "dos"),
+                         {1: TABLE_PARTS[0], 2: TABLE_PARTS[1]})
+        self.assertIsNone(read_partition_table(self.image(write_gpt), "dos"))
+        self.assertIsNone(read_partition_table(self.image(write_mbr, "mbr.img"), "gpt"))
+        self.assertIsNone(read_partition_table(str(Path(self.images.name) / "missing"), "gpt"))
+
+    def stale_probe(self, pttype="gpt", tables=None, answers=None):
+        """The issue #3 layout on /dev/sdh with a whole-disk zfs_member and the given table."""
+        def table(data):
+            next(n for n in data["blockdevices"] if n["path"] == "/dev/sdh")["pttype"] = pttype
+        if tables is None:
+            tables = {"/dev/sdh": self.image(write_gpt if pttype == "gpt" else write_mbr)}
+        blkid = {("blkid", "/dev/sdh"): self.STALE_ZFS.replace("PTTYPE=gpt", f"PTTYPE={pttype}")}
+        return self.probe("member-partitions", {**blkid, **(answers or {})}, edit=table, tables=tables)
+
+    def test_stale_whole_disk_zfs_label_over_windows_partitions_is_installable(self):
+        # Issue #3: a disk that once held a whole-disk ZFS pool and then got Windows keeps
+        # ZFS labels outside the new partitions; blkid still reports them for the whole disk.
+        for pttype in ("gpt", "dos"):
+            with self.subTest(pttype=pttype):
+                self.stale_installable(pttype)
+        # Fresh blkid may omit PTTYPE; the table read from the device is the evidence.
+        result = self.stale_probe(answers={("blkid", "/dev/sdh"): self.STALE_ZFS.replace("PTTYPE=gpt\n", "")})
+        self.assertEqual(next(d for d in result["disks"] if d["path"] == "/dev/sdh")["_stale_label"], "zfs_member")
+
+    def stale_installable(self, pttype):
+        offers = []
+
+        def shrink(disk, part):
+            offers.append(disk["_busy"])
+            return {"min_bytes": 20 * 1024 ** 3, "max_free_bytes": 30 * 1024 ** 3}
+        with alongside_on(), patch.object(Inventory, "_ntfs_shrink", side_effect=shrink):
+            result = self.stale_probe(pttype)
+        self.installable(result, "/dev/sdh")
+        disk = next(d for d in result["disks"] if d["path"] == "/dev/sdh")
+        public = next(d for d in public_inventory(result)["disks"] if d["path"] == "/dev/sdh")
+        self.assertIn("stale ZFS label", public["stale_label"])
+        self.assertIn("/dev/sdh", public["stale_label"])
+        self.assertIn("Erasing the disk wipes", public["stale_label"])
+        self.assertNotIn("multi-device", public["stale_label"])
+        self.assertEqual(disk["_stale_label"], "zfs_member")
+        if pttype == "gpt":
+            # Alongside Windows reaches its own checks with the disk available, not "in use".
+            self.assertEqual(offers, [False])
+            self.assertNotIn("reason", disk["shrink"])
+        plan = make_plan(dict(config(), disk_id="/dev/sdh"), result)
+        self.assertEqual(plan.disk["_stale_label"], "zfs_member")
+
+    def test_stale_label_over_an_unverified_partition_table_stays_refused(self):
+        # REV103 P1: lsblk's PTTYPE and partitions come from udev; the table on the device decides.
+        primary, backup = 512, TABLE_SIZE - 512
+        cases = {
+            "primary GPT header CRC": (write_gpt, lambda p: corrupt(p, primary + 40)),
+            "primary GPT signature": (write_gpt, lambda p: corrupt(p, primary)),
+            "GPT entry array CRC": (write_gpt, lambda p: corrupt(p, 2 * 512 + 50)),
+            "backup GPT signature": (write_gpt, lambda p: corrupt(p, backup)),
+            "backup GPT header CRC": (write_gpt, lambda p: corrupt(p, backup + 40)),
+            "backup GPT entry array CRC": (write_gpt, lambda p: corrupt(p, TABLE_SIZE - 33 * 512 + 50)),
+            "partitions differ from lsblk": (lambda p: write_gpt(p, TABLE_PARTS[:1]), None),
+            "no table at all": (lambda p: write_mbr(p, ()), lambda p: corrupt(p, 510, b"\0\0")),
+            "device shorter than its GPT": (write_gpt, lambda p: os.truncate(p, 64 * MIB)),
+        }
+        for name, (write, damage) in cases.items():
+            with self.subTest(name):
+                path = self.image(write, name.replace(" ", "-"))
+                if damage:
+                    damage(path)
+                self.refused(self.stale_probe(tables={"/dev/sdh": path}), "/dev/sdh", "/dev/sdh",
+                             "zfs_member", "multi-device")
+        mbr = {
+            "MBR boot signature": lambda p: corrupt(p, 510, b"\0\0"),
+            "MBR without a partition entry": lambda p: corrupt(p, 446, bytes(32)),
+            "MBR protective GPT entry": lambda p: corrupt(p, 446 + 4, b"\xee"),
+        }
+        for name, damage in mbr.items():
+            with self.subTest(name):
+                path = damage(self.image(write_mbr, name.replace(" ", "-")))
+                self.refused(self.stale_probe("dos", tables={"/dev/sdh": path}), "/dev/sdh", "/dev/sdh",
+                             "zfs_member", "multi-device")
+        with self.subTest("unreadable device"):
+            self.refused(self.stale_probe(tables={}), "/dev/sdh", "/dev/sdh", "zfs_member")
+        with self.subTest("fresh blkid PTTYPE disagrees"):
+            mac = self.STALE_ZFS.replace("PTTYPE=gpt", "PTTYPE=mac")
+            self.refused(self.stale_probe(answers={("blkid", "/dev/sdh"): mac}), "/dev/sdh", "/dev/sdh",
+                         "zfs_member")
+        with self.subTest("lsblk reports a GPT that is an MBR on the device"):
+            path = self.image(write_mbr, "mbr-as-gpt")
+            self.refused(self.stale_probe(tables={"/dev/sdh": path}), "/dev/sdh", "/dev/sdh", "zfs_member")
+
+    def test_stale_label_needs_a_filesystem_on_a_partition(self):
+        # A verified table whose partitions carry no signature of their own proves nothing.
+        none = {("blkid", "/dev/sdh1"): failed(2), ("blkid", "/dev/sdh2"): failed(2)}
+        result = self.stale_probe(answers=none)
+        self.refused(result, "/dev/sdh", "/dev/sdh", "zfs_member", "multi-device")
+        self.assertNotIn("stale_label", next(d for d in result["disks"] if d["path"] == "/dev/sdh"))
+        result = self.stale_probe(answers={("blkid", "/dev/sdh1"): failed(2)})
+        self.assertEqual(next(d for d in result["disks"] if d["path"] == "/dev/sdh")["_stale_label"], "zfs_member")
+
+    def test_whole_disk_zfs_label_without_a_partition_table_stays_refused(self):
+        result = self.probe("member-disks")
+        self.refused(result, "/dev/vdi", "/dev/vdi", "zfs_member", "multi-device")
+        self.assertNotIn("stale_label", next(d for d in result["disks"] if d["path"] == "/dev/vdi"))
+        # A partition table with no partitions proves nothing about the label either.
+        def empty_table(data):
+            node = next(n for n in data["blockdevices"] if n["path"] == "/dev/vdi")
+            node["pttype"] = "gpt"
+        result = self.probe("member-disks", edit=empty_table)
+        self.refused(result, "/dev/vdi", "/dev/vdi", "zfs_member")
+
+    def test_zfs_member_partition_stays_refused_under_a_whole_disk_label(self):
+        stale = self.STALE_ZFS.replace("/dev/sdh", "/dev/sde")
+        # The table verifies, so the zfs_member partition itself is what refuses.
+        tables = {"/dev/sde": self.image(write_gpt)}
+        for answers in ({}, {("blkid", "/dev/sde"): stale}):
+            with self.subTest(whole_disk_label=bool(answers)):
+                result = self.probe("member-partitions", answers, tables=tables)
+                self.refused(result, "/dev/sde", "/dev/sde2", "zfs_member", "multi-device")
+                public = next(d for d in public_inventory(result)["disks"] if d["path"] == "/dev/sde")
+                self.assertNotIn("stale_label", public)
+
+    def test_unclassified_whole_disk_signature_over_a_partition_table_stays_refused(self):
+        other = self.STALE_ZFS.replace("zfs_member", "bcachefs")
+        result = self.probe("member-partitions", {("blkid", "/dev/sdh"): other})
+        self.refused(result, "/dev/sdh", "/dev/sdh", "bcachefs", "multi-device")
 
     def test_open_luks_partition_stays_busy(self):
         result = self.probe("member-partitions")

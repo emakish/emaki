@@ -225,8 +225,36 @@ Item {
     function noteBodyHeight(note: var): real {
         return note.body ? (bodyHeights[note.id] ?? 20) : 20;
     }
+    // A critical notice's title wraps to two lines instead of being cut (the desktop update's
+    // "Sign out and sign in again to finish updating the desktop.", FR11 P3-a): this shell draws
+    // it during the next update. Its row reports the title's height; other titles keep one line.
+    property var summaryHeights: ({})
+    // Reports waiting for the next record. Qt.callLater keeps only the last call's arguments, so
+    // each row's height is kept here and one call records them all.
+    property var pendingSummaries: ({})
+    function noteSummary(id: int, height: real): void {
+        // Rows report while the drawer's plan creates them: record after that, not inside it.
+        pendingSummaries[id] = height;
+        Qt.callLater(recordSummaries);
+    }
+    function recordSummaries(): void {
+        const pending = pendingSummaries;
+        pendingSummaries = {};
+        let heights = null;
+        for (const id in pending) {
+            if (summaryHeights[id] === pending[id])
+                continue;
+            heights = heights ?? Object.assign({}, summaryHeights);
+            heights[id] = pending[id];
+        }
+        if (heights)
+            summaryHeights = heights;
+    }
+    function noteSummaryExtra(note: var): real {
+        return note.critical ? Math.max(0, (summaryHeights[note.id] ?? 20) - 20) : 0;
+    }
     function noteHeight(note: var): real {
-        return 30 + noteBodyHeight(note) + (actionsOf(note).length ? 28 : 0);
+        return 30 + noteSummaryExtra(note) + noteBodyHeight(note) + (actionsOf(note).length ? 28 : 0);
     }
     function notePlan(cap: int): var {
         const items = [];
@@ -616,9 +644,15 @@ Item {
             x: 50
             y: 25 - 8 - 10
             width: Math.max(1, Math.min(row.width - 130, appAge.x - 8 - x))
-            height: 20
+            height: row.note.critical ? Math.max(20, implicitHeight) : 20
+            onHeightChanged: if (row.note.critical)
+                body.noteSummary(row.note.id, height)
+            Component.onCompleted: if (row.note.critical)
+                body.noteSummary(row.note.id, height)
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
+            wrapMode: row.note.critical ? Text.Wrap : Text.NoWrap
+            maximumLineCount: row.note.critical ? 2 : 1
             text: row.note.summary || body.store.displayApp(row.note.app)
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
@@ -630,7 +664,7 @@ Item {
             id: message
             objectName: "note-body"
             x: 50
-            y: 25
+            y: 25 + body.noteSummaryExtra(row.note)
             width: Math.max(1, row.width - 130)
             height: body.noteBodyHeight(row.note)
             verticalAlignment: row.note.critical ? Text.AlignTop : Text.AlignVCenter

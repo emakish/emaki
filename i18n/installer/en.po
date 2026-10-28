@@ -1071,6 +1071,10 @@ msgid "Removed the stale pacman lock; no pacman runs in the target."
 msgstr "Removed the stale pacman lock; no pacman runs in the target."
 
 #, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr "Removing the stale ZFS signature; backups: {value1}."
+
+#, python-brace-format
 msgid "Repairing the installed Emaki on {root} with the startup partition {esp}."
 msgstr "Repairing the installed Emaki on {root} with the startup partition {esp}."
 
@@ -1555,6 +1559,9 @@ msgstr "The shutdown ramfs is unavailable."
 msgid "The signed GRUB image does not carry its early config and memdisk."
 msgstr "The signed GRUB image does not carry its early config and memdisk."
 
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+
 #, python-brace-format
 msgid "The startup copy {value1} could not be read back after it was written."
 msgstr "The startup copy {value1} could not be read back after it was written."
@@ -1913,6 +1920,10 @@ msgstr "Windows' startup partition read failed: "
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr "Wiping the stale ZFS label of {value1}."
+
 msgid "Worker failed: "
 msgstr "Worker failed: "
 
@@ -2214,6 +2225,10 @@ msgstr "{value1} Wi-Fi connections are active and the Network page joined none o
 #, python-brace-format
 msgid "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
 msgstr "{value1} and the subvolume {value2} are reserved for the Secure Boot key."
+
+#, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
+msgstr "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
 
 #, python-brace-format
 msgid "{value1} carries a {value2} signature and may be part of a multi-device set."

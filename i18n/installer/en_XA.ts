@@ -253,6 +253,22 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[%1 ĜîƁ·]</translation>
         </message>
         <message>
+            <source>I understand %1 will be erased, including its stale ZFS label</source>
+            <translation>[Î ûñðéŕšţàñð %1 ŵîļļ ƀé éŕàšéð, îñçļûðîñĝ îţš šţàļé ŽƑŠ ļàƀéļ····················]</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased, including its stale ZFS label</source>
+            <translation>[Î ûñðéŕšţàñð ţĥé šéļéçţéð ðîšķ ŵîļļ ƀé éŕàšéð, îñçļûðîñĝ îţš šţàļé ŽƑŠ ļàƀéļ·························]</translation>
+        </message>
+        <message>
+            <source>I understand %1 will be erased</source>
+            <translation>[Î ûñðéŕšţàñð %1 ŵîļļ ƀé éŕàšéð·········]</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased</source>
+            <translation>[Î ûñðéŕšţàñð ţĥé šéļéçţéð ðîšķ ŵîļļ ƀé éŕàšéð··············]</translation>
+        </message>
+        <message>
             <source>Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again.</source>
             <translation>[Šéçûŕé Ɓööţ îš öñ, ƀûţ ţĥîš çöɱþûţéŕ ðöéš ñöţ ţŕûšţ ţĥé Ṁîçŕöšöƒţ çéŕţîƒîçàţé Éɱàķî šţàŕţš ŵîţĥ. Îñ ÿöûŕ ƒîŕɱŵàŕé šéţţîñĝš, ţûŕñ öñ ţĥé ţĥîŕð-þàŕţÿ çéŕţîƒîçàţé öþţîöñ (öƒţéñ "Àļļöŵ Ṁîçŕöšöƒţ 3ŕð Þàŕţÿ ÛÉƑÎ ÇÀ") öŕ ţûŕñ Šéçûŕé Ɓööţ öƒƒ, ţĥéñ šţàŕţ ţĥé ÛŠƁ àĝàîñ.··························································································]</translation>
         </message>
@@ -385,20 +401,8 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Ĥîðé]</translation>
         </message>
         <message>
-            <source>I have backed up my files and understand Windows will be resized</source>
-            <translation>[Î ĥàṽé ƀàçķéð ûþ ɱÿ ƒîļéš àñð ûñðéŕšţàñð Ŵîñðöŵš ŵîļļ ƀé ŕéšîžéð·····················]</translation>
-        </message>
-        <message>
             <source>I understand the deleted partitions lose all their files</source>
             <translation>[Î ûñðéŕšţàñð ţĥé ðéļéţéð þàŕţîţîöñš ļöšé àļļ ţĥéîŕ ƒîļéš··················]</translation>
-        </message>
-        <message>
-            <source>I understand %1 will be erased</source>
-            <translation>[Î ûñðéŕšţàñð %1 ŵîļļ ƀé éŕàšéð·········]</translation>
-        </message>
-        <message>
-            <source>I understand the selected disk will be erased</source>
-            <translation>[Î ûñðéŕšţàñð ţĥé šéļéçţéð ðîšķ ŵîļļ ƀé éŕàšéð··············]</translation>
         </message>
         <message>
             <source>Try again</source>
@@ -1115,6 +1119,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Show details</source>
             <translation>[Šĥöŵ ðéţàîļš···]</translation>
         </message>
+        <message>
+            <source>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</source>
+            <translation>[Î ĥàṽé ƀàçķéð ûþ ɱÿ ƒîļéš àñð ûñðéŕšţàñð ţĥé šţàļé ŵĥöļé-ðîšķ ŽƑŠ ļàƀéļ ŵîļļ ƀé ŕéɱöṽéð ƀéƒöŕé Ŵîñðöŵš îš ŕéšîžéð······································]</translation>
+        </message>
+        <message>
+            <source>I have backed up my files and understand Windows will be resized</source>
+            <translation>[Î ĥàṽé ƀàçķéð ûþ ɱÿ ƒîļéš àñð ûñðéŕšţàñð Ŵîñðöŵš ŵîļļ ƀé ŕéšîžéð·····················]</translation>
+        </message>
     </context>
     <context>
         <name>Protocol</name>
@@ -1598,6 +1610,10 @@ Install alongside Windows is not possible here. %1</source>
         <message>
             <source>Windows shrink is unavailable. Refresh the disk list.</source>
             <translation>[Ŵîñðöŵš šĥŕîñķ îš ûñàṽàîļàƀļé. Ŕéƒŕéšĥ ţĥé ðîšķ ļîšţ.·················]</translation>
+        </message>
+        <message>
+            <source>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</source>
+            <translation>[Ţĥé šţàļé ŵĥöļé-ðîšķ ŽƑŠ ļàƀéļ ŵîļļ ƀé ŕéɱöṽéð ƀéƒöŕé Ŵîñðöŵš îš ŕéšîžéð; éẋîšţîñĝ þàŕţîţîöñš ŵîļļ ƀé þŕéšéŕṽéð.······································]</translation>
         </message>
         <message>
             <source>Skipped: snapshots need btrfs</source>

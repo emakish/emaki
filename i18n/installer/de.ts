@@ -134,6 +134,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>InstallerView</name>
         <message>
+            <source>I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized</source>
+            <translation>Ich habe meine Dateien gesichert und verstehe, dass die veraltete ZFS-Kennung des gesamten Datenträgers vor der Größenänderung von Windows entfernt wird</translation>
+        </message>
+        <message>
             <source>I understand the selected disk will be erased</source>
             <translation>Ich verstehe, dass der ausgewählte Datenträger gelöscht wird</translation>
         </message>
@@ -404,6 +408,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>I understand the deleted partitions lose all their files</source>
             <translation>Ich verstehe, dass alle Dateien auf den gelöschten Partitionen verloren gehen</translation>
+        </message>
+        <message>
+            <source>I understand %1 will be erased, including its stale ZFS label</source>
+            <translation>Ich verstehe, dass dieser Datenträger samt seiner veralteten ZFS-Kennung gelöscht wird: %1</translation>
+        </message>
+        <message>
+            <source>I understand the selected disk will be erased, including its stale ZFS label</source>
+            <translation>Ich verstehe, dass der ausgewählte Datenträger samt seiner veralteten ZFS-Kennung gelöscht wird</translation>
         </message>
         <message>
             <source>I understand %1 will be erased</source>
@@ -1120,6 +1132,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     </context>
     <context>
         <name>Protocol</name>
+        <message>
+            <source>The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.</source>
+            <translation>Die veraltete ZFS-Kennung des gesamten Datenträgers wird vor der Größenänderung von Windows entfernt; vorhandene Partitionen bleiben erhalten.</translation>
+        </message>
         <message>
             <source>Connecting to the installer…</source>
             <translation>Verbindung zum Installationsprogramm wird hergestellt…</translation>

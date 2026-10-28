@@ -87,18 +87,22 @@ ShellRoot {
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_LOGGING_RULES', 'QT_SCREEN_SCALE_FACTORS'):
             env.pop(name, None)
         mark = Image.open(ROOT / 'shell/mark-bar-26.png').convert('RGBA')
-        for scale in (1, 1.25, 1.5, 2):
+        for scale in (1, 1.25, 1.5, 2, 3):
             env['QT_SCALE_FACTOR'] = str(scale)
             result = subprocess.run(['qs', '-p', str(profile / 'test.qml'), '--no-color'], env=env,
                                     capture_output=True, text=True, timeout=20)
             assert result.returncode == 0 and 'PIXEL_MARK_COMPLETE' in result.stdout, result.stdout + result.stderr
             image = Image.open(profile / 'mark.png').convert('RGBA')
-            origin = (int((7.3 + 23.2 + 9) * scale - 13 + .5), int((11.7 + 19.4 + 9) * scale - 13 + .5))
+            # The bar button's 18-pixel box: 26 physical pixels per whole unit of scale (FR11 P3-e:
+            # at scale 2 the E stayed 26 physical pixels, half its pill), never smoothed.
+            factor = max(1, int(scale))
+            side = 26 * factor
+            origin = (int((7.3 + 23.2 + 9) * scale - side / 2 + .5), int((11.7 + 19.4 + 9) * scale - side / 2 + .5))
             expected = Image.new('RGBA', image.size)
-            expected.paste(mark, origin)
+            expected.paste(mark.resize((side, side), Image.NEAREST), origin)
             assert image.tobytes() == expected.tobytes(), (scale, image.getbbox(), expected.getbbox(), result.stdout)
-            assert f'BIG true {26 * int(44 * scale // 26)}' in result.stdout, (scale, result.stdout)
-            print(f'PASS: DPR {scale}: 26 physical pixels, snapped after an ancestor moves, exact colours '
+            assert f'BIG true {26 * max(int(scale), int(44 * scale // 26))}' in result.stdout, (scale, result.stdout)
+            print(f'PASS: DPR {scale}: {side} physical pixels, snapped after an ancestor moves, exact colours '
                   f'without smoothing, ready in a larger box')
     # Offscreen software rendering draws only dirty frames, so it cannot see forced redraws; on
     # Wayland a FrameAnimation here redrew the bar 120 times in 2 idle seconds (2026-10-18).

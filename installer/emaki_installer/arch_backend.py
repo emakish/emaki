@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import shlex
 import struct
+import tempfile
 import time
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -47,7 +48,7 @@ def own_esp(plan):
     return esp
 
 
-def resize_partition(plan, runner, changed):
+def resize_partition(plan, runner, changed, after_shrink=None):
     """Shrink NTFS before its GPT extent; verify before allocating Emaki's ESP and root."""
     p = next(p for p in plan.disk['partitions'] if p['id'] == plan.config['partition_id'])
     disk, dev, n = plan.disk['path'], p['path'], p['number']
@@ -93,6 +94,11 @@ def resize_partition(plan, runner, changed):
         if original['number'] != n:
             require(alongside.read_gpt(runner, disk, original['number']) == original['_gpt'],
                     Code.UNSAFE_DISK, _('STOP: preserved GPT metadata changed. No Emaki root was created.'))
+    if after_shrink is not None:
+        # A label hidden inside the old Windows extent can become visible after shrinking it.
+        # Check while the freed space is still unallocated, before creating Emaki's partitions.
+        after_shrink([dict(part, size_bytes=new_size) if part['number'] == n else part
+                      for part in plan.disk['partitions']])
     runner.log(_("Alongside: create Emaki's own EFI system partition and root only inside the freed Windows extent."))
     # One sgdisk run writes both entries or, on an error, neither.
     runner.run(['sgdisk', f'--new={esp.number}:{esp.start // sector}:{(esp.start + esp.size) // sector - 1}',
@@ -282,6 +288,52 @@ def open_exclusive(path):
     return os.open(path, os.O_RDONLY | os.O_EXCL | os.O_CLOEXEC)
 
 
+ZFS_LABEL_BYTES = 256 * 1024
+
+
+def zfs_label_extents(size):
+    """(start, length) of the four 256 KiB ZFS labels on a device of size bytes: two at its start,
+    two before its size rounded down to 256 KiB (ZFS vdev_label_offset; libblkid's label_offset)."""
+    end = size - size % ZFS_LABEL_BYTES
+    return [(0, 2 * ZFS_LABEL_BYTES), (end - 2 * ZFS_LABEL_BYTES, 2 * ZFS_LABEL_BYTES)]
+
+
+def zero_zfs_labels(fd):
+    """Zero a stale whole-disk ZFS label through the reviewed descriptor (inventory._stale_label).
+
+    sfdisk --wipe cannot be trusted with it: libblkid skips the labels a partition covers.
+    """
+    size = os.lseek(fd, 0, os.SEEK_END)
+    out = os.open(f'/proc/self/fd/{fd}', os.O_WRONLY | os.O_CLOEXEC)
+    try:
+        for start, length in zfs_label_extents(size):
+            data = memoryview(bytes(length))
+            while data:
+                written = os.pwrite(out, data, start)
+                data, start = data[written:], start + written
+        os.fsync(out)
+    finally:
+        os.close(out)
+
+
+def gpt_metadata_regions(fd, sector, size):
+    """Protect both verified GPT headers/arrays and the protective MBR, including sector padding.
+
+    The alignment gap before first usable LBA can contain stale ZFS magic; it is not GPT data.
+    """
+    total = size // sector
+    primary = alongside._gpt_header(fd, sector, 1, total)
+    if primary is None or primary['other'] <= primary['last']:
+        return None
+    backup = alongside._gpt_header(fd, sector, primary['other'], total)
+    if backup is None or backup['other'] != 1 or any(
+            backup[key] != primary[key] for key in ('first', 'last', 'guid', 'shape')):
+        return None
+    return [(0, 2 * sector), (primary['other'] * sector, sector),
+            *((header['entries_lba'] * sector, ((len(header['entries']) + sector - 1) // sector) * sector)
+              for header in (primary, backup))]
+
+
 def disk_sequence(fd):
     return struct.unpack('=Q', fcntl.ioctl(fd, BLKGETDISKSEQ, bytes(8)))[0]
 
@@ -330,7 +382,11 @@ class DeviceOperations:
     def partition(self, mod):
         if self.plan.config['mode'] == 'alongside':
             alongside.require_verified()
-            resize_partition(self.plan, self.runner, self.changed)
+            if self.plan.disk.get('_stale_label') == 'zfs_member':
+                self.remove_stale_zfs_label(self.plan.disk['partitions'])
+                resize_partition(self.plan, self.runner, self.changed, self.remove_stale_zfs_label)
+            else:
+                resize_partition(self.plan, self.runner, self.changed)
             self.verify_alongside_layout(mod)
             return
         if not mod.wipe and self.plan.edits is not None:
@@ -346,6 +402,9 @@ class DeviceOperations:
         # Keep the checked exclusive open alive through every write and the kernel reread.
         # sfdisk inherits it; no userspace by-diskseq symlink is trusted for destructive I/O.
         with self.reviewed_disk() as fd:
+            if self.plan.disk.get('_stale_label') == 'zfs_member':
+                self.runner.log(_('Wiping the stale ZFS label of {value1}.').format(value1=self.plan.disk['path']))
+                zero_zfs_labels(fd)
             self.runner.run(['sfdisk', '--lock=yes', '--no-reread', '--no-tell-kernel',
                              '--wipe=always', '--wipe-partitions=always', f'/proc/self/fd/{fd}'],
                             input='\n'.join(lines) + '\n', pass_fds=(fd,))
@@ -367,6 +426,79 @@ class DeviceOperations:
                     _('Partition geometry differs from the approved plan.'))
             p.path = found['path']
             archpart.dev_path = Path(p.path)
+
+    def remove_stale_zfs_label(self, partitions):
+        """Remove only libblkid's ZFS magic in unallocated space; never a label-sized area.
+
+        The worker has already re-probed the reviewed plan after confirmation. Use its exclusive
+        disk descriptor for both probing and wiping, including bounded filesystem probes, so a
+        partition pathname cannot redirect the verification to a different device.
+        """
+        message = _('The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log.')
+        with self.reviewed_disk() as fd:
+            device = f'/proc/self/fd/{fd}'
+
+            def run(argv):
+                return self.runner.run([*argv, device], pass_fds=(fd,))
+
+            def table():
+                run(['sfdisk', '--verify'])
+                output = run(['sfdisk', '--json'])
+                rows, usable = table_rows(output, device), usable_bytes(output)
+                require(rows is not None and usable is not None, Code.UNSAFE_DISK, message)
+                require({n: (p['start'], p['size']) for n, p in rows.items()} ==
+                        {p['number']: (p['start_bytes'], p['size_bytes']) for p in partitions},
+                        Code.DISK_CHANGED, message)
+                return rows, usable
+
+            def signature(part=None):
+                argv = ['blkid', '--probe', '--output', 'export']
+                if part is not None:
+                    argv += ['--offset', str(part['start_bytes']), '--size', str(part['size_bytes'])]
+                try:
+                    output = run(argv)
+                except InstallError as exc:
+                    # An unsigned partition (for example the MSR) has no filesystem to preserve.
+                    require(part is not None and exc.returncode == 2 and not exc.output.strip(),
+                            Code.UNSAFE_DISK, message)
+                    return {}
+                return dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
+
+            try:
+                before_table = table()
+                protected = gpt_metadata_regions(fd, self.plan.disk['_sector_size'], self.plan.disk['size_bytes'])
+                require(protected is not None, Code.UNSAFE_DISK, message)
+                before = [signature(part) for part in partitions]
+                for part, tags in zip(partitions, before, strict=True):
+                    require((tags.get('TYPE') or '') == (part.get('fs') or '')
+                            and (tags.get('UUID') or '') == (part.get('uuid') or ''),
+                            Code.DISK_CHANGED, message)
+                signatures = json.loads(run(['wipefs', '--json', '--output', 'TYPE,OFFSET,LENGTH',
+                                              '--types', 'zfs_member']))['signatures']
+                require(isinstance(signatures, list), Code.UNSAFE_DISK, message)
+                occupied = [*protected, *((p['start_bytes'], p['size_bytes']) for p in partitions)]
+                for sig in signatures:
+                    start, length = int(sig['offset'], 0), int(sig['length'])
+                    require(sig['type'] == 'zfs_member' and length > 0
+                            and 0 <= start < start + length <= self.plan.disk['size_bytes']
+                            and not any(start < offset + size and offset < start + length
+                                        for offset, size in occupied),
+                            Code.UNSAFE_DISK, message)
+                if signatures:
+                    backup = tempfile.mkdtemp(prefix='zfs-signatures-', dir=WORK)
+                    self.runner.log(_('Removing the stale ZFS signature; backups: {value1}.').format(value1=backup))
+                    self.changed()
+                    # --force avoids a second O_EXCL open: reviewed_disk already holds the claim.
+                    # The type filter and checked magic extents exclude GPT and partition data.
+                    run(['wipefs', '--force', '--all', '--types', 'zfs_member', f'--backup={backup}'])
+                tags = signature()
+                require(tags.get('PTTYPE') == 'gpt' and not tags.get('TYPE'), Code.UNSAFE_DISK, message)
+                require([signature(part) for part in partitions] == before,
+                        Code.UNSAFE_DISK, message)
+                require(table() == before_table, Code.UNSAFE_DISK, message)
+                self.check_disk_sequence(fd)
+            except (ValueError, KeyError, TypeError, OSError, EOFError, struct.error) as exc:
+                raise InstallError(Code.UNSAFE_DISK, message) from exc
 
     def apply_edits(self, mod):
         """The partition editor's reviewed changes, through the reviewed disk's exclusive descriptor.

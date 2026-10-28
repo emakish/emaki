@@ -1784,6 +1784,10 @@ msgstr "A leitura da partição de inicialização do Windows falhou: "
 msgid "Windows' startup partition sha256 before the first disk write: {value1}; now: {value2}."
 msgstr "sha256 da partição de inicialização do Windows antes da primeira gravação no disco: {value1}; agora: {value2}."
 
+#, python-brace-format
+msgid "Wiping the stale ZFS label of {value1}."
+msgstr "Removendo o rótulo ZFS obsoleto de {value1}."
+
 msgid "Worker failed: "
 msgstr "O processo de trabalho falhou: "
 
@@ -2159,6 +2163,10 @@ msgid "{value1} Wi-Fi connections are active and the Network page joined none of
 msgstr "há {value1} conexões Wi-Fi ativas e nenhuma foi conectada pela página Rede"
 
 #, python-brace-format
+msgid "{value1} carries a stale ZFS label from an earlier system; its partitions do not use ZFS. Erasing the disk wipes this label. Installing alongside Windows removes the label before resizing Windows."
+msgstr "{value1} contém um rótulo ZFS obsoleto de um sistema anterior; suas partições não usam ZFS. Apagar o disco remove esse rótulo. A instalação ao lado do Windows remove o rótulo antes de redimensionar o Windows."
+
+#, python-brace-format
 msgid "{value1} carries a {value2} signature and may be part of a multi-device set."
 msgstr "{value1} contém uma assinatura {value2} e pode fazer parte de um conjunto de vários dispositivos."
 
@@ -2343,3 +2351,10 @@ msgstr "Uma nova partição precisa de pelo menos 1 GiB."
 #, python-brace-format
 msgid "Wi-Fi country left unset: timezone {timezone} has no country."
 msgstr "O país do Wi-Fi não foi definido: o fuso horário {timezone} não tem um país associado."
+
+#, python-brace-format
+msgid "Removing the stale ZFS signature; backups: {value1}."
+msgstr "Removendo a assinatura ZFS obsoleta; backups: {value1}."
+
+msgid "The stale ZFS label could not be removed safely. Installation stopped before creating Emaki partitions; inspect the installation log."
+msgstr "Não foi possível remover o rótulo ZFS obsoleto com segurança. A instalação foi interrompida antes de criar as partições do Emaki; consulte o registro de instalação."

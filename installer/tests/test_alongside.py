@@ -548,6 +548,25 @@ class AlongsideTests(AlongsideOnTestCase):
             changed.assert_not_called()
             self.assertFalse(any('--delete=2' in cmd or cmd[:2] == ['ntfsresize', '--size'] for cmd, _ in runner.commands))
 
+    @patch.object(ntfs, 'verify_resized_ntfs')
+    def test_newly_exposed_stale_labels_checked_before_allocating_freed_space(self, verify):
+        plan = self.plan()
+        runner = self.runner(plan)
+        original = copy.deepcopy(plan.disk['partitions'])
+
+        def check(parts):
+            self.assertEqual(parts[0], original[0])
+            self.assertEqual(parts[1], dict(original[1], size_bytes=56 * GIB))
+            commands = [cmd for cmd, _ in runner.commands]
+            self.assertTrue(any('--delete=2' in cmd for cmd in commands))
+            self.assertFalse(any(any(arg.startswith('--new=3:') for arg in cmd) for cmd in commands))
+            raise InstallError(Code.UNSAFE_DISK, 'signature verification failed')
+
+        with self.assertRaisesRegex(InstallError, 'signature verification failed'):
+            resize_partition(plan, runner, Mock(), check)
+        self.assertEqual(plan.disk['partitions'], original)
+        self.assertFalse(any(any(arg.startswith('--new=3:') for arg in cmd) for cmd, _ in runner.commands))
+
     def test_zero_exit_without_dryrun_success_and_resize_failure(self):
         for stage in ('dry-run', 'resize'):
             plan = self.plan()

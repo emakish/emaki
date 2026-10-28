@@ -61,6 +61,7 @@ if sys.argv[1] == 'list':
         print(Path(os.environ['TEST_REPLAY'], 'list.json').read_text()); sys.exit(0)
     programs = [] if removed.exists() else [dict(package='local-editor', ids=['missing-entry.desktop', 'local-editor.desktop'], names=['Local editor'], version='1')]
     if marker.exists(): programs.append(dict(package='editor', ids=['editor-launch.desktop'], names=['Editor'], version='1', preinstalled=True))
+    if scenario == 'aur-install' and marker.exists(): programs.append(dict(package='code-bin', ids=['code.desktop'], names=['Code'], version='2-1'))
     print(json.dumps(dict(ok=True, programs=programs))); sys.exit(0)
 if sys.argv[1] == 'preview':
     if scenario == 'missing-remove': Path(sys.argv[0]).unlink()
@@ -79,6 +80,12 @@ def row(kind, identity='org.example.Editor', key=None):
         value.update(actions=['remove', 'undo'], undo=dict(id='20261012T120000123456Z-' + 'b' * 32, kind='arch',
                      name='editor', time='2026-10-12T12:00:00+00:00', target='editor', added=['editor', 'libeditor'], snapshot='17'))
     return value
+def code_bin():
+    # An AUR program as the engine sends it: installed once its build was installed.
+    present = marker.exists()
+    return dict(key='aur:code-bin', id='code-bin', name='code-bin', kind='aur', package='code-bin', version='2-1',
+                installed=present, installedVersion='2-1' if present else '', actions=['remove'] if present else ['install'],
+                categories=[], summary='', icons=[], screenshots=[], votes=1500, popularity=9.0)
 def package_row(i):
     present = i == 0 or i == 2 and package_installed
     return dict(key='package:extra/pkg-' + str(i), id='pkg-' + str(i), package='pkg-' + str(i),
@@ -144,7 +151,8 @@ for line in sys.stdin:
         if not aur_enabled:
             value.update(ok=False, code='aur-closed', message='The AUR section is off.')
         else:
-            value.update(programs=[dict(row('aur', 'yay', 'aur:yay'), name='yay', installed=False, actions=['install'], votes=2649, popularity=20.7),
+            value.update(programs=[code_bin()] if scenario == 'aur-install' else
+                                  [dict(row('aur', 'yay', 'aur:yay'), name='yay', installed=False, actions=['install'], votes=2649, popularity=20.7),
                                    dict(row('aur', 'editor-tools', 'aur:editor-tools'), name='editor-tools', installed=False, actions=['install'], votes=3, popularity=0.1)])
     elif method == 'related':
         value.update(programs=[dict(row('aur', 'org.example.Editor.desktop', 'aur:editor-bin'), installed=False,
@@ -171,6 +179,9 @@ for line in sys.stdin:
         if scenario == 'large':
             if not large: large = [large_row(i) for i in range(int(os.environ['TEST_ROWS']))]
             rows, limit = large, params['limit']
+        if scenario == 'aur-install' and aur_enabled: rows = rows + [code_bin()]
+        # The refresh after a build syncs repositories and asks the AUR again: it takes a while.
+        if scenario == 'aur-install' and params.get('refresh') and marker.exists(): time.sleep(1.5)
         offset = params.get('offset', 0)
         value.update(programs=rows[offset:offset + limit], total=len(rows), warnings=[],
                      storefront=dict(featured=dict(title='Worth trying', note='Picked by Emaki', programs=['org.example.editor']), rows=[], names={}))
@@ -209,6 +220,12 @@ for line in sys.stdin:
             assert params['action'] in ('install', 'remove')
             package_installed = params['action'] == 'install'
             value.update(message='Finished')
+            print(json.dumps(value), flush=True)
+            continue
+        if scenario == 'aur-install':
+            assert params['key'] == 'aur:code-bin' and params['token'] == 'a'*64
+            marker.touch()
+            value.update(code='success', message='The program from the AUR is installed.')
             print(json.dumps(value), flush=True)
             continue
         assert params['key'] == 'arch:editor' and params['token'] == 'a'*64
@@ -384,6 +401,11 @@ def run(scenario):
             assert len(popular) >= 2 and all(index > consent[0] for index in popular), 'the popular list is read only after consent'
             print('PASS programs controller', scenario)
             return
+        if scenario == 'aur-install':
+            executions = [item['params'] for item in requests if item['method'] == 'execute']
+            assert executions == [{'action': 'install', 'key': 'aur:code-bin', 'token': 'a' * 64}], executions
+            print('PASS programs controller', scenario)
+            return
         if scenario == 'inventory-permanent':
             assert len((root / 'calls.lists').read_text().splitlines()) == 5, 'initial inventory plus refresh and three retries'
         if scenario.startswith(('missing-', 'inventory-')):
@@ -400,5 +422,5 @@ def run(scenario):
 if __name__ == '__main__':
     # A real catalog replays only where one was dumped (pages.jsonl and list.json of the engine).
     replay = ('replay',) if os.environ.get('EMAKI_PROGRAMS_REPLAY') else ()
-    for scenario in replay + ('development-websites', 'large', 'plan-refused', 'plan-refresh', 'plan-disconnect', 'plan-malformed', 'launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'aur', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent', 'failed', 'not-authorized', 'metadata-unavailable'):
+    for scenario in replay + ('development-websites', 'large', 'plan-refused', 'plan-refresh', 'plan-disconnect', 'plan-malformed', 'launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'aur', 'aur-install', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent', 'failed', 'not-authorized', 'metadata-unavailable'):
         run(scenario)

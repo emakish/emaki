@@ -513,6 +513,17 @@ assert.equal(P.alongside(disk), true);
 assert.equal(P.alongsideRefusal(disk), "");
 assert.equal(P.alongsideDefault(windows), 37 * 1073741824);
 assert.match(P.alongsideReview(windows, 40 * 1073741824), /^Windows keeps 60.13 GB, Emaki gets 42.95 GB; back up your files first\.$/);
+// Both agreement and review follow the currently selected disk's stale signature.
+const cleanAlongsideReview = P.alongsideReview(windows, 40 * 1073741824, "en", disk);
+assert.equal(P.alongsideAgreement(disk), "I have backed up my files and understand Windows will be resized");
+disk.stale_label = "A stale whole-disk ZFS label was found.";
+assert.equal(P.alongsideAgreement(disk), "I have backed up my files and understand the stale whole-disk ZFS label will be removed before Windows is resized");
+assert.equal(P.alongsideReview(windows, 40 * 1073741824, "en", disk), cleanAlongsideReview + " The stale whole-disk ZFS label will be removed before Windows is resized; existing partitions will be preserved.");
+assert.equal(P.alongsideReview(null, 0, "en", disk), "Windows shrink is unavailable. Refresh the disk list.");
+delete disk.stale_label;
+assert.equal(P.alongsideAgreement(disk), "I have backed up my files and understand Windows will be resized");
+assert.equal(P.alongsideReview(windows, 40 * 1073741824, "en", disk), cleanAlongsideReview);
+assert.equal(P.alongsideAgreement(null), P.alongsideAgreement(disk));
 windows.shrink.max_free_bytes = 32 * 1073741824;
 assert.equal(P.alongsideDefault(windows), 32 * 1073741824);
 windows.shrink.reason = "Windows is hibernated";

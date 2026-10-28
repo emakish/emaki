@@ -63,6 +63,13 @@ Item {
     function diskLabel(): string {
         return controller.selectedDisk ? controller.selectedDisk.model + " (" + size(controller.selectedDisk.size_bytes) + ")" : "";
     }
+    // Erase also wipes a stale whole-disk ZFS label (inventory stale_label); the agreement names it.
+    function eraseAgreement(): string {
+        const label = diskLabel();
+        if (controller.selectedDisk?.stale_label)
+            return label ? qsTranslate("InstallerView", "I understand %1 will be erased, including its stale ZFS label").arg(label) : qsTranslate("InstallerView", "I understand the selected disk will be erased, including its stale ZFS label");
+        return label ? qsTranslate("InstallerView", "I understand %1 will be erased").arg(label) : qsTranslate("InstallerView", "I understand the selected disk will be erased");
+    }
     function diskReason(disk: var): string {
         return controller.diskReasons[disk.id] || Protocol.diskReason(disk);
     }
@@ -840,7 +847,7 @@ Item {
                 objectName: "agreementCheck"
                 Layout.fillWidth: true
                 visible: view.controller.step === "review" && !!view.controller.session.plan?.token && view.controller.needsAgreement
-                text: view.controller.mode === "alongside" ? qsTranslate("InstallerView", "I have backed up my files and understand Windows will be resized") : view.controller.mode === "manual" ? qsTranslate("InstallerView", "I understand the deleted partitions lose all their files") : (view.diskLabel() ? qsTranslate("InstallerView", "I understand %1 will be erased").arg(view.diskLabel()) : qsTranslate("InstallerView", "I understand the selected disk will be erased"))
+                text: view.controller.mode === "alongside" ? Protocol.alongsideAgreement(view.controller.selectedDisk) : view.controller.mode === "manual" ? qsTranslate("InstallerView", "I understand the deleted partitions lose all their files") : view.eraseAgreement()
                 checked: view.controller.agreed
                 onToggled: view.controller.agreed = checked
             }
@@ -1587,7 +1594,7 @@ Item {
                     objectName: "disk-" + modelData.id
                     width: parent.width
                     text: modelData.model + " · " + view.size(modelData.size_bytes)
-                    detail: (view.diskReason(modelData) || modelData.path + " · " + modelData.bus + " · " + Shell.Translation.englishPlural(qsTranslate("InstallerView", "%n partition(s)", "", modelData.partitions.length), modelData.partitions.length) + Protocol.diskContents(modelData)) + Protocol.alongsideRefusal(modelData)
+                    detail: (view.diskReason(modelData) || modelData.path + " · " + modelData.bus + " · " + Shell.Translation.englishPlural(qsTranslate("InstallerView", "%n partition(s)", "", modelData.partitions.length), modelData.partitions.length) + Protocol.diskContents(modelData)) + Protocol.alongsideRefusal(modelData) + (modelData.stale_label ? "\n" + modelData.stale_label : "")
                     chosen: view.controller.diskId === modelData.id
                     enabled: !view.diskReason(modelData) && !view.controller.locked
                     onClicked: view.controller.chooseDisk(modelData.id)
@@ -1691,7 +1698,7 @@ Item {
                 visible: view.controller.mode === "alongside" && view.controller.canAlongside
                 Copy {
                     width: parent.width
-                    text: Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes, view.controller.language)
+                    text: Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes, view.controller.language, view.controller.selectedDisk)
                 }
                 C.Slider {
                     objectName: "alongsideSlider"
@@ -2711,7 +2718,7 @@ Item {
                     Copy {
                         width: parent.width
                         color: view.danger
-                        text: view.controller.mode === "erase" ? qsTranslate("InstallerView", "Everything on this disk will be deleted. This cannot be undone.") : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes, view.controller.language) : qsTranslate("InstallerView", "Deleted and formatted partitions lose their files. Emaki writes system and account files to the partitions it uses. Nothing on the disk changes until you press Install.")
+                        text: view.controller.mode === "erase" ? qsTranslate("InstallerView", "Everything on this disk will be deleted. This cannot be undone.") : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes, view.controller.language, view.controller.selectedDisk) : qsTranslate("InstallerView", "Deleted and formatted partitions lose their files. Emaki writes system and account files to the partitions it uses. Nothing on the disk changes until you press Install.")
                     }
                 }
             }
