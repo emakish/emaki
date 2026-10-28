@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 1.0.0 beta — ready for everyday use.** See [Release stages](#release-stages).
+**Status: 1.0.1 beta — ready for everyday use.** See [Release stages](#release-stages).
 Releases are tested in QEMU with UEFI firmware (OVMF) and on two real computers, an AMD
 laptop and a MacBook, see [Tested hardware](#tested-hardware). Where the project is heading:
 [PLANS.md](PLANS.md).
@@ -63,11 +63,11 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## The ISO
 
-Download: https://dl.emaki.sh/iso/1.0.0/emaki-1.0.0-x86_64.iso. Its checksum and signature
+Download: https://dl.emaki.sh/iso/1.0.1/emaki-1.0.1-x86_64.iso. Its checksum and signature
 are at the same address with `.sha256` and `.sig` added; the key that signed it is
-https://dl.emaki.sh/iso/1.0.0/emaki-signing-key.asc.
+https://dl.emaki.sh/iso/1.0.1/emaki-signing-key.asc.
 
-`emaki-1.0.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-1.0.1-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
