@@ -2,11 +2,12 @@
 
 Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 [niri](https://github.com/niri-wm/niri) scrollable-tiling Wayland compositor, and its own
-[Quickshell](https://quickshell.org) shell. Warm colours, glass panels, and a living
-pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
-steam trains running through it.
+[Quickshell](https://quickshell.org) shell. Warm colours, glass panels, and themes: one choice
+in Settings changes the wallpaper, the overview background and the accent together. The Emaki
+theme is a strip of coloured cubes across your workspaces; eighteen more come with it, eight
+colours in light and dark plus Silver and Graphite.
 
-**Status: 1.0.1 beta — ready for everyday use.** See [Release stages](#release-stages).
+**Status: 1.1.0 beta — ready for everyday use.** See [Release stages](#release-stages).
 Releases are tested in QEMU with UEFI firmware (OVMF) and on two real computers, an AMD
 laptop and a MacBook, see [Tested hardware](#tested-hardware). Where the project is heading:
 [PLANS.md](PLANS.md).
@@ -18,6 +19,10 @@ and Russian: in the installer, the desktop, Programs & Updates and Notes.
 
 | | |
 |---|---|
+| ![Settings, Themes](docs/screenshots/themes.png) | ![The overview](docs/screenshots/overview.png) |
+| Settings › Themes: one choice changes the wallpaper, the overview background and the accent | The overview, Super+O |
+| ![The overview in the Blue Light theme](docs/screenshots/theme-a.png) | ![The Violet Dark theme with the dark appearance](docs/screenshots/theme-b.png) |
+| The overview in the Blue Light theme | Violet Dark, with the dark appearance switched on in Settings › Appearance |
 | ![Live session](docs/screenshots/live-session.png) | ![Installer](docs/screenshots/installer.png) |
 | The live session from the USB stick | The installer, last step before writing to disk |
 | ![Boot menu](docs/screenshots/boot-menu.png) | ![Login screen](docs/screenshots/login.png) |
@@ -46,6 +51,9 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
   safety key bindings that no other program can change during a session, the shell's own
   screen recordings marked as the shell's, fullscreen windows that start below a visible panel,
   and tiled window positions for the window switcher's pictures.
+- **Themes** (`themes/`, `packaging/emaki-themes/`) — the Emaki cube strip and eighteen ribbon
+  themes, each with a wallpaper, an overview video and a preview. The scenes that make them are
+  in `art/cubes/` and `art/ribbons/`.
 - **The shell** (`shell/`) — bar islands (workspaces, clock, system, privacy), dock,
   launcher, notifications and on-screen display on liquid glass. The login screen (a greetd
   greeter) and the lock screen are drawn by the same shell.
@@ -56,18 +64,18 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 - **The ISO profile** (`iso/`) — archiso 91 releng with the Emaki overlay.
 - **Packages** (`packaging/`) — `emaki`, `emaki-apps`, `emaki-config`, `emaki-desktop`,
   `emaki-installer`, `emaki-keyring`, `emaki-mirrorlist`, `emaki-nvidia`, `emaki-shim-signed`,
-  `emaki-font-iosevka`, `emaki-sudo-key`, `snapguard`, `niri-emaki`, `quickshell-emaki`,
+  `emaki-font-iosevka`, `emaki-sudo-key`, `emaki-themes`, `snapguard`, `niri-emaki`, `quickshell-emaki`,
   `xdg-desktop-portal-gnome-emaki`.
 - **Art** (`art/`, `cursors/`, `fetch/`, `boot/`) — the wallpaper, logo, cursors, GRUB
   background and boot splash, with the scripts that make them.
 
 ## The ISO
 
-Download: https://dl.emaki.sh/iso/1.0.1/emaki-1.0.1-x86_64.iso. Its checksum and signature
+Download: https://dl.emaki.sh/iso/1.1.0/emaki-1.1.0-x86_64.iso. Its checksum and signature
 are at the same address with `.sha256` and `.sig` added; the key that signed it is
-https://dl.emaki.sh/iso/1.0.1/emaki-signing-key.asc.
+https://dl.emaki.sh/iso/1.1.0/emaki-signing-key.asc.
 
-`emaki-1.0.1-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-1.1.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
@@ -118,25 +126,10 @@ session without your password.
 
 | Machine | Emaki | Works | Known issues |
 |---|---|---|---|
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.1.1 | Live session from USB, installation (erase disk, btrfs), boot, login, desktop, Wi-Fi on 2.4 GHz, screen lock on lid close | 5 GHz Wi-Fi networks are not listed (Broadcom BCM43602); the GRUB menu text is very small on the Retina display |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.2.0 | Installation from USB with disk encryption, disk unlock in about 5 s, boot, desktop, updates from the Emaki mirror | The disk-password screen is drawn small in a corner of the Retina display; Wi-Fi joined in the installer has to be joined again after installing |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.3.0 | Update from 0.2.0 with `pacman -Syu`, screen lock after closing and opening the lid, installation from USB with disk encryption, wrong and right disk password, boot, login, desktop | After "Restart now" the "remove the USB stick" message is almost unreadable (dark text on a black box); shutting down the live session reports "Failed to start Generate shutdown ramfs"; the disk-password screen does not yet match the boot menu |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.3.1 | Update from 0.3.0 with `pacman -Syu`, boot with disk encryption, login, desktop, wrong and right password on the lock screen | After hibernation the session does not respond; Wi-Fi joined in the installer has to be joined again after installing |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.0 | Installation from USB with disk encryption, boot, login, desktop, Wi-Fi on 2.4 GHz, keyboard control of the panel and dock | Wi-Fi joined in the installer has to be joined again after installing |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.1 | Update from 0.4.0 with `pacman -Syu`, Wi-Fi after the update, screen lock and unlock | No new issues found |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.2 | Update from 0.4.1 with `pacman -Syu`, restart, sound with realtime priority, the snapshot boot menu check at startup | No new issues found |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.5.0 | Update from 0.4.2 with `pacman -Syu`, restart, then a fresh installation from USB (erase disk), boot, login, desktop | Wi-Fi joined in the installer has to be joined again after installing |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.6.0 | Update from 0.5.0 with `pacman -Syu`, restart; then a fresh installation from USB with disk encryption: the Wi-Fi network joined in the installer connects by itself after installing, login, desktop, the password prompt | No new issues found in the installed system |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.8.0 | Installation alongside Windows 10 from USB, Emaki and Windows started from Emaki's boot menu, update from the testing channel, Programs & Updates: installing and removing programs from Arch and the AUR, ratings and reviews | A program installed from Programs & Updates may not appear in the app launcher right away |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.8.1 | Update from the testing channel | No new issues found |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.9.0 | Update from 0.8.1 from the testing channel, restart; then a fresh installation from USB, login, the Welcome tour, window switching with Alt+Tab and Super+Tab, screen lock and unlock | The live session from USB shows boot text with red lines from the Broadcom Wi-Fi and Bluetooth drivers; a USB stick prepared with Ventoy did not start, the image written directly to the stick did |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.9.1 | Update from 0.9.0 from the testing channel | No new issues found |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.10.0 | Update from 0.9.1 from the testing channel, the lock screen wallpaper, Emaki Notes, the clock shade | No new issues found |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.11.0 | Update from 0.10.0 from the testing channel, choosing Spanish or Portuguese after the update; then a fresh installation from USB in Brazilian Portuguese, login, desktop | The live session from USB shows a red "FAILED" line and Broadcom Wi-Fi lines at boot; the language picker in Welcome looks unfinished and the time-zone map in the installer is slightly crooked |
-| ThinkPad P14s Gen 7 AMD | 0.11.0 | Everyday use: Emaki added to an existing Arch installation at 0.9.0 with `pacman -Syu`, then updated from the testing channel to 0.9.1, 0.10.0 and 0.11.0, no failed services | Not installed from USB; this laptop starts with rEFInd, so Emaki's boot menu refresh after updates does not run on it |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.12.0 | Update from 0.11.0 from the testing channel, restart, login, desktop in Brazilian Portuguese, all six languages available, no failed services | During the update from 0.11.0 the update space check prints its warning in English; Firefox stays in English on a Portuguese system |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.12.0 | Fresh installation from USB in Russian, login, desktop, Wi-Fi, no failed services | No new issues found |
-| MacBook Pro (Retina, 13-inch, Early 2015) | 1.0.0 | Fresh installation from USB, login, desktop, Wi-Fi, the installed version checked | No new issues found |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 1.1.0 | Update from 1.0.1 from the testing channel, restart; then a fresh installation from USB, login, desktop, Wi-Fi, switching themes in Settings, no failed services | Switching the update channel in Settings closes the password window at once; `sudo emaki-update-channel set` in a terminal works. The update window does not show the download progress |
+| ThinkPad P14s Gen 7 AMD | 1.0.1 | Everyday use: Emaki added to an existing Arch installation at 0.9.0, then updated with `pacman -Syu` up to 1.0.1 | Not installed from USB; this laptop starts with rEFInd, so Emaki's boot menu refresh after updates does not run on it |
+
+Earlier versions on these machines: [docs/tested-hardware.md](docs/tested-hardware.md).
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
