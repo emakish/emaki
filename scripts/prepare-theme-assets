@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Stage externally rendered theme media without changing or downloading sources."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+
+FIELDS = ('wallpaper', 'overview_video', 'overview_still', 'thumbnail')
+
+
+def local_path(root, relative):
+    path = Path(relative)
+    if path.is_absolute() or not path.parts or '..' in path.parts:
+        raise ValueError(f'Unsafe catalog asset path: {relative}')
+    result = root / path
+    if not result.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f'Asset escapes staging directory: {relative}')
+    return result
+
+
+def digest(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def verify(root, release=False):
+    catalog = json.loads((root / 'catalog.json').read_text())
+    record = json.loads((root / 'assets.json').read_text())
+    if catalog['schema_version'] != 1 or record['schema_version'] != 1:
+        raise ValueError('Unsupported asset schema')
+    if release and record['probe_themes']:
+        raise ValueError('Preview videos cannot be packaged for release')
+    selected = set(record['themes'])
+    known = {row['id'] for row in catalog['styles']}
+    if not selected or not selected <= known:
+        raise ValueError('Unknown or empty staged theme selection')
+    expected = {'catalog.json'}
+    for row in catalog['styles']:
+        if row['id'] in selected:
+            expected.update(row[field] for field in FIELDS)
+    if set(record['sha256']) != expected:
+        raise ValueError('Asset inventory differs from selected themes')
+    for name, sha in record['sha256'].items():
+        path = local_path(root, name)
+        if not path.is_file() or digest(path) != sha:
+            raise ValueError(f'Missing or changed staged asset: {name}')
+    actual = {str(path.relative_to(root)) for path in root.rglob('*') if path.is_file()}
+    if actual != expected | {'assets.json'}:
+        raise ValueError('Unexpected files in staged assets')
+    if any(path.is_symlink() for path in root.rglob('*')):
+        raise ValueError('Staged assets must not contain symbolic links')
+
+
+def sources(row, args):
+    if row['id'] == 'emaki':
+        dimensions = {2160: '13500x2160', 2400: '15000x2400', 4320: '27000x4320'}
+        wallpaper = args.cubes / 'renders' / f'variant-a-fixed-8k-{dimensions[args.height]}.png'
+        video = args.cubes / 'videos' / 'final-fixed-ship.mp4'
+        probe = args.cubes / 'videos' / 'final-probe.mp4'
+    else:
+        wallpaper = args.ribbons / f"{row['id']}-{args.height}.png"
+        video = args.videos / f"r2-final-{row['id']}-3840x2160-hevc10.mp4"
+        probe = args.videos / 'r2-motion-probe-960x540-12fps.mp4'
+    used_probe = not video.is_file()
+    if used_probe and args.allow_probes:
+        video = probe
+    for path in (wallpaper, video):
+        if not path.is_file():
+            raise ValueError(f'Missing media: {path}')
+    return wallpaper, video, used_probe
+
+
+def stage(args):
+    catalog = json.loads(args.catalog.read_text())
+    if catalog['schema_version'] != 1:
+        raise ValueError('Unsupported catalog schema')
+    selected = args.theme or [row['id'] for row in catalog['styles']]
+    rows = [row for row in catalog['styles'] if row['id'] in selected]
+    if set(selected) != {row['id'] for row in rows}:
+        raise ValueError('Unknown theme selection')
+    # Resolve every source before copying anything. Probe use is always explicit.
+    inputs = [(row, *sources(row, args)) for row in rows]
+    if args.output.exists():
+        raise ValueError('Output already exists; use a new staging directory')
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.themes-', dir=args.output.parent) as tmp:
+        root = Path(tmp)
+        shutil.copyfile(args.catalog, root / 'catalog.json')
+        record = {'schema_version': 1, 'themes': selected, 'probe_themes': [], 'sha256': {}}
+        for row, wallpaper, video, probe in inputs:
+            paths = {field: local_path(root, row[field]) for field in FIELDS}
+            for path in paths.values():
+                path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(wallpaper, paths['wallpaper'])
+            shutil.copyfile(video, paths['overview_video'])
+            # One software-decoded frame, one thread; never transcode the video.
+            subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-threads', '1',
+                            '-i', str(video), '-frames:v', '1', '-vf',
+                            'scale=1920:1080:force_original_aspect_ratio=decrease',
+                            '-filter_threads', '1', '-threads', '1',
+                            str(paths['overview_still'])], check=True)
+            subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-threads', '1',
+                            '-i', str(wallpaper), '-frames:v', '1',
+                            '-vf', r'crop=min(iw\,ih*16/9):ih,scale=320:180',
+                            '-filter_threads', '1', '-threads', '1',
+                            str(paths['thumbnail'])], check=True)
+            if probe:
+                record['probe_themes'].append(row['id'])
+        for path in root.rglob('*'):
+            if path.is_file():
+                record['sha256'][str(path.relative_to(root))] = digest(path)
+        (root / 'assets.json').write_text(json.dumps(record, indent=2) + '\n')
+        verify(root)
+        # A published stage is readable regardless of the builder's umask.
+        for path in root.rglob('*'):
+            path.chmod(0o755 if path.is_dir() else 0o644)
+        root.chmod(0o755)
+        root.rename(args.output)
+    print(f'Staged {len(rows)} themes in {args.output}')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--verify', type=Path, help='Verify an existing stage instead of preparing assets')
+    parser.add_argument('--release', action='store_true', help='Reject preview media during verification')
+    parser.add_argument('--catalog', type=Path, default=Path(__file__).resolve().parent.parent / 'themes/catalog.json')
+    parser.add_argument('--cubes', type=Path, help='Cube project directory containing renders/ and videos/')
+    parser.add_argument('--ribbons', type=Path, help='Ribbon strip directory')
+    parser.add_argument('--videos', type=Path, help='Ribbon video directory')
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--height', type=int, choices=(2160, 2400, 4320), default=2160)
+    parser.add_argument('--theme', action='append', help='Stage only this ID; repeat for more themes')
+    parser.add_argument('--allow-probes', action='store_true', help='Allow explicitly marked preview videos')
+    args = parser.parse_args()
+    os.nice(max(0, 19 - os.nice(0)))
+    try:
+        if args.verify:
+            verify(args.verify, args.release)
+        else:
+            if not all((args.cubes, args.ribbons, args.videos, args.output)):
+                parser.error('--cubes, --ribbons, --videos and --output are required for staging')
+            stage(args)
+    except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
+        parser.exit(1, f'{error}\n')
+
+
+if __name__ == '__main__':
+    main()

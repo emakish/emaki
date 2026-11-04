@@ -48,7 +48,7 @@ Item {
     // (see ScreencopyView below), so `ready` is false while inactive and for a frame after.
     property bool active: true
     readonly property bool capturing: frozenSource === null && mode === "capture" && screen !== null
-    readonly property Item sharp: frozenSource !== null ? frozenSource : capturing ? captureSource : still
+    readonly property Item sharp: frozenSource !== null ? frozenSource : capturing ? captureSourceObject : still
     readonly property bool sharedSharp: sharedWallpaper && !capturing && frozenSource === null && !whole
     readonly property real imageWidth: Math.max(1, still.sourceSize.width)
     readonly property real imageHeight: Math.max(1, still.sourceSize.height)
@@ -66,9 +66,30 @@ Item {
     readonly property int settleFrames: 2
     property int contentFrames: 0
     readonly property bool captureSettled: capture.hasContent && contentFrames >= settleFrames
+    property bool restartingCapture: false
+    function resumeCapture(): void {
+        restartingCapture = false;
+    }
+    // copy_with_damage can stay pending after another surface consumes the output's
+    // damage. A new context starts with an unconditional copy; toggling live or asking
+    // captureFrame() would keep the outstanding request. Preserve the usual settle gate.
+    function refresh(): void {
+        if (capturing && active) {
+            contentFrames = 0;
+            restartingCapture = true;
+            Qt.callLater(resumeCapture);
+        }
+        captureSourceObject.scheduleUpdate();
+        half.scheduleUpdate();
+        quarter.scheduleUpdate();
+        clearH.scheduleUpdate();
+        clearV.scheduleUpdate();
+        regularH.scheduleUpdate();
+        regularV.scheduleUpdate();
+    }
     onActiveChanged: {
         contentFrames = 0;
-        captureSource.scheduleUpdate();
+        captureSourceObject.scheduleUpdate();
     }
     readonly property bool shadersReady: halfPass.status !== ShaderEffect.Error && quarterPass.status !== ShaderEffect.Error && clearHPass.status !== ShaderEffect.Error && clearVPass.status !== ShaderEffect.Error && regularHPass.status !== ShaderEffect.Error && regularVPass.status !== ShaderEffect.Error
     // Mockup: Clear blur is σ 9 texels of a 1280-wide map of the wallpaper; the wallpaper
@@ -108,23 +129,23 @@ Item {
         // the terminal of another workspace). A fresh context starts with a plain copy, which
         // comes at the next compositor frame; until then `ready` is false and the owner draws
         // its wallpaper fallback.
-        captureSource: backdrop.capturing && backdrop.active ? backdrop.screen : null
+        captureSource: backdrop.capturing && backdrop.active && !backdrop.restartingCapture ? backdrop.screen : null
         live: backdrop.capturing && backdrop.active
         paintCursor: false
         onHasContentChanged: {
             backdrop.contentFrames = 0;
-            captureSource.scheduleUpdate();
+            captureSourceObject.scheduleUpdate();
         }
-        onSourceSizeChanged: captureSource.scheduleUpdate()
-        onWidthChanged: captureSource.scheduleUpdate()
-        onHeightChanged: captureSource.scheduleUpdate()
+        onSourceSizeChanged: captureSourceObject.scheduleUpdate()
+        onWidthChanged: captureSourceObject.scheduleUpdate()
+        onHeightChanged: captureSourceObject.scheduleUpdate()
     }
     Connections {
         target: capture
         ignoreUnknownSignals: true
         function onFrameCaptured(): void {
-            if (backdrop.damageTracking && capture.damageIntersects(captureSource.sourceRect))
-                captureSource.scheduleUpdate();
+            if (backdrop.damageTracking && capture.damageIntersects(captureSourceObject.sourceRect))
+                captureSourceObject.scheduleUpdate();
         }
     }
     // Counts the frames after the capture's first content; runs only while it settles.
@@ -133,7 +154,7 @@ Item {
         onTriggered: ++backdrop.contentFrames
     }
     ShaderEffectSource {
-        id: captureSource
+        id: captureSourceObject
         width: backdrop.regionWidth
         height: backdrop.regionHeight
         sourceItem: capture

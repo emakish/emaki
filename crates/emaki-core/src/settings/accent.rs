@@ -64,10 +64,15 @@ fn colours(doc: &Document) -> (&'static str, &'static str, &'static str) {
 
 /// The files for `doc`'s accent; `None` removes a file so the packaged one is used.
 /// kitty's file is always written: its include of a missing file logs on every start.
+/// fuzzel always gets the text accent, including when the default accent is selected.
 pub(super) fn files(doc: &Document) -> [(&'static str, Option<String>); 3] {
     let (name, base, text) = colours(doc);
     let (default, default_base, default_text) = colours(&Document::default());
     let chosen = name != default;
+    // fuzzel keeps its packaged dark surface in either appearance theme.
+    let match_text = palette()["accents"][name]["on_dark"]
+        .as_str()
+        .expect("accent ink");
     [
         (
             KITTY,
@@ -78,13 +83,11 @@ pub(super) fn files(doc: &Document) -> [(&'static str, Option<String>); 3] {
         ),
         (
             FUZZEL,
-            chosen.then(|| {
-                format!(
-                    "{HEADER}include={}\n\n[colors]\nmatch={base}ff\nselection={base}ff\n\
+            Some(format!(
+                "{HEADER}include={}\n\n[colors]\nmatch={match_text}ff\nselection={base}ff\n\
                      selection-text={text}ff\nselection-match={text}ff\nborder={base}ff\n",
-                    data_dir().join("fuzzel/fuzzel.ini").display()
-                )
-            }),
+                data_dir().join("fuzzel/fuzzel.ini").display()
+            )),
         ),
         (
             HYPRLOCK,
@@ -102,7 +105,7 @@ pub(super) fn files(doc: &Document) -> [(&'static str, Option<String>); 3] {
 
 /// The qt6ct colour scheme (always) and the `kdeglobals` layer (for the current theme and accent).
 pub(super) fn qt_files(doc: &Document) -> (String, Option<String>) {
-    let (_, base, text) = colours(doc);
+    let (name, base, text) = colours(doc);
     let (_, default_base, default_text) = colours(&Document::default());
     let mut scheme = PACKAGED_QT6CT
         .replace(&format!("#ff{default_base}"), &format!("#ff{base}"))
@@ -114,24 +117,11 @@ pub(super) fn qt_files(doc: &Document) -> (String, Option<String>) {
             .collect::<Vec<_>>()
             .join(",")
     };
-    let dark = match doc.appearance.theme.as_deref() {
-        Some("dark") => true,
-        Some("automatic") => {
-            let now = crate::transport::helper(
-                "date",
-                &["+%H:%M"],
-                std::time::Instant::now() + Duration::from_secs(1),
-            )
-            .ok()
-            .filter(|out| out.success);
-            let now = now
-                .as_ref()
-                .and_then(|out| std::str::from_utf8(&out.stdout).ok());
-            now.is_some_and(|time| scheduled_dark(doc, time.trim()))
-        }
-        _ => false,
-    };
+    let dark = is_dark(doc);
     let tokens = &palette()[if dark { "shell_dark" } else { "shell_light" }];
+    let ink = palette()["accents"][name][if dark { "on_dark" } else { "on_light" }]
+        .as_str()
+        .expect("accent ink");
     for (source, target) in [
         ("background", "manager_background"),
         ("surface", "manager_panel"),
@@ -146,6 +136,25 @@ pub(super) fn qt_files(doc: &Document) -> (String, Option<String>) {
             scheme = scheme.replace(&format!("#{alpha}{from}"), &format!("#{alpha}{to}"));
         }
     }
+    // QPalette roles 7 (BrightText) and 14 (Link) are text, unlike Highlight (12).
+    // Assign by role so a shared colour cannot also recolour selection fills.
+    scheme = scheme
+        .lines()
+        .map(|line| {
+            if let Some((key, values)) = line.split_once('=') {
+                if matches!(key, "active_colors" | "inactive_colors" | "disabled_colors") {
+                    let mut values: Vec<_> = values.split(", ").map(str::to_owned).collect();
+                    for role in [7, 14] {
+                        values[role] = format!("#ff{ink}");
+                    }
+                    return format!("{key}={}", values.join(", "));
+                }
+            }
+            line.to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
     let token = |key: &str| rgb(tokens[key].as_str().expect("theme colour"));
     let mut out = HEADER.to_owned();
     let mut group = "";
@@ -167,8 +176,11 @@ pub(super) fn qt_files(doc: &Document) -> (String, Option<String>) {
                     "ForegroundNormal" if group == "[Colors:Selection]" => rgb(text),
                     "ForegroundNormal" => token("manager_ink"),
                     "ForegroundInactive" => token("manager_dim"),
-                    "ForegroundActive" | "ForegroundLink" | "DecorationFocus"
-                    | "DecorationHover" => rgb(base),
+                    "ForegroundActive" | "ForegroundLink" if group == "[Colors:Selection]" => {
+                        rgb(text)
+                    }
+                    "ForegroundActive" | "ForegroundLink" => rgb(ink),
+                    "DecorationFocus" | "DecorationHover" => rgb(base),
                     "ForegroundNegative" => token("settings_error"),
                     _ => value.to_owned(),
                 };
@@ -178,6 +190,26 @@ pub(super) fn qt_files(doc: &Document) -> (String, Option<String>) {
     }
     let kde = Some(out);
     (format!("{HEADER}{scheme}"), kde)
+}
+
+pub(super) fn is_dark(doc: &Document) -> bool {
+    match doc.appearance.theme.as_deref() {
+        Some("dark") => true,
+        Some("automatic") => {
+            let now = crate::transport::helper(
+                "date",
+                &["+%H:%M"],
+                std::time::Instant::now() + Duration::from_secs(1),
+            )
+            .ok()
+            .filter(|out| out.success);
+            let now = now
+                .as_ref()
+                .and_then(|out| std::str::from_utf8(&out.stdout).ok());
+            now.is_some_and(|time| scheduled_dark(doc, time.trim()))
+        }
+        _ => false,
+    }
 }
 
 fn scheduled_dark(doc: &Document, now: &str) -> bool {
@@ -492,16 +524,15 @@ mod tests {
     }
 
     #[test]
-    fn default_accent_files_repeat_the_packaged_configs() {
+    fn default_accent_keeps_fills_and_exports_text_ink() {
         let [kitty, fuzzel, hyprlock] = files(&doc(None, None));
         let packaged = include_str!("../../../../kitty/theme.conf");
         for line in kitty.1.unwrap().lines().skip(1) {
             assert!(packaged.lines().any(|l| l == line), "{line}");
         }
-        // Never chosen: fuzzel and hyprlock use the packaged files themselves.
-        assert_eq!(fuzzel.1, None);
+        assert!(fuzzel.1.unwrap().contains("match=ffb0d2ff"));
         assert_eq!(hyprlock.1, None);
-        assert_eq!(files(&doc(Some(default_accent()), None))[1].1, None);
+        assert!(files(&doc(Some(default_accent()), None))[1].1.is_some());
     }
 
     #[test]
@@ -514,6 +545,33 @@ mod tests {
                 assert!(contents.starts_with(HEADER), "{name}");
                 assert!(contents.contains(orange), "{name}");
                 assert!(!contents.contains(rose), "{name}: {contents}");
+            }
+        }
+    }
+
+    #[test]
+    fn neutral_accents_reach_external_apps_and_kde_in_both_themes() {
+        for (name, base, text, rgb_base, rgb_text) in [
+            ("silver", "a7b2bc", "101820", "167,178,188", "16,24,32"),
+            ("graphite", "6c7682", "fefefe", "108,118,130", "254,254,254"),
+        ] {
+            for theme in ["light", "dark"] {
+                let document = doc(Some(name), Some(theme));
+                for (file, contents) in files(&document) {
+                    let contents = contents.unwrap();
+                    assert!(contents.contains(base), "{name}: {file}");
+                    if file != HYPRLOCK {
+                        assert!(contents.contains(text), "{name}: {file}");
+                    }
+                }
+                let (scheme, kde) = qt_files(&document);
+                assert!(scheme.contains(&format!("#ff{base}")));
+                assert!(scheme.contains(&format!("#ff{text}")));
+                let kde = kde.unwrap();
+                assert!(kde.contains(&format!(
+                    "[Colors:Selection]\nBackgroundNormal={rgb_base}\n"
+                )));
+                assert!(kde.contains(&format!("ForegroundNormal={rgb_text}")));
             }
         }
     }
@@ -554,6 +612,111 @@ mod tests {
             .filter_map(|l| l.split_once('=').map(|(k, _)| k.to_owned()))
             .collect();
         assert_eq!(ours, accent_keys);
+    }
+
+    #[test]
+    fn exported_accent_text_meets_aa_on_its_surfaces() {
+        fn hex(value: &str) -> [u8; 3] {
+            std::array::from_fn(|i| u8::from_str_radix(&value[i * 2..i * 2 + 2], 16).unwrap())
+        }
+        fn aa(foreground: [u8; 3], background: [u8; 3], label: &str) {
+            let luminance = |rgb: [u8; 3]| {
+                rgb.into_iter()
+                    .zip([0.2126, 0.7152, 0.0722])
+                    .map(|(v, weight)| {
+                        let v = f64::from(v) / 255.0;
+                        weight
+                            * if v <= 0.04045 {
+                                v / 12.92
+                            } else {
+                                ((v + 0.055) / 1.055).powf(2.4)
+                            }
+                    })
+                    .sum::<f64>()
+            };
+            let (a, b) = (luminance(foreground), luminance(background));
+            let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+            assert!(
+                ratio >= 4.5,
+                "{label}: {foreground:?} on {background:?} = {ratio}"
+            );
+        }
+        for name in palette()["accents"].as_table().unwrap().keys() {
+            for theme in ["light", "dark"] {
+                let document = doc(Some(name), Some(theme));
+                let label = format!("{name}/{theme}");
+                let fuzzel = files(&document)[1].1.clone().unwrap();
+                let value = |key: &str| {
+                    let prefix = format!("{key}=");
+                    hex(&fuzzel
+                        .lines()
+                        .find_map(|l| l.strip_prefix(&prefix))
+                        .unwrap()[..6])
+                };
+                let background = include_str!("../../../../fuzzel/fuzzel.ini")
+                    .lines()
+                    .find_map(|l| l.strip_prefix("background="))
+                    .unwrap();
+                aa(
+                    value("match"),
+                    hex(&background[..6]),
+                    &format!("{label}/fuzzel match"),
+                );
+                for role in ["selection-text", "selection-match"] {
+                    aa(
+                        value(role),
+                        value("selection"),
+                        &format!("{label}/fuzzel {role}"),
+                    );
+                }
+                let (scheme, kde) = qt_files(&document);
+                for line in scheme.lines() {
+                    if let Some((key, values)) = line.split_once('=') {
+                        if key.ends_with("_colors") {
+                            let values: Vec<_> = values.split(", ").map(|v| hex(&v[3..])).collect();
+                            for role in [7, 14] {
+                                // Window, Base, Button and AlternateBase can all carry links.
+                                for surface in [1, 9, 10, 16] {
+                                    aa(
+                                        values[role],
+                                        values[surface],
+                                        &format!("{label}/Qt {key}/{role}/{surface}"),
+                                    );
+                                }
+                            }
+                            if key != "disabled_colors" {
+                                aa(values[13], values[12], &format!("{label}/Qt selection"));
+                            }
+                        }
+                    }
+                }
+                for section in kde.unwrap().split("[Colors:").skip(1) {
+                    let values: std::collections::HashMap<_, _> = section
+                        .lines()
+                        .filter_map(|line| line.split_once('='))
+                        .map(|(key, value)| {
+                            let rgb: Vec<u8> =
+                                value.split(',').map(|v| v.parse().unwrap()).collect();
+                            (key, [rgb[0], rgb[1], rgb[2]])
+                        })
+                        .collect();
+                    for role in ["ForegroundActive", "ForegroundLink"] {
+                        aa(
+                            values[role],
+                            values["BackgroundNormal"],
+                            &format!("{label}/KDE {section}/{role}"),
+                        );
+                        if !section.starts_with("Selection]") {
+                            aa(
+                                values[role],
+                                values["BackgroundAlternate"],
+                                &format!("{label}/KDE alternate/{role}"),
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -713,7 +876,7 @@ mod tests {
     }
 
     #[test]
-    fn publish_writes_chosen_and_removes_back_to_packaged() {
+    fn publish_returns_to_default_fills_and_text_ink() {
         let root = std::env::temp_dir().join(format!("emaki-accent-{}", storage::id()));
         fs::create_dir(&root).unwrap();
         let profile = Profile {
@@ -735,7 +898,11 @@ mod tests {
                 .unwrap()
                 .contains("e780aa")
         );
-        assert!(!accent.join(FUZZEL).exists());
+        assert!(
+            fs::read_to_string(accent.join(FUZZEL))
+                .unwrap()
+                .contains("match=ffb0d2ff")
+        );
         assert!(!accent.join(HYPRLOCK).exists());
         // An isolated profile's runtime directory is XDG_RUNTIME_DIR: the same path below it.
         let isolated = Profile {

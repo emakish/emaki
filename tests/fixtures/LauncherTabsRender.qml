@@ -14,6 +14,8 @@ Rectangle {
     property string mode: "Commands"
     property int bodyWidth: 720
     property bool glass: false
+    property bool icons: false
+    property string accent: "rose"
     property string scenario: "reveal"
     property real wheelBefore: 0
     property real wheelDelta: 0
@@ -152,39 +154,55 @@ Rectangle {
         }
         return null;
     }
+    function labelSnapshot(item) {
+        const labels = [];
+        for (const child of item.children || []) {
+            if (!child.visible)
+                continue;
+            const bounds = box(child);
+            if (typeof child.text === "string" && child.text.length) {
+                inkMetrics.font = child.font;
+                inkMetrics.text = child.text;
+                const tight = inkMetrics.tightBoundingRect;
+                labels.push({
+                    kind: "text",
+                    ink: {
+                        x: bounds.x + tight.x,
+                        y: bounds.y + child.baselineOffset + tight.y,
+                        width: tight.width,
+                        height: tight.height
+                    },
+                    text: child.text,
+                    color: String(child.color),
+                    weight: child.font.weight,
+                    bounds: bounds,
+                    contentWidth: child.contentWidth,
+                    truncated: child.truncated === true
+                });
+            } else if (child.sourceSize && child.source) {
+                labels.push({
+                    kind: "icon",
+                    ink: bounds,
+                    bounds: bounds,
+                    contentWidth: bounds.width,
+                    truncated: false
+                });
+            }
+        }
+        return labels;
+    }
     function snapshot() {
         const tabs = [];
         for (const name of launcher.modes) {
             const item = find(launcher, "launcher-tab-" + name.toLowerCase());
-            if (!item)
-                continue;
-            const labels = [];
-            // Read hidden original text too: the selected label is drawn again on the glass.
-            for (const child of item.children || [])
-                if (typeof child.text === "string" && child.text.length) {
-                    inkMetrics.font = child.font;
-                    inkMetrics.text = child.text;
-                    const bounds = box(child);
-                    const tight = inkMetrics.tightBoundingRect;
-                    labels.push({
-                        ink: {
-                            x: bounds.x + tight.x,
-                            y: bounds.y + child.baselineOffset + tight.y,
-                            width: tight.width,
-                            height: tight.height
-                        },
-                        text: child.text,
-                        bounds: box(child),
-                        contentWidth: child.contentWidth,
-                        truncated: child.truncated === true
-                    });
-                }
-            tabs.push({
-                name: name,
-                bounds: box(item),
-                labels: labels
-            });
+            if (item)
+                tabs.push({
+                    name: name,
+                    bounds: box(item),
+                    labels: labelSnapshot(item)
+                });
         }
+        const selectedCategory = find(launcher, "launcher-category-" + launcher.category.toLowerCase());
         const strip = find(launcher, "launcher-mode-strip");
         const search = find(launcher, "launcher-search");
         const texts = [];
@@ -199,6 +217,7 @@ Rectangle {
             height: 20000
         }, texts, hiddenSources, launcher.glassStatus().plate);
         const inkLayer = find(launcher, "launcher-mode-ink").parent;
+        const underline = find(launcher, "launcher-mode-underline");
         root.audit = {
             underEffect: strip.layer.effect !== null,
             overEffect: inkLayer.layer.effect !== null,
@@ -210,6 +229,10 @@ Rectangle {
             wheelDelta: root.wheelDelta,
             drops: launcher.glassStatus().drops,
             dark: ShellPalette.dark,
+            accent: String(ShellPalette.dark ? ShellPalette.accentForeground : ShellPalette.accentDeepForeground),
+            icons: launcher.modeIcons,
+            iconSelectionCue: underline && underline.visible ? box(underline) : null,
+            categoryLabels: selectedCategory && selectedCategory.visible ? labelSnapshot(selectedCategory) : [],
             glassReady: launcher.glassReady,
             mode: launcher.modes[launcher.modeIndex],
             labels: launcher.modeLabels,
@@ -233,7 +256,13 @@ Rectangle {
                 width: launcher.modeRect.width,
                 height: launcher.modeRect.height
             },
-            bubble: launcher.glassStatus().mode,
+            bubble: {
+                x: launcher.modeRect.x - launcher.tabFocusPad,
+                y: launcher.modeRect.y - launcher.tabFocusPad,
+                width: launcher.modeRect.width + 2 * launcher.tabFocusPad,
+                height: launcher.modeRect.height + 2 * launcher.tabFocusPad,
+                alpha: launcher.glassStatus().mode.alpha
+            },
             texts: texts
         };
     }
@@ -242,6 +271,14 @@ Rectangle {
             {
                 key: "appearance.theme",
                 value: dark ? "dark" : "light"
+            },
+            {
+                key: "appearance.accent",
+                value: root.accent
+            },
+            {
+                key: "launcher.mode_icons",
+                value: root.icons
             }
         ];
         launcher.setMode("Apps");
@@ -259,7 +296,10 @@ Rectangle {
             else {
                 if (root.stage === 4 && root.scenario !== "reveal") {
                     const strip = find(launcher, "launcher-mode-strip");
-                    const bubble = launcher.glassStatus().mode;
+                    const bubble = {
+                        x: launcher.modeRect.x - launcher.tabFocusPad,
+                        width: launcher.modeRect.width + 2 * launcher.tabFocusPad
+                    };
                     const bounds = box(strip);
                     const target = root.scenario === "wheel-left" ? strip.contentX + bubble.x - bounds.x - strip.fadeWidth / 8 : strip.contentX + bubble.x + bubble.width - bounds.x - bounds.width + strip.fadeWidth / 8;
                     root.wheelBefore = strip.contentX;

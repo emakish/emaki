@@ -437,6 +437,19 @@ ShellRoot {
         function up(): void {
             pointer.keyClick(Qt.Key_Up);
         }
+        function nearestHeaderFocused(): bool {
+            const body = scene.input;
+            const selected = body.geometryOf(body.selected);
+            if (!selected)
+                return false;
+            const x = selected.rect.x + selected.rect.width / 2;
+            const headers = body.headerControls().slice().sort((a, b) => {
+                const ax = a.mapToItem(body, a.width / 2, a.height / 2).x;
+                const bx = b.mapToItem(body, b.width / 2, b.height / 2).x;
+                return Math.abs(ax - x) - Math.abs(bx - x);
+            });
+            return headers.length > 0 && headers[0].activeFocus;
+        }
         function select(index: int): void {
             scene.input.selectAt(index);
         }
@@ -471,6 +484,15 @@ ShellRoot {
             pointer.mouseClick(scene, x, y, Qt.LeftButton);
         }
         function dnd(value: bool): void {
+            // Inject the managed policy as a settings reply would. The legacy
+            // cache field alone no longer controls quiet mode after migration.
+            SettingsBridge.values = SettingsBridge.values.filter(row => row.key !== "notifications.dnd").concat([
+                {
+                    key: "notifications.dnd",
+                    value: value,
+                    override_value: value
+                }
+            ]);
             scene.notifications.dnd = value;
         }
         function environment(overview: bool, full: bool): void {

@@ -26,17 +26,20 @@ Item {
         return states;
     }
     readonly property var renderStats: ({
-        graphics_api: GraphicsInfo.api,
-        material_ready: surface.item && (materialKind === "welcome" ? surface.item.glassReady : surface.item.ready),
-        material_kind: materialKind,
-        shader_states: shaderStates,
-        scenario: scenario,
-        phase: phase,
-        shown: shown,
-        texture: texture,
-        texture_dpr: textureDpr
-    })
-    Rectangle { anchors.fill: parent; color: "#213047" }
+            graphics_api: GraphicsInfo.api,
+            material_ready: surface.item && (materialKind === "welcome" ? surface.item.glassReady : surface.item.ready),
+            material_kind: materialKind,
+            shader_states: shaderStates,
+            scenario: scenario,
+            phase: phase,
+            shown: shown,
+            texture: texture,
+            texture_dpr: textureDpr
+        })
+    Rectangle {
+        anchors.fill: parent
+        color: "#213047"
+    }
     Loader {
         id: surface
         x: 32
@@ -75,8 +78,7 @@ Item {
             root.shaderStates = root.shaders(surface.item);
             // Reused RHI shaders can remain Uncompiled in QML despite drawing.
             // Require error-free passes and compiled work; Python checks pixels too.
-            if (root.shaderStates.length !== 7 || root.shaderStates.some(s => s === ShaderEffect.Error)
-                    || !root.shaderStates.some(s => s === ShaderEffect.Compiled))
+            if (root.shaderStates.length !== 7 || root.shaderStates.some(s => s === ShaderEffect.Error) || !root.shaderStates.some(s => s === ShaderEffect.Compiled))
                 return;
             if (root.phase === 0 && root.scenario !== "initial") {
                 root.texture = root.secondTexture;

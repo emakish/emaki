@@ -405,13 +405,14 @@ Scope {
     }
     // Under the left islands: the bar's band only (islands, drops, shadows and the blur's
     // reach), not the whole output.
-    DockBackdrop {
+    BarBackdrop {
         id: barBackdrop
         mode: dockBackdrop.mode
         screen: surfaces.controller.output
         wallpaperTexture: dockWallpaper.texture
         cacheWallpaper: true
         damageAwareCapture: true
+        surfacePresent: launcherBackdrop.active || clockBackdrop.active || systemBackdrop.active || switcherCapture.active
         screenWidth: surfaces.controller.viewportWidth
         screenHeight: surfaces.controller.viewportHeight
         dpr: surfaces.controller.output?.devicePixelRatio ?? 1

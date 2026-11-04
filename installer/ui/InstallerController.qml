@@ -544,7 +544,8 @@ Item {
     // Join from the end so the conjunction belongs to the final pair only.
     function layoutNames(list: var): string {
         const names = Array.from(list).map(layout => layoutLabel(String(layout)));
-        if (names.length < 2) return names.join("");
+        if (names.length < 2)
+            return names.join("");
         let result = qsTranslate("InstallerController", "%1 and %2").arg(names[names.length - 2]).arg(names[names.length - 1]);
         for (let i = names.length - 3; i >= 0; --i)
             result = qsTranslate("InstallerController", "%1, %2").arg(names[i]).arg(result);

@@ -7,6 +7,8 @@ import QtQuick.Controls as C
 import Quickshell
 import "file:@EMAKI_DATADIR@/shell" as Shell
 import "ManagerLogic.js" as Logic
+import "StorefrontData.js" as DiscoveryData
+import "StorefrontLogic.js" as DiscoveryLogic
 import "file:@EMAKI_DATADIR@/shell/SystemIcons.js" as SystemIcons
 
 Rectangle {
@@ -66,20 +68,40 @@ Rectangle {
         {id: "AudioVideo", name: qsTranslate("ManagerView", "Audio & Video")}, {id: "Game", name: qsTranslate("ManagerView", "Games")}, {id: "Development", name: qsTranslate("ManagerView", "Development")},
         {id: "Education", name: qsTranslate("ManagerView", "Education")}, {id: "System", name: qsTranslate("ManagerView", "System")}, {id: "Utility", name: qsTranslate("ManagerView", "Utilities")}
     ]
-    // Picks are data (update-manager/storefront.json, read by the engine), never ids written here.
-    readonly property var storefront: programs.storefront
-    // A pick the catalog has no metadata for (its name is only its ID) is not shown.
-    readonly property var featured: (storefront.featured?.programs || []).map(id => programs.allPrograms.find(row => Logic.identity(row) === id)).filter(row => !!row && !!row.summary && String(row.name).toLowerCase() !== Logic.identity(row)).map(row => shortName(row))
+    readonly property var discoveryData: DiscoveryData.content()
+    property string discoveryDay: Qt.formatDate(new Date(), "yyyy-MM-dd")
+    readonly property var discoveryInputs: ({catalog: programs.allPrograms, installed: programs.installedPrograms,
+        editorial: discoveryData, day: discoveryDay})
+    property var discovery: ({daily: null, collections: [], because: null})
+    // One catalog assignment updates both lists. Rebuild once after those bindings settle,
+    // without waiting for the installed inventory or the controller's auxiliary reads.
+    onDiscoveryInputsChanged: Qt.callLater(rebuildDiscovery)
+    function rebuildDiscovery(): void {
+        discovery = DiscoveryLogic.build(discoveryInputs.catalog, discoveryInputs.installed,
+            discoveryInputs.editorial, discoveryInputs.day);
+    }
     readonly property bool popularMeasured: Logic.hasPopularity(programs.allPrograms)
     // A list page draws every row; the first hundred are what a "most used" list is for.
-    readonly property var popular: Logic.popular(programs.allPrograms).slice(0, 100).map(row => shortName(row))
-    readonly property var essentials: programs.essentials.minimal ? Logic.essentials(programs.allPrograms, programs.essentials.programs).map(row => shortName(row)) : []
-    readonly property var fresh: Logic.fresh(programs.allPrograms).map(row => shortName(row))
-    readonly property var lists: ({
-        popular: {title: qsTranslate("ManagerView", "Popular"), rows: popular},
-        essentials: {title: qsTranslate("ManagerView", "Essentials"), rows: essentials},
-        fresh: {title: qsTranslate("ManagerView", "New and updated"), rows: fresh}
-    })
+    readonly property var popular: Logic.popular(programs.allPrograms).slice(0, 100)
+    readonly property var essentials: programs.essentials.minimal ? Logic.essentials(programs.allPrograms, programs.essentials.programs) : []
+    readonly property var fresh: Logic.fresh(programs.allPrograms)
+    readonly property var lists: {
+        const result = {
+            popular: {title: qsTranslate("ManagerView", "Popular"), rows: popular},
+            essentials: {title: qsTranslate("ManagerView", "Essentials"), rows: essentials},
+            fresh: {title: qsTranslate("ManagerView", "New and updated"), rows: fresh}
+        };
+        for (const collection of discovery.collections)
+            result[collection.id] = {title: collection.title, rows: collection.rows};
+        if (discovery.because)
+            result.because = {title: discoveryData.becauseTitle.arg(discovery.because.source.name), rows: discovery.because.rows};
+        return result;
+    }
+    // Rotate an open window at the next local day without storing any history.
+    Timer {
+        interval: 60000; repeat: true; running: view.visible && view.page === "browse"
+        onTriggered: view.discoveryDay = Qt.formatDate(new Date(), "yyyy-MM-dd")
+    }
     readonly property var regularResults: programs.programs.filter(row => row.kind !== "aur")
     readonly property var aurList: programs.aurQuery.trim().length >= 2 ? programs.aurRows : Logic.byVotes(programs.aurPopular)
     readonly property var selfRow: ({key: "self:emaki-update-manager", id: "emaki-update-manager", package: "emaki-update-manager",
@@ -118,6 +140,7 @@ Rectangle {
     onPageChanged: { clearTransactionMessage(); headInList = shortWindow; Qt.callLater(placeHead); }
     // A window reopened on a list or program page it cannot rebuild starts on Browse.
     Component.onCompleted: {
+        rebuildDiscovery();
         if (page === "list" && !lists[listId] || page === "program" && !programs.selectedEdition) page = "browse";
         placeHead();
     }
@@ -180,10 +203,7 @@ Rectangle {
     function showList(id: string): void {
         page = "list"; listId = id; category = ""; query = ""; search.text = ""; resetScroll();
     }
-    function shortName(row: var): var {
-        const name = (storefront.names || {})[Logic.identity(row)];
-        return name ? Object.assign({}, row, {name: name}) : row;
-    }
+
     function planDownload(): string {
         const rows = programs.plan?.transaction?.packages || [];
         if (!rows.length || rows.some(row => row.downloadSize === null || row.downloadSize === undefined)) return qsTranslate("ManagerView", "Download size unknown");
@@ -702,53 +722,15 @@ Rectangle {
                         objectName: "category-strip-page"
                         visible: view.programs.scope === "programs" && view.narrow
                     }
-                    Flow {
+                    Storefront {
+                        objectName: "storefront"
                         Layout.fillWidth: true
-                        spacing: 10
-                        ManagerButton {
-                            objectName: "open-development"
-                            text: qsTranslate("ManagerView", "Development kits")
-                            width: Math.min(implicitWidth, parent.width); squeezed: parent.width > 0 && parent.width < implicitWidth
-                            onClicked: view.navigate("development")
-                        }
-                        ManagerButton {
-                            objectName: "open-websites"
-                            text: qsTranslate("ManagerView", "Websites as apps")
-                            width: Math.min(implicitWidth, parent.width); squeezed: parent.width > 0 && parent.width < implicitWidth
-                            onClicked: view.navigate("websites")
-                        }
+                        editorial: view.discoveryData
+                        recommendations: view.discovery
+                        catalogAvailable: view.programs.catalogReceived && view.programs.allPrograms.length > 0 && !view.programs.busy
+                        onOpenProgram: program => view.showProgram(program)
+                        onOpenList: id => view.showList(id)
                     }
-                    Shelf {
-                        objectName: "shelf-picked"
-                        title: view.storefront.featured?.title || ""
-                        note: view.storefront.featured?.note || ""
-                        visible: view.featured.length > 0
-                        GridLayout {
-                            id: featuredRow
-                            Layout.fillWidth: true
-                            // Side by side when the large card keeps its Install button beside its text.
-                            columns: width >= 760 ? Math.max(1, view.featured.length) : 1
-                            columnSpacing: 12
-                            rowSpacing: 12
-                            Repeater {
-                                model: view.featured
-                                ProgramCard {
-                                    required property var modelData
-                                    required property int index
-                                    program: modelData
-                                    featured: index === 0
-                                    compact: featuredRow.width < 360
-                                    installEnabled: (!view.programs.busy || view.programs.backgroundBusy) && !view.programs.externalBusy && (modelData.actions || []).includes("install")
-                                    Layout.fillWidth: true
-                                    Layout.preferredWidth: index === 0 ? 14 : 10
-                                    Layout.fillHeight: true
-                                    onClicked: view.showProgram(program)
-                                    onInstallRequested: view.installProgram(program)
-                                }
-                            }
-                        }
-                    }
-                    ManagerLabel { visible: (view.storefront.featured?.programs || []).length > 0 && !view.featured.length && !view.programs.busy; text: qsTranslate("ManagerView", "Our picks are not available right now. Try Refresh."); color: Shell.ShellPalette.managerDim }
                     Shelf {
                         objectName: "shelf-popular"
                         title: qsTranslate("ManagerView", "Popular")
@@ -770,6 +752,22 @@ Rectangle {
                         more: view.fresh.length > 4 ? "fresh" : ""
                         visible: view.fresh.length > 0
                         CardRow { rows: view.fresh.slice(0, 4) }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        ManagerButton {
+                            objectName: "open-development"
+                            text: qsTranslate("ManagerView", "Development kits")
+                            width: Math.min(implicitWidth, parent.width); squeezed: parent.width > 0 && parent.width < implicitWidth
+                            onClicked: view.navigate("development")
+                        }
+                        ManagerButton {
+                            objectName: "open-websites"
+                            text: qsTranslate("ManagerView", "Websites as apps")
+                            width: Math.min(implicitWidth, parent.width); squeezed: parent.width > 0 && parent.width < implicitWidth
+                            onClicked: view.navigate("websites")
+                        }
                     }
                     Shelf {
                         // Emaki's own optional packages; which ones is data (update-manager/emaki-shelf.json).
@@ -1007,6 +1005,7 @@ Rectangle {
                 objectName: "see-all-" + shelf.more
                 visible: shelf.more !== ""
                 text: qsTranslate("ManagerView", "See all ›")
+                Accessible.name: text + ": " + shelf.title
                 quiet: true
                 onClicked: view.showList(shelf.more)
             }
@@ -1049,7 +1048,6 @@ Rectangle {
             Item { Layout.fillWidth: true; Layout.preferredWidth: 1; visible: cardRow.columns === 4 }
         }
     }
-    // Stays on every AUR list; it cannot be hidden.
     component AurStripe: Rectangle {
         Layout.fillWidth: true
         implicitHeight: stripeText.implicitHeight + 18

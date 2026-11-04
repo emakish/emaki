@@ -861,7 +861,7 @@ Item {
         readonly property real knobX: {
             const g = body.glass;
             if (g && restKey) {
-                g.tick;
+                void g.tick;
                 const b = g.restBubble(restKey);
                 if (b && b.placed && b.alpha.x > .001) {
                     const p = track.mapToItem(g.layerItem, 0, 0);

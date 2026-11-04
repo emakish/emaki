@@ -11,10 +11,10 @@ Item {
     required property ShellScene scene
     property bool presented: false
     property DockBackdrop backdrop: null
-    readonly property alias card: card
-    readonly property bool warningVisible: !controller.opened && card.expansion === 0 && SudoKeySupport.warningNeeded
-    readonly property bool present: !!scene && (controller.opened || card.expansion > 0 || warningVisible) && !controller.locked
-    readonly property bool clockCovered: present && presented && card.morph > .5
+    readonly property alias card: cardObject
+    readonly property bool warningVisible: !controller.opened && cardObject.expansion === 0 && SudoKeySupport.warningNeeded
+    readonly property bool present: !!scene && (controller.opened || cardObject.expansion > 0 || warningVisible) && !controller.locked
+    readonly property bool clockCovered: present && presented && cardObject.morph > .5
     width: scene?.viewportWidth ?? 0
     height: scene?.viewportHeight ?? 0
     visible: present
@@ -24,7 +24,7 @@ Item {
         if (warningVisible)
             warning.forceActiveFocus();
         else
-            card.focusPassword();
+            cardObject.focusPassword();
     }
     // The entire output belongs to the prompt while it is visible. The card
     // handles its controls; empty space consumes pointer and wheel events.
@@ -35,7 +35,7 @@ Item {
         onWheel: event => event.accepted = true
     }
     PolkitPromptCard {
-        id: card
+        id: cardObject
         controller: surface.controller
         expansion: surface.controller.opened && surface.presented ? 1 : 0
         viewportWidth: surface.width

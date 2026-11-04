@@ -90,8 +90,8 @@ def update(command, emit):
     scopes = sorted({key[0] for key in installed(command)})
     for scope in scopes:
         emit('progress', phase='flatpak', message=_('Updating Flatpak applications ({scope})…').format(scope=scope))
-        output = command(['systemd-inhibit', '--what=sleep:handle-lid-switch', '--mode=block',
-                          '--who=Emaki updates', '--why=' + _('Updating Flatpak applications'),
+        output = command(['systemd-inhibit', '--what=shutdown:sleep:handle-lid-switch', '--mode=block',
+                          '--who=Emaki updates', '--why=' + _('Updating Emaki'),
                           'flatpak', 'update', scope_option(scope), '--noninteractive', '--assumeyes'],
                          timeout=7200)
         if output.strip():

@@ -112,17 +112,17 @@ Scope {
         Scope {
             id: instance
             required property var modelData
-            readonly property alias scene: scene
+            readonly property alias scene: sceneObject
             readonly property Surfaces surfaces: surfacesLoader.item as Surfaces
             ShellScene {
-                id: scene
-                authenticationPrompt: outputs.authenticationPrompt?.scene === scene ? outputs.authenticationPrompt : null
+                id: sceneObject
+                authenticationPrompt: outputs.authenticationPrompt?.scene === sceneObject ? outputs.authenticationPrompt : null
                 firstRunPresent: outputs.firstRunPresent
                 shared: outputs.shared
                 niri: outputs.niri
                 skipIntro: outputs.startup?.skipIntro ?? false
                 enabled: outputs.enabled
-                focusedOutput: outputs.activeScene === scene
+                focusedOutput: outputs.activeScene === sceneObject
                 output: outputs.headless ? null : instance.modelData
                 outputName: instance.modelData.name || outputs.niri.model?.focused_output || ""
                 borderMode: outputs.borderMode
@@ -148,15 +148,15 @@ Scope {
             Component.onCompleted: {
                 if (!outputs.headless)
                     surfacesLoader.setSource(Qt.resolvedUrl("Surfaces.qml"), {
-                        controller: scene,
+                        controller: sceneObject,
                         startup: outputs.startup,
                         sharedFocus: true,
                         reportFrames: false
                     });
             }
             Component.onDestruction: {
-                if (outputs.previousScene === scene) {
-                    outputs.savedTransient = scene.exportTransient();
+                if (outputs.previousScene === sceneObject) {
+                    outputs.savedTransient = sceneObject.exportTransient();
                     outputs.previousScene = null;
                 }
             }

@@ -245,7 +245,9 @@ ColumnLayout {
                             required property int index
                             objectName: "review-star-" + (index + 1)
                             // Five stars always fit the dialog's width.
-                            implicitWidth: Math.min(34, Math.floor((dialog.availableWidth - 8) / 5)); implicitHeight: 34
+                            implicitWidth: Math.min(34, Math.floor((dialog.availableWidth - 8) / 5))
+                            // Fallback fonts can draw a taller star than the UI font.
+                            implicitHeight: Math.max(34, implicitContentHeight + topPadding + bottomPadding)
                             Accessible.name: qsTranslate("ProgramReviews", "Rate %1 of 5").arg(index + 1)
                             Accessible.role: Accessible.RadioButton
                             Accessible.selected: dialog.stars === index + 1
@@ -261,6 +263,8 @@ ColumnLayout {
                                 text: star.index < dialog.stars ? "★" : "☆"
                                 color: Shell.ShellPalette.managerWarning
                                 font.pixelSize: Math.min(26, star.width - 8)
+                                fontSizeMode: Text.HorizontalFit
+                                minimumPixelSize: 1
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }

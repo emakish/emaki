@@ -17,7 +17,12 @@ ShellRoot {
         id: test
         name: "WhatsNew"
         property int languageOpens: 0
-        Connections { target: controller; function onLanguageRequested() { ++test.languageOpens; } }
+        Connections {
+            target: controller
+            function onLanguageRequested() {
+                ++test.languageOpens;
+            }
+        }
         when: true
         onCompletedChanged: if (completed)
             console.log("WHATSNEW_TEST_RESULT " + qtest_results.passCount + " " + qtest_results.failCount)
@@ -77,9 +82,19 @@ ShellRoot {
                 const point = item.mapToItem(view, 0, 0);
                 check(!item.truncated, "Untruncated copy: " + item.text);
                 check(item.width > 0 && item.height > 0, "Visible copy: " + item.text);
-                regions.push({text: item.text, x: point.x, y: point.y, width: item.width, height: item.height, truncated: item.truncated});
+                regions.push({
+                    text: item.text,
+                    x: point.x,
+                    y: point.y,
+                    width: item.width,
+                    height: item.height,
+                    truncated: item.truncated
+                });
             }
-            console.log("WHATSNEW_CONTENT " + JSON.stringify({name: name, regions: regions}));
+            console.log("WHATSNEW_CONTENT " + JSON.stringify({
+                name: name,
+                regions: regions
+            }));
             let saved = false;
             check(view.grabToImage(result => saved = result.saveToFile(Quickshell.env("WHATSNEW_SHOTS") + "/" + name + ".png")));
             tryVerify(() => saved, 5000);
@@ -128,10 +143,20 @@ ShellRoot {
             body.contentY = 0;
         }
         function test_session() {
-            try { session(); } catch (error) { console.error("SESSION " + error + " " + error.stack); throw error; }
+            try {
+                session();
+            } catch (error) {
+                console.error("SESSION " + error + " " + error.stack);
+                throw error;
+            }
         }
         function session() {
-            Shell.SettingsBridge.values = [{key: "appearance.theme", value: Quickshell.env("WHATSNEW_THEME") || "light"}];
+            Shell.SettingsBridge.values = [
+                {
+                    key: "appearance.theme",
+                    value: Quickshell.env("WHATSNEW_THEME") || "light"
+                }
+            ];
             tryCompare(controller.store, "restored", true);
             tryCompare(controller.whatsNewStore, "restored", true);
             equal(controller.opened, false, "Startup gate waits");
@@ -159,15 +184,22 @@ ShellRoot {
             view.Window.window.height = Number(Quickshell.env("WHATSNEW_HEIGHT") || "660");
             controller.window.present();
             wait(100);
-            equal(view.count, 3);
+            equal(view.count, 4);
             if (mode === "render") {
                 const language = Quickshell.env("EMAKI_LANGUAGE");
-                equal(qsTranslate("Shell", "Settings"), ({en: "Settings", es: "Configuración", pt_BR: "Configurações", de: "Einstellungen", fr: "Paramètres", ru: "Настройки"})[language]);
-                for (let page = 0; page < 3; ++page) {
+                equal(qsTranslate("Shell", "Settings"), ({
+                        en: "Settings",
+                        es: "Configuración",
+                        pt_BR: "Configurações",
+                        de: "Einstellungen",
+                        fr: "Paramètres",
+                        ru: "Настройки"
+                    })[language]);
+                for (let page = 0; page < 4; ++page) {
                     equal(view.page, page);
                     wait(300);
                     checkPage(language + "-" + Quickshell.env("WHATSNEW_THEME") + "-" + Quickshell.env("WHATSNEW_SIZE") + "-" + (page + 1));
-                    if (page < 2)
+                    if (page < 3)
                         mouseClick(control("next"));
                 }
                 mouseClick(control("next"));
@@ -199,7 +231,7 @@ ShellRoot {
             controller.window.view.Window.window.height = 660;
             controller.window.view.page = 0;
             wait(300);
-            // No 1.0 page offers an action, so the window shows no action button.
+            // No 1.1 page offers an action, so the window shows no action button.
             check(!control("action") || !shown(control("action")), "No page action");
             keyClick(Qt.Key_Escape);
             tryCompare(controller, "opened", false);

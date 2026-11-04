@@ -663,6 +663,11 @@ class Safety(unittest.TestCase):
         boot_id = mapped('/proc/sys/kernel/random/boot_id')
         boot_id.parent.mkdir(parents=True)
         boot_id.write_text(UUID)
+        # The retry fixture represents an installed Emaki system, including
+        # the ownership marker checked before boot files are refreshed.
+        defaults = mapped('/etc/default/grub')
+        defaults.parent.mkdir(parents=True)
+        defaults.write_text(refresh.INCLUDE + '\n')
         pending = mapped(refresh.PENDING)
         pending.parent.mkdir(parents=True)
         pending.write_text('{"boots": 0}')

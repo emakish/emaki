@@ -14,6 +14,10 @@ import sys
 import subprocess
 import time
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_paths import DATADIR
+
 
 
 def claim_file(environment):
@@ -46,12 +50,20 @@ def claim_file(environment):
         os.close(directory)
 
 
+def default_arguments(environment):
+    """A config-less daemon answers IPC but never supplies a snapshot path."""
+    config = Path(environment.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    if (config / 'wpaperd/config.toml').exists():
+        return ['wpaperd']
+    return ['wpaperd', '--config', str(Path(DATADIR) / 'wpaperd/config.toml')]
+
+
 def wallpaper_arguments(environment):
     """Use the selected generated wallpaper without changing personal configuration."""
     config = Path(environment.get('XDG_CONFIG_HOME') or Path.home() / '.config')
     source = config / 'emaki/settings.toml'
     if not source.exists():
-        return ['wpaperd']
+        return default_arguments(environment)
     with source.open('rb') as stream:
         raw = stream.read(65537)
     if len(raw) > 65536:
@@ -59,7 +71,7 @@ def wallpaper_arguments(environment):
     settings = tomllib.loads(raw.decode())
     wallpaper = settings.get('appearance', {}).get('wallpaper')
     if not wallpaper:
-        return ['wpaperd']
+        return default_arguments(environment)
     generation = settings.get('generation', '')
     if (settings.get('schema_version') != 1 or not isinstance(generation, str)
             or len(generation) >= 100 or not re.fullmatch(r'g-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+', generation)
@@ -78,7 +90,7 @@ def wallpaper_arguments(environment):
 
 
 def compositor_draws_wallpaper(environment):
-    """Wait briefly for the ring; image, stock niri and failed assets need wpaperd."""
+    """Wait briefly for compositor artwork; stock niri and failed assets need wpaperd."""
     if not environment.get('NIRI_SOCKET'):
         return False
     deadline = time.monotonic() + 5
@@ -89,7 +101,7 @@ def compositor_draws_wallpaper(environment):
             if result.returncode or len(result.stdout) > 65536:
                 return False
             status = json.loads(result.stdout)
-            if status.get('mode') != 'ring':
+            if status.get('mode') not in ('ring', 'strip'):
                 return False
             if status.get('load_state') == 'ready':
                 return True
@@ -145,7 +157,7 @@ def main(force=False):
         except (OSError, ValueError, TypeError, AttributeError):
             print('emaki-session-wallpaper: managed wallpaper unavailable; using default',
                   file=sys.stderr)
-            arguments = ['wpaperd']
+            arguments = default_arguments(environment)
         descriptor = claim_file(environment)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)

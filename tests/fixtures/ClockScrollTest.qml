@@ -6,7 +6,9 @@ import QtTest
 import Quickshell
 
 ShellRoot {
-    NotificationStore { id: store }
+    NotificationStore {
+        id: store
+    }
     FloatingWindow {
         id: window
         visible: true
@@ -46,10 +48,22 @@ ShellRoot {
             wait(500);
         }
         function test_scroll_data() {
-            return [{tag: "light"}, {tag: "dark"}];
+            return [
+                {
+                    tag: "light"
+                },
+                {
+                    tag: "dark"
+                }
+            ];
         }
         function test_scroll(data) {
-            SettingsBridge.values = [{key: "appearance.theme", value: data.tag}];
+            SettingsBridge.values = [
+                {
+                    key: "appearance.theme",
+                    value: data.tag
+                }
+            ];
             const body = panel.body;
             const scroll = body.scroller;
             const events = findChild(body, "clock-calendar-events");

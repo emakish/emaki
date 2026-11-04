@@ -236,7 +236,9 @@ install -Dm644 "$ROOT/art/grub/background.png" "$work/mk/iso/boot/grub/backgroun
 if [[ -n $secure_boot_key ]]; then
     "$HERE/secureboot.sh" --mode "$mode" --key "$secure_boot_key" --mk "$work/mk" --cache "$work/secureboot-cache"
 fi
-for installed in usr/bin/emaki-installerd usr/bin/emaki-install-cli usr/bin/emaki-boot-repair usr/bin/niri-emaki-session usr/share/emaki/wallpaper/ring.png; do
+for installed in usr/bin/emaki-installerd usr/bin/emaki-install-cli usr/bin/emaki-boot-repair usr/bin/niri-emaki-session usr/share/emaki/wallpaper/ring.png \
+    usr/share/emaki/wallpaper/fallback.png usr/share/emaki/themes/emaki/wallpaper.png \
+    usr/share/emaki/themes/emaki/overview.mp4 usr/share/emaki/themes/emaki/overview.jpg; do
     [[ -f $work/mk/x86_64/airootfs/$installed ]] || fail "required live file missing from packages: /$installed"
 done
 if [[ ! -f $work/mk/x86_64/airootfs/usr/bin/emaki-install ]]; then

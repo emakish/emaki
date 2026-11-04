@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Templates as Templates
 
 Item {
     id: events
@@ -190,12 +191,16 @@ Item {
             }
         }
     }
-    component TimePart: SpinBox {
+    // Fully styled: avoid constructing the Basic style's deferred indicators before replacing them.
+    component TimePart: Templates.SpinBox {
         id: part
         from: 0
         editable: false
         wrap: true
         height: 38
+        implicitHeight: 38
+        leftPadding: 30
+        rightPadding: 30
         font.family: ShellPalette.uiFont
         font.pixelSize: 14
         contentItem: Text {
@@ -216,14 +221,24 @@ Item {
             height: part.height
             radius: 9
             color: part.up.pressed ? events.rim : "transparent"
-            Text { anchors.centerIn: parent; text: "+"; color: events.dim; font.pixelSize: 18 }
+            Text {
+                anchors.centerIn: parent
+                text: "+"
+                color: events.dim
+                font.pixelSize: 18
+            }
         }
         down.indicator: Rectangle {
             width: 30
             height: part.height
             radius: 9
             color: part.down.pressed ? events.rim : "transparent"
-            Text { anchors.centerIn: parent; text: "−"; color: events.dim; font.pixelSize: 18 }
+            Text {
+                anchors.centerIn: parent
+                text: "−"
+                color: events.dim
+                font.pixelSize: 18
+            }
         }
     }
     component Action: Button {
@@ -284,13 +299,14 @@ Item {
             Repeater {
                 model: events.dayEvents
                 Action {
+                    id: eventAction
                     required property var modelData
                     width: content.width
                     height: 46
                     text: (modelData.duration === "all-day" ? qsTranslate("CalendarEvents", "All day") : modelData.start + " · " + qsTranslate("CalendarEvents", "%n min", "", Number(modelData.duration))) + "  ·  " + modelData.title
                     onClicked: events.edit(modelData)
                     contentItem: Text {
-                        text: parent.text
+                        text: eventAction.text
                         color: events.ink
                         font.family: ShellPalette.uiFont
                         font.pixelSize: 13
@@ -322,7 +338,9 @@ Item {
             Column {
                 width: parent.width
                 spacing: 5
-                Caption { text: qsTranslate("CalendarEvents", "Start time") }
+                Caption {
+                    text: qsTranslate("CalendarEvents", "Start time")
+                }
                 Row {
                     width: parent.width
                     spacing: 8
@@ -335,7 +353,11 @@ Item {
                         to: 23
                         Accessible.name: qsTranslate("CalendarEvents", "Start hour")
                     }
-                    Caption { text: ":"; height: 38; verticalAlignment: Text.AlignVCenter }
+                    Caption {
+                        text: ":"
+                        height: 38
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     TimePart {
                         id: minuteField
                         objectName: "event-minute"
@@ -413,7 +435,9 @@ Item {
                             events.confirmingDelete = true;
                     }
                 }
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
                 Action {
                     text: qsTranslate("CalendarEvents", "Cancel")
                     onClicked: {

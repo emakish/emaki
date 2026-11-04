@@ -64,6 +64,10 @@ Item {
         function row(key) {
             const appearance = {
                 "appearance.theme": "light",
+                "appearance.style": "emaki",
+                "appearance.overview_still": "",
+                "appearance.overview_video": "",
+                "appearance.cursor": "automatic",
                 "appearance.accent": "orange",
                 "appearance.light_time": "07:00",
                 "appearance.dark_time": "19:00"

@@ -4,6 +4,7 @@
 """Check palette generation, preserved defaults, and dark text contrast."""
 from pathlib import Path
 import subprocess
+import json
 import os
 import re
 import ast
@@ -225,7 +226,7 @@ class PaletteTests(unittest.TestCase):
             print(f'{ink}: minimum {min(ratios):.2f}:1')
 
     def test_accent_contrast_and_selection(self):
-        self.assertEqual(list(TOKENS['accents']), ['orange','coral','rose','amber','green','teal','blue','violet'])
+        self.assertEqual(list(TOKENS['accents']), ['orange','coral','rose','amber','green','teal','blue','violet','silver','graphite'])
         for name, accent in TOKENS['accents'].items():
             self.assertGreaterEqual(contrast(accent['text'], accent['base']), 4.5, name)
             self.assertGreaterEqual(contrast(accent['on_dark'], TOKENS['shell_dark']['manager_panel']), 4.5, name)
@@ -237,6 +238,32 @@ class PaletteTests(unittest.TestCase):
             manager = composite(TOKENS['shell_dark']['settings_sidebar'], glass)
             feature = composite(rgb(accent['base']) + [.34], manager)
             self.assertGreaterEqual(contrast(TOKENS['shell_dark']['manager_dim'], feature), 4.5, name)
+
+    def test_neutral_accents_have_complete_tokens_and_readable_text(self):
+        light, dark = TOKENS['shell_light'], TOKENS['shell_dark']
+        light_fields = [light['manager_background'], light['manager_panel'],
+                        light['polkit_card'], light['settings_display_idle']]
+        light_fields += [composite(light['settings_sidebar'], composite(light['flat_plate'], back))
+                         for back in ('000000', 'ffffff')]
+        dark_fields = [dark['manager_background'], dark['manager_panel'], dark['polkit_card'],
+                       composite(dark['flat_plate'], 'ffffff'),
+                       composite(dark['flat_panel'], 'ffffff')]
+        for name, base in (('silver', 'a7b2bc'), ('graphite', '6c7682')):
+            accent = TOKENS['accents'][name]
+            self.assertEqual(set(accent), set(TOKENS['accents']['rose']))
+            self.assertEqual(accent['base'], base)
+            for ink in ('on_light', 'deep', 'hover'):
+                minimum = min(contrast(accent[ink], field) for field in light_fields)
+                self.assertGreaterEqual(minimum, 4.5, (name, ink, minimum))
+                print(f'{name} {ink}: minimum {minimum:.2f}:1')
+            minimum = min(contrast(accent['on_dark'], field) for field in dark_fields)
+            self.assertGreaterEqual(minimum, 4.5, (name, 'on_dark', minimum))
+            print(f'{name} on_dark: minimum {minimum:.2f}:1; on accent: '
+                  f"{contrast(accent['text'], base):.2f}:1")
+        catalog = json.loads((ROOT / 'themes/catalog.json').read_text())
+        for theme in catalog['styles']:
+            if theme['id'] in ('17-silver', '18-graphite'):
+                self.assertEqual(theme['accent'], theme['id'].split('-', 1)[1])
 
     def test_semantic_text_contrast(self):
         for theme in ('shell_light', 'shell_dark'):

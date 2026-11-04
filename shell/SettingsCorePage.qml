@@ -13,17 +13,36 @@ Column {
         width: parent.width
         visible: page.section === "panel"
         title: qsTranslate("SettingsCorePage", "Panel")
+        SettingsToggleRow {
+            catalog: page.catalog
+            settingKey: "bar.clock_seconds_closed"
+            width: parent.width
+            title: qsTranslate("SettingsCorePage", "Show seconds in the panel clock")
+            fallbackValue: false
+            explanation: qsTranslate("SettingsCorePage", "Show seconds while the clock panel is closed.")
+        }
+        SettingsToggleRow {
+            catalog: page.catalog
+            settingKey: "bar.clock_seconds_open"
+            width: parent.width
+            title: qsTranslate("SettingsCorePage", "Show seconds in the open clock")
+            fallbackValue: false
+            explanation: qsTranslate("SettingsCorePage", "Show seconds while the clock panel is open.")
+        }
         SettingsChoiceRow {
             id: panelHidingChoice
+            readonly property SettingsComboBox choice: controlItem as SettingsComboBox
+            readonly property Text choiceText: choice?.contentItem as Text
             catalog: page.catalog
             settingKey: "bar.autohide_mode"
-            controlWidth: Math.max(180, Math.ceil(fullscreenLabel.advanceWidth
-                + (controlItem?.leftPadding ?? 10) + (controlItem?.rightPadding ?? 10)
-                + (controlItem?.contentItem.leftPadding ?? 13) + (controlItem?.contentItem.rightPadding ?? 26)))
+            controlWidth: Math.max(180, Math.ceil(fullscreenLabel.advanceWidth + (choice?.leftPadding ?? 10) + (choice?.rightPadding ?? 10) + (choiceText?.leftPadding ?? 13) + (choiceText?.rightPadding ?? 26)))
             TextMetrics {
                 id: fullscreenLabel
                 text: panelHidingChoice.options.find(option => option.value === "fullscreen")?.label || ""
-                font: panelHidingChoice.controlItem?.font ?? Qt.font({family: SettingsTheme.fontFamily, pixelSize: 13})
+                font: panelHidingChoice.choice?.font ?? Qt.font({
+                    family: SettingsTheme.fontFamily,
+                    pixelSize: 13
+                })
             }
             width: parent.width
             title: qsTranslate("SettingsCorePage", "Hide the panel automatically")
@@ -55,6 +74,29 @@ Column {
             title: qsTranslate("SettingsCorePage", "Show workspaces in the overview")
             fallbackValue: true
             explanation: value ? qsTranslate("SettingsCorePage", "Workspace numbers stay visible in the overview.") : qsTranslate("SettingsCorePage", "Workspace numbers hide in the overview.")
+        }
+    }
+    SettingsCard {
+        width: parent.width
+        visible: page.section === "panel"
+        title: qsTranslate("SettingsCorePage", "Launcher")
+        SettingsChoiceRow {
+            catalog: page.catalog
+            settingKey: "launcher.mode_icons"
+            width: parent.width
+            title: qsTranslate("SettingsCorePage", "Mode labels")
+            fallbackValue: false
+            explanation: qsTranslate("SettingsCorePage", "Show launcher modes as text or icons.")
+            options: [
+                {
+                    value: false,
+                    label: qsTranslate("SettingsCorePage", "Text")
+                },
+                {
+                    value: true,
+                    label: qsTranslate("SettingsCorePage", "Icons")
+                }
+            ]
         }
     }
     SettingsCard {

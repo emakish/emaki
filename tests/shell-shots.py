@@ -160,6 +160,13 @@ for scale, fallback in ((1, ''), (2, ''), (1, 'config_invalid'), (1, 'image_miss
                 assert bbox is not None, filename
                 dx = (bbox[0] + bbox[2] - image.width) / 2
                 dy = (bbox[1] + bbox[3] - image.height) / 2
+                if kind == 'logo':
+                    # mark-bar-26.png paints columns 0-24 of its 26 (the last is clear), and Icon.qml centres
+                    # the canvas at a whole multiple of 26 device px (test-pixel-mark.py pins that position).
+                    # When the whole canvas fits, its ink sits factor/2 device px left of centre, exactly.
+                    factor = max(1, math.floor(scale), math.floor(size * scale / 26))
+                    if 26 * factor <= size * scale:
+                        dx += factor / 2
                 report.append(dict(file=filename, bbox=bbox, dx=dx, dy=dy,
                                    distance=math.hypot(dx, dy)))
     print(f'offscreen scale {scale}: bar, launcher, workspace lines/gaps/colors, {len(KINDS) * len(SIZES)} icon renders; log: {profile.relative_to(ROOT)}/qs.log')

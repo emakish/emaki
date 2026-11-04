@@ -5,6 +5,8 @@
 import argparse
 import importlib.util
 import json
+import math
+from statistics import median
 import os
 from pathlib import Path
 import re
@@ -108,7 +110,7 @@ def validate(state, mode, labels, theme):
     if state['scenario'] != 'reveal':
         validate_wheel(state)
         return
-    assert contained(state['bubble'], clear), ('selected pill enters fade', state['bubble'], clear)
+    assert contained(state['bubble'], clear), ('selected focus extent enters fade', state['bubble'], clear)
     assert contained(chosen['bounds'], clear), ('selected tab enters fade', chosen, clear)
     assert contained(chosen['bounds'], state['strip']), ('selected tab clipped', chosen, state['strip'])
     for label in chosen['labels']:
@@ -121,15 +123,16 @@ def validate(state, mode, labels, theme):
     for field in ('x', 'y', 'width', 'height'):
         assert abs(state['modeRect'][field] - chosen['bounds'][field]) < .75, ('mode highlight misaligned', state)
         expected = chosen['bounds'][field] + (-4 if field in ('x', 'y') else 8)
-        assert abs(state['bubble'][field] - expected) <= 1, ('pill misaligned', state['bubble'], chosen)
-    assert state['bubble']['alpha'] > .95, ('pill not shown', state['bubble'])
-    selected_text = state['labels'][MODES.index(mode)]
-    on_glass = [item for item in state['texts'] if item['objectName'] == 'launcher-mode-ink'
-                and item['text'] == selected_text
-                and contained(item['bounds'], chosen['bounds'])]
-    assert len(on_glass) == 1, ('selected on-glass text not rendered', mode, state['texts'])
-    assert contained(on_glass[0]['bounds'], state['strip']), ('on-glass label clipped', on_glass)
-    assert contained(on_glass[0]['bounds'], on_glass[0]['clip']), ('on-glass label clip', on_glass)
+        assert abs(state['bubble'][field] - expected) <= 1, ('focus extent misaligned', state['bubble'], chosen)
+    assert state['bubble']['alpha'] == 0, ('selected mode must use accent, not a glass drop', state['bubble'])
+    assert all(label['color'] == state['accent'] for label in chosen['labels'] if label['kind'] == 'text'), ('selected mode has no accent ink', chosen)
+    for label in chosen['labels'] + state['categoryLabels']:
+        if label['kind'] == 'text':
+            assert label['weight'] >= 600, ('selected label needs weight cue', label)
+    if state['icons']:
+        cue = state['iconSelectionCue']
+        assert cue and cue['width'] >= 10 and cue['height'] >= 2, ('missing icon selection underline', cue)
+        assert contained(cue, clear), ('icon underline enters fade', cue, clear)
     for item in state['texts']:
         if item['painted']['width'] > .75 and item['painted']['height'] > .75:
             assert contained(item['painted'], state['body']), ('rendered text outside launcher', item)
@@ -155,16 +158,69 @@ def validate_wheel(state):
         coverage = min(coverage, max(0, (bubble['x'] - strip['x']) / state['fadeWidth']))
     if state['fadeRight']:
         coverage = min(coverage, max(0, (strip['x'] + strip['width'] - bubble['x'] - bubble['width']) / state['fadeWidth']))
-    assert .1 < coverage < .9, ('selected pill is not partially in fade', coverage, state)
+    assert .1 < coverage < .9, ('selected focus extent is not partially in fade', coverage, state)
     drop = next((drop for drop in state['drops'] if drop['kind'] == 'mode'), None)
     # Omitting an intersecting drop is also permitted; an opaque clipped drop is not.
     if drop is not None:
         assert 0 < drop['alpha'] <= bubble['alpha'] * coverage + .025, ('mode drop ignores fade coverage', drop, coverage)
 
 
-def check_pixels(path, width):
+def luminance(rgb):
+    channels = [value / 255 for value in rgb]
+    linear = [value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4
+              for value in channels]
+    return sum(value * weight for value, weight in zip(linear, (.2126, .7152, .0722)))
+
+
+def contrast(ink, plate):
+    values = sorted((luminance(ink), luminance(plate)))
+    return (values[1] + .05) / (values[0] + .05)
+
+
+def measure_label_contrast(path, state):
+    """Measure solid glyph ink and the adjacent plate in the final composited image."""
+    if state['scenario'] != 'reveal':
+        # Wheel fixtures deliberately place the selected glyph inside the fading mask.
+        return []
     with Image.open(path) as source:
         image = source.convert('RGB')
+    selected = next(tab for tab in state['tabs'] if tab['name'] == state['mode'])
+    labels = [('mode', label) for label in selected['labels']]
+    if state['mode'] == 'Apps':
+        assert state['categoryLabels'], 'missing selected category contrast sample'
+    labels += [('category', label) for label in state['categoryLabels']]
+    assert labels, 'missing selected label contrast sample'
+    scale = image.width / (state['body']['width'] + 40)
+    gap = max(1, round(2 * scale))
+    measurements = []
+    for role, label in labels:
+        bounds = label['ink']
+        # Coordinates are relative to the launcher, with a 20 px fixture margin.
+        left, top = math.floor((bounds['x'] + 20) * scale), math.floor((bounds['y'] + 20) * scale)
+        right = math.ceil((bounds['x'] + bounds['width'] + 20) * scale)
+        bottom = math.ceil((bounds['y'] + bounds['height'] + 20) * scale)
+        # Sample above and beside the glyph; exclude the selection underline below it.
+        plate_pixels = ([image.getpixel((x, top - gap)) for x in range(left, right)]
+                        + [image.getpixel((left - gap, y)) for y in range(top, bottom)]
+                        + [image.getpixel((right + gap - 1, y)) for y in range(top, bottom)])
+        plate = tuple(round(median(pixel[channel] for pixel in plate_pixels)) for channel in range(3))
+        pixels = [image.getpixel((x, y)) for y in range(top, bottom) for x in range(left, right)]
+        ink_pixels = sorted((contrast(pixel, plate), pixel) for pixel in pixels
+                            if contrast(pixel, plate) > 1.5)
+        assert len(ink_pixels) >= 3, ('missing rendered glyph ink', role, label)
+        # The top decile represents solid stroke interiors, avoiding antialiased edges.
+        # Its median cannot pass from a single unusually dark/light pixel.
+        solid = ink_pixels[-max(3, math.ceil(len(ink_pixels) / 10)):]
+        ratio, ink = solid[len(solid) // 2]
+        measurements.append({'role': role, 'kind': label['kind'], 'text': label.get('text'),
+                             'ink': ink, 'plate': plate, 'ratio': ratio,
+                             'solidPixels': len(solid)})
+    return measurements
+
+
+def check_pixels(path, width):
+    with Image.open(path) as source:
+        image = source.convert('RGB').resize((width + 40, 880), Image.Resampling.NEAREST)
     # Glass deliberately casts a soft shadow outside the panel. Detect sharp glyph edges,
     # rather than rejecting that smooth shadow as escaped text.
     horizontal = ImageChops.difference(image, ImageChops.offset(image, 1, 0))
@@ -179,7 +235,7 @@ def check_pixels(path, width):
 def check_fade_pixels(prefix, state):
     for layer, y in (('under', 780), ('over', 830)):
         with Image.open(f'{prefix}.png') as source:
-            image = source.convert('RGB')
+            image = source.convert('RGB').resize((round(state['body']['width']) + 40, 880), Image.Resampling.NEAREST)
             row = [image.getpixel((20 + x, y + round(state['strip']['height'] / 2)))[0]
                    for x in range(round(state['strip']['width']))]
         extent = round(state['fadeWidth'])
@@ -200,6 +256,9 @@ def main():
     parser.add_argument('--mode', action='append', choices=MODES)
     parser.add_argument('--theme', action='append', choices=('light', 'dark'))
     parser.add_argument('--width', action='append', type=int)
+    parser.add_argument('--scale', type=int, choices=(1, 2), default=1)
+    parser.add_argument('--accent', choices=('rose', 'orange'), default='rose')
+    parser.add_argument('--icons', action='store_true', help='render mode icons instead of text')
     parser.add_argument('--glass', action='store_true', help='render the real wallpaper glass shader')
     parser.add_argument('--source', type=Path, help='use a saved LauncherBody.qml for a regression witness')
     parser.add_argument('--output', type=Path, default=ROOT / '.cache/evidence/launcher-tabs')
@@ -244,17 +303,23 @@ def main():
             for theme in args.theme or ('light', 'dark'):
                 for width in args.width or (720, 620, 480):
                     cases = [(mode, 'reveal') for mode in args.mode or MODES]
-                    if language == 'ru' and width == 720:
+                    if language == 'ru' and width == 720 and not args.icons:
                         cases += [('Apps', 'wheel-left'), ('Commands', 'wheel-right')]
                     for mode, scenario in cases:
                         name = f'{language}-{theme}-{width}-{mode.lower()}'
+                        if args.scale != 1:
+                            name += f'-s{args.scale}'
+                        if args.accent != 'rose':
+                            name += '-' + args.accent
+                        if args.icons:
+                            name += '-icons'
                         if scenario != 'reveal':
                             name += '-' + scenario
                         stats = args.output / f'{name}.json'
                         log = renderer.render(qml / 'LauncherTabsRender.qml', png=args.output / f'{name}.png',
-                                              stats=stats, properties={'mode': mode, 'bodyWidth': width, 'glass': args.glass, 'dark': theme == 'dark', 'scenario': scenario},
+                                              stats=stats, properties={'mode': mode, 'bodyWidth': width, 'glass': args.glass, 'icons': args.icons, 'accent': args.accent, 'dark': theme == 'dark', 'scenario': scenario},
                                               shader_dir=ROOT / '.cache/shell-shaders' if args.glass else None,
-                                              width=width + 40, height=880, warmup=200, milliseconds=1, extra_env=env, ready_property='ready')
+                                              width=width + 40, height=880, scale=args.scale, warmup=200, milliseconds=1, extra_env=env, ready_property='ready')
                         (args.output / f'{name}.log').write_text(log)
                         rendered = json.loads(stats.read_text())
                         state = rendered['fixture_end']
@@ -267,6 +332,9 @@ def main():
                         try:
                             for error in ('ReferenceError:', 'TypeError:', 'Binding loop'):
                                 assert error not in log, log
+                            state['selectedLabelContrast'] = measure_label_contrast(args.output / f'{name}.png', state)
+                            for measurement in state['selectedLabelContrast']:
+                                assert measurement['ratio'] >= 4.5, ('selected label contrast below 4.5:1', measurement)
                             validate(state, mode, labels, theme)
                             assert state['glassReady'] == args.glass, ('glass readiness', state['glassReady'])
                             check_pixels(args.output / f'{name}.png', width)
@@ -276,6 +344,7 @@ def main():
                             print(f'FAIL {name}: {error}', flush=True)
                         else:
                             print(f'PASS {name}', flush=True)
+                        stats.write_text(json.dumps(rendered, indent=2))
                         count += 1
     (args.output / 'summary.json').write_text(json.dumps({'captures': count, 'failures': failures,
                                                          'noSampledFeasiblePlacement': geometry_limits}, indent=2))

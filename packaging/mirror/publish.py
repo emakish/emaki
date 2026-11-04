@@ -55,7 +55,7 @@ DEFAULT_KEY = '668569956D2D747847D87D01F62680BE583363AC'
 STAMP_MAX_AGE = datetime.timedelta(hours=24)
 REQUIRED_RUNS = acceptance.REQUIRED_RUNS
 REQUIRED_SIZES = acceptance.REQUIRED_SIZES
-EMAKI_PACKAGES = ('emaki', 'emaki-apps', 'emaki-config', 'emaki-desktop', 'emaki-font-iosevka', 'emaki-installer', 'emaki-keyring',
+EMAKI_PACKAGES = ('emaki', 'emaki-apps', 'emaki-config', 'emaki-desktop', 'emaki-font-iosevka', 'emaki-themes', 'emaki-installer', 'emaki-keyring',
                   'emaki-mirrorlist', 'emaki-nvidia', 'emaki-shim-signed', 'niri-emaki', 'quickshell-emaki',
                   'xdg-desktop-portal-gnome-emaki')
 GITHUB_REPO = 'emakish/packages'

@@ -7,7 +7,7 @@ Real offline pacman transactions in a private root, with stub packages named as 
 0.5.0 and current emaki-apps recipes. A private user namespace supplies root; no host
 package state is read or changed.
 """
-from contextlib import redirect_stdout
+from contextlib import nullcontext, redirect_stdout
 import io
 import json
 import os
@@ -104,14 +104,15 @@ class Programs(unittest.TestCase):
                     optdepends=list(recipe['optdepends']))
 
     def pacman_command(self, repo, *args):
-        for name in ('db', 'cache'):
+        for name in ('db', 'cache', 'hooks'):
             (self.work / name).mkdir(exist_ok=True)
         conf = self.work / 'pacman.conf'
         conf.write_text(f'[options]\nArchitecture = x86_64\nSigLevel = Never\n[emaki]\nServer = file://{repo}\n')
         return ['unshare', '--user', '--map-root-user', 'pacman', '--config', str(conf),
                     '--root', str(self.root), '--dbpath', str(self.work / 'db'),
                     '--cachedir', str(self.work / 'cache'), '--logfile', str(self.work / 'pacman.log'),
-                    '--noconfirm', *args]
+                    # Override the host's configured hook directory as well as its package root.
+                    '--hookdir', str(self.work / 'hooks'), '--noconfirm', *args]
 
     def pacman(self, repo, *args):
         return run(self.pacman_command(repo, *args), env={**os.environ, 'LC_ALL': 'C'})
@@ -145,7 +146,8 @@ class Programs(unittest.TestCase):
         isolated = SimpleNamespace(Popen=commit, DEVNULL=subprocess.DEVNULL,
                                    PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT)
         with patch.object(helper, 'pacman', query), patch.object(helper, 'subprocess', isolated), \
-                patch.object(helper.signal, 'signal'), redirect_stdout(output):
+                patch.object(helper.signal, 'signal'), \
+                patch.object(helper.emaki_update_inhibit, 'inhibit', nullcontext), redirect_stdout(output):
             helper.remove(name, reviewed['token'])
         return json.loads(output.getvalue()), commands, before_commit
 

@@ -117,7 +117,7 @@ for (const [armed, visible, expected] of [
     [false, true, true],   // closing fade
     [false, false, false], // closed again
 ]) {
-    assert.equal(vm.runInNewContext(presenting, {armed, panel: {visible}}), expected,
+    assert.equal(vm.runInNewContext(presenting, {armed, panelObject: {visible}}), expected,
         `capture with armed=${armed}, visible=${visible}`);
 }
 

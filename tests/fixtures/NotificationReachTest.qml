@@ -117,6 +117,8 @@ ShellRoot {
             function test_overflow_action() {
                 const more = body.findTarget(body, "history-more");
                 check(more !== null, "overflow count is actionable");
+                const point = more.mapToItem(body.scroller, more.width / 2, more.height / 2);
+                check(point.y >= 0 && point.y < body.scroller.height, "overflow action is inside the initial viewport");
                 mouseClick(more, more.width / 2, more.height / 2);
                 wait(150);
                 equal(body.plan.items.filter(item => item.kind === "note").length, 9);

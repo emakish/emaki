@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
                  'settings-shrink-mid.png', 'settings-close-mid.png', 'settings-1280x800.png',
                  'settings-1024x640.png', 'settings-account-picture.png', 'settings-panel-choices.png'):
         assert (EVIDENCE / name).stat().st_size > 1000, name
-    print('PASS: settings lifecycle, all 22 pages, search anchors, dynamic reset, input, history and screenshots')
+    print('PASS: settings lifecycle, all 23 pages, search anchors, dynamic reset, input, history and screenshots')
 
     # Environments without Unix sockets still run every in-process QML assertion.
     probe = socket.socket(socket.AF_UNIX)

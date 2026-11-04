@@ -12,9 +12,6 @@ msgstr ""
 msgid "(no reply)"
 msgstr "(sin respuesta)"
 
-msgid "A good place to start"
-msgstr "Un buen lugar para empezar"
-
 msgid "A recipe never runs as root."
 msgstr "Una receta nunca se ejecuta como root."
 
@@ -387,18 +384,6 @@ msgstr "Texto de estante no válido"
 msgid "Invalid shelf: a package twice"
 msgstr "Estante no válido: un paquete aparece dos veces"
 
-msgid "Invalid storefront"
-msgstr "Escaparate no válido"
-
-msgid "Invalid storefront identities"
-msgstr "Identidades de escaparate no válidas"
-
-msgid "Invalid storefront row"
-msgstr "Fila de escaparate no válida"
-
-msgid "Invalid storefront text"
-msgstr "Texto de escaparate no válido"
-
 msgid "Invalid transaction"
 msgstr "Transacción no válida"
 
@@ -499,9 +484,6 @@ msgstr "Se requiere permiso para deshacer una instalación."
 
 msgid "Permission is required to update repository packages."
 msgstr "Se requiere permiso para actualizar los paquetes de los repositorios."
-
-msgid "Picked by Emaki"
-msgstr "Elegidos por Emaki"
 
 msgid "Popularity cache too large"
 msgstr "Caché de popularidad demasiado grande"
@@ -628,6 +610,9 @@ msgstr "Selecciona un programa de los repositorios."
 
 msgid "Session sudo key"
 msgstr "Llave sudo de sesión"
+
+msgid "Shutdown and sleep protection could not start. The update was not started."
+msgstr "No se pudo activar la protección contra el apagado y la suspensión. La actualización no se inició."
 
 msgid "Snapshot guard"
 msgstr "Protección con instantáneas"
@@ -945,6 +930,9 @@ msgstr "Este programa de Flatpak existente se puede quitar de tu cuenta sin aute
 msgid "This hardware uses the built-in graphics driver. NVIDIA support is not needed."
 msgstr "Este hardware usa el controlador gráfico integrado. No se necesita compatibilidad con NVIDIA."
 
+msgid "This change could not be protected from a shutdown. Nothing was changed."
+msgstr "No se pudo proteger este cambio frente a un apagado. No se cambió nada."
+
 msgid "This install can no longer be taken back as it was."
 msgstr "Esta instalación ya no se puede deshacer tal como se hizo."
 
@@ -1008,8 +996,8 @@ msgstr "Actualizado"
 msgid "Updates always include the full system"
 msgstr "Las actualizaciones siempre incluyen todo el sistema"
 
-msgid "Updating Flatpak applications"
-msgstr "Actualizando aplicaciones de Flatpak"
+msgid "Updating Emaki"
+msgstr "Actualizando Emaki"
 
 #, python-brace-format
 msgid "Updating Flatpak applications ({scope})…"
@@ -1029,6 +1017,9 @@ msgstr "Uso: emaki-update-manager [--status|--check|--updates]"
 
 msgid "Waiting for permission to update…"
 msgstr "Esperando permiso para actualizar…"
+
+msgid "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
+msgstr "Advertencia: la protección contra el apagado y la suspensión no está disponible; la operación de paquetes continuará."
 
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "Advertencia: la comprobación de espacio para la actualización no está disponible; la transacción de paquetes continuará."

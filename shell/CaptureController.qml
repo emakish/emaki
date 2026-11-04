@@ -207,7 +207,12 @@ Scope {
             if (keys.length >= 200)
                 delete linkOffers[keys[0]];
             linkOffers[action] = text;
-            notificationStore.transientLocal("Emaki", title, preview, [{id: action, text: CaptureText.openLink()}]);
+            notificationStore.transientLocal("Emaki", title, preview, [
+                {
+                    id: action,
+                    text: CaptureText.openLink()
+                }
+            ]);
         } else {
             notificationStore?.transientLocal("Emaki", title, preview, []);
         }

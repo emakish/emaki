@@ -2,11 +2,11 @@
 // Copyright (C) 2026 Artur Yakymenko
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Keep release copy together so it can be reviewed without changing the layout.
-// The pages belong to the 1.0 series: someone who skips 1.0.0 and lands on 1.0.x still sees them once.
-function available(version) { return /^1\.0(\.[0-9]+)?$/.test(version); }
+// Draft release copy for approval; keep it together without changing the layout.
+// The pages belong to the 1.1 series: someone who skips 1.1.1 and lands on 1.1.x still sees them once.
+function available(version) { return /^1\.1(\.[0-9]+)?$/.test(version); }
 function entryLabel() { return qsTranslate("WhatsNewContent", "What's new"); }
-function title() { return qsTranslate("WhatsNewContent", "What's new in Emaki 1.0"); }
+function title() { return qsTranslate("WhatsNewContent", "What's new in Emaki 1.1"); }
 function closeLabel() { return qsTranslate("WhatsNewContent", "Close what's new"); }
 function doneLabel() { return qsTranslate("WhatsNewContent", "Done"); }
 function languageLabel() { return qsTranslate("WhatsNewContent", "Change language"); }
@@ -15,20 +15,26 @@ function pages() {
     return [
         {
             id: "release", icon: "updates",
-            title: qsTranslate("WhatsNewContent", "Emaki 1.0, the first beta"),
-            text: qsTranslate("WhatsNewContent", "Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem."),
+            title: qsTranslate("WhatsNewContent", "Themes for your desktop"),
+            text: qsTranslate("WhatsNewContent", "Choose a theme in Settings to change your wallpaper, overview background and accent together."),
             note: ""
         },
         {
             id: "release", icon: "command",
-            title: qsTranslate("WhatsNewContent", "A lighter launcher"),
-            text: qsTranslate("WhatsNewContent", "The launcher keeps nothing loaded while it is closed and opens where you left it."),
+            title: qsTranslate("WhatsNewContent", "A clearer launcher"),
+            text: qsTranslate("WhatsNewContent", "Follow the moving highlight with the arrow keys, and choose icons for launcher modes in Settings."),
+            note: ""
+        },
+        {
+            id: "release", icon: "updates",
+            title: qsTranslate("WhatsNewContent", "Discover programs"),
+            text: qsTranslate("WhatsNewContent", "Browse recommendations and categories on the new Programs start screen, using the catalog already on your computer."),
             note: ""
         },
         {
             id: "release", icon: "fixes",
             title: qsTranslate("WhatsNewContent", "Fixes"),
-            text: qsTranslate("WhatsNewContent", "• Settings can be found in the launcher by its name in your language\n• The account description in Settings is no longer cut short"),
+            text: qsTranslate("WhatsNewContent", "• Wallpaper changes reach the lock and login screens reliably\n• Installing, removing and updating programs blocks sleep and shutdown until the operation finishes"),
             note: ""
         }
     ];

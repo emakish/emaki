@@ -23,7 +23,7 @@ ShellRoot {
     readonly property var sizes: JSON.parse(Quickshell.env("TEST_SIZES") || "[[1180, 780]]")
     // Only screenshots (the pixel comparison with an earlier commit), no assertions.
     readonly property bool shotsOnly: Quickshell.env("TEST_SHOTS_ONLY") === "1"
-    // The pixel comparison is with 0.8.0's light look: choose light, since nothing saved is dark.
+    // The pixel comparison uses the released light look: choose light explicitly.
     Component.onCompleted: Shell.SettingsBridge.values = [{key: "appearance.theme", value: "light"}]
     UI.UpdateController { id: updates }
     UI.ProgramsController { id: programs; externalBusy: updates.busy || updates.restorePending }
@@ -171,12 +171,11 @@ ShellRoot {
     function program(key) { return programs.allRows.find(row => row.key === key); }
     function states() {
         reset();
-        // As a real catalog has them: New and updated with its See all, Popular with its note, and ratings
-        // with a count on cards and rows.
+        // Exercise cached ratings on discovery cards and program rows.
         programs.allRows = programs.allRows.map((row, index) => Object.assign({}, row, {releaseDate: row.releaseDate || "2026-09-1" + index, popularity: 90 - index,
             rating: row.kind === "aur" ? undefined : {average: 3.8, count: 495 + 1000 * index}}));
         input.wait(30);
-        if (!view.popularMeasured || view.fresh.length <= 4) fail("the fixture shows New and updated with See all and Popular with its note");
+        if (!shotsOnly && (!view.discovery.daily || !view.popular.length)) fail("the fixture shows a daily program and the measured Popular shelf");
         if (!find(view, item => item.objectName === "card-rating" && item.visible)) fail("the fixture shows ratings on cards");
         inspect("browse");
         if (!shotsOnly) {
@@ -215,6 +214,10 @@ ShellRoot {
         ];
         inspect("program");
         named("reviews-write").clicked(); inspect("review-dialog", false);
+        if (!shotsOnly) {
+            named("review-star-5").clicked(); inspect("review-dialog-filled", false);
+            named("review-star-3").clicked(); inspect("review-dialog-mixed", false);
+        }
         popup(view, "review-dialog").close();
         reset(); view.showProgram(program("aur:code-minimap")); inspect("program-aur");
         reset(); view.showProgram(program("arch:inkscape")); inspect("program-installed");

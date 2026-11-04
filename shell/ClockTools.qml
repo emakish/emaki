@@ -560,7 +560,10 @@ Item {
                     placeholderText: tools.words.search
                     onTextEdited: {
                         tools.worldQuery = text;
-                        tools.send({op: "world_search", query: text});
+                        tools.send({
+                            op: "world_search",
+                            query: text
+                        });
                     }
                 }
                 Repeater {

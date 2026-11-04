@@ -99,6 +99,9 @@ msgstr "Choose a valid display setting."
 msgid "Choose a wallpaper"
 msgstr "Choose a wallpaper"
 
+msgid "Choose an overview background"
+msgstr "Choose an overview background"
+
 msgid "Choose one of the available delays."
 msgstr "Choose one of the available delays."
 
@@ -409,6 +412,9 @@ msgstr "Password not changed."
 
 msgid "Pictures"
 msgstr "Pictures"
+
+msgid "Pictures and videos"
+msgstr "Pictures and videos"
 
 msgid "Play or pause media"
 msgstr "Play or pause media"

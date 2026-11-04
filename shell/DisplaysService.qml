@@ -21,12 +21,12 @@ QtObject {
     property bool closing: false
     property string helper: Quickshell.shellPath("helpers/displays.py")
     function send(request): bool {
-        if (busy || !worker.running || closing)
+        if (busy || !workerObject.running || closing)
             return false;
         busy = true;
         if (request.op !== "state")
             message = "";
-        worker.write(JSON.stringify(request) + "\n");
+        workerObject.write(JSON.stringify(request) + "\n");
         return true;
     }
     function set(output, key, value): bool {
@@ -56,14 +56,14 @@ QtObject {
     }
     function close(): void {
         closing = true;
-        worker.stdinEnabled = false;
+        workerObject.stdinEnabled = false;
     }
     function refreshState(): void {
         if (closing)
             return;
-        if (!worker.running) {
+        if (!workerObject.running) {
             busy = true;
-            worker.running = true;
+            workerObject.running = true;
         } else if (!send({
             op: "state"
         })) {
@@ -81,7 +81,7 @@ QtObject {
     }
     Component.onDestruction: close()
     property Process worker: Process {
-        id: worker
+        id: workerObject
         command: [Quickshell.env("EMAKI_PYTHON") || "python3", "-B", root.helper]
         running: true
         stdinEnabled: true
@@ -131,7 +131,7 @@ QtObject {
         interval: 2000
         repeat: true
         // Legacy/standalone clients without the shared model need an open-page fallback.
-        running: !root.closing && root.active && (!root.niri || !root.niri.connected || !worker.running)
+        running: !root.closing && root.active && (!root.niri || !root.niri.connected || !workerObject.running)
         onTriggered: root.refreshState()
     }
 }

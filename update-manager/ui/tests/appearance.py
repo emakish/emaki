@@ -100,7 +100,7 @@ with tempfile.TemporaryDirectory(prefix='manager-appearance-') as temporary:
                QS_DISABLE_CRASH_HANDLER='1', PYTHONDONTWRITEBYTECODE='1',
                DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-bus'),
                DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(base / 'no-system-bus'))
-    for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'EMAKI_MANAGER_PAGE'):
+    for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME', 'EMAKI_MANAGER_PAGE'):
         env.pop(key, None)
 
     def set_value(key, value):

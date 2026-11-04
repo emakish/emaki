@@ -8,6 +8,7 @@ import Quickshell
 Rectangle {
     id: icon
     property var program: ({})
+    property bool allowRemote: true
     implicitWidth: 48
     implicitHeight: 48
     radius: width * .25
@@ -28,6 +29,9 @@ Rectangle {
             if (value.startsWith("/")) url = "file://" + value;
             else if (value.startsWith("data:image/svg+xml;") || value.startsWith("file:") || value.startsWith("https://") || value.startsWith("http://")) url = value;
             else if (value) url = Quickshell.iconPath(value, true);
+            if (!allowRemote && !url.startsWith("file:/") && !url.startsWith("data:image/")
+                    && !url.startsWith("qrc:/") && !url.startsWith("image://icon/")) continue;
+            if (!allowRemote && url.startsWith("file://") && !url.startsWith("file:///")) continue;
             if (url && !urls.includes(url)) urls.push(url);
         }
         return urls;

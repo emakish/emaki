@@ -87,9 +87,9 @@ impl From<niri_ipc::Cast> for Cast {
             niri_ipc::CastTarget::Output { name } => ("output", Some(name), None),
             niri_ipc::CastTarget::Window { id } => ("window", None, Some(id)),
         };
-        let by_parent = c
-            .pid
-            .is_some_and(|pid| u32::try_from(pid).ok() == Some(std::os::unix::process::parent_id()));
+        let by_parent = c.pid.is_some_and(|pid| {
+            u32::try_from(pid).ok() == Some(std::os::unix::process::parent_id())
+        });
         Self {
             stream_id: c.stream_id,
             session_id: c.session_id,
@@ -103,7 +103,11 @@ impl From<niri_ipc::Cast> for Cast {
             is_active: c.is_active,
             by_parent,
             pw_node_id: c.pw_node_id,
-            client: if by_parent { None } else { c.pid.and_then(process_name) },
+            client: if by_parent {
+                None
+            } else {
+                c.pid.and_then(process_name)
+            },
         }
     }
 }

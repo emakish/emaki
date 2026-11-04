@@ -93,6 +93,9 @@ start_compositor() {
     fi
     # Rebuild only the managed wrapper; a damaged store does not prevent login.
     managed_config=$(emaki settings session-config) || managed_config=
+    # GTK clients and activated applications follow the managed cursor too.
+    # A missing application service must not prevent login.
+    emaki settings sync-cursor || :
     if [ -n "$managed_config" ] && [ -f "$managed_config" ]; then
         exec niri-emaki --session -c "$managed_config"
     fi
@@ -159,7 +162,7 @@ systemctl --user --wait start niri-emaki.service
 # Force stop of graphical-session.target (niri-shutdown.target comes with the niri package).
 systemctl --user start --job-mode=replace-irreversibly niri-shutdown.target
 
-systemctl --user unset-environment PAM_KWALLET5_LOGIN WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_MENU_PREFIX NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF
+systemctl --user unset-environment PAM_KWALLET5_LOGIN WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_MENU_PREFIX XCURSOR_THEME NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF
 if declare -F emaki_nvidia_clear_activation >/dev/null; then
     emaki_nvidia_clear_activation
 fi

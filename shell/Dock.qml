@@ -99,7 +99,7 @@ Item {
     Item {
         z: 20
         readonly property var ringRect: {
-            dock.tick;
+            void dock.tick;
             return dock.popupOpen && dock.keyboardRow >= 0 && dock.keyboardRow < dock.popup.rows.length ? dock.menuRowRect(dock.keyboardRow) : dock.itemRect(dock.keyboardKey);
         }
         x: ringRect?.x ?? 0
@@ -187,7 +187,7 @@ Item {
         const workspaceIndex = {};
         const learned = identity.learned; // Read here so a learned match rebuilds the dock.
         const installed = DesktopEntries.applications.values; // Read here so installing a pinned app shows it.
-        catalog.scans; // A rescan may delete the entries byId() gave before: take the new ones.
+        void catalog.scans; // A rescan may delete the entries byId() gave before: take the new ones.
         for (const w of niri.workspaces)
             workspaceIndex[w.id] = w.idx;
         for (const w of niri.windows.slice().sort((a, b) => a.id - b.id)) {
@@ -1042,7 +1042,7 @@ Item {
     property string tipLabel: ""
     property bool tipRemove: false
     readonly property real visibleAmount: {
-        tick;
+        void tick;
         return visibility.x;
     }
     function advance(now: real, dt: real): bool {
@@ -1245,7 +1245,7 @@ Item {
 
     // ---- Screen rectangles for the surface masks and status ----
     readonly property rect plateHitRect: {
-        tick;
+        void tick;
         const p = geometry.plate;
         return Qt.rect(p.x - 6, p.y - 12, p.width + 12, p.height + 20);
     }
@@ -1293,23 +1293,23 @@ Item {
                 // binding below re-evaluates when the frame moved it.
                 readonly property var v: dock.visual(modelData)
                 readonly property real cx: {
-                    dock.tick;
+                    void dock.tick;
                     return v.center[0];
                 }
                 readonly property real cy: {
-                    dock.tick;
+                    void dock.tick;
                     return v.center[1];
                 }
                 readonly property real iconScale: {
-                    dock.tick;
+                    void dock.tick;
                     return v.scale;
                 }
                 readonly property real alpha: {
-                    dock.tick;
+                    void dock.tick;
                     return v.alpha;
                 }
                 readonly property bool removing: {
-                    dock.tick;
+                    void dock.tick;
                     return dock.drag !== null && dock.drag.key === modelData && dock.drag.remove;
                 }
                 x: cx - 25
@@ -1396,7 +1396,7 @@ Item {
     DockGlass {
         id: body
         readonly property rect bounds: {
-            dock.tick;
+            void dock.tick;
             let b = dock.geometry.plate;
             if (dock.popupProgress > .001) {
                 b = dock.unionRect(b, dock.popupRect);
@@ -1411,7 +1411,7 @@ Item {
         width: bounds.width
         height: bounds.height
         uRect: {
-            dock.tick;
+            void dock.tick;
             return dock.vec(dock.geometry.plate);
         }
         uRadius: 18
@@ -1429,7 +1429,7 @@ Item {
         uOpacity: dock.clamp(dock.visibleAmount, 0, 1)
         drops: dock.parts
         uBulge: {
-            dock.tick;
+            void dock.tick;
             return Qt.vector4d(dock.bubbleOptions.restUnion, 0, dock.smoothStep(dock.bubble.alpha.x), 0);
         }
         uHasB: dock.popupProgress > .001 ? 1 : 0
@@ -1441,7 +1441,7 @@ Item {
     // Separator and menu lines: thin flat marks on the plate (uFlat in the mockup).
     Rectangle {
         readonly property var g: {
-            dock.tick;
+            void dock.tick;
             return dock.geometry;
         }
         visible: g.separatorX >= 0 && dock.visibleAmount > .001
@@ -1458,7 +1458,7 @@ Item {
         visible: !dock.glassReady && dock.visibleAmount > .001
         z: -1
         readonly property rect r: {
-            dock.tick;
+            void dock.tick;
             return dock.geometry.plate;
         }
         x: r.x
@@ -1501,7 +1501,7 @@ Item {
                 width: parent.width - 32
                 verticalAlignment: Text.AlignVCenter
                 text: {
-                    dock.tick;
+                    void dock.tick;
                     return dock.popup.model?.header ?? "";
                 }
                 textFormat: Text.PlainText
@@ -1600,11 +1600,11 @@ Item {
     Item {
         id: popupView
         readonly property var rows: {
-            dock.tick;
+            void dock.tick;
             return dock.popupOpen ? dock.popup.rows : [];
         }
         readonly property var shownRows: {
-            dock.tick;
+            void dock.tick;
             return dock.popup.owner ? dock.popup.rows : [];
         }
         x: dock.popupContent.x

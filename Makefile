@@ -27,7 +27,7 @@
 #   lock screen      /etc/xdg/hypr/hyprlock.conf    no package owns this file
 #   lock screen PAM  /etc/pam.d/emaki-lock          owned by emaki-desktop (backup);
 #                                               make install/uninstall leave it alone
-#   cursors          $(PREFIX)/share/icons/Emaki    pixel xcursor theme (scripts/build-cursors)
+#   cursors          $(PREFIX)/share/icons/Emaki*   xcursor themes (scripts/build-cursors)
 #   login            $(PREFIX)/share/emaki/greetd   greetd/niri for Quickshell + ReGreet fallback
 #                    /usr/lib/pam.d/emaki-greetd    dedicated PAM service (libpam reads /usr/lib/pam.d)
 #                    $(PREFIX)/lib/systemd/system/greetd.service.d/emaki.conf
@@ -68,6 +68,7 @@ BIN     = $(DESTDIR)$(PREFIX)/bin
 SHARE   = $(DESTDIR)$(DATADIR)
 XDG     = $(DESTDIR)/etc/xdg
 ICONS   = $(DESTDIR)$(PREFIX)/share/icons
+CURSOR_THEMES = Emaki-White Emaki-Dark
 SYSTEMD = $(DESTDIR)$(PREFIX)/lib/systemd
 # The vendor PAM directory is compiled into libpam (/usr/lib/pam.d on Arch),
 # so it does not depend on PREFIX.
@@ -149,6 +150,15 @@ check: paths check-assumptions check-core check-i18n
 	python3 tests/sudo-key-vm.py --self-test
 	python3 tests/test-settings-terminal.py
 	python3 tests/test-settings-wallpaper.py
+	python3 tests/test-wallpaper-pending.py
+	python3 tests/test-wallpaper-reduce.py
+	python3 tests/test-wallpaper-large.py
+	python3 tests/test-theme-assets.py
+	python3 tests/test-theme-strip-filter.py
+	python3 tests/test-theme-switching.py "$(CARGO_TARGET_DIR)/debug/emaki"
+	python3 tests/test-overview-video.py
+	python3 tests/test-overview-background.py "$(CARGO_TARGET_DIR)/debug/emaki"
+	python3 tests/test-settings-themes.py
 	python3 tests/test-publish-source-additions.py
 	python3 tests/test-settings-apps.py
 	python3 tests/test-settings-terminal.py
@@ -193,6 +203,7 @@ check: paths check-assumptions check-core check-i18n
 	python3 tests/test-notes-island.py
 	python3 tests/test-calendar-events.py
 	python3 tests/test-clock-scroll.py
+	python3 tests/test-clock-seconds.py
 	python3 tests/test-clock-tools.py
 	python3 tests/test-clock-tools-service.py
 	python3 tests/test-clock-tools-ui.py
@@ -200,6 +211,7 @@ check: paths check-assumptions check-core check-i18n
 	python3 update-manager/tests/test_protocol.py
 	python3 update-manager/tests/test_programs.py
 	node tests/test-programs-auth.mjs
+	node tests/test-storefront-logic.mjs
 	node tests/test-programs-logic.mjs
 	python3 update-manager/tests/test_appstream.py
 	python3 update-manager/tests/test_programs_engine.py
@@ -243,6 +255,8 @@ check: paths check-assumptions check-core check-i18n
 	python3 tests/test-updates-notice.py
 	python3 tests/test-session-update-hook.py
 	python3 tests/test-update-errors.py
+	python3 tests/test-update-inhibit.py
+	python3 tests/test-programs-inhibit.py
 	python3 tests/test-auth-lockout.py
 	python3 tests/test-shell-recovery.py
 	python3 tests/test-trusted-shell-launch.py
@@ -293,6 +307,8 @@ check: paths check-assumptions check-core check-i18n
 	python3 tests/test-plymouth-theme.py
 	python3 tests/test-fetch.py
 	python3 tests/test-cursors.py
+	python3 tests/test-cursor-apps.py "$(CARGO_TARGET_DIR)/debug/emaki"
+	python3 tests/test-greeter-cursor.py
 	python3 tests/test-iso-check-env.py
 	python3 tests/test-ci-forks.py ForkChecks
 	python3 tests/test-iso-boot-health.py
@@ -376,6 +392,8 @@ check-iso:
 # helpers (no network, no Cloudflare; see docs/mirror.md).
 check-updates: paths build-i18n
 	python3 tests/test-transaction-inhibit.py
+	python3 tests/test-update-inhibit.py
+	python3 tests/test-programs-inhibit.py
 	python3 tests/test-update-space.py
 	python3 tests/test-update-space-alpm.py
 	python3 tests/test-upkeep-transactions.py
@@ -431,6 +449,7 @@ install-upkeep:
 	install -Dm755 upkeep/emaki-update-space $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-update-space
 	sed -i -e 's|@LIBEXECDIR@|$(LIBEXECDIR)|g' -e 's|@PYTHON@|$(EMAKI_PYTHON)|g' $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-update-space
 	install -Dm644 update-manager/emaki_update_space.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_space.py
+	install -Dm644 update-manager/emaki_update_inhibit.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_inhibit.py
 	install -Dm644 update-manager/emaki_package_lock.py $(DESTDIR)$(LIBEXECDIR)/emaki_package_lock.py
 	for hook in 01-emaki-config-release 02-emaki-config-remove; do install -Dm644 upkeep/$$hook.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/$$hook.hook; done
 	install -Dm644 upkeep/99-emaki-qt-check.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/99-emaki-qt-check.hook
@@ -515,7 +534,6 @@ install: install-upkeep
 	install -Dm644 update-manager/org.emaki.update.restore.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.restore.policy
 	install -Dm644 update-manager/emaki-update-manager.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-update-manager.desktop
 	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-update-manager/ui update-manager/ui/*.qml update-manager/ui/*.js
-	install -Dm644 update-manager/storefront.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/storefront.json
 	install -Dm644 update-manager/emaki-shelf.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/emaki-shelf.json
 	install -Dm644 update-manager/development-kits.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/development-kits.json
 	install -Dm644 update-manager/emaki-programs-updates.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
@@ -580,6 +598,7 @@ install: install-upkeep
 	install -Dm644 packaging/emaki-config/emaki-applications.menu $(XDG)/menus/emaki-applications.menu
 	install -Dm644 etc-skel/.config/qt6ct/qt6ct.conf $(XDG)/qt6ct/qt6ct.conf
 	install -Dm644 -t $(SHARE)/fuzzel fuzzel/fuzzel.ini
+	install -Dm644 etc-skel/.config/wpaperd/config.toml $(SHARE)/wpaperd/config.toml
 	# swayosd removed 2026-09-27 (the shell provides OSD): remove its old installed style.
 	rm -rf $(SHARE)/swayosd
 	install -Dm644 -t $(XDG)/hypr hypr/hyprlock.conf
@@ -664,13 +683,11 @@ install: install-upkeep
 	# ~/.zshrc, and no first-run questionnaire for new accounts.
 	install -Dm644 zsh/emaki.zsh $(DESTDIR)/etc/zsh/emaki.zsh
 	install -Dm644 zsh/zshenv $(DESTDIR)/etc/zsh/zshenv
-	# Cursor theme: files plus alias symlinks, replaced whole so a renamed cursor doesn't linger.
-	rm -rf $(ICONS)/Emaki
-	install -Dm644 cursors/Emaki/index.theme $(ICONS)/Emaki/index.theme
-	install -dm755 $(ICONS)/Emaki/cursors
-	cp -P --no-preserve=ownership cursors/Emaki/cursors/* $(ICONS)/Emaki/cursors/
+	$(MAKE) install-cursors
 	# Living wallpaper for niri-emaki (emaki-wallpaper in both fork entry points): ring, front layer, train.
 	install -Dm644 -t $(SHARE)/wallpaper art/wallpaper/ring.png art/wallpaper/fallback.png art/wallpaper/ring-front.png art/wallpaper/train-frames.png art/wallpaper/train.json
+	install -Dm644 themes/catalog.json $(SHARE)/themes/catalog.json
+	install -Dm644 -t $(SHARE)/themes/previews themes/previews/*.jpg
 	install -Dm644 -t $(SHARE)/fetch fetch/config.jsonc fetch/details.jsonc fetch/render.py fetch/wordmark.png fetch/wordmark.txt
 	install -Dm644 fetch/config.jsonc $(XDG)/fastfetch/config.jsonc
 	install -Dm644 greetd/pam $(PAMDIR)/emaki-greetd
@@ -780,6 +797,7 @@ uninstall-niri-emaki:
 uninstall:
 	@case "$(DESTDIR)" in ""|/*) ;; *) echo "uninstall: DESTDIR must be empty or an absolute path; nothing changed." >&2; exit 1 ;; esac; \
 		case "/$(DESTDIR)/" in */../*) echo "uninstall: DESTDIR must not contain '..' components; nothing changed." >&2; exit 1 ;; esac
+	rm -f $(SHARE)/wpaperd/config.toml
 	# Remove our selector before its PAM service so ordinary sudo remains available.
 	@if [ -e $(DESTDIR)/etc/sudoers.d/20-emaki-pam ] && ! cmp -s sudo/20-emaki-pam $(DESTDIR)/etc/sudoers.d/20-emaki-pam; then \
 		echo 'uninstall: sudo PAM selector differs from the shipped file; restore ordinary sudo routing before removal.' >&2; exit 1; fi
@@ -828,6 +846,7 @@ uninstall:
 	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki_paths.py $(DESTDIR)$(LIBEXECDIR)/paths
 	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki_lock_fallback.py
 	rm -f $(BIN)/emaki-transaction-inhibit $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-transaction-inhibit.hook $(DESTDIR)$(LIBEXECDIR)/emaki_update_space.py
+	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki_update_inhibit.py
 	rm -f $(BIN)/emaki-update-boot $(DESTDIR)$(PREFIX)/share/libalpm/hooks/04-emaki-update-boot.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/06-emaki-update-boot.hook
 	rm -f $(BIN)/emaki-update-manager $(DESTDIR)$(LIBEXECDIR)/update-manager-backend $(DESTDIR)$(LIBEXECDIR)/update_catalog.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_root.py $(DESTDIR)$(LIBEXECDIR)/emaki-update-apply
 	rm -f $(BIN)/emaki-notes $(DESTDIR)$(LIBEXECDIR)/notes-backend $(DESTDIR)$(PREFIX)/share/applications/emaki-notes.desktop $(ICONS)/hicolor/scalable/apps/emaki-notes.svg
@@ -872,7 +891,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/share/wayland-sessions/niri-emaki.desktop
 	rm -rf $(SHARE)
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/emaki-welcome.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-report.desktop $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg $(ICONS)/hicolor/scalable/apps/emaki-report.svg
-	rm -rf $(ICONS)/Emaki
+	for theme in $(CURSOR_THEMES); do rm -rf "$(ICONS)/$$theme"; done
 	rm -f $(SYSTEMD)/user/emaki-shell.service $(SYSTEMD)/user/emaki-shell-heal.service $(SYSTEMD)/user/emaki-shell-recovery.service $(SYSTEMD)/user/emaki-sleep-guard.service $(SYSTEMD)/user/emaki-idle.service $(SYSTEMD)/user/emaki-wallet-migrate.service $(SYSTEMD)/user/emaki-wallet-start.service $(SYSTEMD)/user/niri.service.d/50-emaki-wallet.conf
 	rm -f $(SYSTEMD)/system-sleep/emaki-boot-resume
 	rm -f $(BIN)/emaki-sleep-guard $(DESTDIR)$(PREFIX)/lib/emaki-release
@@ -961,7 +980,7 @@ build-core:
 # Rules follow CARGO_TARGET_DIR: target paths are expanded when the file is read.
 CORE_SRC   = Cargo.toml Cargo.lock $(wildcard crates/*/Cargo.toml) \
 	$(shell find crates -path '*/src/*' -type f) \
-	tokens.toml niri/default.kdl niri/theme.kdl niri/shell.kdl \
+	tokens.toml themes/catalog.json niri/default.kdl niri/theme.kdl niri/shell.kdl \
 	hypr/hyprlock.conf qt6ct/emaki.conf packaging/emaki-config/kdeglobals
 SHADER_SRC = $(wildcard shell/shaders/*.frag)
 SHADERS    = $(patsubst shell/shaders/%,.cache/shell-shaders/%.qsb,$(SHADER_SRC))
@@ -1064,6 +1083,7 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python3 tests/dispersion-frames.py --regression
 	python3 tests/test-dispersion-frames.py
 	python3 tests/test-settings-appearance.py
+	python3 tests/render-settings-cursor.py
 	python3 tests/test-settings-navigation.py
 	python3 tests/test-settings-read-recovery.py
 	python3 tests/test-settings-live-policy.py
@@ -1084,6 +1104,7 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	node tests/test-notification-policy.mjs
 	python3 tests/test-notification-store.py
 	python3 tests/test-notification-reach.py
+	python3 tests/test-notification-budget.py
 	python3 tests/test-calendar-reset.py
 	python3 tests/test-launcher-settings-glass.py
 	python3 tests/test-settings-sound-backend.py
@@ -1112,6 +1133,8 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python3 update-manager/ui/tests/programs_controller.py
 	python3 update-manager/ui/tests/programs_pages.py
 	python3 update-manager/ui/tests/icons.py
+	python3 update-manager/ui/tests/storefront.py --quick
+	python3 update-manager/ui/tests/startup_timing.py --runs 1 --timeout 20 --hold-auxiliary
 	python3 update-manager/ui/tests/reviews.py
 	python3 update-manager/ui/tests/layout.py
 	python3 tests/test-render-fonts.py
@@ -1129,6 +1152,7 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python3 tests/render-launcher-tabs.py --skip-compile
 	python3 tests/render-launcher-tabs.py --skip-compile --glass --output .cache/evidence/launcher-tabs/glass
 	python3 tests/test-launcher-commands.py
+	node tests/test-launcher-symbols.mjs
 	python3 tests/test-prompt-morph.py
 	python3 tests/test-launch-handoff.py
 	python3 tests/test-launcher-refresh.py
@@ -1169,8 +1193,12 @@ check-shell: paths shell-shaders check-sudo-build build-i18n
 	python tests/test-app-scope-dbus.py
 	python tests/test-recent-files.py
 	python tests/test-wallpaper.py
+	python3 tests/test-wallpaper-pending.py
+	python3 tests/test-wallpaper-reduce.py
+	python3 tests/test-wallpaper-large.py
 	python tests/test-backdrop.py
 	python3 tests/test-damage-capture-pixels.py
+	python3 tests/test-bar-theme-tint.py
 	python3 tests/test-glass-decode-frames.py
 	python tests/test-dock-region.py
 	python3 tests/test-dock-drop.py
@@ -1292,6 +1320,18 @@ boot-splash:
 .PHONY: plymouth-theme
 plymouth-theme:
 	python3 scripts/build-plymouth-theme
+
+.PHONY: install-cursors
+install-cursors:
+	# Retire the former packaged theme when refreshing a development installation.
+	rm -rf "$(ICONS)/Emaki"
+	# Replace each complete theme so obsolete cursor names cannot linger.
+	set -e; for theme in $(CURSOR_THEMES); do \
+		rm -rf "$(ICONS)/$$theme"; \
+		install -Dm644 "cursors/$$theme/index.theme" "$(ICONS)/$$theme/index.theme"; \
+		install -dm755 "$(ICONS)/$$theme/cursors"; \
+		cp -P --no-preserve=ownership "cursors/$$theme/cursors/"* "$(ICONS)/$$theme/cursors/"; \
+	done
 
 .PHONY: cursors
 cursors:

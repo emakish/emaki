@@ -12,50 +12,51 @@ Scope {
     property bool panelOpen: false
     // The PipeWire node of the shell's own screen recording (CaptureService; -1: none).
     property int captureNode: -1
-    readonly property alias settings: settings
+    readonly property alias settings: settingsObject
     readonly property alias settingsController: settingsController
-    readonly property alias dockStore: dockStore
+    readonly property alias dockStore: dockStoreObject
     readonly property alias services: services
     readonly property alias notifications: notes
     readonly property alias notificationService: notificationService
     readonly property alias clockTools: clockTools
     readonly property alias clipboard: clipboard
-    readonly property alias catalog: catalog
+    readonly property alias catalog: catalogObject
     readonly property alias identity: identity
     readonly property alias dockLabels: labels
     SettingsCatalog {
-        id: settings
+        id: settingsObject
         active: settingsController.opened
+        notificationStore: notes
     }
     SettingsController {
         id: settingsController
-        catalog: settings
+        catalog: settingsObject
         notificationStore: notes
         service: services
         niri: context.niri
     }
     DockStore {
-        id: dockStore
+        id: dockStoreObject
     }
     // Managed dock values belong to the shared store even with no outputs.
     function applyManagedSettings(): void {
-        const on = settings.value("dock.on");
+        const on = settingsObject.value("dock.on");
         if (typeof on === "boolean")
-            dockStore.on = on;
-        const autoHide = settings.value("dock.auto_hide");
+            dockStoreObject.on = on;
+        const autoHide = settingsObject.value("dock.auto_hide");
         if (typeof autoHide === "boolean")
-            dockStore.autoHide = autoHide;
+            dockStoreObject.autoHide = autoHide;
     }
     Component.onCompleted: applyManagedSettings()
     Connections {
-        target: settings
+        target: settingsObject
         function onValuesChanged(): void {
             context.applyManagedSettings();
         }
     }
     NotificationStore {
         id: notes
-        catalog: settings
+        catalog: settingsObject
     }
     NotificationService {
         id: notificationService
@@ -79,12 +80,12 @@ Scope {
         active: false
     }
     AppCatalog {
-        id: catalog
+        id: catalogObject
         onFailed: (id, name, reason) => notes.local("Emaki", qsTranslate("ShellServices", "Couldn’t open %1").arg(name || id), reason)
     }
     AppIdentity {
         id: identity
-        catalog: catalog
+        catalog: catalogObject
     }
     // Titles, application IDs and focus order of the windows: the dock and the window switcher
     // (Alt+Tab, which works with the dock off too) read them.

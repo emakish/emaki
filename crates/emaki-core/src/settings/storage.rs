@@ -617,7 +617,7 @@ pub(super) fn run(
             // afterwards neither turns it into a rejection nor loses its record.
             let mut reply = run(Operation::List, root, timeout).unwrap_or_else(|error| {
                 let mut reply = Reply::rejected(error.reason);
-                reply.settings = rows(&Document::default(), gaps);
+                reply.settings = rows(Some(&profile), &Document::default(), gaps);
                 reply.settings.retain(|row| row.key == key);
                 machine::overlay(&mut reply.settings, timeout);
                 reply
@@ -666,7 +666,7 @@ pub(super) fn run(
         if let Some(bytes) = read(&profile.state.join("dock.json"))? {
             if let Ok(legacy) = serde_json::from_slice::<Value>(&bytes) {
                 if legacy.get("version").and_then(Value::as_u64) == Some(1) {
-                    let defaults = rows(&Document::default(), gaps);
+                    let defaults = rows(Some(&profile), &Document::default(), gaps);
                     for (legacy_key, key) in [("on", DOCK_ON), ("auto_hide", DOCK_AUTO_HIDE)] {
                         if let Some(value) =
                             legacy.get(legacy_key).filter(|value| value.is_boolean())
@@ -720,7 +720,15 @@ pub(super) fn run(
                     return Err(err("wallpaper_missing"));
                 }
             }
-            document.set(key, value)?;
+            if key == OVERVIEW_BACKGROUND {
+                styles::select_overview(&mut document, value)?;
+            } else if key == STYLE && !value.is_empty() {
+                styles::select(&mut document, value)?;
+            } else if key == STYLE || (key == WALLPAPER && value.is_empty()) {
+                styles::reset(&mut document, key)?;
+            } else {
+                document.set(key, value)?;
+            }
             (status, reason, change_id) = apply(
                 &profile,
                 &mut journal,
@@ -738,9 +746,12 @@ pub(super) fn run(
         Operation::Reset { key } => {
             // Same commit path and journal as set: a set entry whose after is null.
             if key == "appearance" {
-                // The page owns these four keys; gaps and wallpaper belong elsewhere.
+                // Clear an active bundle too; standalone wallpapers and gaps stay put.
+                if document.appearance.style.is_some() {
+                    styles::reset(&mut document, STYLE)?;
+                }
                 // Clear the schedule together before validating its distinct times.
-                for key in [THEME, ACCENT, LIGHT_TIME, DARK_TIME] {
+                for key in [THEME, ACCENT, CURSOR, LIGHT_TIME, DARK_TIME] {
                     document.clear(key)?;
                 }
             } else if key == "all" {
@@ -753,7 +764,7 @@ pub(super) fn run(
                     }
                 }
             } else {
-                document.clear(key)?;
+                styles::reset(&mut document, key)?;
             }
             (status, reason, change_id) = apply(
                 &profile,
@@ -799,7 +810,7 @@ pub(super) fn run(
         profile.prepared(&document, gaps)?
     };
     let generation_path = profile.generation(&document);
-    let mut settings = rows(&document, gaps);
+    let mut settings = rows(Some(&profile), &document, gaps);
     input::personal_rows(&profile, &mut settings);
     if let Operation::Get { key } = operation {
         settings.retain(|row| row.key == key);
@@ -811,6 +822,7 @@ pub(super) fn run(
         machine::overlay(&mut settings, timeout);
     }
     Ok(Reply {
+        styles: styles::rows(&profile, &document),
         schema_version: 1,
         status,
         reason,
@@ -1104,11 +1116,25 @@ pub(super) fn session_config(timeout: Duration) -> Result<PathBuf> {
     live::config(&profile, &document)
 }
 
-/// Refresh application colours without rebuilding or contacting the compositor.
+/// Refresh application colours and cursor, reloading an available compositor.
 pub(super) fn sync_appearance(timeout: Duration) -> Result<()> {
     let profile = Profile::open(None)?;
     profile.initialize()?;
     let _lock = profile.lock(timeout)?;
     let document = Document::parse(read(&profile.source())?.as_deref())?;
-    accent::publish_qt(&profile, &document)
+    accent::publish_qt(&profile, &document)?;
+    let config = live::config(&profile, &document)?;
+    if std::env::var_os("NIRI_SOCKET").is_some() {
+        super::niri_live::load(&config, timeout)?;
+    }
+    cursor::apply(&profile, &document, timeout)
+}
+
+/// Synchronize GTK and activation clients after session recovery, before startup.
+pub(super) fn sync_cursor(timeout: Duration) -> Result<()> {
+    let profile = Profile::open(None)?;
+    profile.initialize()?;
+    let _lock = profile.lock(timeout)?;
+    let document = Document::parse(read(&profile.source())?.as_deref())?;
+    cursor::apply(&profile, &document, timeout)
 }

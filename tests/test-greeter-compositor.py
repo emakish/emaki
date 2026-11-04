@@ -23,6 +23,9 @@ import unittest
 from pathlib import Path
 import reaper
 reaper.guard()  # nothing this test starts outlives it
+# A detached host runner may ignore SIGHUP. greetd starts a fresh worker with
+# default signal actions; do not pass the runner's disposition to its stand-in.
+signal.signal(signal.SIGHUP, signal.SIG_DFL)
 
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / 'scripts/emaki-greeter-compositor'

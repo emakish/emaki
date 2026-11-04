@@ -93,20 +93,20 @@ Item {
         active: !surface.greeter || surface.wallpaperSelectionReady
         source: "LockVisual.qml"
         onLoaded: {
-            item.geometry = geometry;
-            item.screen = Qt.binding(() => surface.screen);
-            item.captureUrl = Qt.binding(() => surface.revealCapture ? surface.captureUrl : "");
-            item.wallpaperRoot = Qt.binding(() => surface.wallpaperRoot);
-            item.greeter = Qt.binding(() => surface.greeter);
-            item.dpr = Qt.binding(() => surface.dpr);
-            item.clock = Qt.binding(() => surface.session.clock);
-            item.elapsed = Qt.binding(() => surface.session.elapsed);
-            item.phase = Qt.binding(() => surface.session.phase);
-            item.bubbleAge = Qt.binding(() => surface.age);
-            item.wrongAge = Qt.binding(() => surface.session.wrongAge);
-            item.showControls = Qt.binding(() => surface.fieldsVisible);
-            item.active = Qt.binding(() => surface.environment.outputsActive);
-            item.reducedMotion = Qt.binding(() => surface.session.reducedMotion);
+            (item as LockVisual).geometry = geometry;
+            (item as LockVisual).screen = Qt.binding(() => surface.screen);
+            (item as LockVisual).captureUrl = Qt.binding(() => surface.revealCapture ? surface.captureUrl : "");
+            (item as LockVisual).wallpaperRoot = Qt.binding(() => surface.wallpaperRoot);
+            (item as LockVisual).greeter = Qt.binding(() => surface.greeter);
+            (item as LockVisual).dpr = Qt.binding(() => surface.dpr);
+            (item as LockVisual).clock = Qt.binding(() => surface.session.clock);
+            (item as LockVisual).elapsed = Qt.binding(() => surface.session.elapsed);
+            (item as LockVisual).phase = Qt.binding(() => surface.session.phase);
+            (item as LockVisual).bubbleAge = Qt.binding(() => surface.age);
+            (item as LockVisual).wrongAge = Qt.binding(() => surface.session.wrongAge);
+            (item as LockVisual).showControls = Qt.binding(() => surface.fieldsVisible);
+            (item as LockVisual).active = Qt.binding(() => surface.environment.outputsActive);
+            (item as LockVisual).reducedMotion = Qt.binding(() => surface.session.reducedMotion);
         }
     }
     // Independent ink and drops: a missing visual QML file or shader still takes passwords.
@@ -306,14 +306,14 @@ Item {
         active: surface.controls
         source: "LockWordmark.qml"
         onLoaded: {
-            item.dpr = Qt.binding(() => surface.dpr);
-            item.clock = Qt.binding(() => surface.session.clock);
-            item.elapsed = Qt.binding(() => surface.session.elapsed);
-            item.phase = Qt.binding(() => surface.session.phase);
-            item.idleMode = Qt.binding(() => surface.session.idleMode);
-            item.introComplete = Qt.binding(() => surface.session.introComplete);
-            item.active = Qt.binding(() => surface.environment.outputsActive);
-            item.reducedMotion = Qt.binding(() => surface.session.reducedMotion);
+            (item as LockWordmark).dpr = Qt.binding(() => surface.dpr);
+            (item as LockWordmark).clock = Qt.binding(() => surface.session.clock);
+            (item as LockWordmark).elapsed = Qt.binding(() => surface.session.elapsed);
+            (item as LockWordmark).phase = Qt.binding(() => surface.session.phase);
+            (item as LockWordmark).idleMode = Qt.binding(() => surface.session.idleMode);
+            (item as LockWordmark).introComplete = Qt.binding(() => surface.session.introComplete);
+            (item as LockWordmark).active = Qt.binding(() => surface.environment.outputsActive);
+            (item as LockWordmark).reducedMotion = Qt.binding(() => surface.session.reducedMotion);
         }
     }
     LockInput {
@@ -331,9 +331,9 @@ Item {
         active: surface.greeter && surface.fieldsVisible && surface.accounts.length > 1
         source: "GreeterUsers.qml"
         onLoaded: {
-            item.accounts = Qt.binding(() => surface.accounts);
-            item.chosen = Qt.binding(() => surface.chosenUser);
-            item.life = Qt.binding(() => Math.max(0, (surface.life - .4) / .6));
+            (item as GreeterUsers).accounts = Qt.binding(() => surface.accounts);
+            (item as GreeterUsers).chosen = Qt.binding(() => surface.chosenUser);
+            (item as GreeterUsers).life = Qt.binding(() => Math.max(0, (surface.life - .4) / .6));
             (item as GreeterUsers).picked.connect(login => {
                 surface.userPicked(login);
                 input.takeFocus();

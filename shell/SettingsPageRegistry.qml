@@ -30,9 +30,19 @@ QtObject {
     readonly property var definitions: Array.from(allDefinitions)
     property list<SettingsPageDefinition> allDefinitions: [
         SettingsPageDefinition {
+            pageId: "themes"
+            keys: ["appearance.style"]
+            description: qsTr("Wallpapers, overview backgrounds and accent colours.")
+            component: Component {
+                SettingsThemesPage {
+                    catalog: registry.catalog
+                }
+            }
+        },
+        SettingsPageDefinition {
             pageId: "appearance"
-            keys: ["appearance.theme", "appearance.accent", "appearance.light_time", "appearance.dark_time"]
-            description: qsTranslate("SettingsPageRegistry", "Choose light or dark, automatic hours and an accent colour.")
+            keys: ["appearance.theme", "appearance.accent", "appearance.light_time", "appearance.dark_time", "appearance.cursor"]
+            description: qsTranslate("SettingsPageRegistry", "Choose light or dark, automatic hours, an accent colour and a cursor style.")
             component: Component {
                 SettingsAppearancePage {
                     catalog: registry.catalog
@@ -64,7 +74,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "panel"
-            keys: ["bar.autohide_mode", "bar.overview_workspaces", "dock.on", "dock.auto_hide"]
+            keys: ["bar.autohide_mode", "bar.overview_workspaces", "bar.clock_seconds_closed", "bar.clock_seconds_open", "launcher.mode_icons", "dock.on", "dock.auto_hide"]
             description: qsTranslate("SettingsPageRegistry", "Choose when the panel and dock appear.")
             component: Component {
                 SettingsCorePage {
@@ -236,7 +246,8 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "wallpaper"
-            keys: ["appearance.wallpaper"]
+            keys: ["appearance.wallpaper", "appearance.overview_video", "appearance.overview_still"]
+            resetKeys: ["appearance.wallpaper", "appearance.overview_background"]
             description: qsTranslate("SettingsPageRegistry", "Choose an Emaki wallpaper or your own picture.")
             searchAnchors: ({
                     "wallpaper-emaki-wallpapers": "appearance.wallpaper"

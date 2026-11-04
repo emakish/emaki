@@ -56,6 +56,11 @@ Scope {
                 if (matches.length !== 1 || typeof matches[0].value !== "boolean")
                     return "invalid_settings";
             }
+            for (const key of ["bar.clock_seconds_closed", "bar.clock_seconds_open", "launcher.mode_icons"]) {
+                const matches = next.filter(row => row.key === key);
+                if (matches.length > 1 || (matches.length === 1 && typeof matches[0].value !== "boolean"))
+                    return "invalid_settings";
+            }
             const fullscreen = next.filter(row => row.key === "bar.autohide_fullscreen");
             const mode = next.filter(row => row.key === "bar.autohide_mode");
             if (fullscreen.length > 1 || (fullscreen.length === 1 && typeof fullscreen[0].value !== "boolean") || mode.length > 1 || (mode.length === 1 && !["always", "desktop", "fullscreen", "never"].includes(mode[0].value)))

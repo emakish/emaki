@@ -1,0 +1,72 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+# shellcheck disable=SC2034,SC2154
+pkgname=emaki-themes
+pkgver=1.1.0
+pkgrel=1
+pkgdesc='Emaki lane wallpapers, overview videos and theme previews'
+arch=('any')
+url='https://github.com/emakish/emaki'
+license=('GPL-3.0-or-later')
+makedepends=('python')
+options=('!strip')
+source=()
+
+# Media is deliberately external to the source repository. The release engineer
+# supplies a reviewed immutable stage made by scripts/prepare-theme-assets.
+prepare() {
+    if [[ -z ${EMAKI_THEME_STAGE:-} || ! -d $EMAKI_THEME_STAGE ]]; then
+        printf 'Set EMAKI_THEME_STAGE to a prepared theme asset directory.\n' >&2
+        return 1
+    fi
+    python "$startdir/../../scripts/prepare-theme-assets" --verify "$EMAKI_THEME_STAGE" --release || return
+    install -Dm644 "$startdir/../../scripts/prepare-theme-assets" "$srcdir/prepare-theme-assets"
+    install -Dm644 "$startdir/../../themes/catalog.json" "$srcdir/theme-catalog.json"
+    install -Dm644 "$startdir/../../LICENSE" "$srcdir/LICENSE"
+    mkdir -p "$srcdir/themes"
+    cp -a "$EMAKI_THEME_STAGE/." "$srcdir/themes/"
+    find "$srcdir/themes" -type d -exec chmod 0755 {} +
+    find "$srcdir/themes" -type f -exec chmod 0644 {} +
+}
+
+check() {
+    python "$srcdir/prepare-theme-assets" --verify "$srcdir/themes" --release || return
+    # Development staging can be partial; the shipped defaults include every choice.
+    python - "$srcdir/theme-catalog.json" "$srcdir/themes/assets.json" <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+expected = {row["id"] for row in json.loads(Path(sys.argv[1]).read_text())["styles"]}
+selected = set(json.loads(Path(sys.argv[2]).read_text())["themes"])
+if selected != expected:
+    raise SystemExit("The media package must contain every bundled theme")
+PYTHON
+}
+
+package() {
+    # Reverify the copy at the installation boundary, including its checksums.
+    check || return
+    install -d "$pkgdir/usr/share/emaki/themes"
+    cp -a "$srcdir/themes/." "$pkgdir/usr/share/emaki/themes/"
+    find "$pkgdir/usr/share/emaki/themes" -type d -exec chmod 0755 {} +
+    find "$pkgdir/usr/share/emaki/themes" -type f -exec chmod 0644 {} +
+    # The catalog is supplied by emaki-config; the media package owns only assets.
+    rm "$pkgdir/usr/share/emaki/themes/catalog.json"
+    install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    # The exact payload must match the complete bundled catalog.
+    python - "$startdir/expected-files.list" "$srcdir/themes/assets.json" > "$srcdir/expected-paths.list" <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+inventory = Path(sys.argv[1]).read_text().splitlines()
+selected = json.loads(Path(sys.argv[2]).read_text())["themes"]
+base = "/usr/share/emaki/themes/"
+required = {base + "assets.json", "/usr/share/licenses/emaki-themes/LICENSE"}
+prefixes = tuple(base + theme + "/" for theme in selected)
+print("\n".join(sorted(path for path in inventory
+                       if path in required or path.startswith(prefixes))))
+PYTHON
+    find "$pkgdir" \( -type f -o -type l \) -printf '/%P\n' | LC_ALL=C sort > "$srcdir/actual-files.list"
+    diff -u "$srcdir/expected-paths.list" "$srcdir/actual-files.list"
+}

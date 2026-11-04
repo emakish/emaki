@@ -130,11 +130,12 @@ def choose_on_bus(bus, Gio, GLib, timeout_ms, title=gettext('Choose a wallpaper'
     signals = [GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, number, terminate)
                for number in (process_signal.SIGTERM, process_signal.SIGINT)]
     try:
+        filter_name = gettext('Pictures and videos') if any(mime.startswith('video/') for mime in mime_types) else gettext('Pictures')
         options = {
             'handle_token': GLib.Variant('s', token),
             'multiple': GLib.Variant('b', False),
             'directory': GLib.Variant('b', False),
-            'filters': GLib.Variant('a(sa(us))', [(gettext('Pictures'), [(1, mime) for mime in mime_types])]),
+            'filters': GLib.Variant('a(sa(us))', [(filter_name, [(1, mime) for mime in mime_types])]),
         }
         bus.call(PORTAL, ROOT, 'org.freedesktop.portal.FileChooser', 'OpenFile',
                  GLib.Variant('(ssa{sv})', ('', title, options)),

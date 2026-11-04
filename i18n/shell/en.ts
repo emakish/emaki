@@ -647,6 +647,98 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>Commands</name>
         <message>
+            <source>Open %1 settings.</source>
+            <translation>Open %1 settings.</translation>
+        </message>
+        <message>
+            <source>Lock the screen and keep your apps open.</source>
+            <translation>Lock the screen and keep your apps open.</translation>
+        </message>
+        <message>
+            <source>Ask to end your session.</source>
+            <translation>Ask to end your session.</translation>
+        </message>
+        <message>
+            <source>Ask to restart the computer.</source>
+            <translation>Ask to restart the computer.</translation>
+        </message>
+        <message>
+            <source>Ask to turn off the computer.</source>
+            <translation>Ask to turn off the computer.</translation>
+        </message>
+        <message>
+            <source>Use dark colours for the desktop.</source>
+            <translation>Use dark colours for the desktop.</translation>
+        </message>
+        <message>
+            <source>Use light colours for the desktop.</source>
+            <translation>Use light colours for the desktop.</translation>
+        </message>
+        <message>
+            <source>Use warmer screen colours.</source>
+            <translation>Use warmer screen colours.</translation>
+        </message>
+        <message>
+            <source>Restore normal screen colours.</source>
+            <translation>Restore normal screen colours.</translation>
+        </message>
+        <message>
+            <source>Open Programs &amp; Updates to check for updates.</source>
+            <translation>Open Programs &amp; Updates to check for updates.</translation>
+        </message>
+        <message>
+            <source>Browse programs in Programs &amp; Updates.</source>
+            <translation>Browse programs in Programs &amp; Updates.</translation>
+        </message>
+        <message>
+            <source>Choose an area of the screen to capture.</source>
+            <translation>Choose an area of the screen to capture.</translation>
+        </message>
+        <message>
+            <source>Open the screen recording controls.</source>
+            <translation>Open the screen recording controls.</translation>
+        </message>
+        <message>
+            <source>Recognise and copy text from a screen area.</source>
+            <translation>Recognise and copy text from a screen area.</translation>
+        </message>
+        <message>
+            <source>Read a QR code from a screen area.</source>
+            <translation>Read a QR code from a screen area.</translation>
+        </message>
+        <message>
+            <source>Find development tools in Programs &amp; Updates.</source>
+            <translation>Find development tools in Programs &amp; Updates.</translation>
+        </message>
+        <message>
+            <source>Manage website apps in Programs &amp; Updates.</source>
+            <translation>Manage website apps in Programs &amp; Updates.</translation>
+        </message>
+        <message>
+            <source>Find and copy something from your clipboard history.</source>
+            <translation>Find and copy something from your clipboard history.</translation>
+        </message>
+        <message>
+            <source>Find an emoji and copy it to the clipboard.</source>
+            <translation>Find an emoji and copy it to the clipboard.</translation>
+        </message>
+        <message>
+            <source>View the desktop keyboard shortcuts.</source>
+            <translation>View the desktop keyboard shortcuts.</translation>
+        </message>
+        <message>
+            <source>Write a note or checklist.</source>
+            <translation>Write a note or checklist.</translation>
+        </message>
+        <message>
+            <source>Describe a problem and choose what to include.</source>
+            <translation>Describe a problem and choose what to include.</translation>
+        </message>
+        <message>
+            <source>Choose which settings to restore to their defaults.</source>
+            <translation>Choose which settings to restore to their defaults.</translation>
+        </message>
+        <message>
             <source>lock screen away password</source>
             <translation>lock screen away password</translation>
         </message>
@@ -2141,6 +2233,17 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
     </context>
     <context>
+        <name>OverviewVideoContent</name>
+        <message>
+            <source>This picture cannot be opened. Showing the default background.</source>
+            <translation>This picture cannot be opened. Showing the default background.</translation>
+        </message>
+        <message>
+            <source>This video cannot be played. Showing the still background.</source>
+            <translation>This video cannot be played. Showing the still background.</translation>
+        </message>
+    </context>
+    <context>
         <name>PasswordToggle</name>
         <message>
             <source>Hide password</source>
@@ -2650,6 +2753,18 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Colour for icons, highlights and controls.</source>
             <translation>Colour for icons, highlights and controls.</translation>
         </message>
+        <message>
+            <source>Cursor</source>
+            <translation>Cursor</translation>
+        </message>
+        <message>
+            <source>Cursor style</source>
+            <translation>Cursor style</translation>
+        </message>
+        <message>
+            <source>White</source>
+            <translation>White</translation>
+        </message>
     </context>
     <context>
         <name>SettingsAppsPage</name>
@@ -2906,12 +3021,40 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Could not choose a picture. Your wallpaper has not changed.</source>
             <translation>Could not choose a picture. Your wallpaper has not changed.</translation>
         </message>
+        <message>
+            <source>This file could not be played or opened.</source>
+            <translation>This file could not be played or opened.</translation>
+        </message>
+        <message>
+            <source>Could not choose an overview background. Try again.</source>
+            <translation>Could not choose an overview background. Try again.</translation>
+        </message>
+        <message>
+            <source>The change could not be confirmed. Check the current value before trying again.</source>
+            <translation>The change could not be confirmed. Check the current value before trying again.</translation>
+        </message>
     </context>
     <context>
         <name>SettingsCorePage</name>
         <message>
             <source>Panel</source>
             <translation>Panel</translation>
+        </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>Show seconds in the panel clock</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>Show seconds while the clock panel is closed.</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>Show seconds in the open clock</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>Show seconds while the clock panel is open.</translation>
         </message>
         <message>
             <source>Hide the panel automatically</source>
@@ -2948,6 +3091,26 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Workspace numbers hide in the overview.</source>
             <translation>Workspace numbers hide in the overview.</translation>
+        </message>
+        <message>
+            <source>Launcher</source>
+            <translation>Launcher</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>Mode labels</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>Show launcher modes as text or icons.</translation>
+        </message>
+        <message>
+            <source>Text</source>
+            <translation>Text</translation>
+        </message>
+        <message>
+            <source>Icons</source>
+            <translation>Icons</translation>
         </message>
         <message>
             <source>Dock</source>
@@ -3294,8 +3457,12 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>SettingsPageRegistry</name>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>Choose light or dark, automatic hours and an accent colour.</translation>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>Wallpapers, overview backgrounds and accent colours.</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>Choose light or dark, automatic hours, an accent colour and a cursor style.</translation>
         </message>
         <message>
             <source>Review recovery, encryption, sudo keys and remembered portal permissions.</source>
@@ -3372,6 +3539,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Change your password and choose when to lock.</source>
             <translation>Change your password and choose when to lock.</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>Choose light or dark, automatic hours and an accent colour.</translation>
         </message>
     </context>
     <context>
@@ -4082,6 +4253,105 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         </message>
     </context>
     <context>
+        <name>SettingsThemesPage</name>
+        <message>
+            <source>Rose Light</source>
+            <translation>Rose Light</translation>
+        </message>
+        <message>
+            <source>Orange Light</source>
+            <translation>Orange Light</translation>
+        </message>
+        <message>
+            <source>Coral Light</source>
+            <translation>Coral Light</translation>
+        </message>
+        <message>
+            <source>Amber Light</source>
+            <translation>Amber Light</translation>
+        </message>
+        <message>
+            <source>Green Light</source>
+            <translation>Green Light</translation>
+        </message>
+        <message>
+            <source>Teal Light</source>
+            <translation>Teal Light</translation>
+        </message>
+        <message>
+            <source>Blue Light</source>
+            <translation>Blue Light</translation>
+        </message>
+        <message>
+            <source>Violet Light</source>
+            <translation>Violet Light</translation>
+        </message>
+        <message>
+            <source>Rose Dark</source>
+            <translation>Rose Dark</translation>
+        </message>
+        <message>
+            <source>Orange Dark</source>
+            <translation>Orange Dark</translation>
+        </message>
+        <message>
+            <source>Coral Dark</source>
+            <translation>Coral Dark</translation>
+        </message>
+        <message>
+            <source>Amber Dark</source>
+            <translation>Amber Dark</translation>
+        </message>
+        <message>
+            <source>Green Dark</source>
+            <translation>Green Dark</translation>
+        </message>
+        <message>
+            <source>Teal Dark</source>
+            <translation>Teal Dark</translation>
+        </message>
+        <message>
+            <source>Blue Dark</source>
+            <translation>Blue Dark</translation>
+        </message>
+        <message>
+            <source>Violet Dark</source>
+            <translation>Violet Dark</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>Silver</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>Graphite</translation>
+        </message>
+        <message>
+            <source>Themes</source>
+            <translation>Themes</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>Choose a wallpaper, overview background and accent colour together.</translation>
+        </message>
+        <message>
+            <source>Current theme</source>
+            <translation>Current theme</translation>
+        </message>
+        <message>
+            <source>Not installed</source>
+            <translation>Not installed</translation>
+        </message>
+        <message>
+            <source>Still overview background</source>
+            <translation>Still overview background</translation>
+        </message>
+        <message>
+            <source>No themes were found in the installed collection.</source>
+            <translation>No themes were found in the installed collection.</translation>
+        </message>
+    </context>
+    <context>
         <name>SettingsToggleRow</name>
         <message>
             <source>On</source>
@@ -4519,6 +4789,26 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Inherited wallpaper</translation>
         </message>
         <message>
+            <source>Overview background</source>
+            <translation>Overview background</translation>
+        </message>
+        <message>
+            <source>Your own video or picture</source>
+            <translation>Your own video or picture</translation>
+        </message>
+        <message>
+            <source>Theme background</source>
+            <translation>Theme background</translation>
+        </message>
+        <message>
+            <source>Videos play only while the overview is open. A picture stays still. Changing the theme replaces this background.</source>
+            <translation>Videos play only while the overview is open. A picture stays still. Changing the theme replaces this background.</translation>
+        </message>
+        <message>
+            <source>Choose video or picture…</source>
+            <translation>Choose video or picture…</translation>
+        </message>
+        <message>
             <source>Wallpaper</source>
             <translation>Wallpaper</translation>
         </message>
@@ -4527,8 +4817,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Your own picture</translation>
         </message>
         <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>Choose a picture for every display. Reset restores your inherited wallpaper.</translation>
+            <source>Choose a picture for every display.</source>
+            <translation>Choose a picture for every display.</translation>
         </message>
         <message>
             <source>Choosing…</source>
@@ -4879,6 +5169,10 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Network</source>
             <translation>Network</translation>
+        </message>
+        <message>
+            <source>Themes</source>
+            <translation>Themes</translation>
         </message>
         <message>
             <source>Appearance</source>
@@ -5403,6 +5697,10 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>All shortcuts</translation>
         </message>
         <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>Choose light or dark, automatic hours and an accent colour.</translation>
+        </message>
+        <message>
             <source>Join networks, see saved ones, forget them, show a password.</source>
             <translation>Join networks, see saved ones, forget them, show a password.</translation>
         </message>
@@ -5567,8 +5865,20 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Personal</translation>
         </message>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>Choose light or dark, automatic hours and an accent colour.</translation>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>Wallpapers, overview backgrounds and accent colours.</translation>
+        </message>
+        <message>
+            <source>style wallpaper overview video accent colour</source>
+            <translation>style wallpaper overview video accent colour</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>Choose a wallpaper, overview background and accent colour together.</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>Choose light or dark, automatic hours, an accent colour and a cursor style.</translation>
         </message>
         <message>
             <source>theme light dark automatic</source>
@@ -5583,8 +5893,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Accent colour</translation>
         </message>
         <message>
-            <source>orange coral rose amber green teal blue violet color</source>
-            <translation>orange coral rose amber green teal blue violet color</translation>
+            <source>orange coral rose amber green teal blue violet silver graphite color</source>
+            <translation>orange coral rose amber green teal blue violet silver graphite color</translation>
         </message>
         <message>
             <source>Colour for icons, highlights and controls.</source>
@@ -5611,6 +5921,10 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>automatic schedule evening hours</translation>
         </message>
         <message>
+            <source>cursor pointer glass white dark</source>
+            <translation>cursor pointer glass white dark</translation>
+        </message>
+        <message>
             <source>Choose an Emaki wallpaper or your own picture.</source>
             <translation>Choose an Emaki wallpaper or your own picture.</translation>
         </message>
@@ -5631,10 +5945,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Your own picture image file</translation>
         </message>
         <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>Choose a picture for every display. Reset restores your inherited wallpaper.</translation>
-        </message>
-        <message>
             <source>Choose when the panel and dock appear.</source>
             <translation>Choose when the panel and dock appear.</translation>
         </message>
@@ -5653,6 +5963,42 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Move to the top edge to show it.</source>
             <translation>Move to the top edge to show it.</translation>
+        </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>Show seconds in the panel clock</translation>
+        </message>
+        <message>
+            <source>clock time seconds closed</source>
+            <translation>clock time seconds closed</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>Show seconds while the clock panel is closed.</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>Show seconds in the open clock</translation>
+        </message>
+        <message>
+            <source>clock time seconds open calendar</source>
+            <translation>clock time seconds open calendar</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>Show seconds while the clock panel is open.</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>Mode labels</translation>
+        </message>
+        <message>
+            <source>launcher modes text icons</source>
+            <translation>launcher modes text icons</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>Show launcher modes as text or icons.</translation>
         </message>
         <message>
             <source>Show workspaces in the overview</source>
@@ -6760,6 +7106,14 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Violet</source>
             <translation>Violet</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>Silver</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>Graphite</translation>
         </message>
     </context>
     <context>
@@ -8064,8 +8418,8 @@ Save your work first.</translation>
             <translation>What's new</translation>
         </message>
         <message>
-            <source>What's new in Emaki 1.0</source>
-            <translation>What's new in Emaki 1.0</translation>
+            <source>What's new in Emaki 1.1</source>
+            <translation>What's new in Emaki 1.1</translation>
         </message>
         <message>
             <source>Close what's new</source>
@@ -8084,30 +8438,38 @@ Save your work first.</translation>
             <translation>Could not save update progress. This screen may appear again next login.</translation>
         </message>
         <message>
-            <source>Emaki 1.0, the first beta</source>
-            <translation>Emaki 1.0, the first beta</translation>
+            <source>Themes for your desktop</source>
+            <translation>Themes for your desktop</translation>
         </message>
         <message>
-            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
-            <translation>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</translation>
+            <source>Choose a theme in Settings to change your wallpaper, overview background and accent together.</source>
+            <translation>Choose a theme in Settings to change your wallpaper, overview background and accent together.</translation>
         </message>
         <message>
-            <source>A lighter launcher</source>
-            <translation>A lighter launcher</translation>
+            <source>A clearer launcher</source>
+            <translation>A clearer launcher</translation>
         </message>
         <message>
-            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
-            <translation>The launcher keeps nothing loaded while it is closed and opens where you left it.</translation>
+            <source>Follow the moving highlight with the arrow keys, and choose icons for launcher modes in Settings.</source>
+            <translation>Follow the moving highlight with the arrow keys, and choose icons for launcher modes in Settings.</translation>
+        </message>
+        <message>
+            <source>Discover programs</source>
+            <translation>Discover programs</translation>
+        </message>
+        <message>
+            <source>Browse recommendations and categories on the new Programs start screen, using the catalog already on your computer.</source>
+            <translation>Browse recommendations and categories on the new Programs start screen, using the catalog already on your computer.</translation>
         </message>
         <message>
             <source>Fixes</source>
             <translation>Fixes</translation>
         </message>
         <message>
-            <source>• Settings can be found in the launcher by its name in your language
-• The account description in Settings is no longer cut short</source>
-            <translation>• Settings can be found in the launcher by its name in your language
-• The account description in Settings is no longer cut short</translation>
+            <source>• Wallpaper changes reach the lock and login screens reliably
+• Installing, removing and updating programs blocks sleep and shutdown until the operation finishes</source>
+            <translation>• Wallpaper changes reach the lock and login screens reliably
+• Installing, removing and updating programs blocks sleep and shutdown until the operation finishes</translation>
         </message>
     </context>
     <context>

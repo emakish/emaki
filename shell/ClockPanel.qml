@@ -73,6 +73,7 @@ Item {
     property bool hidePreviewBodies: false
     property date today: new Date()
     property string time: ""
+    property string openTime: time
     property string date: ""
     property string longDate: ""
     // What the glass refracts (Surfaces sets it; headless: flat stand-in).
@@ -140,15 +141,15 @@ Item {
     readonly property var widthSpring: Liquid.spring(440)
     readonly property var heightSpring: Liquid.spring(Metrics.islandHeight)
     readonly property real shownWidth: {
-        tick;
+        void tick;
         return islandWidth + (widthSpring.x - islandWidth) * morph;
     }
     readonly property real shownHeight: {
-        tick;
+        void tick;
         return Metrics.islandHeight + (Math.max(Metrics.islandHeight, heightSpring.x) - Metrics.islandHeight) * morph;
     }
     readonly property real shownX: {
-        tick;
+        void tick;
         return islandX + ((viewportWidth - widthSpring.x) / 2 - islandX) * morph;
     }
     readonly property real shownRadius: Liquid.mix(Metrics.islandRadius, Metrics.panelRadius, morph)
@@ -337,7 +338,7 @@ Item {
             animating = false;
     }
     readonly property var drops: {
-        tick;
+        void tick;
         const list = [];
         if (morph > .6) {
             for (const b of [todayBubble, playerBubble, knobBubble, hoverBubble]) {
@@ -377,11 +378,11 @@ Item {
         return coverage[key] ?? 0;
     }
     readonly property real knobAlpha: {
-        tick;
+        void tick;
         return Liquid.smooth(knobBubble.alpha.x);
     }
     readonly property real islandAlpha: {
-        tick;
+        void tick;
         return Liquid.onGlass(islandBubble);
     }
     function glassStatus(): var {
@@ -442,9 +443,10 @@ Item {
     CanvasTint {
         objectName: "clock-canvas-flat"
         shown: LiquidPalette.sharedCanvas && !panel.glassReady
-        y: body.opened ? body.header - 7 : Metrics.islandHeight
+        y: body.opened ? 0 : Metrics.islandHeight
         width: panel.shownWidth
         height: Math.max(0, panel.shownHeight - y)
+        radius: body.opened ? panel.shownRadius : 0
         bottomLeftRadius: panel.shownRadius
         bottomRightRadius: panel.shownRadius
         opacity: panel.contentAlpha
@@ -494,14 +496,15 @@ Item {
             width: panel.shownWidth
             height: panel.shownHeight
             clip: !panel.glassReady
-            // The Settings canvas under the top part: the drawer's time and date down to its
-            // hairline, or a notification's island line.
+            // One canvas covers the drawer's time, date and body. A notification peek
+            // keeps its compact island line above the canvas.
             CanvasTint {
                 objectName: "clock-canvas"
                 shown: LiquidPalette.sharedCanvas && panel.glassReady
-                y: body.opened ? body.header - 7 : Metrics.islandHeight
+                y: body.opened ? 0 : Metrics.islandHeight
                 width: panel.shownWidth
                 height: Math.max(0, panel.shownHeight - y)
+                radius: body.opened ? panel.shownRadius : 0
                 bottomLeftRadius: panel.shownRadius
                 bottomRightRadius: panel.shownRadius
                 opacity: panel.contentAlpha
@@ -522,7 +525,7 @@ Item {
                 serverState: panel.serverState
                 mediaEnabled: panel.mediaEnabled
                 today: panel.today
-                time: panel.time
+                time: panel.openTime
                 longDate: panel.longDate
                 maxHeight: panel.maxHeight
                 onActivated: panel.activated()
@@ -561,7 +564,7 @@ Item {
         property Item target: null
         property real alpha: 0
         readonly property rect r: {
-            panel.tick;
+            void panel.tick;
             return target ? panel.screenRect(target) : Qt.rect(0, 0, 0, 0);
         }
         readonly property real sx: Math.floor(r.x * panel.dpr) / panel.dpr
@@ -618,7 +621,7 @@ Item {
             // the plate.
             Rectangle {
                 readonly property var b: {
-                    panel.tick;
+                    void panel.tick;
                     return [panel.knobBubble.x.x + panel.knobBubble.w.x / 2, panel.knobBubble.y.x + panel.knobBubble.h.x / 2];
                 }
                 visible: panel.drawerContent && panel.knobAlpha > .001
@@ -637,8 +640,8 @@ Item {
         readonly property Item focused: panel.Window.window?.activeFocusItem ?? null
         readonly property bool belongs: focused !== null && focused !== panel && Keyboard.boundary(focused) === panel
         readonly property point position: {
-            panel.tick;
-            body.scroller.contentY;
+            void panel.tick;
+            void body.scroller.contentY;
             return belongs ? focused.mapToItem(panel, 0, 0) : Qt.point(0, 0);
         }
         x: position.x

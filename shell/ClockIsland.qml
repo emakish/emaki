@@ -87,12 +87,12 @@ Item {
     onIslandWidthChanged: wake()
     Component.onCompleted: wake()
     readonly property var drops: {
-        tick;
+        void tick;
         const d = Liquid.drop(bubble, islandRect.x, islandRect.y);
         return d ? [d] : [];
     }
     readonly property real bubbleAlpha: {
-        tick;
+        void tick;
         return Liquid.onGlass(bubble);
     }
 

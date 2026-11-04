@@ -2228,6 +2228,143 @@ class OutputChecks(unittest.TestCase):
         self.assertIn(result.stderr, log.getvalue())
 
 
+class LayoutOwnershipChecks(unittest.TestCase):
+    @contextmanager
+    def fixture(self):
+        with tempfile.TemporaryDirectory(prefix='boot-layout-') as directory:
+            root = Path(directory)
+
+            def mapped(value):
+                path = Path(value)
+                return root / str(path).lstrip('/') if path.is_absolute() and not path.is_relative_to(root) else path
+
+            with patch.object(refresh, 'Path', side_effect=mapped):
+                yield mapped
+
+    def test_foreign_layouts_skip_hook_without_logs_locks_or_retries(self):
+        for layout in ('no-efi', 'refind', 'foreign-grub'):
+            with self.subTest(layout=layout), self.fixture() as mapped:
+                if layout != 'no-efi':
+                    loader = mapped('/efi/EFI/refind/refind_x64.efi')
+                    loader.parent.mkdir(parents=True)
+                    loader.write_bytes(b'foreign loader')
+                if layout == 'foreign-grub':
+                    defaults = mapped('/etc/default/grub')
+                    defaults.parent.mkdir(parents=True)
+                    defaults.write_text('GRUB_DISTRIBUTOR="Arch"\n')
+                with patch.object(refresh.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), \
+                        patch.object(refresh, 'BoundedLog') as log, \
+                        patch.object(refresh, 'open_run_lock') as lock, \
+                        patch.object(refresh, 'shared_esp') as shared_probe, \
+                        patch.object(refresh, 'refresh_attempt') as attempt, \
+                        redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                    self.assertEqual(refresh.main(['--hook']), 0)
+                    self.assertEqual(output.getvalue(),
+                                     'Skipping Emaki boot refresh: this boot layout was not installed by Emaki.\n')
+                    self.assertEqual(errors.getvalue(), '')
+                    log.assert_not_called()
+                    lock.assert_not_called()
+                    shared_probe.assert_not_called()
+                    attempt.assert_not_called()
+                    self.assertFalse(mapped(refresh.PENDING).exists())
+
+    def test_fresh_installer_defaults_recognized_without_efi_or_boot_state(self):
+        for text in (boot.grub_defaults(), refresh.INCLUDE, refresh.OLD_INCLUDE):
+            with self.subTest(defaults=text), self.fixture() as mapped:
+                defaults = mapped('/etc/default/grub')
+                defaults.parent.mkdir(parents=True)
+                defaults.write_text(text + '\n')
+                self.assertTrue(refresh.installed_boot_layout())
+                self.assertFalse(mapped('/efi').exists())
+
+    def test_foreign_layout_retry_clears_old_requests_quietly_and_recovers_owned_lock(self):
+        for layout in ('no-efi', 'refind', 'foreign-grub'):
+            for record in (None, '{"boots": 0}\n', '{"boots": 3}\n', 'invalid'):
+                with self.subTest(layout=layout, record=record), self.fixture() as mapped:
+                    if layout != 'no-efi':
+                        loader = mapped('/efi/EFI/refind/refind_x64.efi')
+                        loader.parent.mkdir(parents=True)
+                        loader.write_bytes(b'foreign loader')
+                    if layout == 'foreign-grub':
+                        defaults = mapped('/etc/default/grub')
+                        defaults.parent.mkdir(parents=True)
+                        defaults.write_text('GRUB_DISTRIBUTOR="Arch"\n')
+                    pending = mapped(refresh.PENDING)
+                    if record is not None:
+                        pending.parent.mkdir(parents=True)
+                        pending.write_text(record)
+                    lock = mapped('/var/lib/pacman/db.lck')
+                    lock.parent.mkdir(parents=True)
+                    lock.write_text('emaki-boot-refresh:' + FSUUID)
+                    with patch.object(refresh.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), \
+                            patch.object(refresh.os, 'geteuid', return_value=0), \
+                            patch.object(refresh, 'current_boot_id', return_value=BOOT_ID), \
+                            patch.object(refresh, 'open_run_lock', return_value=nullcontext()), \
+                            patch.object(refresh, 'wait_run_lock'), \
+                            patch.object(refresh.shared, 'session') as shared_session, \
+                            patch.object(refresh, 'refresh_attempt') as attempt, \
+                            redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                        self.assertEqual(refresh.main(['--retry']), 0)
+                        self.assertEqual(output.getvalue() + errors.getvalue(), '')
+                        self.assertFalse(pending.exists())
+                        self.assertFalse(lock.exists())
+                        shared_session.assert_not_called()
+                        attempt.assert_not_called()
+
+    def test_foreign_layout_retry_preserves_unowned_and_current_boot_package_locks(self):
+        for token in ('', 'pacman', 'emaki-boot-refresh:invalid',
+                      'emaki-boot-refresh:' + BOOT_ID):
+            with self.subTest(token=token), self.fixture() as mapped:
+                pending = mapped(refresh.PENDING)
+                pending.parent.mkdir(parents=True)
+                pending.write_text('{"boots": 0}\n')
+                lock = mapped('/var/lib/pacman/db.lck')
+                lock.parent.mkdir(parents=True)
+                lock.write_text(token)
+                with patch.object(refresh.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), \
+                        patch.object(refresh.os, 'geteuid', return_value=0), \
+                        patch.object(refresh, 'current_boot_id', return_value=BOOT_ID), \
+                        patch.object(refresh, 'open_run_lock', return_value=nullcontext()), \
+                        patch.object(refresh, 'wait_run_lock'), \
+                        redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                    self.assertEqual(refresh.main(['--retry']), 0)
+                    self.assertEqual(output.getvalue() + errors.getvalue(), '')
+                    self.assertFalse(pending.exists())
+                    self.assertEqual(lock.read_text(), token)
+
+    def test_owned_layout_without_efi_still_reports_refresh_failure(self):
+        with self.fixture() as mapped:
+            defaults = mapped('/etc/default/grub')
+            defaults.parent.mkdir(parents=True)
+            defaults.write_text(boot.grub_defaults())
+            self.assertFalse(mapped('/efi').exists())
+            with patch.object(refresh.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), \
+                    patch.object(refresh.os, 'geteuid', return_value=0), \
+                    patch.object(refresh, 'shared_esp', return_value=False), \
+                    patch.object(refresh.shared, 'session', return_value=nullcontext()), \
+                    patch.object(refresh, 'open_run_lock', return_value=nullcontext()), \
+                    patch.object(refresh, 'wait_run_lock'), \
+                    patch.object(refresh, 'refresh_attempt', side_effect=refresh.Refuse('Missing /efi')) as attempt, \
+                    redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(refresh.main(['--hook']), 1)
+                attempt.assert_called_once_with(False)
+                self.assertEqual(output.getvalue(), '')
+                self.assertIn('The boot loader update did not finish', errors.getvalue())
+                self.assertIn('Missing /efi', mapped(refresh.LOG_PATH).read_text())
+
+    def test_damaged_installer_layout_is_not_mistaken_for_foreign(self):
+        for name in ('/var/lib/emaki/alongside-boot.json', '/var/lib/emaki/boot-esp.json',
+                     '/boot/emaki', '/efi/EFI/Emaki'):
+            with self.subTest(evidence=name), self.fixture() as mapped:
+                evidence = mapped(name)
+                evidence.parent.mkdir(parents=True)
+                evidence.touch()
+                self.assertTrue(refresh.installed_boot_layout())
+                evidence.unlink()
+                evidence.symlink_to('missing-installation-record')
+                self.assertTrue(refresh.installed_boot_layout())
+
+
 class DiscoveryChecks(unittest.TestCase):
     def exercise(self, encrypted=True, fault=None, key=False):
         with tempfile.TemporaryDirectory(prefix='boot-discovery-') as directory:

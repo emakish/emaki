@@ -252,7 +252,7 @@ def handle(request):
             env.update(XDG_CONFIG_HOME=profile+'/config', XDG_STATE_HOME=profile+'/state', XDG_RUNTIME_DIR=profile+'/runtime')
             command += ['--profile-root', profile]
         value=json.loads(run(command,env=env,check=False,limit=1024*1024,timeout=30))
-        return dict(state=value['reason'],status=value['status'],settings=value.get('settings',[]),history=value.get('history',[]),change_id=value.get('change_id'),session_applied=value['session_applied'])
+        return dict(state=value['reason'],status=value['status'],settings=value.get('settings',[]),styles=value.get('styles',[]),history=value.get('history',[]),change_id=value.get('change_id'),session_applied=value['session_applied'])
     if op=='defaults':
         # Roles with a core key list the installed candidates (GIO handlers of the MIME,
         # terminals by the TerminalEmulator category); the others stay read-only.
@@ -283,6 +283,12 @@ def handle(request):
                 code,_,name=line.strip().partition(' ')
                 rows.append(dict(code=code,name=name.strip() or code))
         return dict(state='ready',entries=rows[:512])
+    if op=='overview-choose':
+        import wallpaper_chooser
+        import overview_background
+        chosen = wallpaper_chooser.choose(title=gettext('Choose an overview background'),
+                                          mime_types=('image/*', 'video/*'))
+        return overview_background.inspect(chosen['path']) if chosen.get('state') == 'ready' else chosen
     if op=='wallpaper-choose':
         import wallpaper_chooser
         return wallpaper_chooser.choose()
@@ -296,7 +302,7 @@ def handle(request):
         roots=[Path(os.environ.get('XDG_DATA_HOME') or Path.home()/'.local/share')]
         roots+=[Path(p) for p in (os.environ.get('XDG_DATA_DIRS') or emaki_paths.XDG_DATA_DIRS_DEFAULT).split(':') if p]
         rows=[]; seen=set()
-        shipped=Path(emaki_paths.DATADIR)/'wallpaper/fallback.png'
+        shipped=Path(emaki_paths.DATADIR)/'wallpaper/ring.png'
         if shipped.is_file():
             rows.append(dict(path=str(shipped),name=gettext('Emaki landscape')))
             seen.add(shipped.name)

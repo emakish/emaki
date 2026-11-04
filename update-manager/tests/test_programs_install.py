@@ -434,12 +434,14 @@ class Transaction(unittest.TestCase):
     def test_install_only_wrapper_does_not_update_again(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
         preflight, run, update = Mock(), Mock(return_value=0), Mock()
-        with patch.dict(module['main'].__globals__, preflight=preflight, run=run, update=update), patch.object(os, 'geteuid', return_value=0), patch.object(sys, 'argv', ['emaki-update', '--noninteractive', '--install-only', 'extra/hello', 'extra/library']):
+        with patch.dict(module['main'].__globals__, preflight=preflight, run=run, update=update,
+                        inhibit=lambda **kwargs: contextlib.nullcontext(42)), patch.object(os, 'geteuid', return_value=0), patch.object(sys, 'argv', ['emaki-update', '--noninteractive', '--install-only', 'extra/hello', 'extra/library']):
             self.assertEqual(module['main'](), 0)
         preflight.assert_called_once_with(targets=['extra/hello', 'extra/library'])
         update.assert_not_called()
         self.assertEqual(run.call_args.args[0][1:], ['-S', '--noconfirm', '--needed', 'extra/hello', 'extra/library'])
         self.assertTrue(run.call_args.kwargs['fail_on_hook_error'])
+        self.assertEqual(run.call_args.kwargs['inhibitor'], 42)
 
     def test_install_only_rejects_invalid_targets_before_any_transaction(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
@@ -475,9 +477,10 @@ class Transaction(unittest.TestCase):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
         preflight, run = Mock(), Mock(return_value=0)
         with patch.dict(module['main'].__globals__, preflight=preflight, run=run,
-                        upgrades=Mock(return_value={}), held=Mock(return_value={})), patch.object(os, 'geteuid', return_value=0), patch.object(sys, 'argv', ['emaki-update', '--noninteractive', '--install', 'extra/hello']):
+                        inhibit=lambda **kwargs: contextlib.nullcontext(42), upgrades=Mock(return_value={}), held=Mock(return_value={})), patch.object(os, 'geteuid', return_value=0), patch.object(sys, 'argv', ['emaki-update', '--noninteractive', '--install', 'extra/hello']):
             self.assertEqual(module['main'](), 0)
             preflight.assert_called_once_with(targets=['extra/hello'])
+            self.assertTrue(all(call.kwargs['inhibitor'] == 42 for call in run.call_args_list))
             self.assertEqual([call.args[0][1:] for call in run.call_args_list],
                              [['-Sy'], ['-Su', '--noconfirm', '--needed', 'extra/hello']])
 

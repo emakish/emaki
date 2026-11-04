@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Build the Emaki xcursor theme (cursors/Emaki) from art/cursor/haze.py (stdlib only).
+"""Build the white and dark Emaki Xcursor themes from art/cursor/ (requires Pillow).
 
-One art cell is drawn as k×k image pixels with k = round(nominal size / 15), so the 30 px image
-niri-emaki asks for at scale 1.25 (24 × 1.25) has 2-pixel cells: the size picked in the mockup.
-Every name an app may ask for (CSS and legacy X names) points at one of the 14 drawn cursors."""
+Every CSS and legacy X cursor name points at one of the 14 drawn shapes."""
 import argparse
 import os
 from pathlib import Path
@@ -15,12 +13,9 @@ import sys
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
-THEME = ROOT / 'cursors/Emaki'
-# One nominal size per distinct image: niri keeps every image with the dimensions of the nearest
-# nominal size, so two sizes sharing one image would make a static cursor "animated" and niri
-# would redraw every frame. Nominal 15k holds k-pixel cells; the nearest-size rule then gives
-# 24 → 30 (k 2, scale 1), 30 (1.25), 36 → 30 (1.5), 42/48 → 45 (k 3), 60 (k 4), 72 → 75 (k 5).
-SIZES = (30, 45, 60, 75)
+THEMES = {'Emaki-White': 'white', 'Emaki-Dark': 'dark'}
+# Native-sized square canvases keep every nominal size distinct for niri's frame selection.
+ROUNDED_SIZES = (24, 30, 32, 36, 42, 45, 48, 60, 64, 72, 75, 96)
 STATIC_DELAY = 50
 
 ALIASES = {
@@ -41,40 +36,19 @@ ALIASES = {
     'nesw-resize': 'ne-resize sw-resize top_right_corner bottom_left_corner fd_double_arrow size_bdiag',
 }
 
-INDEX = """[Icon Theme]
-Name=Emaki
-Comment=Emaki pixel cursors (Haze)
-"""
-
-
-def cell_size(nominal):
-    return max(1, int(nominal / 15 + 0.5))
-
-
-def image(cells, k):
-    """Premultiplied ARGB32 pixels of one frame at k pixels per cell, plus size and hotspot."""
-    xs, ys = [c[0] for c in cells], [c[1] for c in cells]
-    x0, y0 = min(xs), min(ys)
-    w, h = (max(xs) - x0 + 1) * k, (max(ys) - y0 + 1) * k
-    px = [0] * (w * h)
-    for x, y, (r, g, b, a) in cells:
-        argb = (a << 24) | ((r * a + 127) // 255 << 16) | ((g * a + 127) // 255 << 8) | (b * a + 127) // 255
-        for dy in range(k):
-            row = ((y - y0) * k + dy) * w + (x - x0) * k
-            px[row:row + k] = [argb] * k
-    return w, h, -x0 * k, -y0 * k, struct.pack(f'<{w * h}I', *px)
-
-
-def xcursor(art, name):
+def xcursor(art, name, variant):
     """Xcursor file: header, table of contents, then one image chunk per size and frame."""
     count = art['frames'](name)
     delay = art['FRAME_MS'] if count > 1 else STATIC_DELAY
-    frames = [art['cursor'](name, f) for f in range(count)]
     chunks = []
-    for nominal in SIZES:
-        k = cell_size(nominal)
-        for cells in frames:
-            w, h, xhot, yhot, pixels = image(cells, k)
+    for nominal in ROUNDED_SIZES:
+        for frame in range(count):
+            raster, xhot, yhot = art['render'](name, nominal, variant, frame)
+            w, h = raster.size
+            rgba = raster.tobytes()
+            argb = [(a << 24) | ((r*a+127)//255 << 16) | ((g*a+127)//255 << 8) | (b*a+127)//255
+                    for r, g, b, a in zip(rgba[::4], rgba[1::4], rgba[2::4], rgba[3::4])]
+            pixels = struct.pack(f'<{w*h}I', *argb)
             chunks.append((nominal, struct.pack('<9I', 36, 0xFFFD0002, nominal, 1, w, h, xhot, yhot, delay) + pixels))
     position = 16 + 12 * len(chunks)
     toc, body = b'', b''
@@ -84,24 +58,26 @@ def xcursor(art, name):
     return struct.pack('<4s3I', b'Xcur', 16, 0x10000, len(chunks)) + toc + body
 
 
-def generate():
+def generate(theme='Emaki-White'):
     """{relative path: bytes} for files, {relative path: target} for symlinks."""
-    art = runpy.run_path(str(ROOT / 'art/cursor/haze.py'))
-    files = {'index.theme': INDEX.encode()}
+    variant = THEMES[theme]
+    art = runpy.run_path(str(ROOT / 'art/cursor/rounded.py'))
+    index = f'[Icon Theme]\nName={theme}\nComment=Emaki rounded {variant} cursors\n'
+    files = {'index.theme': index.encode()}
     links = {}
     for name, others in ALIASES.items():
-        files[f'cursors/{name}'] = xcursor(art, name)
+        files[f'cursors/{name}'] = xcursor(art, name, variant)
         for other in others.split():
             links[f'cursors/{other}'] = name
-    assert set(ALIASES) == set(art['SET']), 'every drawn cursor needs an ALIASES entry'
+    assert set(ALIASES) == set(art['HOTSPOTS']), 'every drawn cursor needs an ALIASES entry'
     assert not set(links) & set(files), 'an alias shadows a drawn cursor'
     return files, links
 
 
-def on_disk():
+def on_disk(theme):
     files, links = {}, {}
-    for path in sorted(THEME.rglob('*')):
-        rel = path.relative_to(THEME).as_posix()
+    for path in sorted(theme.rglob('*')):
+        rel = path.relative_to(theme).as_posix()
         if path.is_symlink():
             links[rel] = os.readlink(path)
         elif path.is_file():
@@ -109,25 +85,85 @@ def on_disk():
     return files, links
 
 
+# Pillow's antialiasing may move between releases; the package check runs with whatever Pillow
+# the build host has. One supersampled sub-pixel flipping at an edge moves a pixel by about 7
+# levels (255 / 36), so rounded themes compare names, links, headers, the table of contents and
+# hotspots exactly, and pixel channels within PIXEL_TOLERANCE each and PIXEL_MEAN on average per
+# file: edge drift passes, a redrawn shape or a new palette does not.
+PIXEL_TOLERANCE = 24
+PIXEL_MEAN = 2.0
+
+
+def chunks(data):
+    """(file header and table of contents bytes, [(chunk header fields, pixel bytes)])."""
+    count = struct.unpack_from('<4s3I', data)[3]
+    out = []
+    for i in range(count):
+        position = struct.unpack_from('<3I', data, 16 + 12 * i)[2]
+        fields = struct.unpack_from('<9I', data, position)
+        out.append((fields, data[position + 36:position + 36 + 4 * fields[4] * fields[5]]))
+    return data[:16 + 12 * count], out
+
+
+def matches(theme, expected, actual):
+    """True when a checked-in theme equals a fresh build (rounded: within the pixel tolerance)."""
+    if expected == actual:
+        return expected == actual
+    (want_files, want_links), (have_files, have_links) = expected, actual
+    if want_links != have_links or set(want_files) != set(have_files):
+        return False
+    for rel, want in want_files.items():
+        have = have_files[rel]
+        if not rel.startswith('cursors/'):
+            if want != have:
+                return False
+            continue
+        want_head, want_chunks = chunks(want)
+        # Check the complete structure before following offsets from the disk file.
+        # A truncated file or damaged table is stale, not a decoder exception.
+        if len(want) != len(have) or have[:len(want_head)] != want_head:
+            return False
+        _, have_chunks = chunks(have)
+        total = count = 0
+        for (want_fields, want_px), (have_fields, have_px) in zip(want_chunks, have_chunks):
+            if want_fields != have_fields:
+                return False
+            # Tolerance must never admit invalid premultiplied ARGB pixels.
+            if any(max(have_px[i:i + 3]) > have_px[i + 3]
+                   for i in range(0, len(have_px), 4)):
+                return False
+            for a, b in zip(want_px, have_px):
+                if abs(a - b) > PIXEL_TOLERANCE:
+                    return False
+                total += abs(a - b)
+            count += len(want_px)
+        if total > PIXEL_MEAN * count:
+            return False
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--check', action='store_true', help='fail if the checked-in theme is stale')
+    parser.add_argument('--check', action='store_true', help='fail if a checked-in theme is stale')
+    parser.add_argument('--theme', choices=THEMES, help='build or check only this theme (default: all)')
     args = parser.parse_args()
-    files, links = generate()
-    if args.check:
-        if on_disk() != (files, links):
-            sys.exit('cursors/Emaki is stale: run python3 scripts/build-cursors')
-        print(f'cursors/Emaki is current ({len(files) - 1} cursors, {len(links)} aliases)')
-        return
-    if THEME.exists():
-        for path in sorted(THEME.rglob('*'), reverse=True):
-            path.unlink() if path.is_symlink() or path.is_file() else path.rmdir()
-    for rel, data in files.items():
-        (THEME / rel).parent.mkdir(parents=True, exist_ok=True)
-        (THEME / rel).write_bytes(data)
-    for rel, target in links.items():
-        (THEME / rel).symlink_to(target)
-    print(f'wrote {THEME.relative_to(ROOT)}: {len(files) - 1} cursors, {len(links)} aliases')
+    for name in [args.theme] if args.theme else THEMES:
+        theme = ROOT / 'cursors' / name
+        files, links = generate(name)
+        if args.check:
+            if not matches(name, (files, links), on_disk(theme)):
+                sys.exit(f'cursors/{name} is stale: run python3 scripts/build-cursors')
+            print(f'cursors/{name} is current ({len(files) - 1} cursors, {len(links)} aliases)')
+            continue
+        if theme.exists():
+            for path in sorted(theme.rglob('*'), reverse=True):
+                path.unlink() if path.is_symlink() or path.is_file() else path.rmdir()
+        for rel, data in files.items():
+            (theme / rel).parent.mkdir(parents=True, exist_ok=True)
+            (theme / rel).write_bytes(data)
+        for rel, target in links.items():
+            (theme / rel).symlink_to(target)
+        print(f'wrote {theme.relative_to(ROOT)}: {len(files) - 1} cursors, {len(links)} aliases')
 
 
 if __name__ == '__main__':

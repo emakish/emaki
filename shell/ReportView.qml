@@ -52,9 +52,7 @@ FocusScope {
             parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n serial number(s)", "", Number(counts.serial)), Number(counts.serial)));
         if (Number(counts.secret) > 0)
             parts.push(Translation.englishPlural(qsTranslate("ReportView", "%n password(s) or token(s)", "", Number(counts.secret)), Number(counts.secret)));
-        return parts.length
-            ? qsTranslate("ReportView", "Known kinds of sensitive information are removed. Review the preview before sending. Removed: %1.").arg(parts.join(", "))
-            : qsTranslate("ReportView", "Known kinds of sensitive information are removed. Review the preview before sending. No known kinds of sensitive information were found.");
+        return parts.length ? qsTranslate("ReportView", "Known kinds of sensitive information are removed. Review the preview before sending. Removed: %1.").arg(parts.join(", ")) : qsTranslate("ReportView", "Known kinds of sensitive information are removed. Review the preview before sending. No known kinds of sensitive information were found.");
     }
     Keys.onEscapePressed: event => {
         if (view.controller.previewOpen)

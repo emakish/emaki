@@ -70,8 +70,6 @@ Item {
     property bool aurSearched: false
     property var aurPopular: []
     property bool aurPopularLoaded: false
-    // Browse's picks arrive with the catalog (update-manager/storefront.json).
-    property var storefront: ({featured: {title: "", note: "", programs: []}, rows: [], names: {}})
     // The full install's programs, offered on Browse only after a minimal install. Sent by the engine
     // with the catalog as {minimal, programs}; until it is, nothing is offered.
     property var essentials: ({minimal: false, programs: []})
@@ -412,7 +410,6 @@ Item {
                 request("catalog", {limit: 500, offset: collected.length}, "catalog");
             } else {
                 allRows = collected;
-                if (event.storefront) storefront = event.storefront;
                 shelf = Array.isArray(event.shelf) ? event.shelf : [];
                 essentials = event.essentials?.minimal === true && Array.isArray(event.essentials.programs)
                     ? {minimal: true, programs: event.essentials.programs} : {minimal: false, programs: []};

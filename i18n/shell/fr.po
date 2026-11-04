@@ -396,6 +396,9 @@ msgstr "Mot de passe non modifié."
 msgid "Pictures"
 msgstr "Images"
 
+msgid "Pictures and videos"
+msgstr "Images et vidéos"
+
 msgid "Play or pause media"
 msgstr "Lire ou mettre en pause le média"
 
@@ -740,3 +743,6 @@ msgstr "Lire un code QR"
 #, python-brace-format
 msgid "{amount} GiB"
 msgstr "{amount} Gio"
+
+msgid "Choose an overview background"
+msgstr "Choisir un fond pour la vue d’ensemble"

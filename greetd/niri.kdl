@@ -37,7 +37,7 @@ input {
 }
 
 cursor {
-    xcursor-theme "Emaki"
+    xcursor-theme "Emaki-White"
     xcursor-size 24
 }
 

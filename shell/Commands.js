@@ -30,6 +30,37 @@ function page(id, title, keywords, icon) {
     return action("settings-" + id, "Shell", title, keywords, icon, {settings: id});
 }
 
+// Descriptions explain the destination without repeating the search keywords.
+function description(entry) {
+    if (entry.id.startsWith("settings-"))
+        return QT_TRANSLATE_NOOP("Commands", "Open %1 settings.");
+    const descriptions = {
+        lock: QT_TRANSLATE_NOOP("Commands", "Lock the screen and keep your apps open."),
+        logout: QT_TRANSLATE_NOOP("Commands", "Ask to end your session."),
+        reboot: QT_TRANSLATE_NOOP("Commands", "Ask to restart the computer."),
+        poweroff: QT_TRANSLATE_NOOP("Commands", "Ask to turn off the computer."),
+        "theme-dark": QT_TRANSLATE_NOOP("Commands", "Use dark colours for the desktop."),
+        "theme-light": QT_TRANSLATE_NOOP("Commands", "Use light colours for the desktop."),
+        "night-on": QT_TRANSLATE_NOOP("Commands", "Use warmer screen colours."),
+        "night-off": QT_TRANSLATE_NOOP("Commands", "Restore normal screen colours."),
+        updates: QT_TRANSLATE_NOOP("Commands", "Open Programs & Updates to check for updates."),
+        install: QT_TRANSLATE_NOOP("Commands", "Browse programs in Programs & Updates."),
+        screenshot: QT_TRANSLATE_NOOP("Commands", "Choose an area of the screen to capture."),
+        record: QT_TRANSLATE_NOOP("Commands", "Open the screen recording controls."),
+        "capture-text": QT_TRANSLATE_NOOP("Commands", "Recognise and copy text from a screen area."),
+        "capture-qr": QT_TRANSLATE_NOOP("Commands", "Read a QR code from a screen area."),
+        development: QT_TRANSLATE_NOOP("Commands", "Find development tools in Programs & Updates."),
+        websites: QT_TRANSLATE_NOOP("Commands", "Manage website apps in Programs & Updates."),
+        clipboard: QT_TRANSLATE_NOOP("Commands", "Find and copy something from your clipboard history."),
+        emoji: QT_TRANSLATE_NOOP("Commands", "Find an emoji and copy it to the clipboard."),
+        shortcuts: QT_TRANSLATE_NOOP("Commands", "View the desktop keyboard shortcuts."),
+        notes: QT_TRANSLATE_NOOP("Commands", "Write a note or checklist."),
+        report: QT_TRANSLATE_NOOP("Commands", "Describe a problem and choose what to include."),
+        reset: QT_TRANSLATE_NOOP("Commands", "Choose which settings to restore to their defaults.")
+    };
+    return descriptions[entry.id] || "";
+}
+
 const actions = [
     // Session and system.
     action("lock", "SystemBody", QT_TRANSLATE_NOOP("SystemBody", "Lock"), QT_TRANSLATE_NOOP("Commands", "lock screen away password"), "system-lock-screen-symbolic", {run: ["emaki-lock"]}),
@@ -59,6 +90,7 @@ const actions = [
     page("wifi", QT_TRANSLATE_NOOP("Shell", "Wi-Fi"), QT_TRANSLATE_NOOP("Commands", "wifi wireless network internet"), "network-wireless-symbolic"),
     page("bluetooth", QT_TRANSLATE_NOOP("Shell", "Bluetooth"), QT_TRANSLATE_NOOP("Commands", "bluetooth headphones devices pair"), "bluetooth-symbolic"),
     page("network", QT_TRANSLATE_NOOP("Shell", "Network"), QT_TRANSLATE_NOOP("Commands", "ethernet cable wired vpn dns internet"), "network-wired-symbolic"),
+    page("themes", QT_TRANSLATE_NOOP("Shell", "Themes"), QT_TRANSLATE_NOOP("Commands", "theme light dark accent colour color"), "preferences-desktop-theme-symbolic"),
     page("appearance", QT_TRANSLATE_NOOP("Shell", "Appearance"), QT_TRANSLATE_NOOP("Commands", "theme light dark accent colour color"), "preferences-desktop-theme-symbolic"),
     page("wallpaper", QT_TRANSLATE_NOOP("Shell", "Wallpaper"), QT_TRANSLATE_NOOP("Commands", "background picture image desktop"), "preferences-desktop-wallpaper-symbolic"),
     page("panel", QT_TRANSLATE_NOOP("Shell", "Panel & Dock"), QT_TRANSLATE_NOOP("Commands", "bar panel dock taskbar hide"), "preferences-system-symbolic"),

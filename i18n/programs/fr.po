@@ -7,9 +7,6 @@ msgstr "Project-Id-Version: Emaki\nMIME-Version: 1.0\nContent-Type: text/plain; 
 msgid "(no reply)"
 msgstr "(aucune réponse)"
 
-msgid "A good place to start"
-msgstr "Un bon point de départ"
-
 msgid "A recipe never runs as root."
 msgstr "Une recette ne s’exécute jamais en tant que root."
 
@@ -382,18 +379,6 @@ msgstr "Texte de sélection invalide"
 msgid "Invalid shelf: a package twice"
 msgstr "Sélection invalide : un paquet apparaît deux fois"
 
-msgid "Invalid storefront"
-msgstr "Vitrine invalide"
-
-msgid "Invalid storefront identities"
-msgstr "Identités de vitrine invalides"
-
-msgid "Invalid storefront row"
-msgstr "Ligne de vitrine invalide"
-
-msgid "Invalid storefront text"
-msgstr "Texte de vitrine invalide"
-
 msgid "Invalid transaction"
 msgstr "Transaction invalide"
 
@@ -494,9 +479,6 @@ msgstr "Une autorisation est requise pour annuler une installation."
 
 msgid "Permission is required to update repository packages."
 msgstr "Une autorisation est requise pour mettre à jour les paquets des dépôts."
-
-msgid "Picked by Emaki"
-msgstr "La sélection d’Emaki"
 
 msgid "Popularity cache too large"
 msgstr "Cache de popularité trop volumineux"
@@ -623,6 +605,9 @@ msgstr "Sélectionnez un programme des dépôts."
 
 msgid "Session sudo key"
 msgstr "Clé sudo de session"
+
+msgid "Shutdown and sleep protection could not start. The update was not started."
+msgstr "La protection contre l’arrêt et la mise en veille n’a pas pu être activée. La mise à jour n’a pas démarré."
 
 msgid "Snapshot guard"
 msgstr "Protection par instantanés"
@@ -940,6 +925,9 @@ msgstr "Ce programme Flatpak existant peut être supprimé de votre compte sans 
 msgid "This hardware uses the built-in graphics driver. NVIDIA support is not needed."
 msgstr "Ce matériel utilise le pilote graphique intégré. La prise en charge NVIDIA n’est pas nécessaire."
 
+msgid "This change could not be protected from a shutdown. Nothing was changed."
+msgstr "Cette modification n’a pas pu être protégée contre un arrêt. Rien n’a été modifié."
+
 msgid "This install can no longer be taken back as it was."
 msgstr "Cette installation ne peut plus être annulée telle quelle."
 
@@ -1003,8 +991,8 @@ msgstr "À jour"
 msgid "Updates always include the full system"
 msgstr "Les mises à jour incluent toujours le système complet"
 
-msgid "Updating Flatpak applications"
-msgstr "Mise à jour des applications Flatpak"
+msgid "Updating Emaki"
+msgstr "Mise à jour d’Emaki"
 
 #,  python-brace-format
 msgid "Updating Flatpak applications ({scope})…"
@@ -1024,6 +1012,9 @@ msgstr "Utilisation : emaki-update-manager [--status|--check|--updates]"
 
 msgid "Waiting for permission to update…"
 msgstr "En attente de l’autorisation de mise à jour…"
+
+msgid "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
+msgstr "Avertissement : la protection contre l’arrêt et la mise en veille est indisponible ; l’opération sur les paquets va continuer."
 
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "Avertissement : la vérification de l’espace pour la mise à jour est indisponible ; la transaction sur les paquets continuera."

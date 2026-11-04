@@ -11,6 +11,7 @@ ShellRoot {
     Shell.WelcomeController {
         id: controller
         loadWallpaper: false
+        releasePath: Quickshell.env("WELCOME_RELEASE")
     }
     TestCase {
         id: test

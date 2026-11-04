@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Decode real image sources and exercise fallback in the shipped icon component."""
+import argparse
 import functools
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -49,19 +50,40 @@ ShellRoot {
         check(fallback.width <= size && fallback.height <= size, "package fits compact and full size rows");
         check(Number.isInteger(body.x) && Number.isInteger(tape.width), "package uses whole pixels");
     }
+    function blocked(icons, theme = "") {
+        icon.program = {icons: icons, icon: theme};
+        input.wait(100);
+        check(icon.sources.length === 0, "local-only policy excludes remote sources");
+        check(icon.children[0].status === Image.Null, "blocked sources never start loading");
+        packageFallback(48);
+    }
     Timer {
         interval: 20; running: true
         onTriggered: {
             const cached = {kind: "cached", value: CACHE};
             const broken = {kind: "cached", value: BROKEN};
             const remote = {kind: "remote", value: REMOTE};
+            icon.allowRemote = false;
+            test.blocked([{kind: "remote", value: REMOTE + "?blocked-remote"}]);
+            test.blocked([{kind: "cached", value: REMOTE + "?blocked-cached"}]);
+            test.blocked([{kind: "stock", value: REMOTE + "?blocked-stock"}]);
+            test.blocked([REMOTE + "?blocked-string"]);
+            test.blocked([], REMOTE + "?blocked-program-icon");
+            test.blocked([{kind: "local", value: "file://127.0.0.1/remote.svg"}]);
+            test.load([{kind: "cached", value: REMOTE + "?blocked-fallback"}, broken, cached], CACHE_URL);
+            icon.program = {};
+            input.wait(20);
+            test.load([remote, broken, {kind: "stock", value: "test-program"}],
+                      String(Quickshell.iconPath("test-program", true)));
+            icon.allowRemote = !LOCAL_ONLY;
             test.load([remote, cached], CACHE_URL);
             test.load([remote, broken, cached], CACHE_URL);
             const theme = String(Quickshell.iconPath("test-program", true));
             test.check(theme.length > 0, "test theme is available");
             test.load([remote, broken, {kind: "stock", value: "test-program"}], theme);
             test.load([remote, broken], theme, "test-program");
-            test.load([remote, broken, {kind: "stock", value: "missing-test-program"}], REMOTE);
+            if (!LOCAL_ONLY)
+                test.load([remote, broken, {kind: "stock", value: "missing-test-program"}], REMOTE);
             icon.program = {icons: [broken]};
             input.wait(300);
             test.check(icon.children[0].status === Image.Null, "exhausted sources stop without a retry loop");
@@ -83,11 +105,19 @@ ShellRoot {
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        self.server.requests.append(self.path)
+        super().do_GET()
+
     def log_message(self, *args):
         pass
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--local-only', action='store_true',
+                        help='Run local source checks without the HTTP server; skip remote request integration checks.')
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='icons-', dir=os.environ.get('TMPDIR')) as directory:
         root = Path(directory)
         (root / 'cached.svg').write_text(SVG)
@@ -106,14 +136,19 @@ def main():
         (theme / 'index.theme').write_text('[Icon Theme]\nName=Hicolor\nDirectories=48x48/apps\n[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n')
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET'):
             env.pop(name, None)
-        server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=str(root)))
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        server = None
+        remote_url = 'http://127.0.0.1:9/remote.svg'
+        if not args.local_only:
+            server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=str(root)))
+            server.requests = []
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            remote_url = f'http://127.0.0.1:{server.server_port}/remote.svg'
         try:
             qml = QML
             for key, value in {'CACHE_URL': (root / 'cached.svg').as_uri(),
                                'CACHE': str(root / 'cached.svg'), 'BROKEN': str(root / 'broken.jxl'),
-                               'REMOTE': f'http://127.0.0.1:{server.server_port}/remote.svg'}.items():
+                               'REMOTE': remote_url, 'LOCAL_ONLY': args.local_only}.items():
                 qml = qml.replace(key, json.dumps(value))
             (root / 'test.qml').write_text(qml)
             with tempfile.TemporaryDirectory(prefix='', dir=ROOT / '.cache') as runtime:
@@ -123,11 +158,17 @@ def main():
             log = result.stdout + result.stderr
             assert result.returncode == 0 and 'ICONS_OK' in log, log
             assert not any(word in log for word in ('ASSERTION_FAILED', 'ReferenceError', 'TypeError', 'Unable to assign', 'Binding loop')), log
-            print('PASS icons: cached decoding, corrupt cache fallback, theme before remote, pixel package fallback, exhaustion and reuse')
+            if server is not None:
+                assert server.requests and all(path == '/remote.svg' for path in server.requests), server.requests
+                print('PASS icons: local-only sources make no HTTP requests; opt-in remote decoding, corrupt cache fallback, theme before remote, pixel package fallback, exhaustion and reuse')
+            else:
+                print('PASS icons: local-only source rejection, local and theme fallback, pixel package fallback, exhaustion and reuse')
+                print('SKIP icons: --local-only omits HTTP request recording and remote decoding integration proof')
         finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
+            if server is not None:
+                server.shutdown()
+                server.server_close()
+                thread.join()
 
 
 if __name__ == '__main__':

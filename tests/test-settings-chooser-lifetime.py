@@ -36,19 +36,38 @@ else:
         state[op] = index + 1
         (base / 'state.json').write_text(json.dumps(state))
         time.sleep(1.2)
-        print(json.dumps({'schema_version': 1, 'state': 'ready' if index == 0 else 'portal_failed',
-                          'path': str(base / 'chosen picture.png')}))
+        if index == 4:
+            print('invalid reply')
+        else:
+            print(json.dumps({'schema_version': 1,
+                'state': ['ready', 'portal_failed', 'cancelled', 'invalid_overview_background', '', 'ready', 'ready', 'ready'][index],
+                'kind': 'picture', 'path': str(base / 'chosen picture.png')}))
     elif op == 'settings':
         if request['action'] == 'set':
-            assert request['args'][0] == 'appearance.wallpaper'
-            state['wallpaper'] = request['args'][1]
+            assert request['args'][0] in ('appearance.wallpaper', 'appearance.overview_background')
+            chooser_op = 'wallpaper-choose' if request['args'][0] == 'appearance.wallpaper' else 'overview-choose'
+            if state[chooser_op] == 6:
+                print(json.dumps({'schema_version': 1, 'state': 'invalid_wallpaper', 'status': 'rejected'}))
+                sys.exit(0)
+            if state[chooser_op] == 8:
+                print(json.dumps({'schema_version': 1, 'state': 'ready'}))
+                sys.exit(0)
+            if state[chooser_op] == 7:
+                print('invalid reply')
+                sys.exit(0)
+            if request['args'][0] == 'appearance.wallpaper':
+                state['wallpaper'] = request['args'][1]
+            else:
+                state['overview'] = json.loads(request['args'][1])['still']
             (base / 'state.json').write_text(json.dumps(state))
             with (base / 'calls.log').open('a') as log:
                 log.write(json.dumps(['wallpaper', *request['args']]) + '\n')
             time.sleep(.3)
         print(json.dumps({'schema_version': 1, 'state': 'ready',
             'status': 'committed' if request['action'] == 'set' else 'read',
-            'settings': [{'key': 'appearance.wallpaper', 'value': state['wallpaper'], 'default': ''}]}))
+            'settings': [{'key': 'appearance.wallpaper', 'value': state['wallpaper'], 'default': ''},
+                         {'key': 'appearance.overview_still', 'value': state.get('overview', ''), 'default': ''},
+                         {'key': 'appearance.overview_video', 'value': '', 'default': ''}]}))
     else:
         print(json.dumps({'schema_version': 1, 'state': 'ready', 'entries': []}))
 '''
@@ -58,7 +77,13 @@ import QtQuick
 import Quickshell
 Scope {
  id: root
- SettingsCatalog { id: settingsCatalog; active: false }
+ readonly property bool translationsReady: Translation.initialize()
+ QtObject {
+  id: notices
+  property var entries: []
+  function local(app, summary, body) { entries = entries.concat([{app: app, summary: summary, body: body}]); }
+ }
+ SettingsCatalog { id: settingsCatalog; active: false; notificationStore: notices }
  Item {
   Loader { id: users; active: true; sourceComponent: Component { SettingsUsersPage { width: 740 } } }
   Loader { id: wallpaper; active: false; sourceComponent: Component { SettingsWallpaperPage { width: 740; catalog: settingsCatalog } } }
@@ -67,6 +92,10 @@ Scope {
  property int tick: 0
  property int closedAt: 0
  property int scenario: 0
+ property int noticesBefore: 0
+ readonly property bool overview: scenario >= 10
+ readonly property int choiceIndex: scenario < 2 ? scenario : overview ? scenario - 10 : scenario - 2
+ readonly property bool refused: scenario >= 2 && [1, 3, 4, 5, 6, 7].includes(choiceIndex)
  property bool usersSetWhileClosed: false
  property bool wallpaperSetWhileClosed: false
  readonly property var loader: scenario < 2 ? users : wallpaper
@@ -91,17 +120,19 @@ Scope {
   interval: 100; running: true; repeat: true
   onTriggered: {
    root.tick++;
-   root.check(root.tick < 180, "lifetime timeout");
+   root.check(root.tick < 600, "lifetime timeout");
    if (root.phase === 0) {
     if (SettingsUsersService.pending || !SettingsUsersService.received || settingsCatalog.busy) return;
     root.loader.active = true;
     root.phase++;
    } else if (root.phase === 1) {
     if (!root.loader.item) return;
-    root.loader.item.choosePicture();
+    root.noticesBefore = notices.entries.length;
+    if (root.overview) settingsCatalog.chooseOverview();
+    else root.loader.item.choosePicture();
     root.phase++;
    } else if (root.phase === 2) {
-    const chooser = root.scenario < 2 ? root.loader.item.pictureChooser : root.loader.item.chooser;
+    const chooser = root.scenario < 2 ? root.loader.item.pictureChooser : root.overview ? settingsCatalog.overviewChooser : root.loader.item.chooser;
     root.check(chooser.busy && chooser.state === "pending", "chooser remains pending before destruction");
     root.loader.active = false;
     root.closedAt = root.tick;
@@ -111,6 +142,16 @@ Scope {
     if (root.tick - root.closedAt < 20 || SettingsUsersService.pending || settingsCatalog.busy) return;
     if (root.scenario === 0) root.check(root.usersSetWhileClosed, "picture setter ran after page destruction");
     if (root.scenario === 2) root.check(root.wallpaperSetWhileClosed, "wallpaper setter ran after page destruction");
+    if (root.scenario >= 2) {
+     root.check(notices.entries.length === root.noticesBefore + (root.refused ? 1 : 0), "one notice for refusal while page is destroyed; none for success/cancel");
+     if (root.refused) {
+      const error = root.overview ? settingsCatalog.overviewChooserError : settingsCatalog.wallpaperChooserError;
+      const notice = notices.entries[notices.entries.length - 1];
+      if (root.choiceIndex >= 6)
+       root.check(error === "The change could not be confirmed. Check the current value before trying again.", "missing apply confirmation does not claim nothing changed");
+      root.check(error.length > 0 && notice.app === "Emaki" && notice.summary === error && notice.body === "", "notice carries retained page error");
+     }
+    }
     root.loader.active = true;
     root.phase++;
    } else if (root.phase === 4) {
@@ -118,11 +159,13 @@ Scope {
     const page = root.loader.item;
     if (root.scenario === 0) root.check(page.me.picture === true && !page.problem && !page.pictureError, "picture result retained on reopening");
     if (root.scenario === 1) root.check(page.me.picture === true && page.pictureError.indexOf("Could not choose") === 0, "picture error retained on reopening");
-    if (root.scenario === 2) root.check(page.currentPath.endsWith("/chosen picture.png") && !page.chooserError, "wallpaper result retained on reopening");
-    if (root.scenario === 3) {
-     root.check(page.currentPath.endsWith("/chosen picture.png") && page.chooserError.indexOf("Could not choose") === 0, "wallpaper error retained on reopening");
-     console.log("CHOOSER_LIFETIME_PASS"); Qt.quit();
+    if (root.scenario >= 2) {
+     const error = root.overview ? page.catalog.overviewChooserError : page.chooserError;
+     root.check(!!error === root.refused, "error retained on reopening, cancellation silent");
+     if (root.overview) root.check(page.currentOverviewName === "chosen picture.png", "own overview displays filename only");
+     else root.check(page.currentPath.endsWith("/chosen picture.png"), "previous wallpaper retained");
     }
+    if (root.scenario === 17) { console.log("CHOOSER_LIFETIME_PASS"); Qt.quit(); }
     root.loader.active = false;
     root.scenario++;
     root.phase = 0;
@@ -154,9 +197,10 @@ def run(baseline=False, wallpaper_only=False):
                    QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
                    PATH=str(base / 'bin') + ':' + os.environ['PATH'],
                    DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-bus'))
-        env.pop('WAYLAND_DISPLAY', None)
+        for name in ('NIRI_SOCKET', 'WAYLAND_DISPLAY', 'DISPLAY', 'QT_QPA_PLATFORMTHEME'):
+            env.pop(name, None)
         result = subprocess.run(['qs', '-p', str(base / 'shell/Test.qml'), '--no-color'],
-                                env=env, capture_output=True, text=True, timeout=25)
+                                env=env, capture_output=True, text=True, timeout=65)
         output = result.stdout + result.stderr
         passed = result.returncode == 0 and 'CHOOSER_LIFETIME_PASS' in output
         for error in ('ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign'):
@@ -165,7 +209,9 @@ def run(baseline=False, wallpaper_only=False):
             if (base / 'calls.log').exists() else []
         if passed:
             expected = [['picture', '--set', str(base / 'chosen picture.png'), '--json'],
-                        ['wallpaper', 'appearance.wallpaper', str(base / 'chosen picture.png')]]
+                        ['wallpaper', 'appearance.wallpaper', str(base / 'chosen picture.png')],
+                        ['wallpaper', 'appearance.overview_background',
+                         json.dumps({'video': '', 'still': str(base / 'chosen picture.png')}, separators=(',', ':'))]]
             assert calls == (expected[1:] if wallpaper_only else expected), calls
         return passed, output
 
@@ -175,4 +221,4 @@ if __name__ == '__main__':
     passed, output = run(baseline='--baseline' in sys.argv, wallpaper_only='--wallpaper-only' in sys.argv)
     assert passed, output
     print('PASS: Users and Wallpaper chooser jobs and setters survive page destruction; '
-          'success and error results remain after reopening')
+          'refusals notify once while closed; success/cancel are silent; errors and filenames survive reopening')

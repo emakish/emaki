@@ -682,18 +682,6 @@
       <translation>Utilidades</translation>
     </message>
     <message>
-      <source>Popular</source>
-      <translation>Populares</translation>
-    </message>
-    <message>
-      <source>Essentials</source>
-      <translation>Esenciales</translation>
-    </message>
-    <message>
-      <source>New and updated</source>
-      <translation>Nuevos y actualizados</translation>
-    </message>
-    <message>
       <source>Programs &amp; Updates</source>
       <translation>Programas y actualizaciones</translation>
     </message>
@@ -875,18 +863,6 @@
       <translation>Instalando…</translation>
     </message>
     <message>
-      <source>Our picks are not available right now. Try Refresh.</source>
-      <translation>Nuestras recomendaciones no están disponibles ahora. Prueba Recargar.</translation>
-    </message>
-    <message>
-      <source>Most installed this month</source>
-      <translation>Los más instalados este mes</translation>
-    </message>
-    <message>
-      <source>What the full install adds</source>
-      <translation>Lo que agrega la instalación completa</translation>
-    </message>
-    <message>
       <source>From Emaki</source>
       <translation>De Emaki</translation>
     </message>
@@ -899,10 +875,6 @@
       <translation>Instalar</translation>
     </message>
     <message>
-      <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
-      <translation>No se pudo cargar ningún programa. Revisa la conexión a internet y luego usa Recargar.</translation>
-    </message>
-    <message>
       <source>All</source>
       <translation>Todos</translation>
     </message>
@@ -913,14 +885,6 @@
     <message>
       <source>See all ›</source>
       <translation>Ver todos ›</translation>
-    </message>
-    <message>
-      <source>All %1 ›</source>
-      <translation>Ver los %1 ›</translation>
-    </message>
-    <message>
-      <source>See the whole set</source>
-      <translation>Ver el conjunto completo</translation>
     </message>
     <message>
       <source>AUR — nobody checked these programs.</source>
@@ -1148,6 +1112,38 @@
       <source>Installed</source>
       <comment>list of installed programs</comment>
       <translation>Instalados</translation>
+    </message>
+    <message>
+      <source>Popular</source>
+      <translation>Populares</translation>
+    </message>
+    <message>
+      <source>Essentials</source>
+      <translation>Esenciales</translation>
+    </message>
+    <message>
+      <source>New and updated</source>
+      <translation>Nuevos y actualizados</translation>
+    </message>
+    <message>
+      <source>Most installed this month</source>
+      <translation>Los más instalados este mes</translation>
+    </message>
+    <message>
+      <source>What the full install adds</source>
+      <translation>Lo que agrega la instalación completa</translation>
+    </message>
+    <message>
+      <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
+      <translation>No se pudo cargar ningún programa. Revisa la conexión a internet y luego usa Recargar.</translation>
+    </message>
+    <message>
+      <source>All %1 ›</source>
+      <translation>Ver los %1 ›</translation>
+    </message>
+    <message>
+      <source>See the whole set</source>
+      <translation>Ver el conjunto completo</translation>
     </message>
   </context>
   <context>
@@ -1461,4 +1457,67 @@ No se pudo ocultar el recordatorio. Presiona Más tarde de nuevo.</translation>
             <translation>Todavía no hay aplicaciones web.</translation>
         </message>
     </context>
+  <context>
+    <name>StorefrontData</name>
+    <message>
+      <source>Discover your next favorite</source>
+      <translation>Descubre tu próxima favorita</translation>
+    </message>
+    <message>
+      <source>A few ideas for your computer. Recommendations stay on this device.</source>
+      <translation>Algunas ideas para tu computadora. Las recomendaciones se quedan en este dispositivo.</translation>
+    </message>
+    <message>
+      <source>App of the day</source>
+      <translation>Aplicación del día</translation>
+    </message>
+    <message>
+      <source>Explore app</source>
+      <translation>Explorar aplicación</translation>
+    </message>
+    <message>
+      <source>See all</source>
+      <translation>Ver todo</translation>
+    </message>
+    <message>
+      <source>Find your next possibility</source>
+      <translation>Encuentra tu próxima posibilidad</translation>
+    </message>
+    <message>
+      <source>Because you have %1</source>
+      <translation>Porque tienes %1</translation>
+    </message>
+    <message>
+      <source>Ideas based on programs installed on this computer.</source>
+      <translation>Ideas basadas en los programas instalados en esta computadora.</translation>
+    </message>
+    <message>
+      <source>More to discover soon</source>
+      <translation>Pronto habrá más por descubrir</translation>
+    </message>
+    <message>
+      <source>Browse the categories. Ideas appear when matching programs are available in the catalog.</source>
+      <translation>Explora las categorías. Las ideas aparecen cuando hay programas relacionados disponibles en el catálogo.</translation>
+    </message>
+    <message>
+      <source>Preview unavailable</source>
+      <translation>Vista previa no disponible</translation>
+    </message>
+    <message>
+      <source>Coming from Windows?</source>
+      <translation>¿Vienes de Windows?</translation>
+    </message>
+    <message>
+      <source>Familiar ways to browse, work and watch.</source>
+      <translation>Formas conocidas de navegar, trabajar y ver videos.</translation>
+    </message>
+    <message>
+      <source>Make something new</source>
+      <translation>Crea algo nuevo</translation>
+    </message>
+    <message>
+      <source>Turn an idea into a drawing, a design or a new world.</source>
+      <translation>Convierte una idea en un dibujo, un diseño o un mundo nuevo.</translation>
+    </message>
+  </context>
 </TS>

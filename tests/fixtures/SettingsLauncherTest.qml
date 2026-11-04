@@ -89,7 +89,7 @@ SettingsIpcHarness {
             }
         }
         function test_integrated_pages_and_search() {
-            const pages = [["users", "SettingsUsersPage", "Other users", "users-other-users", "settings-users-others"], ["storage", "SettingsStoragePage", "System and home", "storage-disks", "settings-storage-disks"], ["privacy", "SettingsPrivacyPage", "Disk encryption", "privacy-encryption", "settings-privacy-encryption"], ["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide_mode"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"], ["appearance", "SettingsAppearancePage", "Accent colour", "appearance-accent", "appearance.accent"]];
+            const pages = [["themes", "SettingsThemesPage", "Themes", "themes-style", "appearance.style"], ["users", "SettingsUsersPage", "Other users", "users-other-users", "settings-users-others"], ["storage", "SettingsStoragePage", "System and home", "storage-disks", "settings-storage-disks"], ["privacy", "SettingsPrivacyPage", "Disk encryption", "privacy-encryption", "settings-privacy-encryption"], ["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide_mode"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"], ["appearance", "SettingsAppearancePage", "Accent colour", "appearance-accent", "appearance.accent"]];
             equal(harness.controller.opened, false);
             equal(harness.scene.input.settingsActive, false);
             compare(Array.from(harness.controller.availablePages).sort(), pages.map(entry => entry[0]).concat(["assistants"]).sort());
@@ -442,21 +442,36 @@ SettingsIpcHarness {
                 if (drop.kind === "logo")
                     continue;
                 check(inside(drop, status.plate));
-                if (drop.kind === "mode" || drop.kind === "category")
+                if (drop.kind === "select")
                     check(drop.alpha <= body.contentAlpha + 0.001);
             }
+            check(!status.drops.some(drop => drop.kind === "mode" || drop.kind === "category"));
             check(!status.focus.eligible || inside(status.focus, status.plate));
             check(!status.focus.shown || status.focus.eligible);
             return status;
         }
+        function checkAccentSelection(body) {
+            const selected = nodes(body).filter(item => item.objectName.startsWith("launcher-tab-") || item.objectName.startsWith("launcher-category-")).filter(item => item.Accessible.selected);
+            check(selected.length > 0);
+            for (const item of selected) {
+                const label = item.children.find(child => child.text !== undefined && child.color !== undefined);
+                check(label !== undefined);
+                equal(String(label.color), String(ShellPalette.accentDeepForeground));
+            }
+        }
         function test_glass_motion_geometry() {
             const body = harness.scene.input;
             harness.scene.openLauncher(true);
+            harness.window.requestActivate();
             tryCompare(harness.scene, "expansion", 1);
+            body.takeFocus(true);
+            // Exercise the header drop explicitly; typing can mark a result instead.
+            body.focusControl(nodes(body).find(item => item.objectName === "launcher-settings"));
             wait(400);
             let status = checkGlassGeometry();
-            check(status.drops.some(drop => drop.kind === "mode" && drop.alpha > 0.9));
-            check(status.drops.some(drop => drop.kind === "category" && drop.alpha > 0.9));
+            checkAccentSelection(body);
+            check(status.focus.eligible);
+            check(status.drops.some(drop => drop.kind === "select" && drop.alpha > 0.9));
             harness.scene.closeLauncher();
             waitForMotion(() => harness.scene.expansion < 0.98 && harness.scene.expansion > 0.6, "launcher closing before midpoint");
             check(body.contentAlpha < 1);
@@ -491,7 +506,9 @@ SettingsIpcHarness {
             tryVerify(() => Math.abs(body.shownWidth - body.width) < 1);
             wait(400);
             status = checkGlassGeometry();
-            check(status.drops.some(drop => drop.kind === "mode" && drop.alpha > 0.9));
+            body.focusControl(nodes(body).find(item => item.objectName === "launcher-settings"));
+            tryVerify(() => body.glassStatus().drops.some(drop => drop.kind === "select" && drop.alpha > 0.9));
+            checkGlassGeometry();
             const targetWidth = view.width;
             const targetHeight = view.height;
             harness.scene.closeLauncher();
@@ -508,7 +525,7 @@ SettingsIpcHarness {
             keyClick(Qt.Key_Escape);
             waitForMotion(() => body.shownWidth > Metrics.launcherWidth + 5 && body.shownWidth < targetWidth - 5, "settings width shrinking");
             status = checkGlassGeometry();
-            check(status.drops.some(drop => drop.kind === "mode" && drop.alpha > 0));
+            checkAccentSelection(body);
             const header = nodes(body).filter(item => item.objectName === "launcher-settings" || item.objectName.startsWith("launcher-tab-"));
             check(header.length > 1);
             for (const item of header) {
@@ -552,7 +569,7 @@ SettingsIpcHarness {
         }
         function test_sections_keyboard_and_unavailable() {
             const view = show("panel");
-            equal(view.sidebar.count, 22);
+            equal(view.sidebar.count, 23);
             const windows = named("section-windows");
             windows.forceActiveFocus();
             keyClick(Qt.Key_Return);
@@ -812,7 +829,8 @@ SettingsIpcHarness {
             wait(100);
             check(harness.scene.input.shownWidth > Metrics.launcherWidth);
             const activeTab = nodes(harness.scene.input).find(item => item.objectName === "launcher-tab-apps");
-            equal(harness.scene.input.modeRect.x, activeTab.parent.x + activeTab.x);
+            equal(harness.scene.input.modeRect.x, activeTab.mapToItem(harness.scene.input, 0, 0).x);
+            checkAccentSelection(harness.scene.input);
             shot(harness.scene, "settings-shrink-mid.png");
             wait(600);
             equal(harness.scene.panelWidth, Metrics.launcherWidth);

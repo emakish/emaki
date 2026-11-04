@@ -99,6 +99,9 @@ msgstr "[Çĥööšé à ṽàļîð ðîšþļàÿ šéţţîñĝ.······�
 msgid "Choose a wallpaper"
 msgstr "[Çĥööšé à ŵàļļþàþéŕ·····]"
 
+msgid "Choose an overview background"
+msgstr "[Çĥööšé àñ öṽéŕṽîéŵ ƀàçķĝŕöûñð·········]"
+
 msgid "Choose one of the available delays."
 msgstr "[Çĥööšé öñé öƒ ţĥé àṽàîļàƀļé ðéļàÿš.···········]"
 
@@ -409,6 +412,9 @@ msgstr "[Þàššŵöŕð ñöţ çĥàñĝéð.······]"
 
 msgid "Pictures"
 msgstr "[Þîçţûŕéš·]"
+
+msgid "Pictures and videos"
+msgstr "[Þîçţûŕéš àñð ṽîðéöš·····]"
 
 msgid "Play or pause media"
 msgstr "[Þļàÿ öŕ þàûšé ɱéðîà·····]"

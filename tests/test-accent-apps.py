@@ -94,12 +94,26 @@ def ini(text, datadir=Path(DATADIR)):
 class Session:
     def __init__(self, base, accent=None, theme=None):
         self.base = Path(base)
-        for name in ('home', 'config', 'state', 'runtime', 'cache'):
+        for name in ('home', 'config', 'state', 'runtime', 'cache', 'bin', 'data'):
             (self.base / name).mkdir(mode=0o700)
-        self.env = {k: v for k, v in os.environ.items() if k not in ('NIRI_SOCKET', 'WAYLAND_DISPLAY', 'DISPLAY')}
+        self.env = {k: v for k, v in os.environ.items() if k not in (
+            'NIRI_SOCKET', 'WAYLAND_DISPLAY', 'DISPLAY', 'EMAKI_SETTINGS_PROFILE')}
         self.env.update(HOME=str(self.base / 'home'), XDG_CONFIG_HOME=str(self.base / 'config'),
                         XDG_STATE_HOME=str(self.base / 'state'), XDG_RUNTIME_DIR=str(self.base / 'runtime'),
-                        XDG_CACHE_HOME=str(self.base / 'cache'), PYTHONDONTWRITEBYTECODE='1')
+                        XDG_CACHE_HOME=str(self.base / 'cache'), XDG_DATA_HOME=str(self.base / 'data'),
+                        PYTHONDONTWRITEBYTECODE='1', GSETTINGS_BACKEND='keyfile',
+                        DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(self.base / 'no-bus'),
+                        PATH=str(self.base / 'bin') + os.pathsep + os.environ['PATH'],
+                        ACCENT_ACTIVATION_LOG=str(self.base / 'activation.json'))
+        # Appearance refresh also applies the cursor. Keep real GTK persistence private,
+        # and record activation arguments without contacting the person's session services.
+        activation = self.base / 'bin/dbus-update-activation-environment'
+        activation.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+Path(os.environ['ACCENT_ACTIVATION_LOG']).write_text(json.dumps(sys.argv[1:]))
+''')
+        activation.chmod(0o700)
         lines = [f'{key} = "{value}"' for key, value in (('accent', accent), ('theme', theme)) if value]
         if lines:
             (self.base / 'config/emaki').mkdir(mode=0o700)
@@ -187,6 +201,14 @@ class Session:
 
 
 class AccentAppsTests(unittest.TestCase):
+    def assert_cursor_synced(self, session, theme):
+        result = subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'cursor-theme'],
+                                env=session.env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), repr(theme))
+        self.assertEqual(json.loads((session.base / 'activation.json').read_text()),
+                         ['--systemd', f'XCURSOR_THEME={theme}'])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='accent-apps-', dir=ROOT / '.cache')
         self.serial = 0
@@ -209,9 +231,10 @@ class AccentAppsTests(unittest.TestCase):
         self.assertEqual(colours['foreground'], TOKENS['color']['text'])
         self.assertEqual(colours['background'], TOKENS['color']['background'])
 
-    def assert_packaged(self, session):
+    def assert_packaged(self, session, exported=False):
         self.assert_kitty(session.kitty(), ROSE)
-        self.assertEqual(session.fuzzel(), Path(DATADIR, 'fuzzel/fuzzel.ini'))
+        self.assertEqual(session.fuzzel(), session.accent / 'fuzzel/fuzzel.ini' if exported
+                         else Path(DATADIR, 'fuzzel/fuzzel.ini'))
         self.assertEqual(session.hyprlock(), [])
 
     def test_chosen_orange_reaches_kitty_fuzzel_and_hyprlock_in_light_and_dark(self):
@@ -224,13 +247,15 @@ class AccentAppsTests(unittest.TestCase):
                 text = path.read_text()
                 self.assertTrue(text.startswith(HEADER))
                 effective, packaged = ini(text), ini((ROOT / 'fuzzel/fuzzel.ini').read_text())
-                for key in ('match', 'selection', 'border'):
+                self.assertEqual(effective['colors', 'match'], ORANGE['on_dark'] + 'ff')
+                for key in ('selection', 'border'):
                     self.assertEqual(effective['colors', key], ORANGE['base'] + 'ff')
                 for key in ('selection-text', 'selection-match'):
                     self.assertEqual(effective['colors', key], ORANGE['text'] + 'ff')
                 # Everything else is the packaged file's.
                 self.assertEqual({k: v for k, v in effective.items() if v != packaged.get(k)},
-                                 {k: v for k, v in effective.items() if ORANGE['base'] in v or ORANGE['text'] in v})
+                                 {k: v for k, v in effective.items()
+                                  if any(ORANGE[role] in v for role in ('base', 'text', 'on_dark'))})
                 self.assertEqual(set(effective), set(packaged))
                 # Real fuzzel accepts the file (its include pointed at the repository's).
                 check = session.base / 'fuzzel-check.ini'
@@ -246,12 +271,12 @@ class AccentAppsTests(unittest.TestCase):
                 self.assertEqual(lock, HEADER + (ROOT / 'hypr/hyprlock.conf').read_text().replace(
                     ROSE['base'], ORANGE['base']))
 
-    def test_never_chosen_and_chosen_rose_are_the_packaged_look(self):
+    def test_never_chosen_and_chosen_rose_keep_default_fills_and_text_ink(self):
         for accent, theme in ((None, None), (None, 'light'), ('rose', 'dark'), ('rose', 'light')):
             with self.subTest(accent=accent, theme=theme):
                 session = self.session(accent, theme).start()
-                self.assert_packaged(session)
-                self.assertEqual(sorted(p.name for p in session.accent.iterdir()), ['kitty.conf'])
+                self.assert_packaged(session, exported=True)
+                self.assertEqual(sorted(p.name for p in session.accent.iterdir()), ['fuzzel', 'kitty.conf'])
 
     def test_missing_or_foreign_files_fall_back_to_the_packaged_default(self):
         # Before the session wrote anything, and with no runtime directory at all.
@@ -343,9 +368,11 @@ class AccentAppsTests(unittest.TestCase):
     def assert_qt(self, colours, accent, theme=None, personal=False):
         self.assertEqual(colours['Highlight'], accent['base'], colours)
         self.assertEqual(colours['HighlightedText'], accent['text'], colours)
-        self.assertEqual(colours['Link'], accent['base'], colours)
+        ink = accent['base'] if personal else accent['on_dark' if theme == 'dark' else 'on_light']
+        self.assertEqual(colours['Link'], ink, colours)
+        self.assertEqual(colours['kde View ForegroundLink'], ink, colours)
         for key in ('kde Selection BackgroundNormal', 'kde View DecorationFocus',
-                    'kde Button DecorationHover', 'kde View ForegroundLink'):
+                    'kde Button DecorationHover'):
             self.assertEqual(colours[key], accent['base'], (key, colours))
         self.assertEqual(colours['kde Selection ForegroundNormal'], accent['text'], colours)
         # Managed Qt and KDE colours use the same theme; personal Qt schemes stay intact.
@@ -641,6 +668,7 @@ class AccentAppsTests(unittest.TestCase):
                                     text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout), {'ok': True})
+            self.assert_cursor_synced(session, 'Emaki-Dark')
             wait_colour(TOKENS['shell_dark']['manager_background'])
             self.assertEqual(session.qt6ct.read_bytes(), before)
             self.assertEqual(session.qt6ct.stat().st_mtime_ns, personal_stamp)
@@ -648,8 +676,10 @@ class AccentAppsTests(unittest.TestCase):
             self.assertEqual(own.read_text(), '[Colors:View]\nForegroundLink=1,2,3\n')
             self.assertEqual(session.qt()['kde View ForegroundLink'], '010203')
             stamp = session.kdeglobals.stat().st_mtime_ns
-            subprocess.run([BINARY, 'settings', 'sync-appearance'], env=session.env, check=True,
-                           capture_output=True, timeout=10)
+            result = subprocess.run([BINARY, 'settings', 'sync-appearance'], env=session.env, check=True,
+                                    capture_output=True, timeout=10)
+            self.assertEqual(json.loads(result.stdout), {'ok': True})
+            self.assert_cursor_synced(session, 'Emaki-Dark')
             self.assertEqual(session.kdeglobals.stat().st_mtime_ns, stamp)
         finally:
             process.terminate()
@@ -674,22 +704,24 @@ class AccentAppsTests(unittest.TestCase):
             result = subprocess.run([BINARY, 'settings', 'sync-appearance'], env=session.env,
                                     text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {'ok': True})
+            self.assert_cursor_synced(session, 'Emaki-Dark')
         self.assertEqual(log.read_text().splitlines(), [
             '--session', '--type=signal', '/KGlobalSettings',
             'org.kde.KGlobalSettings.notifyChange', 'int32:0', 'int32:0',
             'busctl', '--user', 'emit', '/kdeglobals', 'org.kde.kconfig.notify', 'ConfigChanged',
             'a{saay}', '0'])
 
-    def test_switching_back_to_the_default_removes_the_copies(self):
+    def test_switching_back_to_the_default_keeps_the_text_accent(self):
         session = self.session('orange').start()
         self.assertEqual(session.fuzzel(), session.accent / 'fuzzel/fuzzel.ini')
         (session.base / 'config/emaki/settings.toml').write_text('schema_version = 1\n')
         session.start()
-        self.assert_packaged(session)
+        self.assert_packaged(session, exported=True)
 
 
 if __name__ == '__main__':
     assert BINARY is not None and BINARY.is_file(), 'Build the emaki binary before this test'
-    for program in ('kitty', 'fuzzel', 'kreadconfig6', 'qml6'):
+    for program in ('kitty', 'fuzzel', 'kreadconfig6', 'qml6', 'gsettings'):
         assert shutil.which(program), f'{program} is required for this test'
     unittest.main()

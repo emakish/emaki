@@ -8,6 +8,7 @@ import Quickshell.Io
 Scope {
     id: settings
     required property bool active
+    property var notificationStore: null
     // A client outside the shell directory (the manager's own qs) names the installed helper.
     property string helper: Quickshell.shellPath("helpers/launcher-tools.py")
     readonly property string profile: Quickshell.env("EMAKI_SETTINGS_PROFILE")
@@ -15,13 +16,21 @@ Scope {
     property var history: []
     property var defaults: []
     property var xkbLayouts: []
-    property var wallpapers: []
+    property var installedWallpapers: []
+    readonly property var wallpapers: styles.map(style => ({
+                path: style.wallpaper,
+                name: qsTranslate("SettingsThemesPage", style.name),
+                thumbnail: style.thumbnail,
+                available: style.wallpaper_available
+            })).concat(installedWallpapers)
+    property var styles: []
     property string inheritedWallpaper: ""
     property string state: "idle"
     property string lastAction: "idle"
     property string lastStatus: ""
     property bool sessionApplied: false
     property string currentAction: ""
+    property string currentChoice: ""
     property bool replyReceived: false
     property bool inFlight: false
     property var queue: []
@@ -29,7 +38,7 @@ Scope {
     property int readEpoch: 0
     readonly property bool busy: inFlight || core.busy || queue.length > 0
     readonly property bool writing: (inFlight && ["set", "reset", "undo"].includes(currentAction)) || queue.some(request => ["set", "reset", "undo"].includes(request.action))
-    readonly property alias wallpaperChooser: wallpaperChooser
+    readonly property alias wallpaperChooser: wallpaperChooserJob
     property string wallpaperChooserError: ""
     function chooseWallpaper(): void {
         if (writing || wallpaperChooser.busy || !row("appearance.wallpaper"))
@@ -39,20 +48,97 @@ Scope {
             op: "wallpaper-choose"
         });
     }
+    function wallpaperChoiceFailed(): void {
+        if (wallpaperChooserError)
+            return;
+        wallpaperChooserError = qsTr("Could not choose a picture. Your wallpaper has not changed.");
+        notificationStore?.local("Emaki", wallpaperChooserError, "");
+    }
     PrivateJob {
-        id: wallpaperChooser
+        id: wallpaperChooserJob
         timeoutMs: 130000
         onCompleted: result => {
             if (result.state === "ready" && typeof result.path === "string" && result.path.startsWith("/")) {
                 settings.wallpaperChooserError = "";
-                settings.set("appearance.wallpaper", result.path);
+                settings.applyChoice("wallpaper", "appearance.wallpaper", result.path);
             } else if (result.state !== "cancelled") {
-                settings.wallpaperChooserError = qsTranslate("SettingsCatalog", "Could not choose a picture. Your wallpaper has not changed.");
+                settings.wallpaperChoiceFailed();
+            }
+        }
+        // A reply sets state before completed; defer transport failures to avoid two notices.
+        onStateChanged: {
+            if (!["idle", "pending", "ready", "cancelled"].includes(state))
+                Qt.callLater(settings.wallpaperChoiceFailed);
+        }
+    }
+    readonly property alias overviewChooser: overviewChooserJob
+    property string overviewChooserError: ""
+    function chooseOverview(): void {
+        if (writing || overviewChooser.busy)
+            return;
+        overviewChooserError = "";
+        overviewChooser.start({
+            op: "overview-choose"
+        });
+    }
+    function selectOverview(style): void {
+        overviewChooserError = "";
+        set("appearance.overview_background", "catalog:" + style.id);
+    }
+    function resetOverview(): void {
+        overviewChooserError = "";
+        reset("appearance.overview_background");
+    }
+    function overviewChoiceFailed(message: string): void {
+        if (overviewChooserError)
+            return;
+        overviewChooserError = message;
+        notificationStore?.local("Emaki", overviewChooserError, "");
+    }
+    PrivateJob {
+        id: overviewChooserJob
+        timeoutMs: 150000
+        onCompleted: result => {
+            if (result.state === "ready" && typeof result.path === "string" && result.path.startsWith("/")) {
+                const still = result.kind === "picture" ? result.path : settings.value("appearance.overview_still");
+                settings.applyChoice("overview", "appearance.overview_background", JSON.stringify({
+                    video: result.kind === "video" ? result.path : "",
+                    still: still
+                }));
+            } else if (result.state !== "cancelled") {
+                settings.overviewChoiceFailed(qsTr("This file could not be played or opened."));
             }
         }
         onStateChanged: {
             if (!["idle", "pending", "ready", "cancelled"].includes(state))
-                settings.wallpaperChooserError = qsTranslate("SettingsCatalog", "Could not choose a picture. Your wallpaper has not changed.");
+                Qt.callLater(settings.overviewChoiceFailed, qsTr("Could not choose an overview background. Try again."));
+        }
+    }
+    function applyChoice(choice: string, key: string, value: string): void {
+        queue = queue.concat([
+            {
+                action: "set",
+                args: [key, value],
+                choice: choice
+            }
+        ]);
+        Qt.callLater(drain);
+    }
+    function choiceApplyFailed(): void {
+        if (currentChoice === "wallpaper")
+            wallpaperChoiceFailed();
+        else if (currentChoice === "overview")
+            overviewChoiceFailed(qsTr("Could not choose an overview background. Try again."));
+    }
+    function choiceApplyUnconfirmed(): void {
+        if (!currentChoice)
+            return;
+        const message = qsTr("The change could not be confirmed. Check the current value before trying again.");
+        if (currentChoice === "wallpaper") {
+            wallpaperChooserError = message;
+            notificationStore?.local("Emaki", message, "");
+        } else {
+            overviewChoiceFailed(message);
         }
     }
     function send(action: string, args: var): void {
@@ -71,6 +157,7 @@ Scope {
             queue = queue.slice(1);
             readEpoch = applyEpoch;
             currentAction = next.action;
+            currentChoice = next.choice || "";
             replyReceived = false;
             core.start({
                 op: "settings",
@@ -85,6 +172,7 @@ Scope {
         if (!inFlight || core.busy)
             return;
         if (!replyReceived) {
+            choiceApplyUnconfirmed();
             state = core.state;
             if (["set", "reset", "undo"].includes(currentAction)) {
                 lastStatus = "unconfirmed";
@@ -93,6 +181,7 @@ Scope {
         }
         inFlight = false;
         currentAction = "";
+        currentChoice = "";
         Qt.callLater(drain);
     }
     function refresh(): void {
@@ -178,6 +267,12 @@ Scope {
             const action = settings.currentAction;
             settings.replyReceived = true;
             settings.state = value.state;
+            if (settings.currentChoice && !["committed", "unchanged"].includes(value.status)) {
+                if (value.status === "rejected")
+                    settings.choiceApplyFailed();
+                else
+                    settings.choiceApplyUnconfirmed();
+            }
             if (action === "list") {
                 if (value.state === "settings_busy")
                     readRetry.restart();
@@ -203,6 +298,9 @@ Scope {
             else if (value.settings?.length && action === "list")
                 // An IPC apply carries no titles: read the full rows again.
                 settings.send("list", []);
+            const styles = core.list(value.styles);
+            if (value.status !== "rejected" && styles !== null && settings.readEpoch === settings.applyEpoch)
+                settings.styles = styles;
             if (action === "history" && value.history)
                 settings.history = value.history;
         }
@@ -225,7 +323,7 @@ Scope {
         id: wallpapersJob
         helper: settings.helper
         onCompleted: value => {
-            settings.wallpapers = value.entries || [];
+            settings.installedWallpapers = value.entries || [];
             settings.inheritedWallpaper = value.inheritedPath || "";
         }
     }

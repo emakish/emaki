@@ -46,6 +46,7 @@ LOOK_FIELDS = {
     'accent': re.compile(r'[a-z]{1,16}\Z'),
     'light_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
     'dark_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
+    'cursor': re.compile(r'(?:automatic|white|dark)\Z'),
 }
 
 
@@ -303,7 +304,7 @@ def accounts(paths):
 
 
 def look(paths, user, uid):
-    """The look a session published for the login screen: theme, accent and switch times only.
+    """The look a session published for the login screen: theme, accent, switch times and cursor.
 
     The copy lies in the account's published directory, never in its home. A file that is not
     a small regular file of that account, or a value outside the fixed forms, is ignored."""

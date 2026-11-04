@@ -4,7 +4,7 @@
 # Build inputs name the installed output; new files require their own entry.
 packaging/emaki-font-iosevka/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-font-iosevka/PKGBUILD:package
 packaging/emaki-font-iosevka/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
-art/cursor/haze.py	Cursor drawing source; build-cursors produces the installed cursor theme.	scripts/build-cursors
+art/cursor/rounded.py	Rounded drawing source; build-cursors produces both installed rounded themes.	scripts/build-cursors
 art/grub/background.py	Artwork generator for the installed GRUB background.png.	art/grub/background.py:usage
 art/icons/emaki-install.py	Artwork generator for installed installer/ui/emaki-install.svg.	art/icons/emaki-install.py:TARGET
 art/icons/emaki-report.py	Artwork generator for installed art/icons/emaki-report.svg.	art/icons/emaki-report.py:TARGET
@@ -106,7 +106,10 @@ packaging/emaki-config/expected-files.list	Reviewed package payload assertion us
 packaging/emaki-config/preset-unit-files.json	Recorded upstream unit inventory for preset regression tests.	tests/test-packaging.py
 packaging/emaki-config/terminus-font-files.json	Recorded upstream font inventory for console font regression tests.	tests/test-packaging.py
 scripts/build-boot-splash	Build tool for the unshipped UKI splash prototype.	Makefile:boot-splash
-scripts/build-cursors	Build tool producing the installed checked-in cursor theme.	Makefile:cursors
+scripts/build-cursors	Build tool producing the installed checked-in cursor themes.	Makefile:cursors
+scripts/prepare-theme-assets	Release staging and verification helper; the emaki-themes package contains the staged media, not this script.	packaging/emaki-themes/PKGBUILD:package; tests/test-theme-assets.py
+themes/previews/README.md	Provenance note for the catalog preview images; the previews themselves are installed.	themes/previews
+scripts/cursor-contact-sheet	Development contact sheets of the built cursor themes; no runtime consumer.	MANIFEST.md
 scripts/build-fetch	Build tool producing the installed checked-in fetch assets.	Makefile:fetch-assets
 scripts/build-lock-wordmark	Build tool producing installed LockWordmarkData.js.	Makefile:lock-wordmark
 scripts/build-emoji-data	Build tool producing installed shell/emoji/*.json from Unicode CLDR data.	Makefile:emoji-data; tests/test-emoji-catalog.py
@@ -168,6 +171,7 @@ crates/emaki-core/src/niri/stream.rs	Compiled core build input; the resulting em
 crates/emaki-core/src/settings/journal.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/mod.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/storage.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/styles.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/state.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/transport.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/tests/niri.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
@@ -288,6 +292,10 @@ update-manager/ui/tests/layout.py	Update-window layout runner at every niri thir
 update-manager/ui/tests/LayoutTest.qml	Update-window layout fixture: every page checked for overflow, overlap and cut text.	update-manager/ui/tests/layout.py
 update-manager/ui/tests/controller.py	Update-window process protocol test runner.	Makefile:check-shell
 update-manager/ui/tests/ControllerTest.qml	Update-window process protocol fixture.	update-manager/ui/tests/controller.py
+update-manager/ui/tests/storefront.py	Start-screen discovery render and keyboard runner.	Makefile:check-shell
+update-manager/ui/tests/StorefrontTest.qml	Start-screen discovery fixture.	update-manager/ui/tests/storefront.py
+update-manager/ui/tests/startup_timing.py	Start-screen time-to-first-content regression runner.	Makefile:check-shell
+update-manager/ui/tests/StartupTimingTest.qml	Start-screen timing fixture.	update-manager/ui/tests/startup_timing.py
 crates/emaki-core/src/settings/live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/niri_live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/machine.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
@@ -296,6 +304,7 @@ crates/emaki-cli/tests/settings_tui.rs	Core regression test or fixture; not part
 crates/emaki-core/src/settings/live_tests.rs	Core regression tests for durable session rollback; excluded from installed executable.	cargo test -p emaki-core
 crates/emaki-core/src/settings/mime.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/accent.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/cursor.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/accent/migration.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/input.rs	Compiled into the existing core and CLI input-settings backend.	crates/emaki-core/src/settings/mod.rs
 packaging/emaki-installer/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
@@ -424,3 +433,49 @@ scripts/public/reviewed-baseline.json	Exact reviewed source lines awaiting a pub
 scripts/public/ci.py	Source-only contribution checks; not part of the installed system.	.github/workflows/check.yml; .github/workflows/guard.yml
 scripts/public/guard.py	Source-only public content and history gate; not part of the installed system.	.github/workflows/guard.yml; tests/test-public-guard.py
 scripts/public/policy.json	Reviewed policy for source-only public checks; not part of the installed system.	scripts/public/guard.py
+tests/test-update-inhibit.py	Updater shutdown/sleep lease acquisition, child inheritance and release regression tests.	Makefile:check
+
+# Editable cube and ribbon theme artwork build inputs.
+art/cubes/README.md	Source reproduction instructions and expected theme output hashes.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/cubes.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/frames.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/motion_assemble.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/motion_export.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/motion_render.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/motion_runner.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/polish_look.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/render-final-video.sh	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/render8k.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/render8k.sh	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/cubes/video.py	Scene or render build input for installed cubes theme media.	art/cubes/README.md; scripts/prepare-theme-assets
+art/ribbons/README.md	Source reproduction instructions and expected theme output hashes.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/SHA256SUMS	Source reproduction instructions and expected theme output hashes.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/assemble_all_colours.sh	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/assemble_final.py	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/assemble_final.sh	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/colour_pipeline.py	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/final_runner.py	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/prepare_shipping.py	Dither variant A strips and record fade and seam delivery proofs.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/render_final.sh	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/01-rose-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/02-orange-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/03-coral-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/04-amber-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/05-green-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/06-teal-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/07-blue-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/08-violet-light.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/09-rose-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/10-orange-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/11-coral-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/12-amber-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/13-green-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/14-teal-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/15-blue-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/16-violet-dark.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/17-silver.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/renders/r2-palettes/18-graphite.json	Editable palette input for installed ribbon theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/ribbons.py	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/ribbons_round2.py	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/strips8k_runner.py	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets
+art/ribbons/strips8k_scene.py	Scene or render build input for installed ribbons theme media.	art/ribbons/README.md; scripts/prepare-theme-assets

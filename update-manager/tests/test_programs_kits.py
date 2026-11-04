@@ -19,6 +19,11 @@ import programs_receipts as receipts
 
 
 class Kits(unittest.TestCase):
+    def setUp(self):
+        # These tests fake package operations; lease ownership has its own suite.
+        self.enterContext(patch.object(helper.emaki_update_inhibit, 'inhibit',
+                                       side_effect=lambda: contextlib.nullcontext()))
+
     def test_catalog_all_packages_and_follow_up_state(self):
         installed = {name: '1' for row in kits.definitions() for name in row['packages']}
         with patch.object(kits, 'stable_installed', return_value=False), patch.object(kits, 'socket_enabled', return_value=False), patch.object(kits, 'receipt_for', return_value=None):

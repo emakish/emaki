@@ -448,25 +448,28 @@ rollback: For the compositor and its compatible root package set together, follo
 
 ## cursor-theme
 
-The packaged Emaki cursor images, aliases and theme index used by the desktop and login screen.
+The packaged rounded white and dark cursor images, aliases and theme indexes. Automatic follows light/dark appearance; the initial light desktop and login use white.
 
-- Files: `/usr/share/icons/Emaki/**`
+- Files: `/usr/share/icons/Emaki-White/**`, `/usr/share/icons/Emaki-Dark/**`, `/usr/share/emaki/shell/settings/cursors/**`, `/usr/share/emaki/shell/helpers/greeter-cursor.py`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
-- State: none yet: no installed JSON command reports both the compositor cursor and application cursor themes; read the compositor and toolkit settings.
-- Change: Update emaki-config through the update manager. On Arch, package transactions use `pacman`.
+- State: `emaki settings get appearance.cursor --json` (prints JSON)
+- Change: Choose Automatic, White or Dark in Settings > Appearance, or use emaki settings set appearance.cursor automatic|white|dark. Update packaged assets through the update manager.
 - Never: Replace cursor images or aliases in the package directory to change a personal preference.
-- Rollback: For packaged cursor assets, follow snapshot-recovery with an available pre-update btrfs root snapshot. Personal theme selections in /home remain unchanged. Ext4 has no snapshot rollback.
+- Rollback: Undo a managed choice with emaki settings undo ID, or reset appearance.cursor to inherit the default. For packaged cursor assets, follow snapshot-recovery with an available pre-update btrfs root snapshot. Personal choices remain unchanged. Ext4 has no snapshot rollback.
 
 ```system-map
 component: cursor-theme
-what: The packaged Emaki cursor images, aliases and theme index used by the desktop and login screen.
+what: The packaged rounded white and dark cursor images, aliases and theme indexes. Automatic follows light/dark appearance; the initial light desktop and login use white.
 files:
-  /usr/share/icons/Emaki/**
+  /usr/share/icons/Emaki-White/**
+  /usr/share/icons/Emaki-Dark/**
+  /usr/share/emaki/shell/settings/cursors/**
+  /usr/share/emaki/shell/helpers/greeter-cursor.py
 zone: package
-state: none yet: no installed JSON command reports both the compositor cursor and application cursor themes; read the compositor and toolkit settings.
-change: Update emaki-config through the update manager. On Arch, package transactions use `pacman`.
+state: emaki settings get appearance.cursor --json
+change: Choose Automatic, White or Dark in Settings > Appearance, or use emaki settings set appearance.cursor automatic|white|dark. Update packaged assets through the update manager.
 never: Replace cursor images or aliases in the package directory to change a personal preference.
-rollback: For packaged cursor assets, follow snapshot-recovery with an available pre-update btrfs root snapshot. Personal theme selections in /home remain unchanged. Ext4 has no snapshot rollback.
+rollback: Undo a managed choice with emaki settings undo ID, or reset appearance.cursor to inherit the default. For packaged cursor assets, follow snapshot-recovery with an available pre-update btrfs root snapshot. Personal choices remain unchanged. Ext4 has no snapshot rollback.
 ```
 
 ## desktop-package-policy
@@ -525,7 +528,7 @@ rollback: For portal packages and their dependencies together, follow snapshot-r
 
 The desktop bar, dock, launcher, notifications, clipboard, system panel, lock, welcome, what's new and Report a problem windows, plus their QML modules, shaders and helpers. The state command requires the running desktop shell. The launcher hosts Settings on the same surface, growing from its normal 720-pixel width to at most 1240 by 810 logical pixels within the output. Application, recent-item, notification, night-light, welcome and release-tour state under $XDG_STATE_HOME/emaki is runtime state outside settings history. The release tour records the highest seen installed version in whatsnew.json; fresh installs and contentless patches advance it without showing release pages, and unsupported state schemas are preserved. Shell crash-offer history under $XDG_STATE_HOME/emaki/shell-health lasts for one boot; running-process markers and clean-exit receipts live under $XDG_RUNTIME_DIR/emaki-shell-health. The lock and login screens show a re-encoded copy of the account picture from $XDG_RUNTIME_DIR/emaki-account-picture.
 
-- Files: `/usr/share/emaki/shell/AccountPicture.qml`, `/usr/share/emaki/shell/AppCatalog.qml`, `/usr/share/emaki/shell/AppIdentity.qml`, `/usr/share/emaki/shell/AppLaunch.qml`, `/usr/share/emaki/shell/AuthController.qml`, `/usr/share/emaki/shell/BarPolicy.qml`, `/usr/share/emaki/shell/Calculator.js`, `/usr/share/emaki/shell/CalendarMonth.qml`, `/usr/share/emaki/shell/CanvasTint.qml`, `/usr/share/emaki/shell/ClipboardHistory.qml`, `/usr/share/emaki/shell/ClockBody.qml`, `/usr/share/emaki/shell/ClockCompactRow.qml`, `/usr/share/emaki/shell/ClockIsland.qml`, `/usr/share/emaki/shell/ClockPanel.qml`, `/usr/share/emaki/shell/ClockTools.qml`, `/usr/share/emaki/shell/ClockToolsService.qml`, `/usr/share/emaki/shell/Commands.js`, `/usr/share/emaki/shell/Dock.qml`, `/usr/share/emaki/shell/DockBackdrop.qml`, `/usr/share/emaki/shell/DockBackdropRegion.qml`, `/usr/share/emaki/shell/DockInputRegion.qml`, `/usr/share/emaki/shell/DockIpc.qml`, `/usr/share/emaki/shell/DockPolicy.qml`, `/usr/share/emaki/shell/DockStore.qml`, `/usr/share/emaki/shell/EmojiCatalog.qml`, `/usr/share/emaki/shell/FocusRing.qml`, `/usr/share/emaki/shell/GlassCopy.qml`, `/usr/share/emaki/shell/GlassShape.qml`, `/usr/share/emaki/shell/GlassTarget.qml`, `/usr/share/emaki/shell/GlassText.qml`, `/usr/share/emaki/shell/GreeterAuth.qml`, `/usr/share/emaki/shell/GreeterSession.qml`, `/usr/share/emaki/shell/GreeterState.qml`, `/usr/share/emaki/shell/GreeterUsers.qml`, `/usr/share/emaki/shell/HoverTip.qml`, `/usr/share/emaki/shell/Icon.qml`, `/usr/share/emaki/shell/IslandGlass.qml`, `/usr/share/emaki/shell/Keyboard.js`, `/usr/share/emaki/shell/KeyboardFocusKeeper.qml`, `/usr/share/emaki/shell/KeyboardTarget.qml`, `/usr/share/emaki/shell/LauncherBody.qml`, `/usr/share/emaki/shell/LauncherItem.qml`, `/usr/share/emaki/shell/LeftIslands.qml`, `/usr/share/emaki/shell/Liquid.js`, `/usr/share/emaki/shell/LiquidPalette.qml`, `/usr/share/emaki/shell/LockAuth.qml`, `/usr/share/emaki/shell/LockCapture.qml`, `/usr/share/emaki/shell/LockCapturePanel.qml`, `/usr/share/emaki/shell/LockEnvironment.qml`, `/usr/share/emaki/shell/LockGeometry.qml`, `/usr/share/emaki/shell/LockGlass.qml`, `/usr/share/emaki/shell/LockInput.qml`, `/usr/share/emaki/shell/LockPam.qml`, `/usr/share/emaki/shell/LockSession.qml`, `/usr/share/emaki/shell/LockSurface.qml`, `/usr/share/emaki/shell/LockVisual.qml`, `/usr/share/emaki/shell/LockWordmark.js`, `/usr/share/emaki/shell/LockWordmark.qml`, `/usr/share/emaki/shell/LockWordmarkData.js`, `/usr/share/emaki/shell/MediaBlock.qml`, `/usr/share/emaki/shell/Metrics.qml`, `/usr/share/emaki/shell/MicMeter.qml`, `/usr/share/emaki/shell/NightLight.qml`, `/usr/share/emaki/shell/NiriService.qml`, `/usr/share/emaki/shell/NotificationReceiver.qml`, `/usr/share/emaki/shell/NotificationService.qml`, `/usr/share/emaki/shell/NotificationStore.qml`, `/usr/share/emaki/shell/NumberLocale.js`, `/usr/share/emaki/shell/Osd.qml`, `/usr/share/emaki/shell/OutputSelection.js`, `/usr/share/emaki/shell/PasswordToggle.qml`, `/usr/share/emaki/shell/PrivacyCompactRow.qml`, `/usr/share/emaki/shell/PrivacyPanel.qml`, `/usr/share/emaki/shell/PrivacyPill.qml`, `/usr/share/emaki/shell/PrivateJob.qml`, `/usr/share/emaki/shell/RecentFiles.qml`, `/usr/share/emaki/shell/RecentLog.qml`, `/usr/share/emaki/shell/ReportBridge.qml`, `/usr/share/emaki/shell/ReportController.qml`, `/usr/share/emaki/shell/ReportView.qml`, `/usr/share/emaki/shell/ReportWindow.qml`, `/usr/share/emaki/shell/ScreenShare.js`, `/usr/share/emaki/shell/SessionCoverState.qml`, `/usr/share/emaki/shell/SessionCoverSurface.qml`, `/usr/share/emaki/shell/SessionStartup.qml`, `/usr/share/emaki/shell/SessionUpdateNotice.qml`, `/usr/share/emaki/shell/ShellOutputs.qml`, `/usr/share/emaki/shell/ShellPalette.qml`, `/usr/share/emaki/shell/ShellRecoveryNotice.qml`, `/usr/share/emaki/shell/ShellScene.qml`, `/usr/share/emaki/shell/ShellServices.qml`, `/usr/share/emaki/shell/ShellTools.qml`, `/usr/share/emaki/shell/ShortcutSheet.qml`, `/usr/share/emaki/shell/SnapshotPrompt.qml`, `/usr/share/emaki/shell/SnapshotRecovery.qml`, `/usr/share/emaki/shell/StaticBar.qml`, `/usr/share/emaki/shell/Surfaces.qml`, `/usr/share/emaki/shell/Switcher.js`, `/usr/share/emaki/shell/SwitcherCapture.qml`, `/usr/share/emaki/shell/SymbolIcon.qml`, `/usr/share/emaki/shell/SystemBackend.qml`, `/usr/share/emaki/shell/SystemBody.qml`, `/usr/share/emaki/shell/SystemCompactRow.qml`, `/usr/share/emaki/shell/SystemIcons.js`, `/usr/share/emaki/shell/SystemIsland.qml`, `/usr/share/emaki/shell/SystemMeterPolicy.qml`, `/usr/share/emaki/shell/SystemNative.qml`, `/usr/share/emaki/shell/SystemPanel.qml`, `/usr/share/emaki/shell/SystemService.qml`, `/usr/share/emaki/shell/TipTarget.qml`, `/usr/share/emaki/shell/TrayItems.qml`, `/usr/share/emaki/shell/TrayService.qml`, `/usr/share/emaki/shell/UpdateService.qml`, `/usr/share/emaki/shell/UpdatesNotice.qml`, `/usr/share/emaki/shell/WallpaperSource.qml`, `/usr/share/emaki/shell/Welcome.qml`, `/usr/share/emaki/shell/WelcomeButton.qml`, `/usr/share/emaki/shell/WelcomeContent.js`, `/usr/share/emaki/shell/WelcomeController.qml`, `/usr/share/emaki/shell/WelcomeGlass.qml`, `/usr/share/emaki/shell/WelcomeStore.qml`, `/usr/share/emaki/shell/WelcomeWindow.qml`, `/usr/share/emaki/shell/WhatsNew.qml`, `/usr/share/emaki/shell/WhatsNewContent.js`, `/usr/share/emaki/shell/WhatsNewStore.qml`, `/usr/share/emaki/shell/WindowLabels.qml`, `/usr/share/emaki/shell/WindowSwitcher.qml`, `/usr/share/emaki/shell/WorkspaceStrip.qml`, `/usr/share/emaki/shell/XkbCodes.js`, `/usr/share/emaki/shell/emaki-report.desktop`, `/usr/share/emaki/shell/emaki-welcome.desktop`, `/usr/share/emaki/shell/emoji/LICENSE`, `/usr/share/emaki/shell/emoji/de.json`, `/usr/share/emaki/shell/emoji/en.json`, `/usr/share/emaki/shell/emoji/es.json`, `/usr/share/emaki/shell/emoji/fr.json`, `/usr/share/emaki/shell/emoji/pt.json`, `/usr/share/emaki/shell/emoji/ru.json`, `/usr/share/emaki/shell/greeter.qml`, `/usr/share/emaki/shell/helpers/account-picture.py`, `/usr/share/emaki/shell/helpers/app_scope.py`, `/usr/share/emaki/shell/helpers/child-guard.py`, `/usr/share/emaki/shell/helpers/clip-recorder.py`, `/usr/share/emaki/shell/helpers/clipboard_store.py`, `/usr/share/emaki/shell/helpers/clock-chime.py`, `/usr/share/emaki/shell/helpers/clock-tools.py`, `/usr/share/emaki/shell/helpers/greeter-auth.py`, `/usr/share/emaki/shell/helpers/greeter-handoff.py`, `/usr/share/emaki/shell/helpers/greeter-state.py`, `/usr/share/emaki/shell/helpers/launcher-tools.py`, `/usr/share/emaki/shell/helpers/lock-environment.py`, `/usr/share/emaki/shell/helpers/private-state.py`, `/usr/share/emaki/shell/helpers/publish-wallpaper.py`, `/usr/share/emaki/shell/helpers/recent-files.py`, `/usr/share/emaki/shell/helpers/session-start.py`, `/usr/share/emaki/shell/helpers/shortcuts.py`, `/usr/share/emaki/shell/helpers/system-tools.py`, `/usr/share/emaki/shell/helpers/wallpaper.py`, `/usr/share/emaki/shell/lock.qml`, `/usr/share/emaki/shell/mark-bar-26.png`, `/usr/share/emaki/shell/qmldir`, `/usr/share/emaki/shell/session-cover.qml`, `/usr/share/emaki/shell/shaders/dock.frag`, `/usr/share/emaki/shell/shaders/dock.frag.qsb`, `/usr/share/emaki/shell/shaders/down.frag`, `/usr/share/emaki/shell/shaders/down.frag.qsb`, `/usr/share/emaki/shell/shaders/gauss.frag`, `/usr/share/emaki/shell/shaders/gauss.frag.qsb`, `/usr/share/emaki/shell/shaders/session-drain.frag`, `/usr/share/emaki/shell/shaders/session-drain.frag.qsb`, `/usr/share/emaki/shell/shell.qml`, `/usr/bin/emaki-shell`, `/usr/bin/emaki-shell-health`, `/usr/share/applications/emaki-report.desktop`, `/usr/share/applications/emaki-welcome.desktop`, `/usr/share/icons/hicolor/scalable/apps/emaki-report.svg`, `/usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg`, `/usr/lib/systemd/user/emaki-shell*.service`
+- Files: `/usr/share/emaki/shell/AccountPicture.qml`, `/usr/share/emaki/shell/AppCatalog.qml`, `/usr/share/emaki/shell/AppIdentity.qml`, `/usr/share/emaki/shell/AppLaunch.qml`, `/usr/share/emaki/shell/AuthController.qml`, `/usr/share/emaki/shell/BarBackdrop.qml`, `/usr/share/emaki/shell/BarPolicy.qml`, `/usr/share/emaki/shell/Calculator.js`, `/usr/share/emaki/shell/CalendarMonth.qml`, `/usr/share/emaki/shell/CanvasTint.qml`, `/usr/share/emaki/shell/ClipboardHistory.qml`, `/usr/share/emaki/shell/ClockBody.qml`, `/usr/share/emaki/shell/ClockCompactRow.qml`, `/usr/share/emaki/shell/ClockIsland.qml`, `/usr/share/emaki/shell/ClockPanel.qml`, `/usr/share/emaki/shell/ClockTools.qml`, `/usr/share/emaki/shell/ClockToolsService.qml`, `/usr/share/emaki/shell/Commands.js`, `/usr/share/emaki/shell/Dock.qml`, `/usr/share/emaki/shell/DockBackdrop.qml`, `/usr/share/emaki/shell/DockBackdropRegion.qml`, `/usr/share/emaki/shell/DockInputRegion.qml`, `/usr/share/emaki/shell/DockIpc.qml`, `/usr/share/emaki/shell/DockPolicy.qml`, `/usr/share/emaki/shell/DockStore.qml`, `/usr/share/emaki/shell/EmojiCatalog.qml`, `/usr/share/emaki/shell/FocusRing.qml`, `/usr/share/emaki/shell/GlassCopy.qml`, `/usr/share/emaki/shell/GlassShape.qml`, `/usr/share/emaki/shell/GlassTarget.qml`, `/usr/share/emaki/shell/GlassText.qml`, `/usr/share/emaki/shell/GreeterAuth.qml`, `/usr/share/emaki/shell/GreeterSession.qml`, `/usr/share/emaki/shell/GreeterState.qml`, `/usr/share/emaki/shell/GreeterUsers.qml`, `/usr/share/emaki/shell/HoverTip.qml`, `/usr/share/emaki/shell/Icon.qml`, `/usr/share/emaki/shell/IslandGlass.qml`, `/usr/share/emaki/shell/Keyboard.js`, `/usr/share/emaki/shell/KeyboardFocusKeeper.qml`, `/usr/share/emaki/shell/KeyboardTarget.qml`, `/usr/share/emaki/shell/LauncherBody.qml`, `/usr/share/emaki/shell/LauncherItem.qml`, `/usr/share/emaki/shell/LeftIslands.qml`, `/usr/share/emaki/shell/Liquid.js`, `/usr/share/emaki/shell/LiquidPalette.qml`, `/usr/share/emaki/shell/LockAuth.qml`, `/usr/share/emaki/shell/LockCapture.qml`, `/usr/share/emaki/shell/LockCapturePanel.qml`, `/usr/share/emaki/shell/LockEnvironment.qml`, `/usr/share/emaki/shell/LockGeometry.qml`, `/usr/share/emaki/shell/LockGlass.qml`, `/usr/share/emaki/shell/LockInput.qml`, `/usr/share/emaki/shell/LockPam.qml`, `/usr/share/emaki/shell/LockSession.qml`, `/usr/share/emaki/shell/LockSurface.qml`, `/usr/share/emaki/shell/LockVisual.qml`, `/usr/share/emaki/shell/LockWordmark.js`, `/usr/share/emaki/shell/LockWordmark.qml`, `/usr/share/emaki/shell/LockWordmarkData.js`, `/usr/share/emaki/shell/MediaBlock.qml`, `/usr/share/emaki/shell/Metrics.qml`, `/usr/share/emaki/shell/MicMeter.qml`, `/usr/share/emaki/shell/NightLight.qml`, `/usr/share/emaki/shell/NiriService.qml`, `/usr/share/emaki/shell/NotificationReceiver.qml`, `/usr/share/emaki/shell/NotificationService.qml`, `/usr/share/emaki/shell/NotificationStore.qml`, `/usr/share/emaki/shell/NumberLocale.js`, `/usr/share/emaki/shell/Osd.qml`, `/usr/share/emaki/shell/OutputSelection.js`, `/usr/share/emaki/shell/PasswordToggle.qml`, `/usr/share/emaki/shell/PrivacyCompactRow.qml`, `/usr/share/emaki/shell/PrivacyPanel.qml`, `/usr/share/emaki/shell/PrivacyPill.qml`, `/usr/share/emaki/shell/PrivateJob.qml`, `/usr/share/emaki/shell/RecentFiles.qml`, `/usr/share/emaki/shell/RecentLog.qml`, `/usr/share/emaki/shell/ReportBridge.qml`, `/usr/share/emaki/shell/ReportController.qml`, `/usr/share/emaki/shell/ReportView.qml`, `/usr/share/emaki/shell/ReportWindow.qml`, `/usr/share/emaki/shell/ScreenShare.js`, `/usr/share/emaki/shell/SessionCoverState.qml`, `/usr/share/emaki/shell/SessionCoverSurface.qml`, `/usr/share/emaki/shell/SessionStartup.qml`, `/usr/share/emaki/shell/SessionUpdateNotice.qml`, `/usr/share/emaki/shell/ShellOutputs.qml`, `/usr/share/emaki/shell/ShellPalette.qml`, `/usr/share/emaki/shell/ShellRecoveryNotice.qml`, `/usr/share/emaki/shell/ShellScene.qml`, `/usr/share/emaki/shell/ShellServices.qml`, `/usr/share/emaki/shell/ShellTools.qml`, `/usr/share/emaki/shell/ShortcutSheet.qml`, `/usr/share/emaki/shell/SnapshotPrompt.qml`, `/usr/share/emaki/shell/SnapshotRecovery.qml`, `/usr/share/emaki/shell/StaticBar.qml`, `/usr/share/emaki/shell/Surfaces.qml`, `/usr/share/emaki/shell/Switcher.js`, `/usr/share/emaki/shell/SwitcherCapture.qml`, `/usr/share/emaki/shell/SymbolIcon.qml`, `/usr/share/emaki/shell/SystemBackend.qml`, `/usr/share/emaki/shell/SystemBody.qml`, `/usr/share/emaki/shell/SystemCompactRow.qml`, `/usr/share/emaki/shell/SystemIcons.js`, `/usr/share/emaki/shell/SystemIsland.qml`, `/usr/share/emaki/shell/SystemMeterPolicy.qml`, `/usr/share/emaki/shell/SystemNative.qml`, `/usr/share/emaki/shell/SystemPanel.qml`, `/usr/share/emaki/shell/SystemService.qml`, `/usr/share/emaki/shell/TipTarget.qml`, `/usr/share/emaki/shell/TrayItems.qml`, `/usr/share/emaki/shell/TrayService.qml`, `/usr/share/emaki/shell/UpdateService.qml`, `/usr/share/emaki/shell/UpdatesNotice.qml`, `/usr/share/emaki/shell/WallpaperSource.qml`, `/usr/share/emaki/shell/Welcome.qml`, `/usr/share/emaki/shell/WelcomeButton.qml`, `/usr/share/emaki/shell/WelcomeContent.js`, `/usr/share/emaki/shell/WelcomeController.qml`, `/usr/share/emaki/shell/WelcomeGlass.qml`, `/usr/share/emaki/shell/WelcomeStore.qml`, `/usr/share/emaki/shell/WelcomeWindow.qml`, `/usr/share/emaki/shell/WhatsNew.qml`, `/usr/share/emaki/shell/WhatsNewContent.js`, `/usr/share/emaki/shell/WhatsNewStore.qml`, `/usr/share/emaki/shell/WindowLabels.qml`, `/usr/share/emaki/shell/WindowSwitcher.qml`, `/usr/share/emaki/shell/WorkspaceStrip.qml`, `/usr/share/emaki/shell/XkbCodes.js`, `/usr/share/emaki/shell/emaki-report.desktop`, `/usr/share/emaki/shell/emaki-welcome.desktop`, `/usr/share/emaki/shell/emoji/LICENSE`, `/usr/share/emaki/shell/emoji/de.json`, `/usr/share/emaki/shell/emoji/en.json`, `/usr/share/emaki/shell/emoji/es.json`, `/usr/share/emaki/shell/emoji/fr.json`, `/usr/share/emaki/shell/emoji/pt.json`, `/usr/share/emaki/shell/emoji/ru.json`, `/usr/share/emaki/shell/greeter.qml`, `/usr/share/emaki/shell/helpers/account-picture.py`, `/usr/share/emaki/shell/helpers/app_scope.py`, `/usr/share/emaki/shell/helpers/child-guard.py`, `/usr/share/emaki/shell/helpers/clip-recorder.py`, `/usr/share/emaki/shell/helpers/clipboard_store.py`, `/usr/share/emaki/shell/helpers/clock-chime.py`, `/usr/share/emaki/shell/helpers/clock-tools.py`, `/usr/share/emaki/shell/helpers/greeter-auth.py`, `/usr/share/emaki/shell/helpers/greeter-handoff.py`, `/usr/share/emaki/shell/helpers/greeter-state.py`, `/usr/share/emaki/shell/helpers/launcher-tools.py`, `/usr/share/emaki/shell/helpers/lock-environment.py`, `/usr/share/emaki/shell/helpers/private-state.py`, `/usr/share/emaki/shell/helpers/publish-wallpaper.py`, `/usr/share/emaki/shell/helpers/recent-files.py`, `/usr/share/emaki/shell/helpers/session-start.py`, `/usr/share/emaki/shell/helpers/shortcuts.py`, `/usr/share/emaki/shell/helpers/system-tools.py`, `/usr/share/emaki/shell/helpers/wallpaper.py`, `/usr/share/emaki/shell/helpers/wallpaper_reduce.py`, `/usr/share/emaki/shell/lock.qml`, `/usr/share/emaki/shell/mark-bar-26.png`, `/usr/share/emaki/shell/qmldir`, `/usr/share/emaki/shell/session-cover.qml`, `/usr/share/emaki/shell/shaders/dock.frag`, `/usr/share/emaki/shell/shaders/dock.frag.qsb`, `/usr/share/emaki/shell/shaders/down.frag`, `/usr/share/emaki/shell/shaders/down.frag.qsb`, `/usr/share/emaki/shell/shaders/gauss.frag`, `/usr/share/emaki/shell/shaders/gauss.frag.qsb`, `/usr/share/emaki/shell/shaders/session-drain.frag`, `/usr/share/emaki/shell/shaders/session-drain.frag.qsb`, `/usr/share/emaki/shell/shell.qml`, `/usr/bin/emaki-shell`, `/usr/bin/emaki-shell-health`, `/usr/share/applications/emaki-report.desktop`, `/usr/share/applications/emaki-welcome.desktop`, `/usr/share/icons/hicolor/scalable/apps/emaki-report.svg`, `/usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg`, `/usr/lib/systemd/user/emaki-shell*.service`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki-shell call system status` (prints JSON)
 - Change: Use the shell panels for their actions and `emaki settings` for supported managed values. Package code changes through emaki-config updates. `emaki-shell restart` restarts the shell in the current session.
@@ -541,6 +544,7 @@ files:
   /usr/share/emaki/shell/AppIdentity.qml
   /usr/share/emaki/shell/AppLaunch.qml
   /usr/share/emaki/shell/AuthController.qml
+  /usr/share/emaki/shell/BarBackdrop.qml
   /usr/share/emaki/shell/BarPolicy.qml
   /usr/share/emaki/shell/Calculator.js
   /usr/share/emaki/shell/CalendarMonth.qml
@@ -694,6 +698,7 @@ files:
   /usr/share/emaki/shell/helpers/shortcuts.py
   /usr/share/emaki/shell/helpers/system-tools.py
   /usr/share/emaki/shell/helpers/wallpaper.py
+  /usr/share/emaki/shell/helpers/wallpaper_reduce.py
   /usr/share/emaki/shell/lock.qml
   /usr/share/emaki/shell/mark-bar-26.png
   /usr/share/emaki/shell/qmldir
@@ -1654,6 +1659,35 @@ never: Write machine configuration from QML, upload diagnostic reports or expose
 rollback: Reset the affected provider or core setting; restore the previous package for page code.
 ```
 
+## settings-themes
+
+Selects a lane wallpaper, overview video and accent as one local theme, with a still fallback.
+
+- Files: `/usr/share/emaki/shell/SettingsThemesPage.qml`, `/usr/share/emaki/shell/OverviewVideo.qml`, `/usr/share/emaki/shell/OverviewVideoContent.qml`, `/usr/share/emaki/shell/OverviewVideoPlayer.qml`, `/usr/share/emaki/shell/OverviewVideoSurface.qml`, `/usr/share/emaki/themes/**`, `/usr/share/licenses/emaki-themes/LICENSE`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki settings list --json` (prints JSON)
+- Change: Choose an installed theme in Settings > Themes or set appearance.style through emaki settings.
+- Never: Edit managed generations directly or package temporary preview videos as final media.
+- Rollback: Reset appearance.style through emaki settings, or undo the theme selection's history entry.
+
+```system-map
+component: settings-themes
+what: Selects a lane wallpaper, overview video and accent as one local theme, with a still fallback.
+files:
+  /usr/share/emaki/shell/SettingsThemesPage.qml
+  /usr/share/emaki/shell/OverviewVideo.qml
+  /usr/share/emaki/shell/OverviewVideoContent.qml
+  /usr/share/emaki/shell/OverviewVideoPlayer.qml
+  /usr/share/emaki/shell/OverviewVideoSurface.qml
+  /usr/share/emaki/themes/**
+  /usr/share/licenses/emaki-themes/LICENSE
+zone: package
+state: emaki settings list --json
+change: Choose an installed theme in Settings > Themes or set appearance.style through emaki settings.
+never: Edit managed generations directly or package temporary preview videos as final media.
+rollback: Reset appearance.style through emaki settings, or undo the theme selection's history entry.
+```
+
 ## settings-users
 
 Settings › Users lists the accounts of the people on this computer and changes accounts through AccountsService. Administrative changes use Emaki's non-retained auth_admin action and a fixed root helper; editing one's own name uses stock change-own-user-data authorization. One's own password uses passwd in the managed terminal. Other passwords are typed only in that terminal and sent privately to the helper. A shell singleton keeps operations and results alive when authentication closes Settings. One usable administrator always remains; the account in use and signed-in accounts cannot be removed.
@@ -1684,26 +1718,27 @@ rollback: Restore a name, role or password through the same page; remove an adde
 
 ## settings-wallpaper
 
-Offers packaged and personal wallpapers plus a portal chooser; wallpaper preferences use the shared settings history.
+Offers packaged and personal wallpapers and overview backgrounds through portal choosers; preferences use the shared settings history.
 
-- Files: `/usr/share/emaki/shell/SettingsWallpaperPage.qml`, `/usr/share/emaki/shell/helpers/wallpaper_chooser.py`
+- Files: `/usr/share/emaki/shell/SettingsWallpaperPage.qml`, `/usr/share/emaki/shell/helpers/wallpaper_chooser.py`, `/usr/share/emaki/shell/helpers/overview_background.py`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki settings get appearance.wallpaper --json` (prints JSON)
-- Change: Select a wallpaper in Settings or use emaki settings set appearance.wallpaper PATH --json.
+- Change: Select a wallpaper or overview background in Settings. Use emaki settings set appearance.wallpaper PATH --json for the lane, or set appearance.overview_background to catalog:ID or a JSON object with video and still paths for the overview.
 - Never: Write personal compositor files, offer frame sheets as complete wallpapers or save a cancelled selection.
-- Rollback: Reset appearance.wallpaper or undo its history entry; dismissing the chooser changes nothing.
+- Rollback: Reset appearance.wallpaper or appearance.overview_background, or undo its history entry; dismissing the chooser changes nothing.
 
 ```system-map
 component: settings-wallpaper
-what: Offers packaged and personal wallpapers plus a portal chooser; wallpaper preferences use the shared settings history.
+what: Offers packaged and personal wallpapers and overview backgrounds through portal choosers; preferences use the shared settings history.
 files:
   /usr/share/emaki/shell/SettingsWallpaperPage.qml
   /usr/share/emaki/shell/helpers/wallpaper_chooser.py
+  /usr/share/emaki/shell/helpers/overview_background.py
 zone: package
 state: emaki settings get appearance.wallpaper --json
-change: Select a wallpaper in Settings or use emaki settings set appearance.wallpaper PATH --json.
+change: Select a wallpaper or overview background in Settings. Use emaki settings set appearance.wallpaper PATH --json for the lane, or set appearance.overview_background to catalog:ID or a JSON object with video and still paths for the overview.
 never: Write personal compositor files, offer frame sheets as complete wallpapers or save a cancelled selection.
-rollback: Reset appearance.wallpaper or undo its history entry; dismissing the chooser changes nothing.
+rollback: Reset appearance.wallpaper or appearance.overview_background, or undo its history entry; dismissing the chooser changes nothing.
 ```
 
 ## settings-wireless-password
@@ -2156,7 +2191,7 @@ rollback: Restore personal wallets from a separate secure backup; settings undo 
 
 Packaged desktop artwork, wallpaper application and publication of the login background. The person selects a wallpaper through managed settings; publication services provide a copy readable by the greeter.
 
-- Files: `/usr/bin/emaki-session-wallpaper`, `/usr/bin/emaki-settings-wallpaper`, `/usr/share/emaki/wallpaper/*`, `/usr/lib/systemd/user/emaki-greeter-wallpaper*`, `/usr/lib/systemd/user/graphical-session.target.wants/emaki-greeter-wallpaper*`
+- Files: `/usr/bin/emaki-session-wallpaper`, `/usr/bin/emaki-settings-wallpaper`, `/usr/share/emaki/wallpaper/*`, `/usr/share/emaki/wpaperd/config.toml`, `/usr/lib/systemd/user/emaki-greeter-wallpaper*`, `/usr/lib/systemd/user/graphical-session.target.wants/emaki-greeter-wallpaper*`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki settings get appearance.wallpaper --json` (prints JSON)
 - Change: Use `emaki settings set appearance.wallpaper PATH` or the wallpaper controls that use the settings store. Packaged fallback artwork changes with emaki-config.
@@ -2170,6 +2205,7 @@ files:
   /usr/bin/emaki-session-wallpaper
   /usr/bin/emaki-settings-wallpaper
   /usr/share/emaki/wallpaper/*
+  /usr/share/emaki/wpaperd/config.toml
   /usr/lib/systemd/user/emaki-greeter-wallpaper*
   /usr/lib/systemd/user/graphical-session.target.wants/emaki-greeter-wallpaper*
 zone: package

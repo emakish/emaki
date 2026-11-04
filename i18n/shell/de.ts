@@ -2400,6 +2400,18 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Colour for icons, highlights and controls.</source>
             <translation>Farbe für Symbole, Hervorhebungen und Bedienelemente.</translation>
         </message>
+        <message>
+            <source>Cursor</source>
+            <translation>Mauszeiger</translation>
+        </message>
+        <message>
+            <source>Cursor style</source>
+            <translation>Zeigerstil</translation>
+        </message>
+        <message>
+            <source>White</source>
+            <translation>Weiß</translation>
+        </message>
     </context>
     <context>
         <name>SettingsAppsPage</name>
@@ -2656,6 +2668,18 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Could not choose a picture. Your wallpaper has not changed.</source>
             <translation>Ein Bild konnte nicht ausgewählt werden. Ihr Hintergrundbild wurde nicht geändert.</translation>
         </message>
+        <message>
+            <source>This file could not be played or opened.</source>
+            <translation>Diese Datei konnte nicht abgespielt oder geöffnet werden.</translation>
+        </message>
+        <message>
+            <source>Could not choose an overview background. Try again.</source>
+            <translation>Der Hintergrund für die Übersicht konnte nicht ausgewählt werden. Versuchen Sie es erneut.</translation>
+        </message>
+        <message>
+            <source>The change could not be confirmed. Check the current value before trying again.</source>
+            <translation>Die Änderung konnte nicht bestätigt werden. Prüfen Sie vor einem erneuten Versuch den aktuellen Wert.</translation>
+        </message>
     </context>
     <context>
         <name>SettingsCorePage</name>
@@ -2774,6 +2798,42 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Follow mouse</source>
             <translation>Folgt der Maus</translation>
+        </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>Sekunden in der Leistenuhr anzeigen</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>Sekunden anzeigen, während das Uhrfeld geschlossen ist.</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>Sekunden in der geöffneten Uhr anzeigen</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>Sekunden anzeigen, während das Uhrfeld geöffnet ist.</translation>
+        </message>
+        <message>
+            <source>Launcher</source>
+            <translation>Programmstarter</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>Modusbeschriftungen</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>Modi des Programmstarters als Text oder Symbole anzeigen.</translation>
+        </message>
+        <message>
+            <source>Text</source>
+            <translation>Beschriftung</translation>
+        </message>
+        <message>
+            <source>Icons</source>
+            <translation>Symbole</translation>
         </message>
     </context>
     <context>
@@ -3044,8 +3104,8 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>SettingsPageRegistry</name>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>Wählen Sie hell oder dunkel, automatische Zeiten und eine Akzentfarbe.</translation>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>Wählen Sie hell oder dunkel, automatische Zeiten, eine Akzentfarbe und einen Zeigerstil.</translation>
         </message>
         <message>
             <source>Review recovery, encryption, sudo keys and remembered portal permissions.</source>
@@ -3122,6 +3182,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Change your password and choose when to lock.</source>
             <translation>Ändern Sie Ihr Passwort und wählen Sie, wann gesperrt wird.</translation>
+        </message>
+        <message>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>Hintergrundbilder, Übersichtshintergründe und Akzentfarben.</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>Wählen Sie hell oder dunkel, automatische Zeiten und eine Akzentfarbe.</translation>
         </message>
     </context>
     <context>
@@ -4218,8 +4286,8 @@ Gemeinsame oder komprimierte Extents können den freigegebenen Speicher verringe
             <translation>Ihr eigenes Bild</translation>
         </message>
         <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>Wählen Sie ein Bild für alle Anzeigen. Zurücksetzen stellt Ihr geerbtes Hintergrundbild wieder her.</translation>
+            <source>Choose a picture for every display.</source>
+            <translation>Wählen Sie ein Bild für alle Anzeigen.</translation>
         </message>
         <message>
             <source>Choosing…</source>
@@ -4240,6 +4308,26 @@ Gemeinsame oder komprimierte Extents können den freigegebenen Speicher verringe
         <message>
             <source>No wallpapers were found in the installed collection.</source>
             <translation>In der installierten Sammlung wurden keine Hintergrundbilder gefunden.</translation>
+        </message>
+        <message>
+            <source>Overview background</source>
+            <translation>Hintergrund der Übersicht</translation>
+        </message>
+        <message>
+            <source>Your own video or picture</source>
+            <translation>Eigenes Video oder Bild</translation>
+        </message>
+        <message>
+            <source>Videos play only while the overview is open. A picture stays still. Changing the theme replaces this background.</source>
+            <translation>Videos werden nur bei geöffneter Übersicht abgespielt. Ein Bild bleibt unbewegt. Beim Wechsel des Designs wird dieser Hintergrund ersetzt.</translation>
+        </message>
+        <message>
+            <source>Choose video or picture…</source>
+            <translation>Video oder Bild auswählen…</translation>
+        </message>
+        <message>
+            <source>Theme background</source>
+            <translation>Hintergrund des Designs</translation>
         </message>
     </context>
     <context>
@@ -5146,8 +5234,8 @@ Gemeinsame oder komprimierte Extents können den freigegebenen Speicher verringe
             <translation>Persönlich</translation>
         </message>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>Wählen Sie hell oder dunkel, automatische Zeiten und eine Akzentfarbe.</translation>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>Wählen Sie hell oder dunkel, automatische Zeiten, eine Akzentfarbe und einen Zeigerstil.</translation>
         </message>
         <message>
             <source>theme light dark automatic</source>
@@ -5162,8 +5250,8 @@ Gemeinsame oder komprimierte Extents können den freigegebenen Speicher verringe
             <translation>Akzentfarbe</translation>
         </message>
         <message>
-            <source>orange coral rose amber green teal blue violet color</source>
-            <translation>orange koralle rosa bernstein grün türkis blau violett Farbe</translation>
+            <source>orange coral rose amber green teal blue violet silver graphite color</source>
+            <translation>orange koralle rosa bernstein grün türkis blau violett Farbe silber graphit silver graphite</translation>
         </message>
         <message>
             <source>Colour for icons, highlights and controls.</source>
@@ -5212,10 +5300,6 @@ Gemeinsame oder komprimierte Extents können den freigegebenen Speicher verringe
         <message>
             <source>Your own picture image file</source>
             <translation>Eigenes Bild Bilddatei</translation>
-        </message>
-        <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>Wählen Sie ein Bild für alle Anzeigen. Zurücksetzen stellt Ihr geerbtes Hintergrundbild wieder her.</translation>
         </message>
         <message>
             <source>Panel &amp; Dock</source>
@@ -6417,6 +6501,66 @@ Gemeinsame oder komprimierte Extents können den freigegebenen Speicher verringe
             <source>Your files and app settings are not touched.</source>
             <translation>Ihre Dateien und App-Einstellungen bleiben unverändert.</translation>
         </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>Sekunden in der Leistenuhr anzeigen</translation>
+        </message>
+        <message>
+            <source>clock time seconds closed</source>
+            <translation>Uhr Zeit Sekunden geschlossen</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>Sekunden anzeigen, während das Uhrfeld geschlossen ist.</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>Sekunden in der geöffneten Uhr anzeigen</translation>
+        </message>
+        <message>
+            <source>clock time seconds open calendar</source>
+            <translation>Uhr Zeit Sekunden geöffnet Kalender</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>Sekunden anzeigen, während das Uhrfeld geöffnet ist.</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>Modusbeschriftungen</translation>
+        </message>
+        <message>
+            <source>launcher modes text icons</source>
+            <translation>Programmstarter Modi Text Symbole</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>Modi des Programmstarters als Text oder Symbole anzeigen.</translation>
+    </message>
+    <message>
+            <source>Themes</source>
+            <translation>Designs</translation>
+        </message>
+        <message>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>Hintergrundbilder, Übersichtshintergründe und Akzentfarben.</translation>
+        </message>
+        <message>
+            <source>style wallpaper overview video accent colour</source>
+            <translation>Stil Hintergrundbild Übersicht Video Akzentfarbe</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>Hintergrundbild, Übersichtshintergrund und Akzentfarbe gemeinsam wählen.</translation>
+        </message>
+        <message>
+            <source>cursor pointer glass white dark</source>
+            <translation>Mauszeiger Zeiger Glas weiß dunkel</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>Wählen Sie hell oder dunkel, automatische Zeiten und eine Akzentfarbe.</translation>
+        </message>
     </context>
     <context>
         <name>ShellPalette</name>
@@ -6451,6 +6595,14 @@ Gemeinsame oder komprimierte Extents können den freigegebenen Speicher verringe
         <message>
             <source>Violet</source>
             <translation>Violett</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>Silber</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>Graphit</translation>
         </message>
     </context>
     <context>
@@ -7755,32 +7907,6 @@ Speichern Sie zuerst Ihre Arbeit.</translation>
             <translation>Neues</translation>
         </message>
         <message>
-            <source>What's new in Emaki 1.0</source>
-            <translation>Neues in Emaki 1.0</translation>
-        </message>
-        <message>
-            <source>Emaki 1.0, the first beta</source>
-            <translation>Emaki 1.0, die erste Beta</translation>
-        </message>
-        <message>
-            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
-            <translation>Emaki ist bereit für den täglichen Einsatz. Jede Aktualisierung lässt sich weiterhin über das Bootmenü rückgängig machen, und auf einem Computer, den wir nicht getestet haben, kann noch etwas nicht funktionieren: Sagen Sie es uns über „Problem melden“.</translation>
-        </message>
-        <message>
-            <source>A lighter launcher</source>
-            <translation>Ein leichterer Starter</translation>
-        </message>
-        <message>
-            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
-            <translation>Der Starter hält nichts geladen, solange er geschlossen ist, und öffnet sich dort, wo Sie aufgehört haben.</translation>
-        </message>
-        <message>
-            <source>• Settings can be found in the launcher by its name in your language
-• The account description in Settings is no longer cut short</source>
-            <translation>• Die Einstellungen lassen sich im Starter über ihren Namen in Ihrer Sprache finden
-• Die Kontobeschreibung in den Einstellungen wird nicht mehr abgeschnitten</translation>
-        </message>
-        <message>
             <source>Close what's new</source>
             <translation>„Neues“ schließen</translation>
         </message>
@@ -7797,8 +7923,42 @@ Speichern Sie zuerst Ihre Arbeit.</translation>
             <translation>Der Aktualisierungsfortschritt konnte nicht gespeichert werden. Dieser Bildschirm erscheint möglicherweise bei der nächsten Anmeldung erneut.</translation>
         </message>
         <message>
+            <source>What's new in Emaki 1.1</source>
+            <translation>Neues in Emaki 1.1</translation>
+        </message>
+        <message>
+            <source>Themes for your desktop</source>
+            <translation>Designs für Ihren Desktop</translation>
+        </message>
+        <message>
+            <source>Choose a theme in Settings to change your wallpaper, overview background and accent together.</source>
+            <translation>Wählen Sie in den Einstellungen ein Design, um Hintergrundbild, Übersichtshintergrund und Akzentfarbe gemeinsam zu ändern.</translation>
+        </message>
+        <message>
+            <source>A clearer launcher</source>
+            <translation>Ein übersichtlicherer Starter</translation>
+        </message>
+        <message>
+            <source>Follow the moving highlight with the arrow keys, and choose icons for launcher modes in Settings.</source>
+            <translation>Bewegen Sie die Markierung mit den Pfeiltasten und wählen Sie in den Einstellungen Symbole für die Modi des Starters.</translation>
+        </message>
+        <message>
+            <source>Discover programs</source>
+            <translation>Programme entdecken</translation>
+        </message>
+        <message>
+            <source>Browse recommendations and categories on the new Programs start screen, using the catalog already on your computer.</source>
+            <translation>Entdecken Sie Empfehlungen und Kategorien auf der neuen Startseite von Programme mit dem Katalog auf Ihrem Computer.</translation>
+        </message>
+        <message>
             <source>Fixes</source>
             <translation>Fehlerbehebungen</translation>
+        </message>
+        <message>
+            <source>• Wallpaper changes reach the lock and login screens reliably
+• Installing, removing and updating programs blocks sleep and shutdown until the operation finishes</source>
+            <translation>• Geänderte Hintergrundbilder erscheinen zuverlässig auf dem Sperr- und Anmeldebildschirm
+• Während Programme installiert, entfernt oder aktualisiert werden, sind Bereitschaft und Herunterfahren bis zum Abschluss gesperrt</translation>
         </message>
     </context>
     <context>
@@ -8058,6 +8218,98 @@ Speichern Sie zuerst Ihre Arbeit.</translation>
             <source>sudo keys</source>
             <translation>Sudo-Schlüssel Berechtigungen</translation>
         </message>
+        <message>
+            <source>Open %1 settings.</source>
+            <translation>Einstellungen für %1 öffnen.</translation>
+        </message>
+        <message>
+            <source>Lock the screen and keep your apps open.</source>
+            <translation>Den Bildschirm sperren und die Apps geöffnet lassen.</translation>
+        </message>
+        <message>
+            <source>Ask to end your session.</source>
+            <translation>Das Beenden der Sitzung anfragen.</translation>
+        </message>
+        <message>
+            <source>Ask to restart the computer.</source>
+            <translation>Den Neustart des Computers anfragen.</translation>
+        </message>
+        <message>
+            <source>Ask to turn off the computer.</source>
+            <translation>Das Ausschalten des Computers anfragen.</translation>
+        </message>
+        <message>
+            <source>Use dark colours for the desktop.</source>
+            <translation>Dunkle Farben für den Desktop verwenden.</translation>
+        </message>
+        <message>
+            <source>Use light colours for the desktop.</source>
+            <translation>Helle Farben für den Desktop verwenden.</translation>
+        </message>
+        <message>
+            <source>Use warmer screen colours.</source>
+            <translation>Wärmere Bildschirmfarben verwenden.</translation>
+        </message>
+        <message>
+            <source>Restore normal screen colours.</source>
+            <translation>Normale Bildschirmfarben wiederherstellen.</translation>
+        </message>
+        <message>
+            <source>Open Programs &amp; Updates to check for updates.</source>
+            <translation>Programme &amp; Aktualisierungen öffnen, um nach Aktualisierungen zu suchen.</translation>
+        </message>
+        <message>
+            <source>Browse programs in Programs &amp; Updates.</source>
+            <translation>Programme unter Programme &amp; Aktualisierungen durchsuchen.</translation>
+        </message>
+        <message>
+            <source>Choose an area of the screen to capture.</source>
+            <translation>Einen Bildschirmbereich für die Aufnahme auswählen.</translation>
+        </message>
+        <message>
+            <source>Open the screen recording controls.</source>
+            <translation>Die Steuerung für Bildschirmaufnahmen öffnen.</translation>
+        </message>
+        <message>
+            <source>Recognise and copy text from a screen area.</source>
+            <translation>Text aus einem Bildschirmbereich erkennen und kopieren.</translation>
+        </message>
+        <message>
+            <source>Read a QR code from a screen area.</source>
+            <translation>Einen QR-Code aus einem Bildschirmbereich lesen.</translation>
+        </message>
+        <message>
+            <source>Find development tools in Programs &amp; Updates.</source>
+            <translation>Entwicklungswerkzeuge unter Programme &amp; Aktualisierungen suchen.</translation>
+        </message>
+        <message>
+            <source>Manage website apps in Programs &amp; Updates.</source>
+            <translation>Web-Apps unter Programme &amp; Aktualisierungen verwalten.</translation>
+        </message>
+        <message>
+            <source>Find and copy something from your clipboard history.</source>
+            <translation>Einen Eintrag im Zwischenablageverlauf suchen und kopieren.</translation>
+        </message>
+        <message>
+            <source>Find an emoji and copy it to the clipboard.</source>
+            <translation>Ein Emoji suchen und in die Zwischenablage kopieren.</translation>
+        </message>
+        <message>
+            <source>View the desktop keyboard shortcuts.</source>
+            <translation>Tastenkürzel des Desktops anzeigen.</translation>
+        </message>
+        <message>
+            <source>Write a note or checklist.</source>
+            <translation>Eine Notiz oder Checkliste schreiben.</translation>
+        </message>
+        <message>
+            <source>Describe a problem and choose what to include.</source>
+            <translation>Ein Problem beschreiben und die enthaltenen Angaben auswählen.</translation>
+        </message>
+        <message>
+            <source>Choose which settings to restore to their defaults.</source>
+            <translation>Die Einstellungen auswählen, die zurückgesetzt werden sollen.</translation>
+        </message>
     </context>
     <context>
         <name>EmojiCatalog</name>
@@ -8123,6 +8375,116 @@ Speichern Sie zuerst Ihre Arbeit.</translation>
         <message>
             <source>Your Emaki settings were kept. Some may show their defaults until you change a setting or log in again.</source>
             <translation>Ihre Emaki-Einstellungen wurden beibehalten. Einige zeigen möglicherweise ihre Vorgaben an, bis Sie eine Einstellung ändern oder sich erneut anmelden.</translation>
+        </message>
+    </context>
+    <context>
+        <name>SettingsThemesPage</name>
+        <message>
+            <source>Rose Light</source>
+            <translation>Rosa hell</translation>
+        </message>
+        <message>
+            <source>Orange Light</source>
+            <translation>Orange hell</translation>
+        </message>
+        <message>
+            <source>Coral Light</source>
+            <translation>Koralle hell</translation>
+        </message>
+        <message>
+            <source>Amber Light</source>
+            <translation>Bernstein hell</translation>
+        </message>
+        <message>
+            <source>Green Light</source>
+            <translation>Grün hell</translation>
+        </message>
+        <message>
+            <source>Teal Light</source>
+            <translation>Türkis hell</translation>
+        </message>
+        <message>
+            <source>Blue Light</source>
+            <translation>Blau hell</translation>
+        </message>
+        <message>
+            <source>Violet Light</source>
+            <translation>Violett hell</translation>
+        </message>
+        <message>
+            <source>Rose Dark</source>
+            <translation>Rosa dunkel</translation>
+        </message>
+        <message>
+            <source>Orange Dark</source>
+            <translation>Orange dunkel</translation>
+        </message>
+        <message>
+            <source>Coral Dark</source>
+            <translation>Koralle dunkel</translation>
+        </message>
+        <message>
+            <source>Amber Dark</source>
+            <translation>Bernstein dunkel</translation>
+        </message>
+        <message>
+            <source>Green Dark</source>
+            <translation>Grün dunkel</translation>
+        </message>
+        <message>
+            <source>Teal Dark</source>
+            <translation>Türkis dunkel</translation>
+        </message>
+        <message>
+            <source>Blue Dark</source>
+            <translation>Blau dunkel</translation>
+        </message>
+        <message>
+            <source>Violet Dark</source>
+            <translation>Violett dunkel</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>Silber</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>Graphit</translation>
+        </message>
+        <message>
+            <source>Themes</source>
+            <translation>Designs</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>Hintergrundbild, Übersichtshintergrund und Akzentfarbe gemeinsam wählen.</translation>
+        </message>
+        <message>
+            <source>Current theme</source>
+            <translation>Aktuelles Design</translation>
+        </message>
+        <message>
+            <source>Not installed</source>
+            <translation>Nicht installiert</translation>
+        </message>
+        <message>
+            <source>Still overview background</source>
+            <translation>Statischer Übersichtshintergrund</translation>
+        </message>
+        <message>
+            <source>No themes were found in the installed collection.</source>
+            <translation>Keine Designs in der installierten Sammlung gefunden.</translation>
+        </message>
+    </context>
+    <context>
+        <name>OverviewVideoContent</name>
+        <message>
+            <source>This video cannot be played. Showing the still background.</source>
+            <translation>Dieses Video kann nicht abgespielt werden. Der statische Hintergrund wird angezeigt.</translation>
+        </message>
+        <message>
+            <source>This picture cannot be opened. Showing the default background.</source>
+            <translation>Dieses Bild kann nicht geöffnet werden. Der Standardhintergrund wird angezeigt.</translation>
         </message>
     </context>
 </TS>

@@ -112,6 +112,9 @@ def apply():
                         if space_match:
                             space_refusal = _('Not enough free space for this update: it needs about {needed}, {free} is free. {advice}').format(
                                 needed=space_match['needed'], free=space_match['free'], advice=SPACE_ADVICE)
+                        if message == 'Shutdown and sleep protection could not start. The update was not started.':
+                            message = _('Shutdown and sleep protection could not start. The update was not started.')
+                            update_refusal = message
                         if (message.startswith('The update was refused because these packages '
                                                'are held after a restore: ')
                                 or message == ('The available package versions could not be checked. '

@@ -7,11 +7,13 @@
 // Including defaults alongside it is not possible — the personal config already includes them,
 // and include accumulates autostart entries (GOTCHAS: “include accumulates, rather than replaces”).
 include "/etc/niri/config.kdl"
-// Living wallpaper (2026-10-02): niri-emaki draws the pixel ring per workspace above
-// wpaperd, each workspace from its own random start, 1:1 with the camera, with trains.
-// "image" leaves the plain wpaperd wallpaper. The files come from make install.
+// Emaki's cube strip is the inherited lane artwork. Managed settings and the
+// optional personal fork config below may select a different wallpaper.
 emaki-wallpaper {
-    mode "ring"
+    mode "strip"
+    ring "@EMAKI_DATADIR@/themes/emaki/wallpaper.png"
+    front ""
+    trains "off"
 }
 
 // The user's own niri-emaki settings, as in fork.kdl (optional: absent on a clean machine).

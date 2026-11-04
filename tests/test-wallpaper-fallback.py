@@ -4,6 +4,7 @@
 """The fallback uses an unchanged centre crop small enough for a 4096 texture."""
 
 from pathlib import Path
+import os
 import runpy
 import tempfile
 import tomllib
@@ -24,31 +25,46 @@ class WallpaperFallback(unittest.TestCase):
                 self.assertEqual(config["path"], "/usr/share/emaki/wallpaper/fallback.png")
                 self.assertEqual(config["mode"], "center")
         with Image.open(ROOT / "art/wallpaper/fallback.png") as fallback:
-            self.assertEqual(fallback.size, (3840, 1200))
+            self.assertEqual(fallback.size, (3840, 2160))
+            self.assertEqual(fallback.mode, "RGB")
             self.assertLessEqual(max(fallback.size), 4096)
 
-    def test_shipped_pixels_are_the_exact_ring_centre(self):
-        with Image.open(ROOT / "art/wallpaper/ring.png") as ring, Image.open(
+    @unittest.skipUnless(os.environ.get("EMAKI_CUBE_STRIP"), "external cube source not supplied")
+    def test_shipped_pixels_are_the_exact_cube_centre(self):
+        with Image.open(os.environ["EMAKI_CUBE_STRIP"]) as strip, Image.open(
             ROOT / "art/wallpaper/fallback.png"
         ) as fallback:
-            left = (ring.width - 3840) // 2
-            expected = ring.crop((left, 0, left + 3840, 1200))
-            self.assertEqual(fallback.mode, ring.mode)
+            self.assertEqual(strip.height, 2160)
+            left = (strip.width - 3840) // 2
+            expected = strip.crop((left, 0, left + 3840, 2160))
+            self.assertEqual(fallback.mode, strip.mode)
             self.assertEqual(fallback.tobytes(), expected.tobytes())
 
-    def test_rebuild_is_deterministic_and_matches_shipped_pixels(self):
-        evidence = ROOT / ".cache/evidence"
-        evidence.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="wallpaper-", dir=evidence) as work:
-            first, second = Path(work) / "first.png", Path(work) / "second.png"
-            source = ROOT / "art/wallpaper/ring.png"
+    def test_rebuild_is_deterministic_and_preserves_centre_pixels(self):
+        with tempfile.TemporaryDirectory(prefix="wallpaper-") as work:
+            work = Path(work)
+            first, second, source = work / "first.png", work / "second.png", work / "strip.png"
+            # Distinct columns and rows catch an off-centre crop, resize or colour loss.
+            row = Image.new("RGB", (4096, 1))
+            row.putdata([(x % 256, x // 256, (x * 7) % 256) for x in range(4096)])
+            strip = row.resize((4096, 2160), resample=Image.Resampling.NEAREST)
+            strip.paste((29, 101, 233), (0, 999, 4096, 1001))
+            strip.save(source)
             BUILD(source, first)
             BUILD(source, second)
             self.assertEqual(first.read_bytes(), second.read_bytes())
-            with Image.open(first) as rebuilt, Image.open(ROOT / "art/wallpaper/fallback.png") as shipped:
-                self.assertEqual(rebuilt.mode, shipped.mode)
-                self.assertEqual(rebuilt.size, shipped.size)
-                self.assertEqual(rebuilt.tobytes(), shipped.tobytes())
+            with Image.open(first) as rebuilt:
+                self.assertEqual(rebuilt.mode, "RGB")
+                self.assertEqual(rebuilt.size, (3840, 2160))
+                self.assertEqual(rebuilt.tobytes(), strip.crop((128, 0, 3968, 2160)).tobytes())
+
+    def test_rejects_wrong_height_or_narrow_strip(self):
+        with tempfile.TemporaryDirectory(prefix="wallpaper-") as work:
+            source = Path(work) / "strip.png"
+            for size in ((3840, 1200), (3839, 2160)):
+                Image.new("RGB", size).save(source)
+                with self.assertRaises(ValueError):
+                    BUILD(source, Path(work) / "fallback.png")
 
 
 if __name__ == "__main__":

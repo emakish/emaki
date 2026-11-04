@@ -84,23 +84,20 @@ ShellRoot {
     Timer {
         running: true; interval: 300
         onTriggered: {
-            const store = programs.storefront;
-            test.check(view.page === "browse" && view.tab === "browse" && store.featured.programs.length === 3
-                && JSON.stringify(view.featured.map(row => String(row.id).toLowerCase())) === JSON.stringify(store.featured.programs), "Browse's picks are the storefront file's, in its order");
-            test.check(!!test.label(store.featured.title) && !!test.label(store.featured.note) && store.featured.title === "Picked by Emaki", "the featured heading is the storefront file's");
-            test.check(store.rows.length === 0 && !test.label("Graphics row") && !test.label("GRAPHICS"), "Browse has no hand-made category rows");
+            test.check(view.discoveryDay === Qt.formatDate(new Date(), "yyyy-MM-dd"), "daily key uses the local calendar day");
+            test.check(view.page === "browse" && view.tab === "browse" && !!view.discovery.daily,
+                "Browse opens with a locally selected daily program");
+            test.check(!!test.label(view.discoveryData.title) && !test.named("shelf-picked"),
+                "Browse uses the new draft content without the old placeholder shelf");
             // Each tab owns its top: Browse its catalog search and categories, nothing of the other tabs.
             test.check(test.named("browse-top").visible && test.named("category-strip").visible && test.named("program-search").visible
                 && !test.named("aur-top").visible && !test.named("installed-search").visible && !test.named("aur-entry").visible
                 && !test.button("Open the AUR…"), "Browse shows only its own search and category strip; the AUR is not a block on it");
-            const shelfOrder = ["shelf-picked", "shelf-popular", "shelf-essentials", "shelf-fresh", "emaki-shelf"].map(name => test.named(name));
-            test.check(shelfOrder.every(item => item && item.visible)
-                && shelfOrder.every((item, index) => index === 0 || item.mapToItem(view, 0, 0).y > shelfOrder[index - 1].mapToItem(view, 0, 0).y),
-                "Browse shelves: Picked by Emaki, Popular, Essentials, New and updated, then From Emaki");
-            test.check(!test.label("Most installed this month") && view.popular[0].name === programs.allPrograms[0].name, "without engine popularity Popular keeps the catalog's order and claims no measure");
-            test.check(view.essentials.map(row => row.package).join() === "gimp,inkscape,krita,code" && !!test.label("All 4 ›") && test.named("see-all-essentials").visible, "Essentials lists the full install's programs after a minimal install");
-            test.check(view.fresh.map(row => row.package).join() === "gimp,dolphin", "New and updated lists the newest releases first");
-            test.check(!!test.label("GIMP"), "a card uses the storefront's short GIMP name");
+            test.check(test.named("storefront").visible && test.named("shelf-popular").visible
+                && !test.named("shelf-discovery-popular"),
+                "Browse shows local discovery and the retained Popular shelf without the fixed popular shelf");
+            test.check(view.discovery.collections.every(collection => collection.rows.every(row => !row.installed)),
+                "the collections omit installed programs");
             const content = test.named("manager-content");
             test.check(Math.abs(content.mapToItem(view, 0, 0).x - view.gutter) < 3 && content.width > view.width - 2 * view.gutter - 30, "Browse fills the window's width without side fields");
             const chip = test.named("category-Graphics");
@@ -132,30 +129,37 @@ ShellRoot {
             test.check(!test.named("emaki-shelf").visible && !test.label("From Emaki"), "an empty shelf is not drawn");
             programs.shelf = shelfRows; input.wait(30);
             const catalogRows = programs.allRows;
-            // Without Flathub metadata a pick is only its ID; it is left out rather than shown raw.
-            programs.allRows = catalogRows.concat([{key:"flatpak:org.example.Bare",id:"org.example.Bare",kind:"flatpak",name:"org.example.Bare",summary:"",categories:[],actions:["install"],icons:[],screenshots:[]}]);
-            programs.storefront = {featured: {title: "Another row", note: "Another note", programs: ["org.gimp.gimp", "org.example.bare"]}, rows: [], names: {}};
+            programs.allRows = [];
             input.wait(30);
-            test.check(view.featured.length === 1 && view.featured[0].package === "gimp" && !!test.label("Another row") && !test.label("GIMP") && !view.featured.some(row => row.id === "org.example.Bare"), "another storefront file gives another Browse; a pick without metadata is left out");
-            programs.allRows = catalogRows;
-            programs.storefront = {featured: {title: "", note: "", programs: []}, rows: [], names: {}};
-            input.wait(30);
-            test.check(!test.named("shelf-picked").visible && !test.label("Our picks are not available right now. Try Refresh."), "an empty storefront shows no picks and no error");
-            programs.storefront = store;
-            const essentials = programs.essentials;
-            programs.essentials = {minimal: false, programs: essentials.programs}; input.wait(30);
-            test.check(!test.named("shelf-essentials").visible, "after a full install there is no Essentials shelf");
-            programs.essentials = essentials; input.wait(30);
+            test.check(test.named("browse-empty").visible && !test.named("storefront-empty").visible && !test.named("daily-card").visible,
+                "missing catalog data shows the connection and Refresh message");
+            programs.catalogReceived = false; programs.busy = true; input.wait(30);
+            test.check(!test.named("browse-empty").visible && !test.named("storefront-empty").visible,
+                "first load shows neither empty state");
+            programs.catalogReceived = true; programs.busy = false;
+            programs.allRows = [{key: "arch:unlisted", id: "org.example.Unlisted", kind: "arch", name: "Unlisted program", summary: "A catalog program outside the shipped lists"}]; input.wait(30);
+            test.check(test.named("storefront-empty").visible && !test.named("browse-empty").visible,
+                "a catalog without discovery matches shows the discovery empty state");
+            programs.allRows = catalogRows; input.wait(30);
             test.shot("browse-bottom");
-            // "See all" opens the whole list; every page below Browse has its way back.
+            test.activate(test.named("see-all-essentials"));
+            test.check(view.page === "list" && view.listId === "essentials" && view.pageRows.length === view.essentials.length,
+                "Essentials opens the full install set from a Minimal installation");
+            view.goBack(); input.wait(30);
             test.activate(test.named("see-all-popular"));
+            test.check(view.page === "list" && view.listId === "popular" && view.pageRows.length === view.popular.length,
+                "the original Popular shelf keeps its own list route");
+            view.goBack(); input.wait(30);
+            // "See all" opens the whole list; every page below Browse has its way back.
+            const collection = view.discovery.collections[0];
+            test.activate(test.named("see-all-" + collection.id));
             test.check(view.page === "list" && view.tab === "browse" && test.named("back").visible && test.named("back").text === "‹  Browse"
-                && !!test.label("Popular") && test.named("list-page").visible && !test.named("browse-top").visible, "See all opens the full Popular list with a way back");
+                && !!test.label(collection.title) && test.named("list-page").visible && !test.named("browse-top").visible, "See all opens the full collection list with a way back");
             test.shot("see-all");
-            view.showProgram(view.popular[1]); input.wait(30);
-            test.check(view.page === "program" && test.named("back").text === "‹  Popular", "a program opened from a list goes back to that list");
+            view.showProgram(collection.rows[0]); input.wait(30);
+            test.check(view.page === "program" && test.named("back").text === "‹  " + collection.title, "a program opened from a list goes back to that list");
             test.activate(test.named("back"));
-            test.check(view.page === "list" && view.listId === "popular", "back from the program returns to the list");
+            test.check(view.page === "list" && view.listId === collection.id, "back from the program returns to the list");
             test.activate(test.named("back"));
             test.check(view.page === "browse", "back from a list returns to Browse");
             test.activate(test.named("category-Graphics"));

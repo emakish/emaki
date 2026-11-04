@@ -17,10 +17,7 @@ spec = importlib.util.spec_from_file_location('render_shell', ROOT / 'tests/rend
 renderer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(renderer)
 OUTPUT.mkdir(parents=True, exist_ok=True)
-account = json.loads(subprocess.check_output(
-    [sys.executable, '-B', str(ROOT / 'shell/helpers/system-tools.py')],
-    input=json.dumps({'op': 'account-read'}), text=True))
-assert account['state'] == 'ready', account
+account = dict(state='ready', name='Emaki Test User', login='emaki', administrator=True)
 with tempfile.TemporaryDirectory(prefix='settings-visual-') as temporary:
     profile = Path(temporary)
     config = profile / 'config' / 'wpaperd'

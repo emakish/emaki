@@ -56,7 +56,7 @@ diff --git a/niri-config/src/misc.rs b/niri-config/src/misc.rs
 index a550637c..cd0838ab 100644
 --- a/niri-config/src/misc.rs
 +++ b/niri-config/src/misc.rs
-@@ -231,6 +231,136 @@ impl MergeWith<EmakiBackdropPart> for EmakiBackdrop {
+@@ -231,6 +231,146 @@ impl MergeWith<EmakiBackdropPart> for EmakiBackdrop {
      }
  }
  
@@ -66,6 +66,7 @@ index a550637c..cd0838ab 100644
 +    #[default]
 +    Image,
 +    Ring,
++    Strip,
 +}
 +
 +#[derive(Debug, Clone, PartialEq)]
@@ -180,6 +181,15 @@ index a550637c..cd0838ab 100644
 +
 +impl MergeWith<EmakiWallpaperPart> for EmakiWallpaper {
 +    fn merge_with(&mut self, part: &EmakiWallpaperPart) {
++        // The indexed default belongs only to ring mode. A strip needs an
++        // explicit path, including when the mode is supplied by an include.
++        if part.mode == Some(EmakiWallpaperMode::Strip)
++            && self.mode != EmakiWallpaperMode::Strip
++            && part.ring.is_none()
++            && self.ring == Self::default().ring
++        {
++            self.ring.clear();
++        }
 +        merge_clone!((self, part), mode, ring, front, train_frames, train);
 +        if let Some(trains) = part.trains {
 +            self.trains = trains == EmakiWallpaperTrains::On;
@@ -193,10 +203,26 @@ index a550637c..cd0838ab 100644
  #[derive(knuffel::Decode, Debug, Default, Clone, PartialEq, Eq)]
  pub struct Environment(#[knuffel(children)] pub Vec<EnvironmentVariable>);
  
-@@ -283,6 +413,122 @@ mod tests {
+@@ -283,6 +413,138 @@ mod tests {
      use super::*;
      use crate::Config;
  
++    #[test]
++    fn emaki_wallpaper_strip_without_path_has_no_indexed_fallback() {
++        let config = Config::parse_mem(r#"emaki-wallpaper { mode "strip"; }"#).unwrap();
++        assert!(config.emaki_wallpaper.ring.is_empty());
++    }
++
++    #[test]
++    fn emaki_wallpaper_strip_parse() {
++        let config = Config::parse_mem(
++            r#"emaki-wallpaper { mode "strip"; ring "/tmp/panorama.png"; trains "off"; }"#,
++        ).unwrap();
++        assert_eq!(config.emaki_wallpaper.mode, EmakiWallpaperMode::Strip);
++        assert_eq!(config.emaki_wallpaper.ring, "/tmp/panorama.png");
++        assert!(!config.emaki_wallpaper.trains);
++    }
++
 +    #[test]
 +    fn emaki_wallpaper_defaults() {
 +        for text in ["", "emaki-wallpaper {}"] {
@@ -1881,7 +1907,7 @@ diff --git a/src/niri.rs b/src/niri.rs
          }
  
          let is_locked = self.is_locked();
-@@ -6364,6 +6450,258 @@
+@@ -6364,6 +6450,260 @@
          self.startup_cover.is_none() && self.startup_cover_layer_expired("emaki-session-cover")
      }
  
@@ -2101,6 +2127,8 @@ diff --git a/src/niri.rs b/src/niri.rs
 +        EmakiWallpaperStatus {
 +            mode: if config.mode == niri_config::EmakiWallpaperMode::Ring {
 +                "ring"
++            } else if config.mode == niri_config::EmakiWallpaperMode::Strip {
++                "strip"
 +            } else {
 +                "image"
 +            }
@@ -2263,7 +2291,7 @@ new file mode 100644
 index 00000000..5d114a4f
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/assets.rs
-@@ -0,0 +1,1069 @@
+@@ -0,0 +1,1088 @@
 +//! Bounded indexed PNG decoding on a worker, and single-channel tiled GPU storage.
 +use std::any::Any;
 +use std::fs::{File, OpenOptions};
@@ -2366,7 +2394,7 @@ index 00000000..5d114a4f
 +    pub train: TrainArt,
 +}
 +
-+fn open(path: &str, limit: usize) -> anyhow::Result<File> {
++pub(super) fn open(path: &str, limit: usize) -> anyhow::Result<File> {
 +    let expanded = crate::utils::expand_home(Path::new(path))?;
 +    let resolved = expanded.as_deref().unwrap_or_else(|| Path::new(path));
 +    let file = OpenOptions::new()
@@ -2476,6 +2504,13 @@ index 00000000..5d114a4f
 +            Err(anyhow::Error::new(Superseded))
 +        }
 +    };
++    if config.mode == niri_config::EmakiWallpaperMode::Strip {
++        stage()?;
++        ensure!(!config.ring.is_empty(), "strip mode requires an explicit ring path");
++        let decoded = super::strip::decode(&config.ring)?;
++        stage()?;
++        return Ok(decoded);
++    }
 +    let mut json = String::new();
 +    open(&config.train, 64 * 1024)?
 +        .take(64 * 1024 + 1)
@@ -2711,6 +2746,8 @@ index 00000000..5d114a4f
 +}
 +
 +pub struct Tile {
++    /// Full image dimensions for this strip mip level; absent for indexed art.
++    pub strip_size: Option<(usize, usize)>,
 +    pub atlas_stride: usize,
 +    pub start: usize,
 +    pub width: usize,
@@ -2803,10 +2840,11 @@ index 00000000..5d114a4f
 +    })
 +}
 +pub struct PreparedTile {
-+    start: usize,
-+    width: usize,
-+    atlas_stride: usize,
-+    image: IndexedImage,
++    pub(super) strip_size: Option<(usize, usize)>,
++    pub(super) start: usize,
++    pub(super) width: usize,
++    pub(super) atlas_stride: usize,
++    pub(super) image: IndexedImage,
 +}
 +pub struct Prepared {
 +    ring: Vec<PreparedTile>,
@@ -2828,6 +2866,9 @@ index 00000000..5d114a4f
 +    }
 +}
 +fn prepare_layer(image: IndexedImage, max_size: usize) -> Vec<PreparedTile> {
++    if image.bytes.len() == image.width * image.height * 4 {
++        return super::strip::prepare(image, max_size);
++    }
 +    let stride = max_size.clamp(3, 4096);
 +    let rows = image.width.div_ceil(stride);
 +    if rows * image.height <= max_size {
@@ -2839,6 +2880,7 @@ index 00000000..5d114a4f
 +            }
 +        }
 +        return vec![PreparedTile {
++            strip_size: None,
 +            start: 0,
 +            width: image.width,
 +            atlas_stride: stride,
@@ -2860,6 +2902,7 @@ index 00000000..5d114a4f
 +            bytes.push(row[(start + width) % image.width]);
 +        }
 +        tiles.push(PreparedTile {
++            strip_size: None,
 +            start,
 +            width,
 +            atlas_stride: 0,
@@ -2881,6 +2924,7 @@ index 00000000..5d114a4f
 +        .iter()
 +        .map(|tile| {
 +            Ok(Tile {
++                strip_size: tile.strip_size,
 +                start: tile.start,
 +                width: tile.width,
 +                atlas_stride: tile.atlas_stride,
@@ -2889,7 +2933,7 @@ index 00000000..5d114a4f
 +                    &tile.image.bytes,
 +                    tile.image.width,
 +                    tile.image.height,
-+                    false,
++                    tile.image.bytes.len() == tile.image.width * tile.image.height * 4,
 +                )?,
 +            })
 +        })
@@ -2945,6 +2989,9 @@ index 00000000..5d114a4f
 +}
 +impl GpuArt {
 +    pub fn upload(renderer: &mut GlesRenderer, decoded: &Prepared) -> anyhow::Result<Self> {
++        let limit = texture_limit(renderer)?;
++        ensure!(decoded.ring.iter().all(|t| t.image.width <= limit && t.image.height <= limit),
++            "panorama height exceeds GPU texture limit; choose a smaller strip");
 +        let mut palette = Vec::with_capacity(65 * 4);
 +        for rgb in &decoded.train.palette {
 +            palette.extend_from_slice(rgb);
@@ -3337,12 +3384,13 @@ diff --git a/src/render_helpers/emaki_wallpaper/mod.rs b/src/render_helpers/emak
 new file mode 100644
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/mod.rs
-@@ -0,0 +1,862 @@
+@@ -0,0 +1,869 @@
 +//! Per-workspace indexed ring wallpaper. The compositor owns timing and geometry;
 +//! wpaperd remains underneath whenever this engine has no complete valid scene.
 +pub mod assets;
 +pub mod power;
 +mod train;
++mod strip;
 +
 +use std::collections::{HashMap, HashSet};
 +use std::rc::Rc;
@@ -3511,9 +3559,10 @@ new file mode 100644
 +        let reload = self.settings.as_ref().is_none_or(|old| {
 +            old.mode != settings.mode
 +                || old.ring != settings.ring
-+                || old.front != settings.front
-+                || old.train_frames != settings.train_frames
-+                || old.train != settings.train
++                || (settings.mode != EmakiWallpaperMode::Strip
++                    && (old.front != settings.front
++                        || old.train_frames != settings.train_frames
++                        || old.train != settings.train))
 +        });
 +        self.reload_requested = false;
 +        self.settings = Some(settings.clone());
@@ -3541,7 +3590,7 @@ new file mode 100644
 +        }
 +        match decoded {
 +            Ok(decoded) => {
-+                self.art = Some(decoded.train.clone());
++                self.art = (decoded.train.frames != 0).then(|| decoded.train.clone());
 +                self.decoded = Some(decoded);
 +            }
 +            Err(err) => self.fail(err),
@@ -3807,8 +3856,13 @@ new file mode 100644
 +        if cache.signature != Some(signature) {
 +            // Keep identities for unchanged geometry; camera motion damages the ring,
 +            // train-only frames never touch these retained static elements.
-+            update_ring(&mut cache.ring, &gpu.ring, gpu, view, true);
-+            update_ring(&mut cache.front, &gpu.front, gpu, view, false);
++            if gpu.train.frames == 0 {
++                strip::update(&mut cache.ring, gpu, view);
++                cache.front.clear();
++            } else {
++                update_ring(&mut cache.ring, &gpu.ring, gpu, view, true);
++                update_ring(&mut cache.front, &gpu.front, gpu, view, false);
++            }
 +            cache.signature = Some(signature);
 +        }
 +        let mut result = cache.front.clone();
@@ -4204,7 +4258,29 @@ diff --git a/src/render_helpers/emaki_wallpaper/tests.rs b/src/render_helpers/em
 new file mode 100644
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/tests.rs
-@@ -0,0 +1,1215 @@
+@@ -0,0 +1,1281 @@
++#[test]
++fn emaki_wallpaper_strip_ignores_unrelated_asset_changes() {
++    let mut wallpaper = Wallpaper::default();
++    let mut settings = EmakiWallpaper::default();
++    settings.mode = EmakiWallpaperMode::Strip;
++    settings.ring = "/tmp/panorama.png".into();
++    assert!(wallpaper.configure(&settings).is_some());
++    let generation = wallpaper.generation;
++    settings.front = "/tmp/unused-front.png".into();
++    settings.train_frames = "/tmp/unused-frames.png".into();
++    settings.train = "/tmp/unused-train.json".into();
++    settings.trains = !settings.trains;
++    assert_eq!(wallpaper.configure(&settings), None);
++    assert_eq!(wallpaper.generation, generation);
++    settings.ring = "/tmp/other-panorama.png".into();
++    assert!(wallpaper.configure(&settings).is_some());
++    settings.mode = EmakiWallpaperMode::Ring;
++    assert!(wallpaper.configure(&settings).is_some());
++    settings.front = "/tmp/another-front.png".into();
++    assert!(wallpaper.configure(&settings).is_some());
++}
++
 +use super::assets::{upload_texture, Tile};
 +use super::train::Train;
 +use super::*;
@@ -4265,12 +4341,14 @@ new file mode 100644
 +            }
 +        }
 +        ring.push(Tile {
++            strip_size: None,
 +            atlas_stride: 0,
 +            start,
 +            width,
 +            texture: upload_texture(renderer, &indices, width + 2, RING_HEIGHT, false).unwrap(),
 +        });
 +        front.push(Tile {
++            strip_size: None,
 +            atlas_stride: 0,
 +            start,
 +            width,
@@ -5420,6 +5498,48 @@ new file mode 100644
 +    wallpaper.settings.as_mut().unwrap().mode = EmakiWallpaperMode::Image;
 +    assert!(!wallpaper.trains_visible("test"));
 +}
++
++#[test]
++fn emaki_wallpaper_strip_gl_tiles_wrap_and_retain_damage() {
++    let path = std::env::temp_dir().join(format!("emaki-strip-gl-{}.png", std::process::id()));
++    let mut encoder = png::Encoder::new(std::fs::File::create(&path).unwrap(), 7, 2);
++    encoder.set_color(png::ColorType::Rgb);
++    encoder.set_depth(png::BitDepth::Eight);
++    let bytes: Vec<u8> = (0..14).flat_map(|i| [(i % 7 * 30) as u8, 25, 99]).collect();
++    encoder.write_header().unwrap().write_image_data(&bytes).unwrap();
++    let decoded = strip::decode(path.to_str().unwrap()).unwrap().prepare(4);
++    std::fs::remove_file(path).unwrap();
++    let mut renderer = renderer();
++    let gpu = GpuArt::upload(&mut renderer, &decoded).unwrap();
++    assert_eq!(gpu.ring.iter().filter(|t| t.strip_size == Some((7, 2))).count(), 4);
++    let mut wallpaper = engine(gpu);
++    for origin in [-2., 0., 5., 7., 20.] {
++        let view = view(12, 2, 1., origin);
++        let pixels = draw(&mut renderer, &mut wallpaper, &view);
++        for x in 0..12 {
++            assert_eq!(&pixels[x * 4..x * 4 + 4], &[(origin as i32 + x as i32).rem_euclid(7) as u8 * 30, 25, 99, 255]);
++        }
++        let commits: Vec<_> = wallpaper.scenes[&1].ring.iter().map(Element::current_commit).collect();
++        draw(&mut renderer, &mut wallpaper, &view);
++        assert_eq!(commits, wallpaper.scenes[&1].ring.iter().map(Element::current_commit).collect::<Vec<_>>());
++    }
++}
++
++#[test]
++fn emaki_wallpaper_strip_refuses_oversized_texture_before_upload() {
++    let path = std::env::temp_dir().join(format!("emaki-strip-limit-{}.png", std::process::id()));
++    let mut encoder = png::Encoder::new(std::fs::File::create(&path).unwrap(), 1, 1201);
++    encoder.set_color(png::ColorType::Rgb);
++    encoder.set_depth(png::BitDepth::Eight);
++    encoder.write_header().unwrap().write_image_data(&[12, 25, 99].repeat(1201)).unwrap();
++    let decoded = strip::decode(path.to_str().unwrap()).unwrap().prepare(1200);
++    std::fs::remove_file(path).unwrap();
++    let mut renderer = renderer();
++    assets::TEXTURE_LIMIT.with(|limit| limit.set(Some(1200)));
++    let result = GpuArt::upload(&mut renderer, &decoded);
++    assets::TEXTURE_LIMIT.with(|limit| limit.set(None));
++    assert!(result.err().unwrap().to_string().contains("panorama height exceeds GPU texture limit"));
++}
 diff --git a/src/render_helpers/emaki_wallpaper/train.rs b/src/render_helpers/emaki_wallpaper/train.rs
 new file mode 100644
 index 00000000..f71212db
@@ -6049,7 +6169,7 @@ new file mode 100644
 index 00000000..3b9d803b
 --- /dev/null
 +++ b/src/render_helpers/shaders/emaki_wallpaper.frag
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,51 @@
 +precision highp float;
 +uniform float niri_alpha;
 +uniform vec2 tex_size;
@@ -6069,6 +6189,7 @@ index 00000000..3b9d803b
 +    }
 +    // Tile textures include one guard column at each edge. Never leave them.
 +    p = clamp(p, vec2(0.0), tex_size - 1.0);
++    if (atlas_stride < 0.0) return texture2D(indices, (p + 0.5) / tex_size);
 +    float index = floor(texture2D(indices, (p + 0.5) / tex_size).r * 255.0 + 0.5);
 +    return texture2D(palette_tex, vec2((index + 0.5) / 65.0, 0.5));
 +}
@@ -6077,8 +6198,8 @@ index 00000000..3b9d803b
 +    if (footprint.x <= 1.0 && footprint.y <= 1.0) {
 +        gl_FragColor = lookup(floor(p)) * niri_alpha;
 +    } else {
-+        // A clamped footprint spans at most four texels per axis, even at the
-+        // smallest valid overview zoom. Constant loop limits also work on ES 2.
++        // Strip mip selection keeps its footprint at most two texels per axis.
++        // Indexed art retains its bounded kernel; constant loops also work on ES 2.
 +        vec2 width = min(footprint, vec2(3.0));
 +        vec2 lo = p - width * 0.5, hi = p + width * 0.5;
 +        vec2 base = floor(lo);
@@ -6411,4 +6532,428 @@ new file mode 100644
 +    // Discharge wins over a stale/insufficient adapter's online flag. Without
 +    // adapter status, a present battery is conservatively treated as unplugged.
 +    discharging || (battery && !external)
++}
+diff --git a/src/render_helpers/emaki_wallpaper/strip.rs b/src/render_helpers/emaki_wallpaper/strip.rs
+new file mode 100644
+--- /dev/null
++++ b/src/render_helpers/emaki_wallpaper/strip.rs
+@@ -0,0 +1,419 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++//! Full-colour panoramic strips share the bounded wallpaper worker and retained scenes.
++use super::assets::*;
++use super::*;
++use anyhow::{ensure, Context};
++use std::io::BufReader;
++
++pub(super) fn decode(path: &str) -> anyhow::Result<Decoded> {
++    const LIMIT: usize = 512 * 1024 * 1024;
++    let mut decoder = png::Decoder::new(BufReader::new(assets::open(path, LIMIT)?));
++    decoder.set_limits(png::Limits { bytes: LIMIT });
++    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
++    let mut reader = decoder.read_info().context("reading panorama PNG")?;
++    let (width, height) = (reader.info().width as usize, reader.info().height as usize);
++    ensure!(
++        width > 0
++            && height > 0
++            && width <= 32768
++            && height <= 8192
++            && width
++                .checked_mul(height)
++                .is_some_and(|n| n <= 128 * 1024 * 1024),
++        "panorama dimensions exceed the 128-megapixel bound"
++    );
++    let mut raw = vec![0; reader.output_buffer_size().context("PNG output size")?];
++    let info = reader.next_frame(&mut raw)?;
++    reader.finish()?;
++    let channels = match info.color_type {
++        png::ColorType::Rgb => 3,
++        png::ColorType::Rgba => 4,
++        _ => anyhow::bail!("panorama must be an RGB or RGBA PNG"),
++    };
++    let mut bytes = Vec::with_capacity(width * height * 4);
++    for pixel in raw[..info.buffer_size()].chunks_exact(channels) {
++        // The lane is opaque; reject transparent art instead of incorrect blending.
++        ensure!(channels == 3 || pixel[3] == 255, "panorama must be opaque");
++        bytes.extend_from_slice(&pixel[..3]);
++        bytes.push(255);
++    }
++    let empty = || IndexedImage {
++        width: 1,
++        height: 1,
++        bytes: vec![0],
++        palette: vec![],
++    };
++    Ok(Decoded {
++        ring: IndexedImage {
++            width,
++            height,
++            bytes,
++            palette: vec![],
++        },
++        front: empty(),
++        frames: empty(),
++        // Zero frames denotes a static full-colour strip, never a train schedule.
++        train: TrainArt {
++            width,
++            height,
++            frames: 0,
++            wheel_radius: 1.,
++            chimney: [0.; 2],
++            cylinder: [0.; 2],
++            vehicles: [[0; 2]; 4],
++            clear: 64,
++            wheel_bottom_row: 0.,
++            speed: 0.,
++            palette: vec![[0; 3]; 64],
++        },
++    })
++}
++
++// Build each level on the worker, before tiling, so filtering crosses tile boundaries.
++// Area weights also handle odd dimensions without duplicating the last row/column.
++fn downsample(image: &IndexedImage) -> IndexedImage {
++    let width = image.width.div_ceil(2);
++    let height = image.height.div_ceil(2);
++    let mut bytes = Vec::with_capacity(width * height * 4);
++    for y in 0..height {
++        let top = y * image.height;
++        let bottom = (y + 1) * image.height;
++        for x in 0..width {
++            let left = x * image.width;
++            let right = (x + 1) * image.width;
++            let mut sum = [0u64; 4];
++            for sy in top / height..bottom.div_ceil(height) {
++                let wy = bottom.min((sy + 1) * height) - top.max(sy * height);
++                for sx in left / width..right.div_ceil(width) {
++                    let wx = right.min((sx + 1) * width) - left.max(sx * width);
++                    for (channel, sum) in sum.iter_mut().enumerate() {
++                        *sum += image.bytes[(sy * image.width + sx) * 4 + channel] as u64
++                            * (wx * wy) as u64;
++                    }
++                }
++            }
++            let area = (image.width * image.height) as u64;
++            bytes.extend(sum.map(|sum| ((sum + area / 2) / area) as u8));
++        }
++    }
++    IndexedImage { width, height, bytes, palette: vec![] }
++}
++
++pub(super) fn prepare(mut image: IndexedImage, max_size: usize) -> Vec<PreparedTile> {
++    let mut tiles = Vec::new();
++    loop {
++        let next = (image.width > 1 || image.height > 1).then(|| downsample(&image));
++        tiles.extend(prepare_level(image, max_size));
++        let Some(next) = next else { break; };
++        image = next;
++    }
++    tiles
++}
++
++fn prepare_level(image: IndexedImage, max_size: usize) -> Vec<PreparedTile> {
++    // Leave an over-height tile for upload's explicit validation; no oversized GL call.
++    let stride = max_size.clamp(3, 4096) - 2;
++    let mut tiles = Vec::new();
++    for start in (0..image.width).step_by(stride) {
++        let width = (image.width - start).min(stride);
++        let mut bytes = Vec::with_capacity((width + 2) * image.height * 4);
++        for row in image.bytes.chunks_exact(image.width * 4) {
++            let left = (start + image.width - 1) % image.width * 4;
++            let right = (start + width) % image.width * 4;
++            bytes.extend_from_slice(&row[left..left + 4]);
++            bytes.extend_from_slice(&row[start * 4..(start + width) * 4]);
++            bytes.extend_from_slice(&row[right..right + 4]);
++        }
++        tiles.push(PreparedTile {
++            strip_size: Some((image.width, image.height)),
++            start,
++            width,
++            atlas_stride: 0,
++            image: IndexedImage {
++                width: width + 2,
++                height: image.height,
++                bytes,
++                palette: vec![],
++            },
++        });
++    }
++    tiles
++}
++
++fn mip_size(
++    sizes: impl Iterator<Item = (usize, usize)>,
++    original: (usize, usize),
++    footprint: f64,
++) -> Option<(usize, usize)> {
++    let mut last = None;
++    for (width, height) in sizes {
++        last = Some((width, height));
++        if footprint * (width as f64 / original.0 as f64)
++            .max(height as f64 / original.1 as f64) <= 2.
++        {
++            break;
++        }
++    }
++    last
++}
++
++pub(super) fn update(elements: &mut Vec<ShaderRenderElement>, gpu: &GpuArt, view: &View) {
++    let original_height = gpu.train.height as f64;
++    let original_width = gpu.train.width as f64;
++    let original_scale = view.size.h * view.scale / original_height;
++    let original_footprint = 1. / (original_scale * view.zoom);
++    // Keep the box kernel at <= two level texels per physical pixel. Each mip has
++    // its own wrap guards, so the shader never samples beyond the neighbouring texel.
++    let level = mip_size(
++        gpu.ring.iter().filter_map(|t| t.strip_size),
++        (gpu.train.width, gpu.train.height),
++        original_footprint,
++    );
++    let Some((width, height)) = level else { elements.clear(); return; };
++    let height = height as f64;
++    let circumference = width as f64;
++    let scale = original_scale * original_width / circumference;
++    let scale_y = view.size.h * view.scale / height;
++    let origin = (view.origin * view.art_scale() / scale).rem_euclid(circumference);
++    let visible_width = view.size.w * view.scale / scale;
++    let mut x = 0.;
++    let mut index = 0;
++    while x < visible_width - 0.00001 {
++        let world = (origin + x).rem_euclid(circumference);
++        let Some(tile) = gpu
++            .ring
++            .iter()
++            .find(|t| t.strip_size == level && world >= t.start as f64 && world < (t.start + t.width) as f64)
++        else {
++            break;
++        };
++        let count = (visible_width - x).min((tile.start + tile.width) as f64 - world);
++        let edge = |v: f64| (v * scale * view.zoom).round() / view.zoom;
++        let left = edge(x);
++        let right = edge(x + count);
++        let rect = Rectangle::new(
++            (left / view.scale, 0.).into(),
++            ((right - left) / view.scale, view.size.h).into(),
++        );
++        if index == elements.len() {
++            elements.push(
++                ShaderRenderElement::empty(ProgramType::EmakiWallpaper, Kind::Unspecified)
++                    .with_nearest_sampling(),
++            );
++        }
++        let tex = tile.texture.size();
++        elements[index].update(
++            rect.size,
++            Some(vec![Rectangle::from_size(rect.size)]),
++            view.scale as f32,
++            1.,
++            Rc::from(vec![
++                Uniform::new("tex_size", [tex.w as f32, tex.h as f32]),
++                Uniform::new(
++                    "source_rect",
++                    [
++                        (world - tile.start as f64 + 1. + left / scale - x) as f32,
++                        0.,
++                        ((right - left) / scale) as f32,
++                        height as f32,
++                    ],
++                ),
++                Uniform::new("footprint", [(1. / (scale * view.zoom)) as f32, (1. / (scale_y * view.zoom)) as f32]),
++                Uniform::new("atlas_stride", -1f32),
++            ]),
++            indexed_textures(&tile.texture, &gpu.palette),
++        );
++        elements[index] = elements[index].clone().with_location(rect.loc);
++        index += 1;
++        x += count;
++    }
++    elements.truncate(index);
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    // CPU evaluation of the shader's area kernel against the actual staged mip texels.
++    fn box_sample(tile: &PreparedTile, x: f64, y: f64, width: f64) -> f64 {
++        let lo = (x - width / 2., y - width / 2.);
++        let hi = (x + width / 2., y + width / 2.);
++        let mut colour = 0.;
++        for sy in lo.1.floor() as i32..hi.1.ceil() as i32 {
++            let wy = (sy as f64 + 1.).min(hi.1) - (sy as f64).max(lo.1);
++            for sx in lo.0.floor() as i32..hi.0.ceil() as i32 {
++                let wx = (sx as f64 + 1.).min(hi.0) - (sx as f64).max(lo.0);
++                let sx = sx.clamp(0, tile.image.width as i32 - 1) as usize;
++                let sy = sy.clamp(0, tile.image.height as i32 - 1) as usize;
++                colour += tile.image.bytes[(sy * tile.image.width + sx) * 4] as f64 * wx * wy;
++            }
++        }
++        colour / (width * width)
++    }
++
++    #[test]
++    fn emaki_wallpaper_strip_mips_remove_overview_shimmer() {
++        for height in [2160, 4320] {
++            let tiles = prepare(IndexedImage {
++                width: 128, height,
++                bytes: (0..128 * height).flat_map(|i| {
++                    let value = if i % 2 == 0 { 0 } else { 254 };
++                    [value, value, value, 255]
++                }).collect(),
++                palette: vec![],
++            }, 4096);
++            let base = &tiles[0];
++            // 2160/1080 at overview zoom .5 needs 4 texels/pixel; 4320 needs 8.
++            // Also cover stronger minification, independently of output resolution.
++            for footprint in [height as f64 / 540., 4., 8., 16., 32., 64.] {
++                let size = mip_size(tiles.iter().filter_map(|t| t.strip_size), (128, height), footprint).unwrap();
++                let tile = tiles.iter().find(|t| t.strip_size == Some(size)).unwrap();
++                let ratio = size.0 as f64 / 128.;
++                let width = footprint * ratio;
++                let mut old_min = f64::INFINITY;
++                let mut old_max = f64::NEG_INFINITY;
++                let mut new_min = f64::INFINITY;
++                let mut new_max = f64::NEG_INFINITY;
++                for phase in 0..128 {
++                    let x = 48. + phase as f64 / 64.;
++                    let old = box_sample(base, x + 1., 10., 3.);
++                    let new = box_sample(tile, x * ratio + 1., 10., width);
++                    old_min = old_min.min(old); old_max = old_max.max(old);
++                    new_min = new_min.min(new); new_max = new_max.max(new);
++                    assert!((new - 127.).abs() < 1e-8);
++                }
++                assert!(old_max - old_min > 80.);
++                assert!(new_max - new_min < 1e-8);
++                eprintln!("height={height} footprint={footprint} old_range={:.3} mip_range={:.3}", old_max - old_min, new_max - new_min);
++            }
++        }
++    }
++
++    #[test]
++    fn emaki_wallpaper_strip_mips_preserve_odd_edges_and_average_details() {
++        let image = IndexedImage {
++            width: 3, height: 1,
++            bytes: vec![0, 0, 0, 255, 90, 90, 90, 255, 180, 180, 180, 255],
++            palette: vec![],
++        };
++        let half = downsample(&image);
++        assert_eq!((half.width, half.height), (2, 1));
++        assert_eq!(half.bytes, [30, 30, 30, 255, 150, 150, 150, 255]);
++        assert_eq!(downsample(&half).bytes, [90, 90, 90, 255]);
++        let image = IndexedImage {
++            width: 64, height: 64,
++            bytes: (0..4096).flat_map(|i| {
++                let value = if (i / 64 + i % 64) % 2 == 0 { 0 } else { 254 };
++                [value, value, value, 255]
++            }).collect(),
++            palette: vec![],
++        };
++        let levels = prepare(image, 16);
++        for tile in levels.iter().filter(|t| t.strip_size != Some((64, 64))) {
++            assert!(tile.image.bytes.chunks_exact(4).all(|p| p == [127, 127, 127, 255]));
++        }
++        assert_eq!(levels.last().unwrap().strip_size, Some((1, 1)));
++    }
++
++    #[test]
++    fn emaki_wallpaper_strip_mip_guards_match_each_level() {
++        let mut image = IndexedImage {
++            width: 97, height: 19,
++            bytes: (0..97 * 19).flat_map(|i| [(i % 251) as u8, (i % 239) as u8, 17, 255]).collect(),
++            palette: vec![],
++        };
++        let tiles = prepare(IndexedImage {
++            width: image.width, height: image.height,
++            bytes: image.bytes.clone(), palette: vec![],
++        }, 16);
++        loop {
++            let level: Vec<_> = tiles.iter().filter(|t| t.strip_size == Some((image.width, image.height))).collect();
++            assert_eq!(level.iter().map(|t| t.width).sum::<usize>(), image.width);
++            for tile in level {
++                for y in 0..image.height {
++                    for x in 0..tile.image.width {
++                        let source_x = (tile.start + image.width + x - 1) % image.width;
++                        let offset = (y * tile.image.width + x) * 4;
++                        let source = (y * image.width + source_x) * 4;
++                        assert_eq!(&tile.image.bytes[offset..offset + 4], &image.bytes[source..source + 4]);
++                    }
++                }
++            }
++            if image.width == 1 && image.height == 1 { break; }
++            image = downsample(&image);
++        }
++    }
++
++    #[test]
++    fn emaki_wallpaper_strip_tiles_preserve_pixels_and_wrap_guards() {
++        for width in [7, 13502, 15002, 27000] {
++            let height = 2;
++            let bytes: Vec<u8> = (0..width * height)
++                .flat_map(|i| [(i % 251) as u8, (i % 239) as u8, 17, 255])
++                .collect();
++            let tiles = prepare(
++                IndexedImage {
++                    width,
++                    height,
++                    bytes: bytes.clone(),
++                    palette: vec![],
++                },
++                4096,
++            );
++            let tiles: Vec<_> = tiles.into_iter().filter(|t| t.strip_size == Some((width, height))).collect();
++            assert_eq!(tiles.iter().map(|t| t.width).sum::<usize>(), width);
++            for tile in tiles {
++                assert!(tile.image.width <= 4096);
++                for y in 0..height {
++                    let row =
++                        &tile.image.bytes[y * tile.image.width * 4..(y + 1) * tile.image.width * 4];
++                    for x in 0..tile.image.width {
++                        let source_x = (tile.start + width + x - 1) % width;
++                        assert_eq!(
++                            &row[x * 4..x * 4 + 4],
++                            &bytes[(y * width + source_x) * 4..(y * width + source_x) * 4 + 4]
++                        );
++                    }
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn emaki_wallpaper_strip_decodes_rgb_and_rejects_alpha_and_truncation() {
++        let path = std::env::temp_dir().join(format!("emaki-strip-{}.png", std::process::id()));
++        let write = |rgba: bool, alpha: u8| {
++            let mut encoder = png::Encoder::new(std::fs::File::create(&path).unwrap(), 3, 2);
++            encoder.set_color(if rgba {
++                png::ColorType::Rgba
++            } else {
++                png::ColorType::Rgb
++            });
++            encoder.set_depth(png::BitDepth::Eight);
++            let pixel = if rgba {
++                vec![12, 25, 99, alpha]
++            } else {
++                vec![12, 25, 99]
++            };
++            encoder
++                .write_header()
++                .unwrap()
++                .write_image_data(&pixel.repeat(6))
++                .unwrap();
++        };
++        write(false, 255);
++        let image = decode(path.to_str().unwrap()).unwrap();
++        assert_eq!((image.ring.width, image.ring.height), (3, 2));
++        assert_eq!(image.ring.bytes, [12, 25, 99, 255].repeat(6));
++        write(true, 255);
++        assert!(decode(path.to_str().unwrap()).is_ok());
++        write(true, 0);
++        assert!(decode(path.to_str().unwrap()).is_err());
++        let mut data = std::fs::read(&path).unwrap();
++        data.truncate(data.len() - 12);
++        std::fs::write(&path, data).unwrap();
++        assert!(decode(path.to_str().unwrap()).is_err());
++        std::fs::remove_file(path).unwrap();
++    }
 +}

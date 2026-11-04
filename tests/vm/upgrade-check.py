@@ -689,6 +689,9 @@ def checks_after_restart(guest, result, cand, before_config):
     synced = guest.run('sha256sum /var/lib/pacman/sync/emaki.db', check=False).stdout.decode().split()[:1]
     check('second sync reads the candidate database',
           bool(synced) and synced[0] == cand.get('db_sha256'), synced)
+    # Persist pacman's lock removal before the hard QEMU quit below: a background syncfs (the appstream
+    # refresh timer) can otherwise commit the lock but not its removal (LOCKDIAG 27.10).
+    guest.run('sync', root=True, check=False, timeout=120)
 
 
 def qemu_command(vm, port, size, guestfwd):
@@ -856,6 +859,10 @@ def main():
         result['visual_assessment'] = visual_evidence(vm)
         (vm / 'result.json').write_text(json.dumps(result, indent=1, sort_keys=True) + '\n')
         if qemu.poll() is None:
+            try:
+                guest.run('sync', root=True, check=False, timeout=60)
+            except Exception:  # the guest may already be unreachable; the quit below still happens
+                pass
             try:
                 monitor.command(vm, 'quit')
             except (OSError, RuntimeError):

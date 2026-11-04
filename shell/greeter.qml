@@ -6,6 +6,7 @@ import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import "AppearanceLogic.js" as AppearanceLogic
 
 // greetd owns authentication and session lifetime; these surfaces only present it.
 Scope {
@@ -45,12 +46,35 @@ Scope {
             introStart: lockSession.handoffIntroStart
         });
     }
-    // The chosen person's look before the password: only the published theme, accent and
+    // The chosen person's look before the password: only the published theme, accent, cursor and
     // switch times. Nothing published (or no person yet) is the default look.
     Binding {
         target: SettingsBridge
         property: "values"
         value: memory.lookRows
+    }
+    readonly property string cursorPreference: AppearanceLogic.setting(SettingsBridge.values, "appearance.cursor", "automatic")
+    readonly property string cursorTheme: cursorPreference === "dark" || (cursorPreference !== "white" && Appearance.dark) ? "Emaki-Dark" : "Emaki-White"
+    property bool cursorPending: true
+    onCursorThemeChanged: cursorPending = true
+    Timer {
+        interval: 100
+        running: root.selectionLoaded && root.cursorPending && !root.launching && !cursorApply.running && Boolean(Quickshell.env("NIRI_SOCKET"))
+        onTriggered: {
+            root.cursorPending = false;
+            cursorApply.command = [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/greeter-cursor.py"), root.cursorTheme, Platform.dataDir + "/greetd/niri.kdl"];
+            cursorApply.running = true;
+        }
+    }
+    Process {
+        id: cursorApply
+        stdout: SplitParser {
+            onRead: _line => {}
+        }
+        onExited: (code, status) => {
+            if (code !== 0 || status !== 0)
+                console.warn("greeter_cursor_apply_failed");
+        }
     }
     function pickUser(login: string): void {
         // Never while a password is checked or a login is accepted, and one request at a time.

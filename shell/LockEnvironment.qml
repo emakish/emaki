@@ -6,7 +6,7 @@ import Quickshell
 import Quickshell.Io
 
 Scope {
-    id: environment
+    id: environmentObject
     property string layout: qsTranslate("LockEnvironment", "Layout unavailable")
     property bool capsLock: false
     property bool capsKnown: false
@@ -14,27 +14,27 @@ Scope {
     property bool isolateHelper: false
     Process {
         id: worker
-        command: environment.isolateHelper ? ["python3", "-I", "-B", Quickshell.shellPath("helpers/lock-environment.py")] : ["python3", "-B", Quickshell.shellPath("helpers/lock-environment.py")]
+        command: environmentObject.isolateHelper ? ["python3", "-I", "-B", Quickshell.shellPath("helpers/lock-environment.py")] : ["python3", "-B", Quickshell.shellPath("helpers/lock-environment.py")]
         stdinEnabled: true
         running: true
         onRunningChanged: {
             // Metadata loss must not leave a stale "outputs off" value suppressing
             // idle visuals when an output returns. Transitions do not rely on it.
             if (!running) {
-                environment.outputsActive = true;
-                environment.layout = qsTranslate("LockEnvironment", "Layout unavailable");
-                environment.capsKnown = false;
-                environment.capsLock = false;
+                environmentObject.outputsActive = true;
+                environmentObject.layout = qsTranslate("LockEnvironment", "Layout unavailable");
+                environmentObject.capsKnown = false;
+                environmentObject.capsLock = false;
             }
         }
         stdout: SplitParser {
             onRead: line => {
                 try {
                     const state = JSON.parse(line);
-                    environment.layout = String(state.layout);
-                    environment.outputsActive = state.outputs_active !== false;
-                    environment.capsKnown = typeof state.caps === "boolean";
-                    environment.capsLock = environment.capsKnown && state.caps;
+                    environmentObject.layout = String(state.layout);
+                    environmentObject.outputsActive = state.outputs_active !== false;
+                    environmentObject.capsKnown = typeof state.caps === "boolean";
+                    environmentObject.capsLock = environmentObject.capsKnown && state.caps;
                 } catch (_) {}
             }
         }

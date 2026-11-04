@@ -17,7 +17,7 @@ import tarfile
 import tempfile
 
 PACKAGES = ('niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki',
-            'emaki-font-iosevka',
+            'emaki-font-iosevka', 'emaki-themes',
             'emaki-config', 'emaki-nvidia', 'emaki-desktop', 'emaki-apps', 'emaki-installer',
             'emaki-keyring', 'emaki-mirrorlist', 'emaki-sudo-key', 'snapguard', 'emaki-shim-signed',
             'emaki')
@@ -205,6 +205,8 @@ def archive(recipe, src, output, commit, version):
                 'xdg-desktop-portal-gnome-emaki': ['xdg-desktop-portal-gnome', 'libgxdp'],
                 'emaki-config': ['emaki', 'emaki/vendor', 'emaki/.cargo/config.toml',
                                  'emaki-source-commit', 'THIRD-PARTY-NOTICES'],
+                'emaki-themes': ['themes/assets.json', 'themes/catalog.json',
+                                 'prepare-theme-assets', 'theme-catalog.json', 'LICENSE'],
                 'emaki-installer': ['emaki-installer'],
                 'emaki-sudo-key': ['emaki-sudo-key/scripts/emaki-sudo-turn',
                                    'emaki-sudo-key/sudo/turn-reporting.md',

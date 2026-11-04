@@ -84,7 +84,10 @@ except Stop as stopped:
 # guarded script, which then leads the session; 'fork': stays the session leader (as a shell
 # does) and runs the script as its child, in the foreground process group.
 SESSION = '''
-import fcntl, os, sys, termios
+import fcntl, os, signal, sys, termios
+# A harness launched with nohup may ignore SIGHUP. This private terminal's shell
+# must have its own default disposition so its death sends the foreground hangup.
+signal.signal(signal.SIGHUP, signal.SIG_DFL)
 os.setsid()
 fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 if sys.argv[1] == 'fork':
@@ -166,13 +169,16 @@ class Signals(unittest.TestCase):
     def lines(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
 
-    def on_a_terminal(self, act, mode='wait', session='exec'):
+    def on_a_terminal(self, act, mode='wait', session='exec', ignored_hangup=False):
         """The guarded script in the foreground of a private pty; act(master, reaper pid) once
         it is ready. What the reaper passed on, what the test logged, and the status of the
         session's first process, once the reaper has ended."""
         self.log.unlink(missing_ok=True)
         master, slave = pty.openpty()
-        process = subprocess.Popen([sys.executable, '-c', SESSION, session, sys.executable, '-I',
+        setup = SESSION
+        if ignored_hangup:
+            setup = 'import signal; signal.signal(signal.SIGHUP, signal.SIG_IGN)\n' + setup
+        process = subprocess.Popen([sys.executable, '-c', setup, session, sys.executable, '-I',
                                     str(self.target), mode, str(self.log)],
                                    stdin=slave, stdout=slave, stderr=slave)
         os.close(slave)
@@ -230,6 +236,12 @@ class Signals(unittest.TestCase):
         # Then the hangup reaches the reaper alone (a test run as a terminal's command).
         sent, test, status = self.on_a_terminal(hang_up)
         self.assertEqual(sent, ['passed on SIGHUP'])
+        self.assertEqual(test, ['got SIGHUP', 'cleanup done'])
+        self.assertEqual(status, -signal.SIGHUP)
+
+    def test_a_hangup_reaches_the_test_with_an_ignored_parent_disposition(self):
+        sent, test, status = self.on_a_terminal(hang_up, session='fork', ignored_hangup=True)
+        self.assertEqual(sent, [])
         self.assertEqual(test, ['got SIGHUP', 'cleanup done'])
         self.assertEqual(status, -signal.SIGHUP)
 

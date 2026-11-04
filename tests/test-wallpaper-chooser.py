@@ -70,7 +70,8 @@ class Portal:
         parent, title, options = parameters.unpack()
         assert parent == '' and title == self.title, title
         assert options['multiple'] is False and options['directory'] is False
-        assert options['filters'] == [('Pictures', [(1, mime) for mime in self.mime_types])]
+        label = 'Pictures and videos' if any(mime.startswith('video/') for mime in self.mime_types) else 'Pictures'
+        assert options['filters'] == [(label, [(1, mime) for mime in self.mime_types])]
         assert options['handle_token'].startswith('emaki_wallpaper_')
         assert timeout == 5000
 
@@ -216,6 +217,12 @@ class Chooser(unittest.TestCase):
                     server.terminate()
                     server.communicate(timeout=5)
 
+    def test_overview_media_filter(self):
+        mime_types = ('image/*', 'video/*')
+        portal = Portal(self.module, self.picture, title='Choose an overview background', mime_types=mime_types)
+        result = self.module.choose_on_bus(portal, Gio, GLib, 20, 'Choose an overview background', mime_types)
+        self.assertEqual(result, {'state': 'ready', 'path': str(self.picture)})
+
     def test_account_picture_title(self):
         mime_types = ('image/png', 'image/jpeg', 'image/webp')
         portal = Portal(self.module, self.picture, title='Choose your picture', mime_types=mime_types)
@@ -290,7 +297,7 @@ class Chooser(unittest.TestCase):
         extra.mkdir(parents=True)
         (extra / 'personal.jpg').write_bytes(b'fixture')
         (extra / 'notes.txt').write_text('fixture')
-        (extra / 'fallback.png').write_bytes(b'duplicate')
+        (extra / 'ring.png').write_bytes(b'duplicate')
         paths = types.ModuleType('emaki_paths')
         paths.DATADIR = str(root / 'install')
         paths.XDG_DATA_DIRS_DEFAULT = str(root / 'empty')
@@ -301,7 +308,7 @@ class Chooser(unittest.TestCase):
         with patch.dict(sys.modules, modules), patch.dict(os.environ, {'XDG_DATA_HOME': str(root / 'data'), 'XDG_DATA_DIRS': str(root / 'empty'), 'XDG_CONFIG_HOME': str(root / 'config')}):
             spec.loader.exec_module(catalog)
             self.assertEqual(catalog.handle({'op': 'wallpapers'}), {'state': 'ready', 'entries': [
-                {'path': str(shipped / 'fallback.png'), 'name': 'Emaki landscape'},
+                {'path': str(shipped / 'ring.png'), 'name': 'Emaki landscape'},
                 {'path': str(extra / 'personal.jpg'), 'name': 'personal'}], 'inheritedPath': ''})
             config = root / 'config/wpaperd/config.toml'
             config.parent.mkdir(parents=True)

@@ -436,7 +436,10 @@ with open(os.environ['SYSTEMCTL_LOG'], 'a') as stream:
     log = fixture / 'calls.jsonl'
     command = fixture / 'provisioner'
     copy = fixture / 'emaki-config.install'
-    copy.write_text(scriptlet.read_text().replace(provisioner_path, str(command)))
+    # Host runtime state must never enable a real cleanup helper in this fixture.
+    copy.write_text(scriptlet.read_text().replace(provisioner_path, str(command))
+                    .replace('/run/emaki-sudo', str(fixture / 'absent-runtime'))
+                    .replace('/usr/libexec/emaki/emaki-sudo-broker', str(fixture / 'absent-broker')))
     environment = {'PATH': str(empty_path), 'FIXTURE_LOG': str(log), 'SYSTEMCTL_LOG': str(systemctl_log),
                    'FIXTURE_PROVISIONER': str(ROOT / 'scripts/emaki-greeter-provision')}
 
@@ -598,7 +601,7 @@ def default_config_checks(base):
 
 def look_publication_checks(base):
     """The look the login screen shows before the password (0.9): the session copies only the
-    theme, accent and switch times of settings.toml next to the published wallpaper, and the
+    theme, accent, switch times and cursor of settings.toml next to the published wallpaper, and the
     login screen's reader accepts exactly that copy."""
     state_spec = importlib.util.spec_from_file_location('greeter_state_look', ROOT / 'shell/helpers/greeter-state.py')
     reader = importlib.util.module_from_spec(state_spec)
@@ -621,12 +624,16 @@ def look_publication_checks(base):
     assert json.loads(copy.read_text()) == {'version': 1} and seen() == {}
     assert stat.S_IMODE(copy.stat().st_mode) == 0o640
     settings.write_text('schema_version = 1\n\n[appearance]\ngaps = 8\nwallpaper = "/home/PRIVATE/Pictures/me.png"\n'
-                        'theme = "light"\naccent = "teal"\nlight_time = "06:30"\ndark_time = "20:15"\n\n'
+                        'theme = "light"\naccent = "teal"\nlight_time = "06:30"\ndark_time = "20:15"\ncursor = "dark"\n\n'
                         '[defaults]\nbrowser = "PRIVATE.desktop"\n')
     assert publisher.publish_look(settings, destination) == {'state': 'published'}
     assert 'PRIVATE' not in copy.read_text() and 'gaps' not in copy.read_text()
-    look = dict(theme='light', accent='teal', light_time='06:30', dark_time='20:15')
+    look = dict(theme='light', accent='teal', light_time='06:30', dark_time='20:15', cursor='dark')
     assert json.loads(copy.read_text()) == dict(look, version=1) and seen() == look
+    for cursor in ('automatic', 'white', 'dark', 'emaki', 'custom'):
+        settings.write_text('schema_version = 1\n[appearance]\ncursor = "' + cursor + '"\n')
+        assert publisher.publish_look(settings, destination) == {'state': 'published'}
+        assert seen() == ({'cursor': cursor} if cursor in ('automatic', 'white', 'dark') else {})
     # Values outside the fixed forms never cross; a broken file keeps the last good copy.
     settings.write_text('schema_version = 1\n[appearance]\ntheme = "neon"\naccent = "Rose!"\nlight_time = "7"\n')
     assert publisher.publish_look(settings, destination) == {'state': 'published'}
@@ -794,7 +801,7 @@ def current_selection_checks(base):
         assert delays == [.85] * 8 + [30] * 6, delays
         assert [call.kwargs.get('wait', True) for call in attempts.call_args_list].count(False) == 1, 'one static fallback'
         published = tomllib.loads((destination / 'wpaperd/config.toml').read_text())
-        assert Path(published['default']['path']).read_bytes() == stale.read_bytes(), 'the static selection is published'
+        assert Path(published['default']['path']).read_bytes() == ring.read_bytes(), 'the resolved loading ring is published'
         started.assert_not_called()
         # A ring that fails later (a GPU reset) gets the image daemon back once per failure.
         sequence = ['failed', 'failed', 'ready', 'failed']
@@ -962,10 +969,14 @@ def main():
         publisher.publish(config, destination)
 
         original_config = published_config.read_bytes()
-        # Input failures preserve a coherent last good generation.
-        def refused():
+        # Refused source selections revoke the old picture. Refusals before a
+        # safe destination is opened cannot modify it.
+        def refused(revoked=False):
             assert publisher.attempt(config, destination)['state'] == 'refused'
-            assert published_config.read_bytes() == original_config
+            if revoked:
+                assert not published_config.exists()
+            elif published_config.exists() and not published_config.is_symlink():
+                assert published_config.read_bytes() == original_config
 
         config_link = source / 'config-link.toml'
         config_link.symlink_to(config)
@@ -976,9 +987,9 @@ def main():
         linked_image = source / 'image-link.png'
         linked_image.symlink_to(image)
         write_config(config, linked_image)
-        refused()
+        refused(revoked=True)
         write_config(config, source_link / image.name)
-        refused()
+        refused(revoked=True)
         write_config(config, image)
         with patch.object(publisher.os, 'geteuid', return_value=0):
             refused()
@@ -996,20 +1007,20 @@ def main():
         with oversize.open('wb') as stream:
             stream.truncate(wallpaper.MAX_IMAGE + 1)
         write_config(config, oversize)
-        refused()
+        refused(revoked=True)
         write_config(config, image)
         with patch.object(publisher, 'MAX_PIXELS', 100):
-            refused()
+            refused(revoked=True)
             assert publisher.attempt(config, destination)['reason'] == 'image_limit'
         assert publisher.refusal(OSError(errno.ELOOP, str(source)))['reason'] == 'symlink'
         assert str(source) not in json.dumps(publisher.refusal(ValueError(str(source))))
         config.write_bytes(b'x' * (wallpaper.MAX_CONFIG + 1))
-        refused()
+        refused(revoked=True)
         write_config(config, image)
         fifo = source / 'fifo'
         os.mkfifo(fifo)
         write_config(config, fifo)
-        refused()
+        refused(revoked=True)
         write_config(config, image)
 
         # A file swapped for a link exactly at open cannot escape the fd walk.
@@ -1027,17 +1038,18 @@ def main():
         assert swapped
         image.unlink()
         (source / 'saved.png').rename(image)
+        publisher.publish(config, destination)
 
         # A published image/config link is refused, not followed by the greeter.
         saved = published.read_bytes()
         published.unlink()
         published.symlink_to(image)
         assert render()['state'] == 'image_invalid'
-        refused()
+        refused(revoked=True)
         published.unlink()
         published.write_bytes(saved)
         published.chmod(0o640)
-        published_config.unlink()
+        published_config.unlink(missing_ok=True)
         published_config.symlink_to(config)
         assert render()['state'] == 'config_invalid'
         assert publisher.attempt(config, destination)['state'] == 'refused'
@@ -1066,7 +1078,7 @@ def main():
         assert render()['state'] == 'image_invalid'
         published_config.write_bytes(original_config)
 
-        # No new config becomes visible if publication fails before its commit.
+        # A failed publication must not keep showing the previous picture.
         image.write_bytes(png('blue'))
         old_atomic = publisher.atomic_write
         def fail_commit(parent, name, data):
@@ -1074,8 +1086,8 @@ def main():
                 raise OSError('simulated disk failure')
             return old_atomic(parent, name, data)
         with patch.object(publisher, 'atomic_write', side_effect=fail_commit):
-            refused()
-        assert published.is_file() and render()['state'] == 'ready'
+            refused(revoked=True)
+        assert not published.exists() and render()['state'] == 'config_missing'
         assert publisher.publish(config, destination)['state'] == 'published'
         assert image_from(published_config).read_bytes() == image.read_bytes()
 

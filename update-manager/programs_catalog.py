@@ -102,6 +102,7 @@ MESSAGES = {
     'not-authorized': _('Nothing was removed.'),
     'removed': _('The program was removed.'),
     'not-removed': _('The program could not be removed. Nothing was changed.'),
+    'protection-unavailable': _('This change could not be protected from a shutdown. Nothing was changed.'),
     'unknown': _('The removal did not finish as expected. Check the installed programs again.'),
 }
 

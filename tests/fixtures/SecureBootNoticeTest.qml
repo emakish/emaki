@@ -266,6 +266,9 @@ ShellRoot {
                         root.publish();
                         root.wrapCases();
                         scene.openDrawer();
+                        // Inspect every text case in history: compact mode also needs room
+                        // for the footer, so four cards need not fit on a short screen.
+                        scene.clockBody.historyExpanded = true;
                         root.next();
                         break;
                     case 1:

@@ -15,6 +15,10 @@ ShellRoot {
     property string screenName: Quickshell.env("EMAKI_INSTALLER_SCREEN") || "welcome"
     property bool prepared: false
     property bool captured: false
+    property bool dropdownOpened: false
+    property bool dropdownScrolled: false
+    readonly property string dropdownName: screenName === "manual-create" ? "createUse-" + (freeRow()?.id || "") : "languageChoice"
+    readonly property bool dropdown: Quickshell.env("EMAKI_INSTALLER_DROPDOWN") === "1"
     property bool warningScrolled: false
     property string screenshot: Quickshell.env("EMAKI_INSTALLER_SCREENSHOT")
     // The partition editor's frames on editor_fixture.py's disk, through the controller's own
@@ -437,6 +441,31 @@ ShellRoot {
         id: shot
         interval: 650
         onTriggered: {
+            if (test.dropdown && !test.dropdownOpened) {
+                if (test.screenName === "welcome") {
+                    controller.session.availableLocales = ["en_US.UTF-8", "es_MX.UTF-8", "pt_BR.UTF-8", "de_DE.UTF-8", "fr_FR.UTF-8", "ru_RU.UTF-8"];
+                    controller.publish();
+                }
+                const select = test.findItem(content, test.dropdownName) as C.ComboBox;
+                if (test.screenName === "manual-create" && !test.dropdownScrolled) {
+                    const flick = (test.findItem(content, "installerBody") as C.ScrollView).contentItem as Flickable;
+                    const top = select.mapToItem(flick.contentItem, 0, 0).y;
+                    flick.contentY = Math.max(0, top - flick.height + select.height + 8);
+                    if (flick.contentY <= 0) {
+                        console.error("Disk list did not scroll");
+                        Qt.quit();
+                        return;
+                    }
+                    test.dropdownScrolled = true;
+                    console.log("DROPDOWN_SCROLL " + flick.contentY);
+                    shot.restart();
+                    return;
+                }
+                select.popup.open();
+                test.dropdownOpened = true;
+                shot.restart();
+                return;
+            }
             // A live-keyboard frame shows the switch once it has settled.
             if (test.screenName.indexOf("live-keyboard") === 0 && controller.keyboardSwitching) {
                 shot.restart();
@@ -706,7 +735,7 @@ ShellRoot {
             test.contentEvidence(test.screenName);
             if (test.screenName.indexOf("done-restart") === 0) {
                 const message = test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text;
-                const background = test.findItem(content.Window.window.contentItem, "removeUsbBackground") as Rectangle;
+                const background = test.findItem(content.Window.window.contentItem, "removeUsbBackground");
                 // Qt creates the overlay without a QML engine. Retain its scene
                 // under a QML-owned root so grabToImage includes the actual popup.
                 message.parent.parent.parent = captureRoot;
@@ -714,7 +743,7 @@ ShellRoot {
                 console.log("RESTART_FRAME " + JSON.stringify({
                     text: message.text,
                     color: String(message.color),
-                    background: String(background.color),
+                    glass: background.cornerRadius === 16,
                     x: bounds.x,
                     y: bounds.y,
                     width: bounds.width,
@@ -723,7 +752,19 @@ ShellRoot {
                     focused: message.activeFocus
                 }));
             }
-            const capture = test.screenName.indexOf("done-restart") === 0 ? captureRoot : content;
+            if (test.dropdown) {
+                const select = test.findItem(content, test.dropdownName) as C.ComboBox;
+                const popup = select.popup;
+                const area = popup.contentItem.mapToItem(content, 0, 0, popup.contentItem.width, popup.contentItem.height);
+                if (!popup.visible || select.count !== (test.screenName === "welcome" ? 6 : 4) || (test.screenName === "manual-create" && popup.y >= 0) || area.y < 0 || area.y + area.height > content.height) {
+                    console.error("Drop-down list is missing or outside the window");
+                    Qt.quit();
+                    return;
+                }
+                console.log("DROPDOWN_FRAME " + select.count + " " + area.width + "x" + area.height);
+                select.popup.contentItem.parent.parent = captureRoot;
+            }
+            const capture = test.dropdown || test.screenName.indexOf("done-restart") === 0 ? captureRoot : content;
             capture.grabToImage(function (result) {
                 if (!result.saveToFile(test.screenshot)) {
                     console.error("Screenshot failed");

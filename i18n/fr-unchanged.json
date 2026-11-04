@@ -4,6 +4,7 @@
   "messages": {
     "%1 Hz": "Fixed unit, numeric format or placeholder-only label; units retain the source format.",
     "%1 h %2 min": "Fixed unit, numeric format or placeholder-only label; units retain the source format.",
+    "%1, %2": "List separator between translated layout names; punctuation is shared by these languages.",
     "%1k": "Fixed unit, numeric format or placeholder-only label; units retain the source format.",
     "%n h": "Fixed unit, numeric format or placeholder-only label; units retain the source format.",
     "%n min": "Fixed unit, numeric format or placeholder-only label; units retain the source format.",
@@ -30,6 +31,7 @@
     "Flatpak ({scope})": "Product or protocol name, with its original placeholder where present.",
     "Focus": "The standard French term has the same spelling, with the original number or placeholder where present.",
     "Formats": "The standard French term has the same spelling, with the original number or placeholder where present.",
+    "Graphite": "The French colour name has the same spelling.",
     "Installation": "The standard French term has the same spelling, with the original number or placeholder where present.",
     "Internet": "The standard French term has the same spelling, with the original number or placeholder where present.",
     "Licence": "The standard French term has the same spelling, with the original number or placeholder where present.",
@@ -67,7 +69,6 @@
     "d MMM yyyy, HH:mm": "Qt date pattern uses localized month and weekday names in this language’s day-month-year order.",
     "ddd d MMM": "Qt short-date pattern uses French weekday and month names without a period after the day.",
     "ddd d MMM yyyy, HH:mm": "Qt date pattern uses localized month and weekday names in this language’s day-month-year order.",
-    "version %1": "The standard French term has the same spelling, with the original number or placeholder where present.",
-    "%1, %2": "List separator between translated layout names; punctuation is shared by these languages."
+    "version %1": "The standard French term has the same spelling, with the original number or placeholder where present."
   }
 }

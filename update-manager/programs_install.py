@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import programs_arch as arch
 import programs_receipts as receipts
 import programs_kits as kits
+import emaki_update_inhibit
 
 SERVICE = 'emaki-programs-install'
 SNAPSHOTS = Path('/.snapshots')
@@ -211,32 +212,38 @@ def worker(target, token, uid=None):
 
 
 def remove_kit(kit, plan, backend, docker):
-    snapshot, restore_token = preinstall_snapshot(required=True)
-    sign_out = False
     try:
-        if docker is not None:
-            receipt = kits.receipt_for(kit['id'])
-            before = receipt.get('kit', {}).get('docker') if receipt else None
-            if before is not None:
-                # Never change a different person's membership on this request.
-                before = dict(before, uid=docker['uid'], user=docker['user'],
-                              enabled=before['enabled'] if before.get('socketEnabledByKit', True) else True,
-                              member=before['member'] if before['uid'] == docker['uid'] and before.get('memberAdded', True) else True)
-                sign_out = docker['member'] and not before['member'] and not docker.get('primary', False)
-                kits.restore_docker(before)
-        # Commit only the exact reviewed set. No recursive or dependency override flags.
-        result = subprocess.run(['pacman', '-Rn', '--noconfirm', '--', *plan['targets']],
-                                cwd='/', env=ENV, stdin=subprocess.DEVNULL)
-        installed = backend.versions()
-        remaining = [name for name in plan['targets'] if name in installed]
-        if result.returncode or remaining:
-            raise RuntimeError('incomplete removal')
-        for receipt in receipts.receipts(trusted=True):
-            if receipt['key'] == 'development:' + kit['id'] and not receipt['undone']:
-                receipts.mark_undone(receipts.DIRECTORY / (receipt['id'] + '.json'), receipt)
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-        return finish('partial', snapshot=snapshot, restoreToken=restore_token, signOut=sign_out,
-                      message=_('The development kit removal did not finish. Review the transaction details.'))
+        with emaki_update_inhibit.inhibit() as descriptor:
+            snapshot, restore_token = preinstall_snapshot(required=True)
+            sign_out = False
+            try:
+                if docker is not None:
+                    receipt = kits.receipt_for(kit['id'])
+                    before = receipt.get('kit', {}).get('docker') if receipt else None
+                    if before is not None:
+                        # Never change a different person's membership on this request.
+                        before = dict(before, uid=docker['uid'], user=docker['user'],
+                                      enabled=before['enabled'] if before.get('socketEnabledByKit', True) else True,
+                                      member=before['member'] if before['uid'] == docker['uid'] and before.get('memberAdded', True) else True)
+                        sign_out = docker['member'] and not before['member'] and not docker.get('primary', False)
+                        kits.restore_docker(before)
+                # Commit only the exact reviewed set. No recursive or dependency override flags.
+                result = subprocess.run(['pacman', '-Rn', '--noconfirm', '--', *plan['targets']],
+                                        cwd='/', env=ENV, stdin=subprocess.DEVNULL,
+                                        pass_fds=() if descriptor is None else (descriptor,))
+                installed = backend.versions()
+                remaining = [name for name in plan['targets'] if name in installed]
+                if result.returncode or remaining:
+                    raise RuntimeError('incomplete removal')
+                for receipt in receipts.receipts(trusted=True):
+                    if receipt['key'] == 'development:' + kit['id'] and not receipt['undone']:
+                        receipts.mark_undone(receipts.DIRECTORY / (receipt['id'] + '.json'), receipt)
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                return finish('partial', snapshot=snapshot, restoreToken=restore_token, signOut=sign_out,
+                              message=_('The development kit removal did not finish. Review the transaction details.'))
+    except emaki_update_inhibit.AcquisitionError:
+        return finish('protection-unavailable', notStarted=True,
+                      message=_('This change could not be protected from a shutdown. Nothing was changed.'))
     return finish('removed', ok=True, signOut=sign_out,
                   message=_('The development kit was removed. Docker images and containers, personal projects and Rust toolchains are unchanged.'))
 

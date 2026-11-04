@@ -8,11 +8,18 @@ Column {
     id: page
     required property var catalog
     readonly property var row: catalog.row("appearance.wallpaper")
-    readonly property string currentPath: (row?.value || catalog.inheritedWallpaper || "")
-    readonly property string currentName: (catalog.wallpapers || []).find(picture => picture.path === currentPath)?.name || currentPath || qsTranslate("SettingsWallpaperPage", "Inherited wallpaper")
+    readonly property string currentPath: row?.value || ""
+    readonly property var currentPicture: (catalog.wallpapers || []).find(picture => picture.path === currentPath)
+    readonly property string currentName: currentPicture?.name || currentPath || qsTranslate("SettingsWallpaperPage", "Inherited wallpaper")
     readonly property var chooser: catalog.wallpaperChooser
     readonly property string chooserError: catalog.wallpaperChooserError
     readonly property bool busy: catalog.writing || chooser.busy
+    readonly property var overviewTheme: (catalog.styles || []).find(style => style.id === (catalog.value("appearance.style") || "emaki"))
+    readonly property string currentOverviewName: currentOverview ? qsTranslate("SettingsThemesPage", currentOverview.name) : (catalog.value("appearance.overview_video") || catalog.value("appearance.overview_still") || "").split("/").pop()
+    readonly property var currentOverview: (catalog.styles || []).find(style => overviewMatches(style))
+    function overviewMatches(style): bool {
+        return !!style && catalog.value("appearance.overview_still") === style.overview_still && (catalog.value("appearance.overview_video") === style.overview_video || (!style.video_available && catalog.value("appearance.overview_video") === ""));
+    }
     spacing: 20
     function pictureUrl(path): string {
         return path ? "file://" + path.split("/").map(encodeURIComponent).join("/") : "";
@@ -30,12 +37,89 @@ Column {
     }
     SettingsCard {
         width: parent.width
+        title: qsTr("Overview background")
+        SettingsRow {
+            objectName: "setting-appearance.overview_background"
+            width: parent.width
+            controlWidth: Math.min(230, Math.max(150, width * 0.45))
+            title: qsTr("Your own video or picture")
+            formatValue: () => qsTr("Theme background")
+            explanation: qsTr("Videos play only while the overview is open. A picture stays still. Changing the theme replaces this background.")
+            value: page.catalog.value("appearance.overview_video") + "|" + page.catalog.value("appearance.overview_still")
+            defaultValue: (page.overviewTheme?.overview_video || "") + "|" + (page.overviewTheme?.overview_still || "")
+            busy: page.busy || (page.catalog.overviewChooser?.busy ?? false)
+            onResetRequested: page.catalog.resetOverview()
+            control: Component {
+                SettingsButton {
+                    objectName: "overview-choose"
+                    text: qsTr("Choose video or picture…")
+                    onClicked: page.catalog.chooseOverview()
+                }
+            }
+        }
+        Column {
+            width: parent.width
+            topPadding: 10
+            bottomPadding: 16
+            spacing: 8
+            SettingsButton {
+                objectName: "overview-theme"
+                checked: page.overviewMatches(page.overviewTheme)
+                Accessible.role: Accessible.RadioButton
+                Accessible.checked: checked
+                text: (checked ? "✓ " : "") + qsTr("Theme background")
+                enabled: !page.busy && !(page.catalog.overviewChooser?.busy ?? false)
+                onClicked: page.catalog.resetOverview()
+            }
+            Text {
+                width: parent.width
+                text: page.currentOverviewName
+                textFormat: Text.PlainText
+                color: SettingsTheme.dim
+                font.family: SettingsTheme.fontFamily
+                font.pixelSize: 12
+                wrapMode: Text.WrapAnywhere
+            }
+            Flow {
+                id: overviewGrid
+                width: parent.width
+                spacing: 8
+                Repeater {
+                    model: (page.catalog.styles || []).length
+                    delegate: SettingsButton {
+                        required property int index
+                        readonly property var style: page.catalog.styles[index]
+                        objectName: "overview-choice-" + index
+                        checked: page.overviewMatches(style)
+                        text: (checked ? "✓ " : "") + qsTranslate("SettingsThemesPage", style.name)
+                        enabled: style.available && !page.busy && !(page.catalog.overviewChooser?.busy ?? false)
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.checked: checked
+                        onClicked: page.catalog.selectOverview(style)
+                    }
+                }
+            }
+            Text {
+                objectName: "overview-error"
+                width: parent.width
+                visible: (page.catalog.overviewChooserError || "") !== ""
+                text: page.catalog.overviewChooserError || ""
+                textFormat: Text.PlainText
+                color: SettingsTheme.error
+                font.family: SettingsTheme.fontFamily
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
+    SettingsCard {
+        width: parent.width
         title: qsTranslate("SettingsWallpaperPage", "Wallpaper")
         SettingsRow {
             objectName: "setting-appearance.wallpaper"
             width: parent.width
             title: qsTranslate("SettingsWallpaperPage", "Your own picture")
-            explanation: qsTranslate("SettingsWallpaperPage", "Choose a picture for every display. Reset restores your inherited wallpaper.")
+            explanation: qsTranslate("SettingsWallpaperPage", "Choose a picture for every display.")
             value: page.row?.value ?? null
             defaultValue: page.row?.default ?? null
             unavailable: !page.row
@@ -102,19 +186,22 @@ Column {
             wrapMode: Text.WordWrap
         }
         Flow {
+            id: grid
             width: parent.width
             spacing: 12
+            readonly property int columns: width >= 600 ? 3 : width >= 360 ? 2 : 1
             Repeater {
-                model: page.catalog.wallpapers || []
+                // Keep focused cards alive when the settings reply refreshes the catalog.
+                model: (page.catalog.wallpapers || []).length
                 delegate: SettingsButton {
                     id: picture
-                    required property var modelData
                     required property int index
+                    readonly property var modelData: page.catalog.wallpapers[index]
                     objectName: "wallpaper-choice-" + index
-                    width: Math.max(140, (parent.width - 24) / 3)
+                    width: (grid.width - (grid.columns - 1) * grid.spacing) / grid.columns
                     height: 128
                     padding: 7
-                    enabled: !page.busy && !!page.row
+                    enabled: !page.busy && !!page.row && modelData.available !== false
                     text: modelData.name
                     Accessible.name: modelData.name
                     Accessible.role: Accessible.RadioButton
@@ -125,7 +212,8 @@ Column {
                         Image {
                             width: parent.width
                             height: 86
-                            source: page.pictureUrl(picture.modelData.path)
+                            objectName: "wallpaper-thumbnail-" + picture.index
+                            source: page.pictureUrl(picture.modelData.thumbnail || picture.modelData.path)
                             sourceSize.width: 360
                             sourceSize.height: 172
                             fillMode: Image.PreserveAspectCrop

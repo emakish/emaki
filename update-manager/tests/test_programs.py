@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Installed programs: preview parsing, refusal rules and the privileged helper's guards, offline."""
 import importlib.util
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -305,7 +306,8 @@ class Helper(unittest.TestCase):
                 return ('removing gwenview...\n', None)
 
         lines = []
-        with patch.object(helper, 'pacman', fake), patch.object(helper.subprocess, 'Popen', Process), \
+        with patch.object(helper.emaki_update_inhibit, 'inhibit', return_value=contextlib.nullcontext()), \
+                patch.object(helper, 'pacman', fake), patch.object(helper.subprocess, 'Popen', Process), \
                 patch.object(helper.arch, 'inventory', return_value=(
                     {'extra/' + name: {'package': name}} if repository else {}, {name: '1'})), \
                 patch.object(helper.signal, 'signal'), \

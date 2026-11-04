@@ -87,7 +87,7 @@ function transfer(text) {
         if (text[end] === '}') depth--;
     }
     const replays = [];
-    const context = vm.createContext({Date, notes: {entries:[{id:1},{id:2}], effectiveDnd:false, peekAllowed:e => e.id === 1}, niri:{overviewOpen:false}, modalOpen:false,presentationState:'clear',peekOpen:false,osd:{importState:() => {}}, retainCriticalPeek:() => {context.peekIds=[];},
+    const context = vm.createContext({Date, notes: {entries:[{id:1},{id:2}], effectiveDnd:false, peekAllowed:e => e.id === 1}, niri:{overviewOpen:false}, modalOpen:false,presentationState:'clear',peekOpen:false,osdObject:{importState:() => {}}, retainCriticalPeek:() => {context.peekIds=[];},
         authenticationPresent:false, deferredPeekIds:[], replayDeferredPeeks() {}, Qt:{callLater:f => replays.push(f)}});
     const imported = vm.runInContext('(function(state){' + text.slice(start+1,end-1) + '})',context);
     imported({ids:[1,2],until:Date.now()+10000,started:Date.now(),cooldown:0,osd:{}});

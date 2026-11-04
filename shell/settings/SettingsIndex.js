@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 .pragma library
 
+// Keep translations for the appearance descriptions used by earlier settings pages.
+// Extraction only; current pages use the description that includes cursor styles.
+function legacyAppearanceMessages() {
+    QT_TRANSLATE_NOOP("SettingsPageRegistry", "Choose light or dark, automatic hours and an accent colour.");
+    QT_TRANSLATE_NOOP("Shell", "Choose light or dark, automatic hours and an accent colour.");
+}
+
 // Search explanations omit live values and use one coherent state per row.
 // Search metadata is checked against visible page text by test-settings-index.mjs.
 function sections() {
@@ -50,16 +57,27 @@ function sections() {
         ]
     },
     {
+        id: "themes",
+        title: qsTranslate("Shell", "Themes"),
+        group: qsTranslate("Shell", "Personal"),
+        description: qsTranslate("Shell", "Wallpapers, overview backgrounds and accent colours."),
+        colors: ["sectionAmberStart","sectionAmberEnd"],
+        items: [
+            {id: "themes-style", title: qsTranslate("Shell", "Themes"), keywords: qsTranslate("Shell", "style wallpaper overview video accent colour"), key: "appearance.style", source: "SettingsThemesPage.qml", explanation: qsTranslate("Shell", "Choose a wallpaper, overview background and accent colour together.")}
+        ]
+    },
+    {
         id: "appearance",
         title: qsTranslate("Shell", "Appearance"),
         group: qsTranslate("Shell", "Personal"),
-        description: qsTranslate("Shell", "Choose light or dark, automatic hours and an accent colour."),
+        description: qsTranslate("Shell", "Choose light or dark, automatic hours, an accent colour and a cursor style."),
         colors: ["sectionAmberStart","sectionAmberEnd"],
         items: [
             {id: "appearance-theme", title: qsTranslate("Shell", "Appearance"), keywords: qsTranslate("Shell", "theme light dark automatic"), key: "appearance.theme", source: "SettingsAppearancePage.qml", explanation: qsTranslate("Shell", "Choose light, dark or your own hours."), staticExplanation: true},
-            {id: "appearance-accent", title: qsTranslate("Shell", "Accent colour"), keywords: qsTranslate("Shell", "orange coral rose amber green teal blue violet color"), key: "appearance.accent", source: "SettingsAppearancePage.qml", explanation: qsTranslate("Shell", "Colour for icons, highlights and controls."), staticExplanation: true},
+            {id: "appearance-accent", title: qsTranslate("Shell", "Accent colour"), keywords: qsTranslate("Shell", "orange coral rose amber green teal blue violet silver graphite color"), key: "appearance.accent", source: "SettingsAppearancePage.qml", explanation: qsTranslate("Shell", "Colour for icons, highlights and controls."), staticExplanation: true},
             {id: "appearance-light-time", title: qsTranslate("Shell", "Light starts"), keywords: qsTranslate("Shell", "automatic schedule morning hours"), key: "appearance.light_time", source: "SettingsAppearancePage.qml", explanation: qsTranslate("Shell", "Use local time in 24-hour format (HH:MM)."), staticExplanation: true},
-            {id: "appearance-dark-time", title: qsTranslate("Shell", "Dark starts"), keywords: qsTranslate("Shell", "automatic schedule evening hours"), key: "appearance.dark_time", source: "SettingsAppearancePage.qml", explanation: qsTranslate("Shell", "Use local time in 24-hour format (HH:MM)."), staticExplanation: true}
+            {id: "appearance-dark-time", title: qsTranslate("Shell", "Dark starts"), keywords: qsTranslate("Shell", "automatic schedule evening hours"), key: "appearance.dark_time", source: "SettingsAppearancePage.qml", explanation: qsTranslate("Shell", "Use local time in 24-hour format (HH:MM)."), staticExplanation: true},
+            {id: "appearance-cursor", title: qsTranslate("SettingsAppearancePage", "Cursor style"), keywords: qsTranslate("Shell", "cursor pointer glass white dark"), key: "appearance.cursor", source: "SettingsAppearancePage.qml", explanation: ""}
         ]
     },
     {
@@ -70,7 +88,7 @@ function sections() {
         colors: ["sectionRedStart","sectionRedEnd"],
         items: [
             {"id":"wallpaper-emaki-wallpapers","title":qsTranslate("Shell", "Emaki wallpapers"),"keywords":qsTranslate("Shell", "Emaki wallpapers background picture"),"source":"SettingsWallpaperPage.qml","explanation":""},
-            {"id":"wallpaper-your-own-picture","title":qsTranslate("Shell", "Your own picture"),"keywords":qsTranslate("Shell", "Your own picture image file"),"key":"appearance.wallpaper","source":"SettingsWallpaperPage.qml","explanation":qsTranslate("Shell", "Choose a picture for every display. Reset restores your inherited wallpaper."),"staticExplanation":true}
+            {"id":"wallpaper-your-own-picture","title":qsTranslate("Shell", "Your own picture"),"keywords":qsTranslate("Shell", "Your own picture image file"),"key":"appearance.wallpaper","source":"SettingsWallpaperPage.qml","explanation":qsTranslate("SettingsWallpaperPage", "Choose a picture for every display."),"staticExplanation":true}
         ]
     },
     {
@@ -81,6 +99,9 @@ function sections() {
         colors: ["sectionPinkStart","sectionPinkEnd"],
         items: [
             {"id":"panel-panel-auto-hide","title":qsTranslate("Shell", "Hide the panel automatically"),"keywords":qsTranslate("Shell", "Panel auto-hide bar hide"),"key":"bar.autohide_mode","source":"SettingsCorePage.qml","explanation":qsTranslate("Shell", "Choose when the panel hides. Move to the top edge to show it."),"searchExplanation":qsTranslate("Shell", "Move to the top edge to show it.")},
+            {"id":"panel-clock-seconds-closed","title":qsTranslate("Shell", "Show seconds in the panel clock"),"keywords":qsTranslate("Shell", "clock time seconds closed"),"key":"bar.clock_seconds_closed","source":"SettingsCorePage.qml","explanation":qsTranslate("Shell", "Show seconds while the clock panel is closed."),"staticExplanation":true},
+            {"id":"panel-clock-seconds-open","title":qsTranslate("Shell", "Show seconds in the open clock"),"keywords":qsTranslate("Shell", "clock time seconds open calendar"),"key":"bar.clock_seconds_open","source":"SettingsCorePage.qml","explanation":qsTranslate("Shell", "Show seconds while the clock panel is open."),"staticExplanation":true},
+            {"id":"panel-launcher-mode-icons","title":qsTranslate("Shell", "Mode labels"),"keywords":qsTranslate("Shell", "launcher modes text icons"),"key":"launcher.mode_icons","source":"SettingsCorePage.qml","explanation":qsTranslate("Shell", "Show launcher modes as text or icons."),"staticExplanation":true},
             {"id":"panel-workspaces-in-overview","title":qsTranslate("Shell", "Show workspaces in the overview"),"keywords":qsTranslate("Shell", "Workspaces in overview panel overview"),"key":"bar.overview_workspaces","source":"SettingsCorePage.qml","explanation":qsTranslate("Shell", "Workspace numbers stay visible in the overview. Workspace numbers hide in the overview."),"searchExplanation":qsTranslate("Shell", "Workspace numbers stay visible in the overview.")},
             {"id":"panel-show-dock","title":qsTranslate("Shell", "Show the dock"),"keywords":qsTranslate("Shell", "Show dock dock enabled"),"key":"dock.on","source":"SettingsCorePage.qml","explanation":qsTranslate("Shell", "Your pinned and running apps appear in the dock. The dock is hidden."),"searchExplanation":qsTranslate("Shell", "Your pinned and running apps appear in the dock.")},
             {"id":"panel-dock-auto-hide","title":qsTranslate("Shell", "Hide the dock automatically"),"keywords":qsTranslate("Shell", "Dock auto-hide hide dock"),"key":"dock.auto_hide","source":"SettingsCorePage.qml","explanation":qsTranslate("Shell", "Move to the bottom edge to show your apps. The dock stays visible beside your windows."),"searchExplanation":qsTranslate("Shell", "Move to the bottom edge to show your apps.")}

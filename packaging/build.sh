@@ -11,7 +11,7 @@
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
-ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-font-iosevka emaki-config emaki-sudo-key snapguard emaki-nvidia
+ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-font-iosevka emaki-themes emaki-config emaki-sudo-key snapguard emaki-nvidia
        emaki-shim-signed emaki-desktop emaki-apps emaki-installer emaki-keyring emaki-mirrorlist emaki)
 # Packages whose build needs makedepends from Arch (--syncdeps). The others depend at run time on
 # Emaki packages that are not in any repository yet, so their dependencies are not checked here

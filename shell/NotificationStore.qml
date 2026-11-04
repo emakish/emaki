@@ -242,19 +242,32 @@ Scope {
     signal arrived(int id)
     function displayApp(app: string): string {
         switch (app) {
-        case "Emaki Calendar": return qsTranslate("NotificationStore", "Emaki Calendar");
-        case "Settings": return qsTranslate("NotificationStore", "Settings");
-        case "Application": return qsTranslate("NotificationStore", "Application");
-        case "Battery critical": return qsTranslate("NotificationStore", "Battery critical");
-        case "Battery low": return qsTranslate("NotificationStore", "Battery low");
-        case "Desktop update": return qsTranslate("NotificationStore", "Desktop update");
-        case "Screen lock": return qsTranslate("NotificationStore", "Screen lock");
-        case "Panel recovery": return qsTranslate("NotificationStore", "Panel recovery");
-        case "Programs & Updates": return qsTranslate("NotificationStore", "Programs & Updates");
-        case "Launcher": return qsTranslate("NotificationStore", "Launcher");
-        case "Secure Boot": return qsTranslate("NotificationStore", "Secure Boot");
-        case "Clocks": return qsTranslate("NotificationStore", "Clocks");
-        default: return app;
+        case "Emaki Calendar":
+            return qsTranslate("NotificationStore", "Emaki Calendar");
+        case "Settings":
+            return qsTranslate("NotificationStore", "Settings");
+        case "Application":
+            return qsTranslate("NotificationStore", "Application");
+        case "Battery critical":
+            return qsTranslate("NotificationStore", "Battery critical");
+        case "Battery low":
+            return qsTranslate("NotificationStore", "Battery low");
+        case "Desktop update":
+            return qsTranslate("NotificationStore", "Desktop update");
+        case "Screen lock":
+            return qsTranslate("NotificationStore", "Screen lock");
+        case "Panel recovery":
+            return qsTranslate("NotificationStore", "Panel recovery");
+        case "Programs & Updates":
+            return qsTranslate("NotificationStore", "Programs & Updates");
+        case "Launcher":
+            return qsTranslate("NotificationStore", "Launcher");
+        case "Secure Boot":
+            return qsTranslate("NotificationStore", "Secure Boot");
+        case "Clocks":
+            return qsTranslate("NotificationStore", "Clocks");
+        default:
+            return app;
         }
     }
     function bucket(time: double): string {

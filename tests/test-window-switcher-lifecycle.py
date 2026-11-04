@@ -52,7 +52,7 @@ immediateFocusReady = true;
 focusReplies = Array(32).fill(1);
 assert.equal(focusWindowImmediate(7), -1);
 assert.equal(writes.length, 2);
-let switcher = {closedAt: 0}, switcherOpen = false, enabled = true, focusedOutput = true;
+let switcherObject = {closedAt: 0}, switcherOpen = false, enabled = true, focusedOutput = true;
 let output = {}, headless = false, authenticationPresent = false, firstRunPresent = false;
 let niri = {connected: true, immediateFocusReady: false};
 function switchWindows(delta, sameApp, sent) { ENTRY }

@@ -129,7 +129,7 @@ def rendered_window():
         for name in ('cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)
             env['XDG_' + name.upper() + '_HOME'] = str(root / name)
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET'):
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME'):
             env.pop(name, None)
         # Keep Unix socket names short while retaining all scratch in the worktree.
         with tempfile.TemporaryDirectory(prefix='', dir=ROOT / '.cache') as runtime:
@@ -191,7 +191,7 @@ def run(scenario):
         for name in ('runtime', 'cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)
             env['XDG_' + name.upper() + ('_DIR' if name == 'runtime' else '_HOME')] = str(root / name)
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET'):
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME'):
             env.pop(name, None)
         result = subprocess.run(['qs', '-p', str(root / 'ControllerTest.qml'), '--no-color'], env=env, capture_output=True, text=True, timeout=20)
         log = result.stdout + result.stderr

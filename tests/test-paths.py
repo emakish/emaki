@@ -225,6 +225,15 @@ class Paths(unittest.TestCase):
         self.assertIn('/opt/emaki-data/agent-rules.md',
                       (directory / 'agent-rules-setup.md').read_text())
 
+    def test_packaged_wallpaper_default_uses_custom_data_directory(self):
+        root = self.base / 'wallpaper-stage'
+        config = root / 'opt/emaki-data/wpaperd/config.toml'
+        config.parent.mkdir(parents=True)
+        shutil.copyfile(ROOT / 'etc-skel/.config/wpaperd/config.toml', config)
+        RENDER['render_install'](root, self.values, ROOT / 'packaging/emaki-config/expected-files.list')
+        self.assertIn('path = "/opt/emaki-data/wallpaper/fallback.png"', config.read_text())
+        self.assertNotIn('/usr/share/emaki', config.read_text())
+
     def check_python(self, path, values):
         code = ('import json, sys; sys.path.insert(0, sys.argv[1]); '
                 'import emaki_paths; print(json.dumps({key: getattr(emaki_paths, key) '

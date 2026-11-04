@@ -431,7 +431,7 @@ def checks(call, wait):
     if SHOTS:
         save(call, wait, 'kept-pictures-dark-rose.png')
         for theme in ('light', 'dark'):
-            for accent in ('orange', 'coral', 'rose', 'amber', 'green', 'teal', 'blue', 'violet'):
+            for accent in ('orange', 'coral', 'rose', 'amber', 'green', 'teal', 'blue', 'violet', 'silver', 'graphite'):
                 call('test', 'appearance', theme, accent)
                 wait(lambda s: s['dark'] == (theme == 'dark') and s['accent'] == accent)
                 save(call, wait, f'panel-{theme}-{accent}.png')

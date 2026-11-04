@@ -805,17 +805,17 @@ FocusScope {
                             from: ShellPalette.accentSoft
                             to: ShellPalette.accent
                             readonly property string existingIcon: ({
-                                "command": "search",
-                                "capture": "displays",
-                                "programs": "apps",
-                                "reset": "reset"
-                            })[welcome.current.icon] || ""
+                                    "command": "search",
+                                    "capture": "displays",
+                                    "programs": "apps",
+                                    "reset": "reset"
+                                })[welcome.current.icon] || ""
                             glyph: existingIcon ? Qt.resolvedUrl("settings/icons/" + existingIcon + ".svg") : 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#fffaf5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + ({
-                                "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
-                                "language": '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/>',
-                                "updates": '<path d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6M4 15a8 8 0 0 0 14 3l3-3m0 6v-6h-6"/>',
-                                "fixes": '<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>'
-                            })[welcome.current.icon] + '</svg>')
+                                    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
+                                    "language": '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/>',
+                                    "updates": '<path d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6M4 15a8 8 0 0 0 14 3l3-3m0 6v-6h-6"/>',
+                                    "fixes": '<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>'
+                                })[welcome.current.icon] + '</svg>')
                         }
                     }
                 }

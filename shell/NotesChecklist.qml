@@ -3,6 +3,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
+
 Column {
     id: root
     property string body: ""
@@ -25,16 +26,26 @@ Column {
                 visible: row.task
                 enabled: root.interactive
                 anchors.verticalCenter: parent.verticalCenter
-                width: 44; height: 44
+                width: 44
+                height: 44
                 checked: /^\s*- \[[xX]\] /.test(row.modelData)
                 onClicked: root.toggled(row.index)
                 Accessible.name: label.text
                 indicator: Rectangle {
-                    x: 10; y: 10; width: 24; height: 24; radius: 5
+                    x: 10
+                    y: 10
+                    width: 24
+                    height: 24
+                    radius: 5
                     color: box.checked ? ShellPalette.accent : "transparent"
                     border.width: box.activeFocus ? 2 : 1
                     border.color: box.checked || box.activeFocus ? LiquidPalette.accent : LiquidPalette.faint
-                    Text { anchors.centerIn: parent; text: box.checked ? "✓" : ""; color: ShellPalette.accentText; font.pixelSize: 13 }
+                    Text {
+                        anchors.centerIn: parent
+                        text: box.checked ? "✓" : ""
+                        color: ShellPalette.accentText
+                        font.pixelSize: 13
+                    }
                 }
             }
             Text {

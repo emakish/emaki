@@ -389,11 +389,11 @@ class StateTests(unittest.TestCase):
         published = self.own_alice()
         self.assertEqual(self.op('load')['look'], {})  # nothing published yet: the default look
         (published / 'look.json').write_text(json.dumps(dict(
-            version=1, theme='light', accent='teal', light_time='06:30', dark_time='20:00',
+            version=1, theme='light', accent='teal', light_time='06:30', dark_time='20:00', cursor='dark',
             wallpaper='/home/alice/Pictures/private.png', name='Alice')))
-        self.assertEqual(self.op('load')['look'], dict(theme='light', accent='teal', light_time='06:30', dark_time='20:00'))
+        self.assertEqual(self.op('load')['look'], dict(theme='light', accent='teal', light_time='06:30', dark_time='20:00', cursor='dark'))
         (published / 'look.json').write_text(json.dumps(dict(
-            version=1, theme='neon', accent='Rose!', light_time='25:00', dark_time=7)))
+            version=1, theme='neon', accent='Rose!', light_time='25:00', dark_time=7, cursor='emaki')))
         self.assertEqual(self.op('load')['look'], {})
         (published / 'look.json').write_text(json.dumps(dict(version=2, theme='light')))
         self.assertEqual(self.op('load')['look'], {})

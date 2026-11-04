@@ -52,14 +52,6 @@ except ModuleNotFoundError:
 
 PROTOCOL = 1
 MAX_REQUEST = 65536
-# Browse's picks (the featured row, the order inside category rows, short names) are data,
-# not code: update-manager/storefront.json, installed next to the window's files.
-STOREFRONT = 'storefront.json'
-STOREFRONT_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,254}\Z')
-STOREFRONT_CATEGORY = re.compile(r'[A-Za-z]{1,64}\Z')
-# Browse draws the featured row as three cards.
-MAX_FEATURED = 3
-MAX_FIRST = 8
 # Installed AUR programs looked up in one RPC request, as many as the popular list asks for.
 MAX_INSTALLED_AUR = 50
 # Browse's "From Emaki" shelf: Emaki's own optional packages, data in update-manager/emaki-shelf.json.
@@ -234,7 +226,7 @@ def arch_rows(metadata, available, installed):
     return list(rows.values())
 
 
-def storefront_paths(name=STOREFRONT):
+def storefront_paths(name):
     """The source tree's copy first (development and tests), then the installed one."""
     paths = [Path(__file__).resolve().with_name(name)]
     try:
@@ -244,23 +236,9 @@ def storefront_paths(name=STOREFRONT):
     return paths + [Path(PREFIX) / 'share' / 'emaki-update-manager' / name]
 
 
-def storefront(paths=None):
-    """Browse's picks; a missing or invalid file gives an empty storefront, never a guess."""
-    for path in storefront_paths() if paths is None else paths:
-        try:
-            return storefront_value(json.loads(Path(path).read_text()))
-        except FileNotFoundError:
-            continue
-        except (OSError, ValueError, TypeError, AttributeError):
-            break
-    return dict(featured=dict(title='', note='', programs=[]), rows=[], names={})
-
-
 def catalog_text(value):
     """Translate bundled editorial text after validating its source value."""
     messages = {
-        'Picked by Emaki': _('Picked by Emaki'),
-        'A good place to start': _('A good place to start'),
         'Session sudo key': _('Session sudo key'),
         'Snapshot guard': _('Snapshot guard'),
         'NVIDIA support': _('NVIDIA support'),
@@ -269,36 +247,6 @@ def catalog_text(value):
         "Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings.": _("Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings."),
     }
     return messages.get(value, value)
-
-
-def storefront_value(value):
-    def text(item):
-        if not isinstance(item, str) or not 0 < len(item) <= 64 or item != removal.clean_text(item):
-            raise ValueError(_('Invalid storefront text'))
-        return item
-
-    def identities(items, limit):
-        # Lower case without .desktop, as the window compares program identities.
-        if (not isinstance(items, list) or len(items) > limit
-                or not all(isinstance(item, str) and STOREFRONT_ID.fullmatch(item) for item in items)):
-            raise ValueError(_('Invalid storefront identities'))
-        return list(dict.fromkeys(item.removesuffix('.desktop').lower() for item in items))
-
-    if not isinstance(value, dict) or value.get('version') != 1 or set(value) != {'version', 'featured', 'rows', 'names'}:
-        raise ValueError(_('Invalid storefront'))
-    featured, rows, names = value['featured'], value['rows'], value['names']
-    if (not isinstance(featured, dict) or set(featured) != {'title', 'note', 'programs'}
-            or not isinstance(rows, list) or len(rows) > 8 or not isinstance(names, dict) or len(names) > 64):
-        raise ValueError(_('Invalid storefront'))
-    for row in rows:
-        if (not isinstance(row, dict) or set(row) != {'category', 'first'} or not isinstance(row['category'], str)
-                or not STOREFRONT_CATEGORY.fullmatch(row['category'])):
-            raise ValueError(_('Invalid storefront row'))
-    return dict(
-        featured=dict(title=catalog_text(text(featured['title'])), note=catalog_text(text(featured['note'])),
-                      programs=identities(featured['programs'], MAX_FEATURED)),
-        rows=[dict(category=row['category'], first=identities(row['first'], MAX_FIRST)) for row in rows],
-        names={identities([key], 1)[0]: text(name) for key, name in names.items()})
 
 
 def shelf_items(paths=None):
@@ -714,7 +662,7 @@ class Engine:
             rows += [row for row in self.aur.values() if enabled or row.get('recorded')]
         result = select(rows, **options)
         self.ratings.annotate(result['programs'])
-        return dict(ok=True, **result, storefront=storefront(), shelf=shelf(self.rows.values()),
+        return dict(ok=True, **result, shelf=shelf(self.rows.values()),
                     essentials=dict(minimal=self.installed_known and 'emaki-apps' not in self.installed,
                                     programs=list(self.rich_programs)),
                     warnings=list(dict.fromkeys(self.warnings)),

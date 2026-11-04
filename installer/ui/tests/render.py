@@ -34,6 +34,9 @@ def main():
     parser.add_argument('--width', type=int, default=1024)
     parser.add_argument('--height', type=int, default=700)
     parser.add_argument('--screen', choices=SCREENS)
+    parser.add_argument('--dropdown', action='store_true', help='open the welcome language list or the scrolled manual-create use list')
+    parser.add_argument('--scale', choices=(1, 2), type=int, default=1)
+    parser.add_argument('--theme', choices=('light', 'dark'), default='light', help='incoming shell preference; installer retains its light theme')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     args.output = args.output.resolve()
@@ -47,6 +50,9 @@ def main():
         (root / 'ui/shell-test.qml').write_text(entry)
         for filename in (root / 'ui').glob('*.qml'):
             filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
+        view = root / 'ui/InstallerView.qml'
+        view.write_text(view.read_text().replace('Component.onCompleted: Shell.SettingsBridge.values = [',
+            'Component.onCompleted: { Shell.SettingsBridge.values = [{key: \"appearance.theme\", value: ' + json.dumps(args.theme) + '}]; applyInstallerTheme(); }\n    function applyInstallerTheme() { Shell.SettingsBridge.values = [', 1).replace('    required property InstallerController controller', '    }\n    required property InstallerController controller', 1))
         for name in ['cache', 'config', 'state', 'data']:
             (root / name).mkdir(mode=0o700)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QUICK_CONTROLS_STYLE='Basic',
@@ -54,13 +60,14 @@ def main():
                    XDG_CACHE_HOME=str(root / 'cache'), XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                    XDG_DATA_HOME=str(root / 'data'), EMAKI_INSTALLER_WIDTH=str(args.width), EMAKI_INSTALLER_HEIGHT=str(args.height),
                    EMAKI_INSTALLER_CHECKOUT=str(ROOT), TMPDIR=str(root))
+        env.update(QT_SCALE_FACTOR=str(args.scale), EMAKI_INSTALLER_DROPDOWN='1' if args.dropdown else '0')
         env.update(EMAKI_LANGUAGE='en', EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
                    QML_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'),
                    QML2_IMPORT_PATH=str(ROOT / '.cache/i18n-native/qml'))
         # Qt may terminate the real worker before its context manager runs.
         # Keep child scratch directories inside the renderer's cleanup scope.
         env['EMAKI_INSTALLER_SCROLL_BOTTOM'] = '1' if args.scroll_bottom else '0'
-        for key in ['WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS']:
+        for key in ['WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS', 'QT_QPA_PLATFORMTHEME']:
             env.pop(key, None)
         if args.iso_fonts:
             fonts = root / 'fonts'
@@ -87,7 +94,7 @@ def main():
             (args.output / (screen + '.log')).write_text(log.replace(str(ROOT), '<checkout>'))
             assert result.returncode == 0 and 'SCREENSHOT_OK ' + screen in log, log
             assert 'LAYOUT_OK' in log, log
-            if screen == 'welcome':
+            if screen == 'welcome' and not args.dropdown:
                 with Image.open(args.output / 'welcome.png') as frame:
                     # Inside the 16 px window curve, outside the old 26 px glass curve.
                     ratio = frame.width / args.width
@@ -109,6 +116,11 @@ def main():
                     assert layout['x'] - panel['x'] >= 8 and layout['y'] <= y <= layout['y'] + layout['height'], bounds
                     sample = frame.getpixel((round(x * ratio), round(y * ratio)))
                     assert min(sample[:3]) > 200, f'Installer panel is not light: {sample} at {x},{y}'
+            if args.dropdown:
+                assert screen in ('welcome', 'manual-create'), '--dropdown requires --screen welcome or manual-create'
+                assert 'DROPDOWN_FRAME ' in log, log
+                if screen == 'manual-create':
+                    assert 'DROPDOWN_SCROLL ' in log, log
             if args.iso_fonts:
                 assert 'FONT_OK Noto Sans' in log, log
             for diagnostic in ['ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign', 'failed to load', 'Renderer timeout']:
@@ -127,7 +139,7 @@ def main():
                 print('PASS render ' + screen, flush=True)
                 continue
             validate_frame(args.output / (screen + '.png'), log, screen, args.width, args.height,
-                           version, scrolled=args.scroll_bottom or screen == 'manual-delete')
+                           version, scrolled=args.scroll_bottom or screen == 'manual-delete' or (args.dropdown and screen == 'manual-create'))
             if screen == 'error-details':
                 assert 'DETAILS_VISIBLE' in log, log
             if screen == 'disk':

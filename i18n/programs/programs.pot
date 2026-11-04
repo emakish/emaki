@@ -12,9 +12,6 @@ msgstr ""
 msgid "(no reply)"
 msgstr ""
 
-msgid "A good place to start"
-msgstr ""
-
 msgid "A recipe never runs as root."
 msgstr ""
 
@@ -426,18 +423,6 @@ msgstr ""
 msgid "Invalid shelf: a package twice"
 msgstr ""
 
-msgid "Invalid storefront"
-msgstr ""
-
-msgid "Invalid storefront identities"
-msgstr ""
-
-msgid "Invalid storefront row"
-msgstr ""
-
-msgid "Invalid storefront text"
-msgstr ""
-
 msgid "Invalid transaction"
 msgstr ""
 
@@ -546,9 +531,6 @@ msgid "Permission is required to undo an install."
 msgstr ""
 
 msgid "Permission is required to update repository packages."
-msgstr ""
-
-msgid "Picked by Emaki"
 msgstr ""
 
 msgid "Popularity cache too large"
@@ -681,6 +663,9 @@ msgid "Select one repository program."
 msgstr ""
 
 msgid "Session sudo key"
+msgstr ""
+
+msgid "Shutdown and sleep protection could not start. The update was not started."
 msgstr ""
 
 msgid "Snapshot guard"
@@ -1024,6 +1009,9 @@ msgstr ""
 msgid "This additional Flatpak installation is read-only in this program manager."
 msgstr ""
 
+msgid "This change could not be protected from a shutdown. Nothing was changed."
+msgstr ""
+
 msgid "This existing Flatpak program can be removed from your account without administrator authentication."
 msgstr ""
 
@@ -1102,7 +1090,7 @@ msgstr ""
 msgid "Updates always include the full system"
 msgstr ""
 
-msgid "Updating Flatpak applications"
+msgid "Updating Emaki"
 msgstr ""
 
 #, python-brace-format
@@ -1122,6 +1110,9 @@ msgid "Usage: emaki-update-manager [--status|--check|--updates]"
 msgstr ""
 
 msgid "Waiting for permission to update…"
+msgstr ""
+
+msgid "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
 msgstr ""
 
 msgid "Warning: the update space check is unavailable; the package transaction will continue."

@@ -14,6 +14,54 @@ pub(super) fn load(path: &Path, timeout: Duration) -> Result<()> {
     load_at(Path::new(&socket), path, timeout)
 }
 
+/// A config acknowledgment precedes asynchronous image decoding. Wait for that image,
+/// inside the live transaction, with a separate bound for large strip decoding.
+const STRIP_LOAD: Duration = Duration::from_secs(10);
+pub(super) fn wallpaper(path: &str) -> Result<()> {
+    let socket = std::env::var_os("NIRI_SOCKET").ok_or_else(|| err("niri_socket_missing"))?;
+    wallpaper_at(Path::new(&socket), path, STRIP_LOAD)
+}
+
+fn wallpaper_at(socket: &Path, path: &str, timeout: Duration) -> Result<()> {
+    let deadline = Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| err("invalid_timeout"))?;
+    loop {
+        let mut stream = transport::connect(socket, deadline).map_err(wallpaper_failure)?;
+        // This extension is absent from the upstream typed IPC crate.
+        let bytes = transport::exchange(&mut stream, b"\"EmakiWallpaper\"\n", deadline)
+            .map_err(wallpaper_failure)?;
+        let reply: std::result::Result<serde_json::Value, String> =
+            serde_json::from_slice(&bytes).map_err(|_| err("wallpaper_reply_invalid"))?;
+        let reply = reply.map_err(|_| err("wallpaper_request_rejected"))?;
+        if wallpaper_ready(&reply["EmakiWallpaper"], path)? {
+            return Ok(());
+        }
+        let left = transport::remaining(deadline).map_err(|_| err("wallpaper_load_timeout"))?;
+        std::thread::sleep(left.min(Duration::from_millis(25)));
+    }
+}
+
+fn wallpaper_failure(failure: crate::state::Failure) -> super::Error {
+    if failure.reason == "deadline_exceeded" {
+        err("wallpaper_load_timeout")
+    } else {
+        err(failure.reason)
+    }
+}
+
+fn wallpaper_ready(status: &serde_json::Value, path: &str) -> Result<bool> {
+    if status["mode"].as_str() != Some("strip") || status["files"]["ring"].as_str() != Some(path) {
+        return Err(err("wallpaper_path_mismatch"));
+    }
+    match status["load_state"].as_str() {
+        Some("ready") if status["error"].is_null() => Ok(true),
+        Some("loading") => Ok(false),
+        Some("failed") | Some("ready") => Err(err("wallpaper_decode_failed")),
+        _ => Err(err("wallpaper_reply_invalid")),
+    }
+}
+
 fn failure(failure: crate::state::Failure) -> super::Error {
     err(failure.reason)
 }
@@ -108,6 +156,53 @@ mod tests {
     use std::os::unix::net::UnixListener;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn strip_wait_times_out_even_when_the_status_server_stalls() {
+        let socket = Socket::new();
+        let listener = UnixListener::bind(&socket.0).unwrap();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            assert_eq!(request.trim(), "\"EmakiWallpaper\"");
+            std::thread::sleep(Duration::from_millis(150));
+        });
+        let started = Instant::now();
+        let result = wallpaper_at(&socket.0, "/tmp/strip.png", Duration::from_millis(50));
+        assert_eq!(result.unwrap_err().reason, "wallpaper_load_timeout");
+        assert!(started.elapsed() < Duration::from_secs(1));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn strip_readiness_requires_matching_decoded_asset() {
+        let mut value = serde_json::json!({"mode":"strip", "files":{"ring":"/tmp/strip.png"}, "load_state":"loading", "error":null});
+        assert!(!wallpaper_ready(&value, "/tmp/strip.png").unwrap());
+        value["load_state"] = serde_json::json!("ready");
+        assert!(wallpaper_ready(&value, "/tmp/strip.png").unwrap());
+        assert_eq!(
+            wallpaper_ready(&value, "/tmp/other.png")
+                .unwrap_err()
+                .reason,
+            "wallpaper_path_mismatch"
+        );
+        value["load_state"] = serde_json::json!("failed");
+        assert_eq!(
+            wallpaper_ready(&value, "/tmp/strip.png")
+                .unwrap_err()
+                .reason,
+            "wallpaper_decode_failed"
+        );
+        value["load_state"] = serde_json::json!("ready");
+        value["error"] = serde_json::json!("texture upload failed");
+        assert_eq!(
+            wallpaper_ready(&value, "/tmp/strip.png")
+                .unwrap_err()
+                .reason,
+            "wallpaper_decode_failed"
+        );
+    }
 
     struct Socket(PathBuf);
     impl Socket {

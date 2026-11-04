@@ -500,9 +500,32 @@ Item {
             }
         }
     }
+    component PopupGlass: GlassPane {
+        // Software rendering has no blur: keep the page beneath from ghosting through text.
+        fallbackColor: Qt.rgba(Shell.LiquidPalette.flatPanel.r, Shell.LiquidPalette.flatPanel.g, Shell.LiquidPalette.flatPanel.b, 1)
+        wallpaperTexture: view.wallpaperTexture
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.cornerRadius
+            color: "transparent"
+            border.color: Shell.LiquidPalette.flatDropRim
+        }
+    }
     component Select: C.ComboBox {
         id: select
         implicitHeight: 44
+        implicitWidth: Math.max(160, Math.ceil(widestLabel) + 44)
+        readonly property real widestLabel: {
+            let widest = 0;
+            for (let index = 0; index < count; ++index)
+                widest = Math.max(widest, metrics.advanceWidth(displayLabel(textAt(index))));
+            return widest;
+        }
+        FontMetrics {
+            id: metrics
+            font: select.font
+        }
+        focusPolicy: Qt.StrongFocus
         font.family: Shell.ShellPalette.uiFont
         font.pixelSize: 16
         // Mount and filesystem tokens remain unchanged in the model and currentText.
@@ -510,10 +533,67 @@ Item {
             return value === "none" ? qsTranslate("InstallerView", "none") : value;
         }
         delegate: C.ItemDelegate {
+            id: option
             required property int index
-            width: select.width
+            width: select.popup.availableWidth - 10
+            implicitHeight: 44
             text: select.displayLabel(select.textAt(index))
             highlighted: select.highlightedIndex === index
+            hoverEnabled: true
+            font: select.font
+            contentItem: Text {
+                text: option.text
+                textFormat: Text.PlainText
+                font: option.font
+                color: option.highlighted ? Shell.LiquidPalette.inkOnLight : view.ink
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+            background: Rectangle {
+                radius: 10
+                color: option.highlighted ? Shell.LiquidPalette.selectedDrop : option.hovered ? Shell.LiquidPalette.flatDrop : "transparent"
+            }
+        }
+        popup: C.Popup {
+            objectName: "installerSelectPopup"
+            // Ancestor scrolling does not notify a mapToItem binding. Measure on every open.
+            onAboutToShow: y = select.mapToItem(view, 0, 0).y + select.height + implicitHeight + 4 > view.height - 12 ? -implicitHeight - 4 : select.height + 4
+            width: select.width
+            padding: 6
+            margins: 12
+            implicitHeight: Math.min(contentItem.implicitHeight + topPadding + bottomPadding, Math.max(44, view.height - 24))
+            background: PopupGlass {}
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: select.delegateModel
+                currentIndex: select.highlightedIndex
+                highlightRangeMode: ListView.ApplyRange
+                highlightMoveDuration: 0
+                onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+                onCountChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+                C.ScrollBar.vertical: C.ScrollBar {
+                    id: scroll
+                    padding: 2
+                    contentItem: Rectangle {
+                        implicitWidth: 4
+                        implicitHeight: 24
+                        radius: 2
+                        color: scroll.pressed ? view.accentInk : view.dim
+                        opacity: scroll.active ? 0.9 : 0.5
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: Shell.LiquidPalette.flatDrop
+                    }
+                }
+            }
+        }
+        indicator: Text {
+            x: select.width - width - 12
+            y: (select.height - height) / 2
+            text: "⌄"
+            color: view.dim
             font: select.font
         }
         contentItem: Copy {
@@ -554,11 +634,7 @@ Item {
         onOpened: mapLegalText.forceActiveFocus()
         onClosed: if (opener)
             opener.forceActiveFocus()
-        background: Rectangle {
-            radius: 16
-            color: Qt.rgba(Shell.LiquidPalette.flatPanel.r, Shell.LiquidPalette.flatPanel.g, Shell.LiquidPalette.flatPanel.b, 1)
-            border.color: Shell.LiquidPalette.flatDropRim
-        }
+        background: PopupGlass {}
         contentItem: ColumnLayout {
             spacing: 14
             Copy {
@@ -611,11 +687,8 @@ Item {
         closePolicy: C.Popup.NoAutoClose
         visible: view.controller.removeUsbPrompt
         padding: 28
-        background: Rectangle {
+        background: PopupGlass {
             objectName: "removeUsbBackground"
-            radius: 16
-            color: Qt.rgba(Shell.LiquidPalette.flatPanel.r, Shell.LiquidPalette.flatPanel.g, Shell.LiquidPalette.flatPanel.b, 1)
-            border.color: Shell.LiquidPalette.flatDropRim
         }
         contentItem: ColumnLayout {
             spacing: 20
@@ -1020,7 +1093,7 @@ Item {
             Copy {
                 text: qsTranslate("InstallerView", "Language for the installed system")
             }
-            C.ComboBox {
+            Select {
                 id: languageChoice
                 objectName: "languageChoice"
                 implicitContentWidthPolicy: C.ComboBox.WidestText

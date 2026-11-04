@@ -17,7 +17,7 @@ ShaderEffectSource {
     property int tick: 0
     readonly property real dpr: Screen.devicePixelRatio || 1
     readonly property rect r: {
-        tick;
+        void tick;
         if (!target || !space)
             return Qt.rect(0, 0, 0, 0);
         const p = target.mapToItem(space, 0, 0);

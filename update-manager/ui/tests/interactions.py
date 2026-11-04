@@ -14,7 +14,7 @@ import tempfile
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
 sys.path.insert(0, str(UI.parent))
-import programs_engine  # noqa: E402  (Browse's picks as the engine serves them)
+import programs_engine  # noqa: E402  (Emaki's package shelf as the engine serves it)
 import programs_catalog  # noqa: E402  (the Installed inventory as the engine builds it)
 
 HEADER = '// Copyright (C) 2026 Artur Yakymenko\n// SPDX-License-Identifier: GPL-3.0-or-later\n'
@@ -153,7 +153,8 @@ QtObject {
     property var recoveryPoint: null
     property int aurChanges: 0
     property var lastAur: null
-    property var storefront: JSON.parse(Quickshell.env("TEST_STOREFRONT"))
+    // The pinned historical layout reads this retired metadata; use the same catalog names.
+    property var storefront: ({names: {}, featured: {programs: []}})
     property var shelf: JSON.parse(Quickshell.env("TEST_SHELF")).map((item, index) => ({
         key:"package:emaki/" + item.package, id:item.package, package:item.package, kind:"arch", name:item.title,
         summary:item.summary, repository:"emaki", target:"emaki/" + item.package, version:"0.8.0-1",
@@ -308,7 +309,7 @@ MUTANTS = {
     'shelf-install':('ManagerView.qml', 'onClicked: view.programs.preparePackage(shelfItem.modelData, "install")', 'onClicked: {}'),
 }
 
-def run(width=1180, height=780, mutant=None, reopen=False, entry='InteractionTest.qml', source=UI, extra=None, timeout=30, allow_restore_binding_warning=False):
+def run(width=1180, height=780, mutant=None, reopen=False, entry='InteractionTest.qml', source=UI, extra=None, timeout=30, allow_restore_binding_warning=False, platform_theme=None):
     """Runs a QML entry from tests/ against the UI files in `source`, with the fixture controllers."""
     with tempfile.TemporaryDirectory(prefix='emaki-manager-ui-') as directory:
         root = Path(directory)
@@ -341,7 +342,8 @@ def run(width=1180, height=780, mutant=None, reopen=False, entry='InteractionTes
         for name in ('runtime', 'cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)
             env['XDG_' + name.upper() + ('_DIR' if name == 'runtime' else '_HOME')] = str(root / name)
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET'):
+        # Exercise Qt's default font metrics regardless of the caller's desktop theme.
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME'):
             env.pop(name, None)
         evidence = Path(os.environ.get('EMAKI_UI_SHOTS') or ROOT / '.cache/evidence/W1b/screenshots')
         evidence.mkdir(parents=True, exist_ok=True)
@@ -351,11 +353,12 @@ def run(width=1180, height=780, mutant=None, reopen=False, entry='InteractionTes
         screenshot = root / 'program-screen.svg'
         screenshot.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="472"><!-- Copyright (C) 2026 Artur Yakymenko; SPDX-License-Identifier: GPL-3.0-or-later --><rect width="800" height="472" fill="#d2809a"/><rect x="48" y="40" width="704" height="400" rx="12" fill="#fff9f5"/><rect x="68" y="60" width="100" height="360" fill="#e4d9d2"/><rect x="188" y="80" width="544" height="320" fill="#eed0dd"/></svg>')
         env['TEST_SCREENSHOT'] = str(screenshot)
-        env['TEST_STOREFRONT'] = json.dumps(programs_engine.storefront())
         env['TEST_SHELF'] = json.dumps(programs_engine.shelf_items())
         env['TEST_INVENTORY'] = inventory()
         env['TEST_REFUSAL'] = REFUSAL
         env.update(extra or {})
+        if platform_theme is not None:
+            env['QT_QPA_PLATFORMTHEME'] = platform_theme
         with (root / 'runtime.log').open('w') as output:
             try:
                 result = subprocess.run(['qs', '-p', str(root / 'ui/test.qml'), '--no-color'], env=env, stdout=output, stderr=subprocess.STDOUT, text=True, timeout=timeout)

@@ -27,8 +27,8 @@ ShellRoot {
    id: catalog
    property bool writing: false
    property var calls: []
-   property var values: ({"appearance.theme":"light", "appearance.accent":"orange", "appearance.light_time":"07:00", "appearance.dark_time":"19:00"})
-   property var defaults: ({"appearance.theme":"light", "appearance.accent":"rose", "appearance.light_time":"07:00", "appearance.dark_time":"19:00"})
+   property var values: ({"appearance.cursor":"automatic", "appearance.theme":"light", "appearance.accent":"orange", "appearance.light_time":"07:00", "appearance.dark_time":"19:00"})
+   property var defaults: ({"appearance.cursor":"automatic", "appearance.theme":"light", "appearance.accent":"rose", "appearance.light_time":"07:00", "appearance.dark_time":"19:00"})
    function value(key) { return values[key]; }
    function row(key) { return {value:values[key] ?? defaults[key],default:defaults[key],editable:true}; }
    function set(key,value) { calls = calls.concat([[key,value]]); const next = Object.assign({},values); next[key]=value; values=next; }
@@ -100,11 +100,11 @@ ShellRoot {
     verify(!findChild(rose,"accent-selected-mark").visible);
    }
    function test_accent_leaves_row_data() {
-    return [{tag:"Up", name:"orange", key:Qt.Key_Up}, {tag:"Right edge", name:"violet", key:Qt.Key_Right}];
+    return [{tag:"Up", name:"orange", key:Qt.Key_Up}, {tag:"Right edge", name:"graphite", key:Qt.Key_Right}];
    }
    function test_accent_leaves_row(data) {
     catalog.writing = false;
-    catalog.values = Object.assign({},catalog.values,{"appearance.theme":"light", "appearance.accent":"orange"});
+    catalog.values = Object.assign({},catalog.values,{"appearance.cursor":"automatic", "appearance.theme":"light", "appearance.accent":"orange"});
     verify(waitForPolish(window));
     const orange = findChild(page,"accent-orange");
     const start = findChild(page,"accent-" + data.name);
@@ -132,12 +132,37 @@ ShellRoot {
     compare(catalog.value("appearance.light_time"),"07:00"); compare(light.errorText,"Choose two different times.");
     input.text="08:30"; input.editingFinished(); compare(catalog.value("appearance.light_time"),"08:30");
     compare(light.errorText,""); light.requestReset(); compare(catalog.value("appearance.light_time"),"07:00");
-    compare(ShellPalette.accents.length,8); compare(ShellPalette.accents[0].id,"orange");
+    compare(ShellPalette.accents.length,10); compare(ShellPalette.accents[0].id,"orange");
     for (const accent of ShellPalette.accents) {
      const button=findChild(page,"accent-"+accent.id); verify(button); button.clicked();
      compare(catalog.value("appearance.accent"),accent.id); verify(button.checked);
     }
-    catalog.writing=true; findChild(page,"accent-orange").clicked(); compare(catalog.value("appearance.accent"),"violet");
+    catalog.writing=true; findChild(page,"accent-orange").clicked(); compare(catalog.value("appearance.accent"),"graphite");
+   }
+   function test_cursor() {
+    catalog.writing = false;
+    catalog.values = Object.assign({},catalog.values,{"appearance.cursor":"automatic"});
+    const row = findChild(page,"setting-appearance.cursor");
+    const automatic = findChild(page,"cursor-automatic");
+    const white = findChild(page,"cursor-white");
+    const dark = findChild(page,"cursor-dark");
+    verify(row); verify(automatic.checked); verify(!row.changed);
+    automatic.forceActiveFocus(); keyClick(Qt.Key_Right);
+    tryCompare(white,"activeFocus",true); verify(automatic.checked);
+    keyClick(Qt.Key_Space); compare(catalog.value("appearance.cursor"),"white"); verify(white.checked);
+    keyClick(Qt.Key_Right); tryCompare(dark,"activeFocus",true);
+    keyClick(Qt.Key_Return); compare(catalog.value("appearance.cursor"),"dark"); verify(dark.checked);
+    verify(row.changed); row.requestReset(); compare(catalog.value("appearance.cursor"),"automatic");
+    verify(automatic.checked); verify(!row.changed);
+    catalog.writing = true; automatic.clicked(); compare(catalog.value("appearance.cursor"),"automatic");
+    catalog.writing = false;
+    for (const value of ["automatic","white","dark"]) {
+     const preview = findChild(page,"cursor-preview-"+value);
+     tryCompare(preview,"status",Image.Ready); verify(preview.width > 0); verify(preview.height > 0);
+    }
+    const missing = findChild(loadingPage,"setting-appearance.cursor");
+    verify(missing.unavailable); compare(missing.value,"automatic");
+    verify(findChild(loadingPage,"cursor-automatic").checked);
    }
    function test_missing_catalog_row() {
     compare(loadingPage.theme,"light");
@@ -163,6 +188,6 @@ ShellRoot {
     result = subprocess.run(['qs','-p',str(base/'shell/test.qml'),'--no-color'],env=env,
                             capture_output=True,text=True,timeout=30)
     output = result.stdout + result.stderr
-    assert result.returncode == 0 and 'APPEARANCE_SETTINGS_RESULT 9 0' in output, output
-    print('PASS: appearance choices, keyboard activation, selection retained during arrow focus, spatial exit from the accent row, reset, time validation, busy state and the default accent '
+    assert result.returncode == 0 and 'APPEARANCE_SETTINGS_RESULT 10 0' in output, output
+    print('PASS: cursor previews, choice, busy state and reset; appearance choices, keyboard activation, selection retained during arrow focus, spatial exit from the accent row, reset, time validation, busy state and the default accent '
           'without a catalog row')

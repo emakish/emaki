@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise package discovery, authorization boundaries and refusal handling offline."""
+import contextlib
 import copy
 import fcntl
 import hashlib
@@ -946,6 +947,29 @@ class Authorization(unittest.TestCase):
                 self.assertFalse(emit.call_args.kwargs['ok'])
                 self.assertEqual(emit.call_args.kwargs['message'], refusal)
 
+    def test_lease_refusal_is_translated_in_progress_and_final_message(self):
+        refusal = 'Shutdown and sleep protection could not start. The update was not started.'
+        translated = 'No se pudo activar la protección contra el apagado y la suspensión. La actualización no se inició.'
+        with tempfile.TemporaryDirectory() as directory:
+            descriptor = os.open(Path(directory) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
+            process = Mock()
+            process.__enter__ = Mock(return_value=process)
+            process.__exit__ = Mock(return_value=False)
+            process.poll.return_value = process.wait.return_value = 1
+            journal = '\n'.join(json.dumps(dict(__CURSOR=str(index), MESSAGE=line))
+                                for index, line in enumerate((refusal, 'Service exited with status 1.')))
+            with patch.object(helper.os, 'open', return_value=descriptor), \
+                    patch.object(helper, 'require_update_root'), \
+                    patch.object(helper, 'versions', return_value={'bash': '1'}), \
+                    patch.object(helper.subprocess, 'Popen', return_value=process), \
+                    patch.object(helper, 'run', side_effect=[Mock(stdout=journal), Mock(stdout='')]), \
+                    patch.object(helper, '_', side_effect=lambda text: translated if text == refusal else text), \
+                    patch.object(helper, 'emit') as emit:
+                self.assertEqual(helper.apply(), 1)
+            emit.assert_any_call('progress', message=translated)
+            self.assertEqual(emit.call_args.kwargs['message'], translated)
+            self.assertFalse(emit.call_args.kwargs['ok'])
+
     def test_nonroot_wrapper_leaves_root_refusal_to_pacman(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
         for arguments in ([], ['--noninteractive']):
@@ -961,15 +985,17 @@ class Authorization(unittest.TestCase):
 
     def test_noninteractive_wrapper_keeps_full_upgrade_and_failed_hooks(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
+        # The real logind block is proven in tests/test-update-inhibit.py; here a fake descriptor stands in.
         with patch.dict(module['main'].__globals__, run=Mock(return_value=0), preflight=Mock(),
-                        upgrades=Mock(return_value={'other': '2-1'})), \
+                        upgrades=Mock(return_value={'other': '2-1'}),
+                        inhibit=Mock(return_value=contextlib.nullcontext(7))), \
                 patch.object(os, 'geteuid', return_value=0):
             mocked = module['main'].__globals__['run']
             with patch.object(sys, 'argv', ['emaki-update', '--noninteractive']):
                 self.assertEqual(module['main'](), 0)
             self.assertEqual(mocked.call_args_list, [
-                call(['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True),
-                call(['/usr/bin/pacman', '-Su', '--noconfirm'], fail_on_hook_error=True)])
+                call(['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True, inhibitor=7),
+                call(['/usr/bin/pacman', '-Su', '--noconfirm'], fail_on_hook_error=True, inhibitor=7)])
         # Keyrings first, in their own transaction; a hold refuses every remaining upgrade.
         with tempfile.TemporaryDirectory() as directory:
             record = Path(directory) / 'holds.json'
@@ -984,15 +1010,15 @@ class Authorization(unittest.TestCase):
                 self.assertNotIn('emaki-keyring 2-1', errors.getvalue())
                 self.assertNotIn('glibc 2.40-1', errors.getvalue())
             self.assertEqual(mocked.call_args_list, [
-                call(['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True),
+                call(['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True, inhibitor=None),
                 call(['/usr/bin/pacman', '-S', '--noconfirm', 'archlinux-keyring', 'emaki-keyring'],
-                     fail_on_hook_error=True)])
+                     fail_on_hook_error=True, inhibitor=None)])
         with patch.dict(module['update'].__globals__, run=Mock(return_value=0),
                         upgrades=Mock(side_effect=ValueError('query failed'))), \
                 patch('sys.stderr', new_callable=io.StringIO) as errors:
             self.assertEqual(module['update'](True), 1)
             module['update'].__globals__['run'].assert_called_once_with(
-                ['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True)
+                ['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True, inhibitor=None)
             self.assertIn('available package versions could not be checked', errors.getvalue())
         # pacman returns 1 both for no upgrades and for some query failures.
         for status, output, error, refused in (

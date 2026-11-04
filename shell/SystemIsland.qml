@@ -128,7 +128,7 @@ Item {
     onIslandWidthChanged: wake()
     Component.onCompleted: wake()
     readonly property var drops: {
-        tick;
+        void tick;
         const d = Liquid.drop(bubble, islandRect.x, islandRect.y);
         return d ? [d] : [];
     }
@@ -227,7 +227,7 @@ Item {
             GlassCopy {
                 required property string modelData
                 target: {
-                    island.tick;
+                    void island.tick;
                     return cells.cell(modelData);
                 }
                 space: ink

@@ -73,6 +73,7 @@ def kept(result):
 class Uninstall(unittest.TestCase):
     def test_boot_lock_helper_and_restore_hook_are_removed(self):
         paths = ('usr/lib/emaki/boot/emaki_boot/package_lock.py',
+                 'usr/share/emaki/wpaperd/config.toml',
                  'usr/share/libalpm/hooks/zzz-emaki-restore-index.hook')
         with tempfile.TemporaryDirectory(prefix='emaki-uninstall-') as temporary:
             for relative in paths:

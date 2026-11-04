@@ -46,8 +46,8 @@ with tempfile.TemporaryDirectory(prefix='displays-page-') as temporary:
     mutants = [
         ('DisplaysSettingsPage.qml', 'displays.busy || displays.pending || !displays.ready',
          'displays.busy || !displays.ready', 'pending-guard'),
-        ('DisplaysService.qml', 'busy || !worker.running || closing',
-         '!worker.running || closing', 'command-serialization'),
+        ('DisplaysService.qml', 'busy || !workerObject.running || closing',
+         '!workerObject.running || closing', 'command-serialization'),
         ('DisplaysSettingsPage.qml', 'wireMode(next)',
          'wireMode(modes[0])', 'resolution-mode'),
         ('DisplaysSettingsPage.qml', 'activeOutputs.length === 1 ? activeOutputs[0].name : displays.main',

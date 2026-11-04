@@ -683,18 +683,6 @@
             <translation>Utilitaires</translation>
         </message>
         <message>
-            <source>Popular</source>
-            <translation>Populaires</translation>
-        </message>
-        <message>
-            <source>Essentials</source>
-            <translation>Essentiels</translation>
-        </message>
-        <message>
-            <source>New and updated</source>
-            <translation>Nouveaux et mis à jour</translation>
-        </message>
-        <message>
             <source>Programs &amp; Updates</source>
             <translation>Programmes et mises à jour</translation>
         </message>
@@ -876,18 +864,6 @@
             <translation>Installation…</translation>
         </message>
         <message>
-            <source>Our picks are not available right now. Try Refresh.</source>
-            <translation>Notre sélection est indisponible pour le moment. Essayez « Actualiser ».</translation>
-        </message>
-        <message>
-            <source>Most installed this month</source>
-            <translation>Les plus installés ce mois-ci</translation>
-        </message>
-        <message>
-            <source>What the full install adds</source>
-            <translation>Ce qu’ajoute l’installation complète</translation>
-        </message>
-        <message>
             <source>From Emaki</source>
             <translation>Par Emaki</translation>
         </message>
@@ -900,10 +876,6 @@
             <translation>Installer</translation>
         </message>
         <message>
-            <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
-            <translation>Aucun programme n’a pu être chargé. Vérifiez la connexion Internet, puis choisissez « Actualiser ».</translation>
-        </message>
-        <message>
             <source>All</source>
             <translation>Tout</translation>
         </message>
@@ -914,14 +886,6 @@
         <message>
             <source>See all ›</source>
             <translation>Tout voir ›</translation>
-        </message>
-        <message>
-            <source>All %1 ›</source>
-            <translation>Tous les %1 ›</translation>
-        </message>
-        <message>
-            <source>See the whole set</source>
-            <translation>Voir l’ensemble complet</translation>
         </message>
         <message>
             <source>AUR — nobody checked these programs.</source>
@@ -1148,6 +1112,38 @@
         <message>
             <source>Finish setup</source>
             <translation>Terminer la configuration</translation>
+        </message>
+        <message>
+            <source>Popular</source>
+            <translation>Populaires</translation>
+        </message>
+        <message>
+            <source>Essentials</source>
+            <translation>Essentiels</translation>
+        </message>
+        <message>
+            <source>New and updated</source>
+            <translation>Nouveaux et mis à jour</translation>
+        </message>
+        <message>
+            <source>Most installed this month</source>
+            <translation>Les plus installés ce mois-ci</translation>
+        </message>
+        <message>
+            <source>What the full install adds</source>
+            <translation>Ce qu’ajoute l’installation complète</translation>
+        </message>
+        <message>
+            <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
+            <translation>Aucun programme n’a pu être chargé. Vérifiez la connexion Internet, puis choisissez « Actualiser ».</translation>
+        </message>
+        <message>
+            <source>All %1 ›</source>
+            <translation>Tous les %1 ›</translation>
+        </message>
+        <message>
+            <source>See the whole set</source>
+            <translation>Voir l’ensemble complet</translation>
         </message>
     </context>
     <context>
@@ -1461,4 +1457,67 @@ Le rappel n’a pas pu être masqué. Appuyez à nouveau sur « Plus tard ».<
             <translation>Supprimer l’application et ses données</translation>
         </message>
     </context>
+  <context>
+    <name>StorefrontData</name>
+    <message>
+      <source>Discover your next favorite</source>
+      <translation>Découvrez votre prochain coup de cœur</translation>
+    </message>
+    <message>
+      <source>A few ideas for your computer. Recommendations stay on this device.</source>
+      <translation>Quelques idées pour votre ordinateur. Les recommandations restent sur cet appareil.</translation>
+    </message>
+    <message>
+      <source>App of the day</source>
+      <translation>Application du jour</translation>
+    </message>
+    <message>
+      <source>Explore app</source>
+      <translation>Découvrir l’application</translation>
+    </message>
+    <message>
+      <source>See all</source>
+      <translation>Tout voir</translation>
+    </message>
+    <message>
+      <source>Find your next possibility</source>
+      <translation>Découvrez de nouvelles possibilités</translation>
+    </message>
+    <message>
+      <source>Because you have %1</source>
+      <translation>Parce que vous avez %1</translation>
+    </message>
+    <message>
+      <source>Ideas based on programs installed on this computer.</source>
+      <translation>Des idées basées sur les programmes installés sur cet ordinateur.</translation>
+    </message>
+    <message>
+      <source>More to discover soon</source>
+      <translation>Bientôt plus de découvertes</translation>
+    </message>
+    <message>
+      <source>Browse the categories. Ideas appear when matching programs are available in the catalog.</source>
+      <translation>Parcourez les catégories. Des idées apparaissent lorsque des programmes correspondants sont disponibles dans le catalogue.</translation>
+    </message>
+    <message>
+      <source>Preview unavailable</source>
+      <translation>Aperçu indisponible</translation>
+    </message>
+    <message>
+      <source>Coming from Windows?</source>
+      <translation>Vous venez de Windows ?</translation>
+    </message>
+    <message>
+      <source>Familiar ways to browse, work and watch.</source>
+      <translation>Des façons familières de naviguer, de travailler et de regarder des vidéos.</translation>
+    </message>
+    <message>
+      <source>Make something new</source>
+      <translation>Créez quelque chose de nouveau</translation>
+    </message>
+    <message>
+      <source>Turn an idea into a drawing, a design or a new world.</source>
+      <translation>Transformez une idée en un dessin, une création ou un nouveau monde.</translation>
+    </message>
+  </context>
 </TS>

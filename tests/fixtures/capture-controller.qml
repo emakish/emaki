@@ -13,12 +13,28 @@ ShellRoot {
         signal localActionRequested(string action)
         function transientLocal(app, title, body, actions, options) {
             const action = actions?.[0];
-            fixture.notices = fixture.notices.concat([{app: app, title: title, body: body,
-                transient: true, action: action?.id, label: action?.text}]);
+            fixture.notices = fixture.notices.concat([
+                {
+                    app: app,
+                    title: title,
+                    body: body,
+                    transient: true,
+                    action: action?.id,
+                    label: action?.text
+                }
+            ]);
             return -fixture.notices.length;
         }
         function offer(app, title, body, action, label) {
-            fixture.notices = fixture.notices.concat([{app: app, title: title, body: body, action: action, label: label}]);
+            fixture.notices = fixture.notices.concat([
+                {
+                    app: app,
+                    title: title,
+                    body: body,
+                    action: action,
+                    label: label
+                }
+            ]);
             return -fixture.notices.length;
         }
         function local(app, title, body) {

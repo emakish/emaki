@@ -647,6 +647,98 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>Commands</name>
         <message>
+            <source>Open %1 settings.</source>
+            <translation>[Öþéñ %1 šéţţîñĝš.····]</translation>
+        </message>
+        <message>
+            <source>Lock the screen and keep your apps open.</source>
+            <translation>[Ļöçķ ţĥé šçŕééñ àñð ķééþ ÿöûŕ àþþš öþéñ.············]</translation>
+        </message>
+        <message>
+            <source>Ask to end your session.</source>
+            <translation>[Àšķ ţö éñð ÿöûŕ šéššîöñ.·······]</translation>
+        </message>
+        <message>
+            <source>Ask to restart the computer.</source>
+            <translation>[Àšķ ţö ŕéšţàŕţ ţĥé çöɱþûţéŕ.········]</translation>
+        </message>
+        <message>
+            <source>Ask to turn off the computer.</source>
+            <translation>[Àšķ ţö ţûŕñ öƒƒ ţĥé çöɱþûţéŕ.·········]</translation>
+        </message>
+        <message>
+            <source>Use dark colours for the desktop.</source>
+            <translation>[Ûšé ðàŕķ çöļöûŕš ƒöŕ ţĥé ðéšķţöþ.··········]</translation>
+        </message>
+        <message>
+            <source>Use light colours for the desktop.</source>
+            <translation>[Ûšé ļîĝĥţ çöļöûŕš ƒöŕ ţĥé ðéšķţöþ.··········]</translation>
+        </message>
+        <message>
+            <source>Use warmer screen colours.</source>
+            <translation>[Ûšé ŵàŕɱéŕ šçŕééñ çöļöûŕš.········]</translation>
+        </message>
+        <message>
+            <source>Restore normal screen colours.</source>
+            <translation>[Ŕéšţöŕé ñöŕɱàļ šçŕééñ çöļöûŕš.·········]</translation>
+        </message>
+        <message>
+            <source>Open Programs &amp; Updates to check for updates.</source>
+            <translation>[Öþéñ Þŕöĝŕàɱš &amp; Ûþðàţéš ţö çĥéçķ ƒöŕ ûþðàţéš.··············]</translation>
+        </message>
+        <message>
+            <source>Browse programs in Programs &amp; Updates.</source>
+            <translation>[Ɓŕöŵšé þŕöĝŕàɱš îñ Þŕöĝŕàɱš &amp; Ûþðàţéš.············]</translation>
+        </message>
+        <message>
+            <source>Choose an area of the screen to capture.</source>
+            <translation>[Çĥööšé àñ àŕéà öƒ ţĥé šçŕééñ ţö çàþţûŕé.············]</translation>
+        </message>
+        <message>
+            <source>Open the screen recording controls.</source>
+            <translation>[Öþéñ ţĥé šçŕééñ ŕéçöŕðîñĝ çöñţŕöļš.···········]</translation>
+        </message>
+        <message>
+            <source>Recognise and copy text from a screen area.</source>
+            <translation>[Ŕéçöĝñîšé àñð çöþÿ ţéẋţ ƒŕöɱ à šçŕééñ àŕéà.··············]</translation>
+        </message>
+        <message>
+            <source>Read a QR code from a screen area.</source>
+            <translation>[Ŕéàð à ǪŔ çöðé ƒŕöɱ à šçŕééñ àŕéà.··········]</translation>
+        </message>
+        <message>
+            <source>Find development tools in Programs &amp; Updates.</source>
+            <translation>[Ƒîñð ðéṽéļöþɱéñţ ţööļš îñ Þŕöĝŕàɱš &amp; Ûþðàţéš.··············]</translation>
+        </message>
+        <message>
+            <source>Manage website apps in Programs &amp; Updates.</source>
+            <translation>[Ṁàñàĝé ŵéƀšîţé àþþš îñ Þŕöĝŕàɱš &amp; Ûþðàţéš.·············]</translation>
+        </message>
+        <message>
+            <source>Find and copy something from your clipboard history.</source>
+            <translation>[Ƒîñð àñð çöþÿ šöɱéţĥîñĝ ƒŕöɱ ÿöûŕ çļîþƀöàŕð ĥîšţöŕÿ.·················]</translation>
+        </message>
+        <message>
+            <source>Find an emoji and copy it to the clipboard.</source>
+            <translation>[Ƒîñð àñ éɱöĵî àñð çöþÿ îţ ţö ţĥé çļîþƀöàŕð.··············]</translation>
+        </message>
+        <message>
+            <source>View the desktop keyboard shortcuts.</source>
+            <translation>[Ṽîéŵ ţĥé ðéšķţöþ ķéÿƀöàŕð šĥöŕţçûţš.···········]</translation>
+        </message>
+        <message>
+            <source>Write a note or checklist.</source>
+            <translation>[Ŵŕîţé à ñöţé öŕ çĥéçķļîšţ.········]</translation>
+        </message>
+        <message>
+            <source>Describe a problem and choose what to include.</source>
+            <translation>[Ðéšçŕîƀé à þŕöƀļéɱ àñð çĥööšé ŵĥàţ ţö îñçļûðé.···············]</translation>
+        </message>
+        <message>
+            <source>Choose which settings to restore to their defaults.</source>
+            <translation>[Çĥööšé ŵĥîçĥ šéţţîñĝš ţö ŕéšţöŕé ţö ţĥéîŕ ðéƒàûļţš.················]</translation>
+        </message>
+        <message>
             <source>lock screen away password</source>
             <translation>[ļöçķ šçŕééñ àŵàÿ þàššŵöŕð·······]</translation>
         </message>
@@ -2141,6 +2233,17 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         </message>
     </context>
     <context>
+        <name>OverviewVideoContent</name>
+        <message>
+            <source>This picture cannot be opened. Showing the default background.</source>
+            <translation>[Ţĥîš þîçţûŕé çàññöţ ƀé öþéñéð. Šĥöŵîñĝ ţĥé ðéƒàûļţ ƀàçķĝŕöûñð.····················]</translation>
+        </message>
+        <message>
+            <source>This video cannot be played. Showing the still background.</source>
+            <translation>[Ţĥîš ṽîðéö çàññöţ ƀé þļàÿéð. Šĥöŵîñĝ ţĥé šţîļļ ƀàçķĝŕöûñð.···················]</translation>
+        </message>
+    </context>
+    <context>
         <name>PasswordToggle</name>
         <message>
             <source>Hide password</source>
@@ -2650,6 +2753,18 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Colour for icons, highlights and controls.</source>
             <translation>[Çöļöûŕ ƒöŕ îçöñš, ĥîĝĥļîĝĥţš àñð çöñţŕöļš.·············]</translation>
         </message>
+        <message>
+            <source>Cursor</source>
+            <translation>[Çûŕšöŕ·]</translation>
+        </message>
+        <message>
+            <source>Cursor style</source>
+            <translation>[Çûŕšöŕ šţÿļé···]</translation>
+        </message>
+        <message>
+            <source>White</source>
+            <translation>[Ŵĥîţé]</translation>
+        </message>
     </context>
     <context>
         <name>SettingsAppsPage</name>
@@ -2906,12 +3021,40 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Could not choose a picture. Your wallpaper has not changed.</source>
             <translation>[Çöûļð ñöţ çĥööšé à þîçţûŕé. Ÿöûŕ ŵàļļþàþéŕ ĥàš ñöţ çĥàñĝéð.···················]</translation>
         </message>
+        <message>
+            <source>This file could not be played or opened.</source>
+            <translation>[Ţĥîš ƒîļé çöûļð ñöţ ƀé þļàÿéð öŕ öþéñéð.············]</translation>
+        </message>
+        <message>
+            <source>Could not choose an overview background. Try again.</source>
+            <translation>[Çöûļð ñöţ çĥööšé àñ öṽéŕṽîéŵ ƀàçķĝŕöûñð. Ţŕÿ àĝàîñ.················]</translation>
+        </message>
+        <message>
+            <source>The change could not be confirmed. Check the current value before trying again.</source>
+            <translation>[Ţĥé çĥàñĝé çöûļð ñöţ ƀé çöñƒîŕɱéð. Çĥéçķ ţĥé çûŕŕéñţ ṽàļûé ƀéƒöŕé ţŕÿîñĝ àĝàîñ.··························]</translation>
+        </message>
     </context>
     <context>
         <name>SettingsCorePage</name>
         <message>
             <source>Panel</source>
             <translation>[Þàñéļ]</translation>
+        </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>[Šĥöŵ šéçöñðš îñ ţĥé þàñéļ çļöçķ·········]</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>[Šĥöŵ šéçöñðš ŵĥîļé ţĥé çļöçķ þàñéļ îš çļöšéð.··············]</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>[Šĥöŵ šéçöñðš îñ ţĥé öþéñ çļöçķ·········]</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>[Šĥöŵ šéçöñðš ŵĥîļé ţĥé çļöçķ þàñéļ îš öþéñ.··············]</translation>
         </message>
         <message>
             <source>Hide the panel automatically</source>
@@ -2948,6 +3091,26 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Workspace numbers hide in the overview.</source>
             <translation>[Ŵöŕķšþàçé ñûɱƀéŕš ĥîðé îñ ţĥé öṽéŕṽîéŵ.············]</translation>
+        </message>
+        <message>
+            <source>Launcher</source>
+            <translation>[Ļàûñçĥéŕ·]</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>[Ṁöðé ļàƀéļš··]</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>[Šĥöŵ ļàûñçĥéŕ ɱöðéš àš ţéẋţ öŕ îçöñš.···········]</translation>
+        </message>
+        <message>
+            <source>Text</source>
+            <translation>[Ţéẋţ]</translation>
+        </message>
+        <message>
+            <source>Icons</source>
+            <translation>[Îçöñš]</translation>
         </message>
         <message>
             <source>Dock</source>
@@ -3294,8 +3457,12 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>SettingsPageRegistry</name>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>[Çĥööšé ļîĝĥţ öŕ ðàŕķ, àûţöɱàţîç ĥöûŕš àñð àñ àççéñţ çöļöûŕ.···················]</translation>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>[Ŵàļļþàþéŕš, öṽéŕṽîéŵ ƀàçķĝŕöûñðš àñð àççéñţ çöļöûŕš.·················]</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>[Çĥööšé ļîĝĥţ öŕ ðàŕķ, àûţöɱàţîç ĥöûŕš, àñ àççéñţ çöļöûŕ àñð à çûŕšöŕ šţÿļé.·························]</translation>
         </message>
         <message>
             <source>Review recovery, encryption, sudo keys and remembered portal permissions.</source>
@@ -3372,6 +3539,10 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Change your password and choose when to lock.</source>
             <translation>[Çĥàñĝé ÿöûŕ þàššŵöŕð àñð çĥööšé ŵĥéñ ţö ļöçķ.··············]</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>[Çĥööšé ļîĝĥţ öŕ ðàŕķ, àûţöɱàţîç ĥöûŕš àñð àñ àççéñţ çöļöûŕ.···················]</translation>
         </message>
     </context>
     <context>
@@ -4082,6 +4253,105 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         </message>
     </context>
     <context>
+        <name>SettingsThemesPage</name>
+        <message>
+            <source>Rose Light</source>
+            <translation>[Ŕöšé Ļîĝĥţ··]</translation>
+        </message>
+        <message>
+            <source>Orange Light</source>
+            <translation>[Öŕàñĝé Ļîĝĥţ···]</translation>
+        </message>
+        <message>
+            <source>Coral Light</source>
+            <translation>[Çöŕàļ Ļîĝĥţ··]</translation>
+        </message>
+        <message>
+            <source>Amber Light</source>
+            <translation>[Àɱƀéŕ Ļîĝĥţ··]</translation>
+        </message>
+        <message>
+            <source>Green Light</source>
+            <translation>[Ĝŕééñ Ļîĝĥţ··]</translation>
+        </message>
+        <message>
+            <source>Teal Light</source>
+            <translation>[Ţéàļ Ļîĝĥţ··]</translation>
+        </message>
+        <message>
+            <source>Blue Light</source>
+            <translation>[Ɓļûé Ļîĝĥţ··]</translation>
+        </message>
+        <message>
+            <source>Violet Light</source>
+            <translation>[Ṽîöļéţ Ļîĝĥţ···]</translation>
+        </message>
+        <message>
+            <source>Rose Dark</source>
+            <translation>[Ŕöšé Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Orange Dark</source>
+            <translation>[Öŕàñĝé Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Coral Dark</source>
+            <translation>[Çöŕàļ Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Amber Dark</source>
+            <translation>[Àɱƀéŕ Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Green Dark</source>
+            <translation>[Ĝŕééñ Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Teal Dark</source>
+            <translation>[Ţéàļ Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Blue Dark</source>
+            <translation>[Ɓļûé Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Violet Dark</source>
+            <translation>[Ṽîöļéţ Ðàŕķ··]</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>[Šîļṽéŕ·]</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>[Ĝŕàþĥîţé·]</translation>
+        </message>
+        <message>
+            <source>Themes</source>
+            <translation>[Ţĥéɱéš·]</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>[Çĥööšé à ŵàļļþàþéŕ, öṽéŕṽîéŵ ƀàçķĝŕöûñð àñð àççéñţ çöļöûŕ ţöĝéţĥéŕ.······················]</translation>
+        </message>
+        <message>
+            <source>Current theme</source>
+            <translation>[Çûŕŕéñţ ţĥéɱé···]</translation>
+        </message>
+        <message>
+            <source>Not installed</source>
+            <translation>[Ñöţ îñšţàļļéð···]</translation>
+        </message>
+        <message>
+            <source>Still overview background</source>
+            <translation>[Šţîļļ öṽéŕṽîéŵ ƀàçķĝŕöûñð·······]</translation>
+        </message>
+        <message>
+            <source>No themes were found in the installed collection.</source>
+            <translation>[Ñö ţĥéɱéš ŵéŕé ƒöûñð îñ ţĥé îñšţàļļéð çöļļéçţîöñ.················]</translation>
+        </message>
+    </context>
+    <context>
         <name>SettingsToggleRow</name>
         <message>
             <source>On</source>
@@ -4519,6 +4789,26 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Îñĥéŕîţéð ŵàļļþàþéŕ·····]</translation>
         </message>
         <message>
+            <source>Overview background</source>
+            <translation>[Öṽéŕṽîéŵ ƀàçķĝŕöûñð·····]</translation>
+        </message>
+        <message>
+            <source>Your own video or picture</source>
+            <translation>[Ÿöûŕ öŵñ ṽîðéö öŕ þîçţûŕé·······]</translation>
+        </message>
+        <message>
+            <source>Theme background</source>
+            <translation>[Ţĥéɱé ƀàçķĝŕöûñð····]</translation>
+        </message>
+        <message>
+            <source>Videos play only while the overview is open. A picture stays still. Changing the theme replaces this background.</source>
+            <translation>[Ṽîðéöš þļàÿ öñļÿ ŵĥîļé ţĥé öṽéŕṽîéŵ îš öþéñ. À þîçţûŕé šţàÿš šţîļļ. Çĥàñĝîñĝ ţĥé ţĥéɱé ŕéþļàçéš ţĥîš ƀàçķĝŕöûñð.······································]</translation>
+        </message>
+        <message>
+            <source>Choose video or picture…</source>
+            <translation>[Çĥööšé ṽîðéö öŕ þîçţûŕé…·······]</translation>
+        </message>
+        <message>
             <source>Wallpaper</source>
             <translation>[Ŵàļļþàþéŕ··]</translation>
         </message>
@@ -4527,8 +4817,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Ÿöûŕ öŵñ þîçţûŕé····]</translation>
         </message>
         <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>[Çĥööšé à þîçţûŕé ƒöŕ éṽéŕÿ ðîšþļàÿ. Ŕéšéţ ŕéšţöŕéš ÿöûŕ îñĥéŕîţéð ŵàļļþàþéŕ.·························]</translation>
+            <source>Choose a picture for every display.</source>
+            <translation>[Çĥööšé à þîçţûŕé ƒöŕ éṽéŕÿ ðîšþļàÿ.···········]</translation>
         </message>
         <message>
             <source>Choosing…</source>
@@ -4879,6 +5169,10 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Network</source>
             <translation>[Ñéţŵöŕķ·]</translation>
+        </message>
+        <message>
+            <source>Themes</source>
+            <translation>[Ţĥéɱéš·]</translation>
         </message>
         <message>
             <source>Appearance</source>
@@ -5403,6 +5697,10 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Àļļ šĥöŕţçûţš···]</translation>
         </message>
         <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>[Çĥööšé ļîĝĥţ öŕ ðàŕķ, àûţöɱàţîç ĥöûŕš àñð àñ àççéñţ çöļöûŕ.···················]</translation>
+        </message>
+        <message>
             <source>Join networks, see saved ones, forget them, show a password.</source>
             <translation>[Ĵöîñ ñéţŵöŕķš, šéé šàṽéð öñéš, ƒöŕĝéţ ţĥéɱ, šĥöŵ à þàššŵöŕð.···················]</translation>
         </message>
@@ -5567,8 +5865,20 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Þéŕšöñàļ·]</translation>
         </message>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>[Çĥööšé ļîĝĥţ öŕ ðàŕķ, àûţöɱàţîç ĥöûŕš àñð àñ àççéñţ çöļöûŕ.···················]</translation>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>[Ŵàļļþàþéŕš, öṽéŕṽîéŵ ƀàçķĝŕöûñðš àñð àççéñţ çöļöûŕš.·················]</translation>
+        </message>
+        <message>
+            <source>style wallpaper overview video accent colour</source>
+            <translation>[šţÿļé ŵàļļþàþéŕ öṽéŕṽîéŵ ṽîðéö àççéñţ çöļöûŕ··············]</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>[Çĥööšé à ŵàļļþàþéŕ, öṽéŕṽîéŵ ƀàçķĝŕöûñð àñð àççéñţ çöļöûŕ ţöĝéţĥéŕ.······················]</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>[Çĥööšé ļîĝĥţ öŕ ðàŕķ, àûţöɱàţîç ĥöûŕš, àñ àççéñţ çöļöûŕ àñð à çûŕšöŕ šţÿļé.·························]</translation>
         </message>
         <message>
             <source>theme light dark automatic</source>
@@ -5583,8 +5893,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Àççéñţ çöļöûŕ···]</translation>
         </message>
         <message>
-            <source>orange coral rose amber green teal blue violet color</source>
-            <translation>[öŕàñĝé çöŕàļ ŕöšé àɱƀéŕ ĝŕééñ ţéàļ ƀļûé ṽîöļéţ çöļöŕ·················]</translation>
+            <source>orange coral rose amber green teal blue violet silver graphite color</source>
+            <translation>[öŕàñĝé çöŕàļ ŕöšé àɱƀéŕ ĝŕééñ ţéàļ ƀļûé ṽîöļéţ šîļṽéŕ ĝŕàþĥîţé çöļöŕ······················]</translation>
         </message>
         <message>
             <source>Colour for icons, highlights and controls.</source>
@@ -5611,6 +5921,10 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[àûţöɱàţîç šçĥéðûļé éṽéñîñĝ ĥöûŕš··········]</translation>
         </message>
         <message>
+            <source>cursor pointer glass white dark</source>
+            <translation>[çûŕšöŕ þöîñţéŕ ĝļàšš ŵĥîţé ðàŕķ·········]</translation>
+        </message>
+        <message>
             <source>Choose an Emaki wallpaper or your own picture.</source>
             <translation>[Çĥööšé àñ Éɱàķî ŵàļļþàþéŕ öŕ ÿöûŕ öŵñ þîçţûŕé.···············]</translation>
         </message>
@@ -5631,10 +5945,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>[Ÿöûŕ öŵñ þîçţûŕé îɱàĝé ƒîļé········]</translation>
         </message>
         <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>[Çĥööšé à þîçţûŕé ƒöŕ éṽéŕÿ ðîšþļàÿ. Ŕéšéţ ŕéšţöŕéš ÿöûŕ îñĥéŕîţéð ŵàļļþàþéŕ.·························]</translation>
-        </message>
-        <message>
             <source>Choose when the panel and dock appear.</source>
             <translation>[Çĥööšé ŵĥéñ ţĥé þàñéļ àñð ðöçķ àþþéàŕ.············]</translation>
         </message>
@@ -5653,6 +5963,42 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Move to the top edge to show it.</source>
             <translation>[Ṁöṽé ţö ţĥé ţöþ éðĝé ţö šĥöŵ îţ.··········]</translation>
+        </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>[Šĥöŵ šéçöñðš îñ ţĥé þàñéļ çļöçķ·········]</translation>
+        </message>
+        <message>
+            <source>clock time seconds closed</source>
+            <translation>[çļöçķ ţîɱé šéçöñðš çļöšéð·······]</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>[Šĥöŵ šéçöñðš ŵĥîļé ţĥé çļöçķ þàñéļ îš çļöšéð.··············]</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>[Šĥöŵ šéçöñðš îñ ţĥé öþéñ çļöçķ·········]</translation>
+        </message>
+        <message>
+            <source>clock time seconds open calendar</source>
+            <translation>[çļöçķ ţîɱé šéçöñðš öþéñ çàļéñðàŕ··········]</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>[Šĥöŵ šéçöñðš ŵĥîļé ţĥé çļöçķ þàñéļ îš öþéñ.··············]</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>[Ṁöðé ļàƀéļš··]</translation>
+        </message>
+        <message>
+            <source>launcher modes text icons</source>
+            <translation>[ļàûñçĥéŕ ɱöðéš ţéẋţ îçöñš·······]</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>[Šĥöŵ ļàûñçĥéŕ ɱöðéš àš ţéẋţ öŕ îçöñš.···········]</translation>
         </message>
         <message>
             <source>Show workspaces in the overview</source>
@@ -6760,6 +7106,14 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Violet</source>
             <translation>[Ṽîöļéţ·]</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>[Šîļṽéŕ·]</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>[Ĝŕàþĥîţé·]</translation>
         </message>
     </context>
     <context>
@@ -8064,8 +8418,8 @@ Save your work first.</source>
             <translation>[Ŵĥàţ'š ñéŵ··]</translation>
         </message>
         <message>
-            <source>What's new in Emaki 1.0</source>
-            <translation>[Ŵĥàţ'š ñéŵ îñ Éɱàķî 1.0·······]</translation>
+            <source>What's new in Emaki 1.1</source>
+            <translation>[Ŵĥàţ'š ñéŵ îñ Éɱàķî 1.1·······]</translation>
         </message>
         <message>
             <source>Close what's new</source>
@@ -8084,30 +8438,38 @@ Save your work first.</source>
             <translation>[Çöûļð ñöţ šàṽé ûþðàţé þŕöĝŕéšš. Ţĥîš šçŕééñ ɱàÿ àþþéàŕ àĝàîñ ñéẋţ ļöĝîñ.························]</translation>
         </message>
         <message>
-            <source>Emaki 1.0, the first beta</source>
-            <translation>[Éɱàķî 1.0, ţĥé ƒîŕšţ ƀéţà·······]</translation>
+            <source>Themes for your desktop</source>
+            <translation>[Ţĥéɱéš ƒöŕ ÿöûŕ ðéšķţöþ·······]</translation>
         </message>
         <message>
-            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
-            <translation>[Éɱàķî îš ŕéàðÿ ƒöŕ éṽéŕÿðàÿ ûšé. Éṽéŕÿ ûþðàţé çàñ šţîļļ ƀé ûñðöñé ƒŕöɱ ţĥé ƀööţ ɱéñû, àñð öñ à çöɱþûţéŕ ŵé ĥàṽéñ'ţ ţéšţéð šöɱéţĥîñĝ çàñ šţîļļ ƀŕéàķ: ţéļļ ûš ŵîţĥ Ŕéþöŕţ à þŕöƀļéɱ.·····························································]</translation>
+            <source>Choose a theme in Settings to change your wallpaper, overview background and accent together.</source>
+            <translation>[Çĥööšé à ţĥéɱé îñ Šéţţîñĝš ţö çĥàñĝé ÿöûŕ ŵàļļþàþéŕ, öṽéŕṽîéŵ ƀàçķĝŕöûñð àñð àççéñţ ţöĝéţĥéŕ.·······························]</translation>
         </message>
         <message>
-            <source>A lighter launcher</source>
-            <translation>[À ļîĝĥţéŕ ļàûñçĥéŕ·····]</translation>
+            <source>A clearer launcher</source>
+            <translation>[À çļéàŕéŕ ļàûñçĥéŕ·····]</translation>
         </message>
         <message>
-            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
-            <translation>[Ţĥé ļàûñçĥéŕ ķééþš ñöţĥîñĝ ļöàðéð ŵĥîļé îţ îš çļöšéð àñð öþéñš ŵĥéŕé ÿöû ļéƒţ îţ.···························]</translation>
+            <source>Follow the moving highlight with the arrow keys, and choose icons for launcher modes in Settings.</source>
+            <translation>[Ƒöļļöŵ ţĥé ɱöṽîñĝ ĥîĝĥļîĝĥţ ŵîţĥ ţĥé àŕŕöŵ ķéÿš, àñð çĥööšé îçöñš ƒöŕ ļàûñçĥéŕ ɱöðéš îñ Šéţţîñĝš.································]</translation>
+        </message>
+        <message>
+            <source>Discover programs</source>
+            <translation>[Ðîšçöṽéŕ þŕöĝŕàɱš····]</translation>
+        </message>
+        <message>
+            <source>Browse recommendations and categories on the new Programs start screen, using the catalog already on your computer.</source>
+            <translation>[Ɓŕöŵšé ŕéçöɱɱéñðàţîöñš àñð çàţéĝöŕîéš öñ ţĥé ñéŵ Þŕöĝŕàɱš šţàŕţ šçŕééñ, ûšîñĝ ţĥé çàţàļöĝ àļŕéàðÿ öñ ÿöûŕ çöɱþûţéŕ.·······································]</translation>
         </message>
         <message>
             <source>Fixes</source>
             <translation>[Ƒîẋéš]</translation>
         </message>
         <message>
-            <source>• Settings can be found in the launcher by its name in your language
-• The account description in Settings is no longer cut short</source>
-            <translation>[• Šéţţîñĝš çàñ ƀé ƒöûñð îñ ţĥé ļàûñçĥéŕ ƀÿ îţš ñàɱé îñ ÿöûŕ ļàñĝûàĝé
-• Ţĥé àççöûñţ ðéšçŕîþţîöñ îñ Šéţţîñĝš îš ñö ļöñĝéŕ çûţ šĥöŕţ············································]</translation>
+            <source>• Wallpaper changes reach the lock and login screens reliably
+• Installing, removing and updating programs blocks sleep and shutdown until the operation finishes</source>
+            <translation>[• Ŵàļļþàþéŕ çĥàñĝéš ŕéàçĥ ţĥé ļöçķ àñð ļöĝîñ šçŕééñš ŕéļîàƀļÿ
+• Îñšţàļļîñĝ, ŕéɱöṽîñĝ àñð ûþðàţîñĝ þŕöĝŕàɱš ƀļöçķš šļééþ àñð šĥûţðöŵñ ûñţîļ ţĥé öþéŕàţîöñ ƒîñîšĥéš·······················································]</translation>
         </message>
     </context>
     <context>

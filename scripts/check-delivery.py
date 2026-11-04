@@ -26,7 +26,7 @@ RUNTIME_ROOTS = (
     'packaging/emaki-apps', 'packaging/emaki-desktop', 'packaging/emaki-keyring',
     'packaging/emaki-mirrorlist', 'packaging/emaki-installer', 'packaging/emaki-nvidia',
     'packaging/snapguard', 'packaging/emaki-shim-signed', 'iso/profile/airootfs', 'crates',
-    'update-manager', 'notes', 'capture', 'zsh', 'packaging/emaki-font-iosevka', 'i18n',
+    'update-manager', 'notes', 'capture', 'zsh', 'packaging/emaki-font-iosevka', 'i18n', 'themes',
 )
 LOCAL_PACKAGES = ('emaki-installer', 'emaki-apps', 'emaki-desktop',
                   'emaki-keyring', 'emaki-mirrorlist', 'emaki-nvidia', 'emaki-sudo-key',

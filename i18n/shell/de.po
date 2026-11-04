@@ -401,6 +401,9 @@ msgstr "Passwort nicht geändert."
 msgid "Pictures"
 msgstr "Bilder"
 
+msgid "Pictures and videos"
+msgstr "Bilder und Videos"
+
 msgid "Play or pause media"
 msgstr "Medien wiedergeben oder pausieren"
 
@@ -745,3 +748,6 @@ msgstr "QR-Code lesen"
 #, python-brace-format
 msgid "{amount} GiB"
 msgstr "{amount} GiB"
+
+msgid "Choose an overview background"
+msgstr "Hintergrund für die Übersicht auswählen"

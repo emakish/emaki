@@ -25,9 +25,11 @@ except ModuleNotFoundError:
 
 try:
     from emaki_update_space import preflight
+    from emaki_update_inhibit import inhibit
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'update-manager'))
     from emaki_update_space import preflight
+    from emaki_update_inhibit import inhibit
 
 PACMAN = ('/usr/bin/pacman',)
 HOLDS = Path('/var/lib/emaki/rollback-holds.json')
@@ -70,7 +72,7 @@ def held(candidates, path=HOLDS):
             and isinstance(version, str) and candidates.get(name) == version}
 
 
-def run(command, fail_on_hook_error=False):
+def run(command, fail_on_hook_error=False, inhibitor=None):
     # Keep stdin attached for confirmation prompts. Bound retained diagnostics;
     # the complete output still reaches the terminal as it arrives.
     tail = b''
@@ -86,7 +88,8 @@ def run(command, fail_on_hook_error=False):
     previous = signal.signal(signal.SIGINT, interrupt)
     try:
         with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              env=dict(os.environ, LC_ALL='C')) as process:
+                              env=dict(os.environ, LC_ALL='C'),
+                              pass_fds=() if inhibitor is None else (inhibitor,)) as process:
             while chunk := os.read(process.stdout.fileno(), 4096):
                 sys.stdout.buffer.write(chunk)
                 sys.stdout.buffer.flush()
@@ -119,10 +122,10 @@ def run(command, fail_on_hook_error=False):
     return status if status >= 0 else 128 - status
 
 
-def update(noninteractive, pacman=PACMAN, holds=HOLDS, targets=()):
+def update(noninteractive, pacman=PACMAN, holds=HOLDS, targets=(), inhibitor=None):
     """Refresh keyrings before a full upgrade with any requested program targets."""
     confirm = ['--noconfirm'] if noninteractive else []
-    status = run([*pacman, '-Sy'], fail_on_hook_error=noninteractive)
+    status = run([*pacman, '-Sy'], fail_on_hook_error=noninteractive, inhibitor=inhibitor)
     if status:
         return status
     try:
@@ -134,7 +137,8 @@ def update(noninteractive, pacman=PACMAN, holds=HOLDS, targets=()):
     keyrings = [name for name in KEYRINGS if candidates and name in candidates]
     if keyrings:
         print('Updating the package signing keys first.', flush=True)
-        status = run([*pacman, '-S', *confirm, *keyrings], fail_on_hook_error=noninteractive)
+        status = run([*pacman, '-S', *confirm, *keyrings], fail_on_hook_error=noninteractive,
+                     inhibitor=inhibitor)
         if status:
             return status
     blocked = held(candidates, holds)
@@ -148,7 +152,7 @@ def update(noninteractive, pacman=PACMAN, holds=HOLDS, targets=()):
     command = [*pacman, '-Su', *confirm]
     if targets:
         command.extend(['--needed', *targets])
-    return run(command, fail_on_hook_error=noninteractive)
+    return run(command, fail_on_hook_error=noninteractive, inhibitor=inhibitor)
 
 
 def main():
@@ -172,15 +176,19 @@ def main():
         # Let pacman explain its root requirement before reading private metadata.
         if os.geteuid() != 0:
             return run(command, fail_on_hook_error=args.noninteractive)
-        # Keep the wrapper's early protection. The hook also measures the actual
-        # transaction; no environment marker can bypass either check.
-        if targets:
-            preflight(targets=targets)
-        else:
-            preflight()
-        if args.install_only:
-            return run(command, fail_on_hook_error=args.noninteractive)
-        return update(args.noninteractive, targets=targets)
+        # Acquire before any downloads and keep one lease across keyrings and
+        # the full upgrade. Transaction children inherit it so terminating this
+        # wrapper cannot drop protection while a package writer is still alive.
+        with inhibit(required=args.noninteractive) as descriptor:
+            # The hook also measures the actual transaction; no environment
+            # marker can bypass either free-space check.
+            if targets:
+                preflight(targets=targets)
+            else:
+                preflight()
+            if args.install_only:
+                return run(command, fail_on_hook_error=args.noninteractive, inhibitor=descriptor)
+            return update(args.noninteractive, targets=targets, inhibitor=descriptor)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 1
