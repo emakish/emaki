@@ -6,10 +6,13 @@
   "directories": [
     "",
     ".github/workflows",
+    "art/cubes",
     "art/cursor",
     "art/grub",
     "art/icons",
     "art/logo",
+    "art/ribbons",
+    "art/ribbons/renders/r2-palettes",
     "art/wallpaper",
     "boot",
     "boot/defaults",
@@ -26,6 +29,10 @@
     "crates/emaki-core/src/settings/accent",
     "crates/emaki-core/tests",
     "cursors/Emaki",
+    "cursors/Emaki-Dark",
+    "cursors/Emaki-Dark/cursors",
+    "cursors/Emaki-White",
+    "cursors/Emaki-White/cursors",
     "cursors/Emaki/cursors",
     "docs",
     "docs/screenshots",
@@ -124,6 +131,7 @@
     "packaging/emaki-nvidia",
     "packaging/emaki-shim-signed",
     "packaging/emaki-sudo-key",
+    "packaging/emaki-themes",
     "packaging/mirror",
     "packaging/mirror/cargo-locks",
     "packaging/mirror/exceptions",
@@ -143,6 +151,7 @@
     "shell/emoji",
     "shell/helpers",
     "shell/settings",
+    "shell/settings/cursors",
     "shell/settings/icons",
     "shell/shaders",
     "sudo",
@@ -162,6 +171,8 @@
     "tests/vm",
     "tests/vm/eyes",
     "tests/vm/fixtures",
+    "themes",
+    "themes/previews",
     "update-manager",
     "update-manager/tests",
     "update-manager/tests/odrs",
@@ -193,6 +204,11 @@
     ".github/workflows": [
       ".yml"
     ],
+    "art/cubes": [
+      ".md",
+      ".py",
+      ".sh"
+    ],
     "art/cursor": [
       ".py"
     ],
@@ -209,6 +225,15 @@
       ".png",
       ".py",
       ".svg"
+    ],
+    "art/ribbons": [
+      "",
+      ".md",
+      ".py",
+      ".sh"
+    ],
+    "art/ribbons/renders/r2-palettes": [
+      ".json"
     ],
     "art/wallpaper": [
       ".gpl",
@@ -268,6 +293,18 @@
     ],
     "cursors/Emaki": [
       ".theme"
+    ],
+    "cursors/Emaki-Dark": [
+      ".theme"
+    ],
+    "cursors/Emaki-Dark/cursors": [
+      ""
+    ],
+    "cursors/Emaki-White": [
+      ".theme"
+    ],
+    "cursors/Emaki-White/cursors": [
+      ""
     ],
     "cursors/Emaki/cursors": [
       ""
@@ -673,6 +710,10 @@
       ".kdl",
       ".list"
     ],
+    "packaging/emaki-themes": [
+      "",
+      ".list"
+    ],
     "packaging/mirror": [
       ".js",
       ".py",
@@ -691,6 +732,7 @@
     "packaging/niri-emaki": [
       "",
       ".list",
+      ".md",
       ".patch",
       ".py"
     ],
@@ -756,6 +798,9 @@
       "",
       ".js",
       ".qml"
+    ],
+    "shell/settings/cursors": [
+      ".png"
     ],
     "shell/settings/icons": [
       ".svg"
@@ -858,6 +903,13 @@
       ".license",
       ".py"
     ],
+    "themes": [
+      ".json"
+    ],
+    "themes/previews": [
+      ".jpg",
+      ".md"
+    ],
     "update-manager": [
       "",
       ".desktop",
@@ -940,7 +992,46 @@
       "deb53374dcd6fb1fb812def3315e8e72a957f769591041cec746303e0f2b525a",
       "dfbdad582a5500caf097fcc21068de510a08398e56cf7df2ac8134e7345d12a5"
     ],
+    "art/cubes/README.md": [
+      "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
+    ],
+    "art/cubes/cubes.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/frames.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/motion_assemble.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/motion_export.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/motion_render.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/motion_runner.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/polish_look.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/render-final-video.sh": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/render8k.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/render8k.sh": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cubes/video.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "art/cursor/haze.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/cursor/rounded.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "art/grub/background.py": [
@@ -969,6 +1060,100 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "art/logo/wordmark.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/README.md": [
+      "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
+    ],
+    "art/ribbons/SHA256SUMS": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/assemble_all_colours.sh": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/assemble_final.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/assemble_final.sh": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/colour_pipeline.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/final_runner.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/prepare_shipping.py": [
+      "264a07091a2aeca6f99236e82a90f45061cfc79fb841cdb6ac66b8ee42f81589",
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/render_final.sh": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/renders/r2-palettes/01-rose-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/02-orange-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/03-coral-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/04-amber-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/05-green-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/06-teal-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/07-blue-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/08-violet-light.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/09-rose-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/10-orange-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/11-coral-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/12-amber-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/13-green-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/14-teal-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/15-blue-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/16-violet-dark.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/17-silver.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/renders/r2-palettes/18-graphite.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "art/ribbons/ribbons.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/ribbons_round2.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/strips8k_runner.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "art/ribbons/strips8k_scene.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "art/wallpaper/front.py": [
@@ -1119,6 +1304,9 @@
     "crates/emaki-core/src/settings/accent/migration.rs": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
+    "crates/emaki-core/src/settings/cursor.rs": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "crates/emaki-core/src/settings/input.rs": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
@@ -1144,6 +1332,9 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "crates/emaki-core/src/settings/storage.rs": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "crates/emaki-core/src/settings/styles.rs": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "crates/emaki-core/src/state.rs": [
@@ -1197,6 +1388,7 @@
       "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
     ],
     "docs/agent-rules.md": [
+      "106d665bf84ad9d89bbf924592c81baf5027b275717ac1533d4da36e7b604a84",
       "e26a0f163aa98c9b6b162b32cb45bf71c0f876d52e2b4a49e756cb30d6b1bdc4",
       "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
     ],
@@ -1341,6 +1533,7 @@
     ],
     "i18n/cli/es.po": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6",
+      "77ddb3199897e026e61d65493d0f74a9f9da66cb72b8eef9341c979e6c06d1b6",
       "b2c6ce22e587d2ad0272fb06080d41509227da62546e4679ff5b6175e2dd35d5",
       "bd72626443c0c71ba518384b39af22e2ecb3b663834341c04bd3267a68ddc66e",
       "d8815e0e1441ee066b115137584432b800c787d1d3efec97f0766b0d5133c394",
@@ -2748,6 +2941,7 @@
       "d4da707fb508fa5f8e0721b26885c07fd0f1eef182a83cccdd66eaea7942f998",
       "ddd52b76d87747a5707fc3f7cf65fc6c12b3cbac7d73ace212059050c29528d7",
       "f631399a5b68d4e4105a9eedfdc8581d05eb79ef255da63a576de60bbecd3462",
+      "f8e46a452196d23fdfbc011c7b0ac687b39892f8e4e6cc615fe8d7fe29447137",
       "f983e713743d6a3cff4b58bdd968d6edccc426d7f7cfc7ce83d612cbec92762d"
     ],
     "installer/ui/Protocol.js": [
@@ -2797,6 +2991,7 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "installer/ui/tests/InteractionTest.qml": [
+      "029987cbbfbb7c470cf958fb65ce3e7f38b664ce1521036bcaaee7b43e570969",
       "134a1790aa1edac81d40c2e20f5c9f7aa6c9ec760e0598b1f914a99157a1e046",
       "19e206a556bb9ede30d6dd09650f079fa5823041fbc626b120997858989cd47b",
       "1d7b3096dd99a2dc76f56a449add292213c045248ba1b4c24cfc2ec556e4a74b",
@@ -2808,6 +3003,7 @@
       "4d8489e1374c3160e2dd9fc07702f537683122e99e7c6bfbec1ecb671b774097",
       "4fc23f6dd6632e2295adf2621bcdad5ae836c83f8626eda347661dda57bf57c4",
       "50d021a31eba4537f390a0d6343df05c5746e063f8d9c15d3705da34ef019517",
+      "51bdcc12a77fba7a584a06d259825a58449a56cd5e014c57299d2bee5f70fc0f",
       "69d0c1fa3c3a395b02f2a4e63d50613de2b0472aafc187ccd634691e48a2b551",
       "8089df1e0e76e38f0de67d083b584a32122bd8cd31d4f2a63c0aef0a0a6cb7f4",
       "9921b76f16432551f3d1e78f592398cdc9e311a1366d48b3b561eabc1d4e2ffd",
@@ -3308,6 +3504,12 @@
     "packaging/emaki-sudo-key/sudo-key.kdl": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
+    "packaging/emaki-themes/PKGBUILD": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "packaging/emaki-themes/expected-files.list": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "packaging/emaki/PKGBUILD": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -3460,6 +3662,9 @@
     "packaging/niri-emaki/rust_notices.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "packaging/niri-emaki/strip-wallpaper.md": [
+      "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
+    ],
     "packaging/private_keys.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -3585,6 +3790,10 @@
     "packaging/quickshell-emaki/0010-screencopy-completed-frame-damage.patch": [
       "1979558c42ce5a26a75d946134e7a179e9cbdfc1d4f62b10b6d1f01bff7207df"
     ],
+    "packaging/quickshell-emaki/0011-core-clock-preserve-dst-occurrence.patch": [
+      "1979558c42ce5a26a75d946134e7a179e9cbdfc1d4f62b10b6d1f01bff7207df",
+      "3e52bae12c92a6939c164fe97aff3562615a81d0fca54a5012df05b7adce994c"
+    ],
     "packaging/quickshell-emaki/PKGBUILD": [
       "11f17b9a09dcdd937327cf10383bbe24b47c4afdd9f9eb33ede659690420de0d"
     ],
@@ -3683,6 +3892,9 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "scripts/core-package.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "scripts/cursor-contact-sheet": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "scripts/emaki-autostart": [
@@ -3869,6 +4081,9 @@
     "scripts/niri-emaki-session": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "scripts/prepare-theme-assets": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "scripts/public/ci.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -3962,6 +4177,9 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "shell/AuthController.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "shell/BarBackdrop.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "shell/BarPolicy.qml": [
@@ -4156,9 +4374,11 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "shell/LeftIslands.qml": [
+      "139589baa10e09713ff34e95a1738c7a2ce3eb8f130195ea26ed032e3164901d",
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
       "87d9ceb61a947d8c213787616caabc43c5bdb56b385db3babf341fa01088e6c1",
-      "d2acd0ab3bca3548beecf5ced3ebaddcf7485bf7ffa243a8df67e25093b155eb"
+      "d2acd0ab3bca3548beecf5ced3ebaddcf7485bf7ffa243a8df67e25093b155eb",
+      "de991edadcd4fa5d59e48fe66124fe95883892570ef6bfbeac41e0c14e911704"
     ],
     "shell/Liquid.js": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
@@ -4285,6 +4505,19 @@
     "shell/OutputSelection.js": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
+    "shell/OverviewVideo.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
+      "6165110607e88265b8c5a790f83d27bab7fd937cd1670c9ebbe56b931a01c5f8"
+    ],
+    "shell/OverviewVideoContent.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "shell/OverviewVideoPlayer.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "shell/OverviewVideoSurface.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "shell/PasswordToggle.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
@@ -4393,7 +4626,8 @@
     "shell/SettingsAppearancePage.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
       "ae8f32ae4b077eda29b2c9840abac4e37362c9aa14b48a8b35bf2ae4d3a14514",
-      "b4ea39fbea20066a8020f53ff471d42786c25ae4f6a64dc1e47aee947cc86327"
+      "b4ea39fbea20066a8020f53ff471d42786c25ae4f6a64dc1e47aee947cc86327",
+      "c6fcdb7143b06d56dd504c140870a9071ee0e5b805f3d50d447b6ae28f97cb3a"
     ],
     "shell/SettingsAppsPage.qml": [
       "2f5a885abc85bd919f19b48bbdb476572501255c0a07b964184bc8e532e14f6b",
@@ -4463,6 +4697,10 @@
       "6310c7a4980ba0a5497a5657eb150261b5db25503f63960951fca728d99c44b3",
       "b4932c137b7db561a0acd33c7d218330769eeb316b11a8e4c14978c2e28af41c"
     ],
+    "shell/SettingsThemesPage.qml": [
+      "14ac315892015a69910c9cd6daa773b87d78e00939d6cc26e595c9bd7f60bb6c",
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "shell/SettingsUsersPage.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
       "822284642e62721add87dd57a056f2c6bcc4c713506d029a2cb3e0988832504b"
@@ -4478,8 +4716,10 @@
       "d9801b674d5799231c16a1976dfc46550cde2c09f9db6d20f415b2b14e08848e"
     ],
     "shell/SettingsWallpaperPage.qml": [
+      "17a897c20d5296a3a5e923cd8bd8cab083bfa42a2e320916b1dc1a561491d363",
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
-      "ae3b28dfb8bab9a5a1012778a657bc1a8a439d5f3cb7d17ac0c686e80216c567"
+      "ae3b28dfb8bab9a5a1012778a657bc1a8a439d5f3cb7d17ac0c686e80216c567",
+      "f731fcb620f7649c5756f424b4a8ee1b5782e067078d068a859d45f215b34d71"
     ],
     "shell/SettingsWifiPage.qml": [
       "054a14b564cc5d739419b6c64e40198a674d19e0c13700768075d2818bff046b",
@@ -4544,6 +4784,7 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "shell/SudoKeyIndicator.qml": [
+      "15f38537956914047b137573ecf00f216be155e68bc2cbc8557b0f33dce46662",
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
       "efba38b026a3333179ceb6acec2832a99e1526ebe37664d74f2e8b6ea17a46a6"
     ],
@@ -4763,6 +5004,9 @@
     "shell/helpers/greeter-auth.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "shell/helpers/greeter-cursor.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "shell/helpers/greeter-handoff.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -4773,6 +5017,9 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "shell/helpers/lock-environment.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "shell/helpers/overview_background.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "shell/helpers/polkit-lock-state.py": [
@@ -4803,6 +5050,9 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "shell/helpers/wallpaper_chooser.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "shell/helpers/wallpaper_reduce.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "shell/lock.qml": [
@@ -4927,6 +5177,9 @@
       "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
     ],
     "shell/settings/icons/storage.svg": [
+      "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
+    ],
+    "shell/settings/icons/themes.svg": [
       "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
     ],
     "shell/settings/icons/updates.svg": [
@@ -5221,6 +5474,9 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
       "6bcb4793848deb2b75868788fb8600a3b9be6a92f3b2270f11082c0b26805d77"
     ],
+    "tests/fixtures/BarThemeTint.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "tests/fixtures/BatteryTest.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
       "6bcb4793848deb2b75868788fb8600a3b9be6a92f3b2270f11082c0b26805d77"
@@ -5244,6 +5500,9 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "tests/fixtures/ClockScrollTest.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "tests/fixtures/ClockSecondsTest.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "tests/fixtures/ClockTest.qml": [
@@ -5332,7 +5591,9 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "tests/fixtures/LauncherKeyboardTest.qml": [
-      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277",
+      "5ea201f889d6adf181739abbc3125a869935d345b432558120adbff68665c301",
+      "ede9f1007cdb9eaef723ee784a644f50d086b8226784e82e82d307b1fe9d6cb5"
     ],
     "tests/fixtures/LauncherRefreshTest.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
@@ -5380,6 +5641,9 @@
     "tests/fixtures/NotesWindowRender.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
+    "tests/fixtures/NotificationBudgetTest.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "tests/fixtures/NotificationReachTest.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
@@ -5387,6 +5651,9 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "tests/fixtures/OffscreenPanelWindow.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "tests/fixtures/OverviewVideoTest.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "tests/fixtures/PairingTest.qml": [
@@ -5457,6 +5724,9 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "tests/fixtures/SettingsStoragePageTest.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "tests/fixtures/SettingsThemesScrollTest.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "tests/fixtures/SettingsUsersLifetime.qml": [
@@ -6091,7 +6361,16 @@
     "tests/render-i18n-es-shell.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/render-launcher-review.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "tests/render-launcher-tabs.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/render-settings-cursor.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/render-settings-defaults.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/render-shell.cpp": [
@@ -6183,6 +6462,10 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-backdrop.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-bar-theme-tint.py": [
+      "0e7028cf4955aeceffce359778f5a14ce369fc33cdfc7e902688da60c78f6cf2",
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-bar.py": [
@@ -6305,6 +6588,9 @@
     "tests/test-clock-scroll.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/test-clock-seconds.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "tests/test-clock-tools-service.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6",
       "bcbac1b7ef7bcdb87494866825225f88853e5ad194c6b6cdc17f7c81ce88201c"
@@ -6316,6 +6602,9 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-collect-sources.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-cursor-apps.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-cursors.py": [
@@ -6420,6 +6709,9 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-greeter-compositor.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-greeter-cursor.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-greeter-entry.py": [
@@ -6618,6 +6910,9 @@
     "tests/test-launcher-settings-glass.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/test-launcher-symbols.mjs": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "tests/test-launcher-tools.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -6709,6 +7004,9 @@
     "tests/test-notes-island.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/test-notification-budget.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "tests/test-notification-policy.mjs": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
@@ -6728,6 +7026,12 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-nvidia.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-overview-background.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-overview-video.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-package-lock.py": [
@@ -6800,6 +7104,9 @@
     ],
     "tests/test-programs-auth.mjs": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "tests/test-programs-inhibit.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-programs-logic.mjs": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
@@ -7104,6 +7411,10 @@
     "tests/test-settings-terminal.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/test-settings-themes.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6",
+      "8c1a6cbeaf98c9cf54de89c3aa831759951c04d28608f354e210215e55380ed0"
+    ],
     "tests/test-settings-users-home.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -7235,6 +7546,9 @@
     "tests/test-storage-arch.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/test-storefront-logic.mjs": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "tests/test-strip.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
@@ -7282,10 +7596,19 @@
     "tests/test-theme-accent-icons.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/test-theme-assets.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "tests/test-theme-palette.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-theme-slider-rims.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-theme-strip-filter.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-theme-switching.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-transaction-inhibit.py": [
@@ -7308,6 +7631,9 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-update-errors.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-update-inhibit.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-update-menu.py": [
@@ -7375,7 +7701,16 @@
     "tests/test-wallpaper-fallback.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "tests/test-wallpaper-large.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-wallpaper-pending.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
     "tests/test-wallpaper-policy.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/test-wallpaper-reduce.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/test-wallpaper.py": [
@@ -7417,6 +7752,9 @@
       "e3fe7c09641b1a521adb5c7bfc3f43825ea650644c841281e7f1cb75a0fe0565"
     ],
     "tests/test-zsh-defaults.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "tests/theme-evidence.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "tests/theme-pictures.py": [
@@ -7744,6 +8082,88 @@
     "tests/welcome-pictures.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
+    "themes/catalog.json": [
+      "297bbff77e2b7f4cd225a84b396c97dca9df3780bd1e170eb488a6c7f514c170"
+    ],
+    "themes/previews/01-rose-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/02-orange-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/03-coral-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/04-amber-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/05-green-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/06-teal-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/07-blue-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/08-violet-light.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/09-rose-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/10-orange-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/11-coral-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/12-amber-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/13-green-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/14-teal-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/15-blue-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/16-violet-dark.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/17-silver.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/18-graphite.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
+    "themes/previews/README.md": [
+      "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
+    ],
+    "themes/previews/emaki.jpg": [
+      "8f7618c82378b532d8ff77a89ea980ccaecfef6021218d1e0d841fdcce643000",
+      "b45336c902f74cfa5b185b90487ee72fb8cc1478b7b084eaf3e1666896c2090a"
+    ],
     "tokens.toml": [
       "00b0ae76dcc99b639cb709cf08c9bb9471d281fb04adbc100648c0b811494f64",
       "5bf2ac9963229e5ed74122ef0a0b047b3de40c26dbe73742e125176b922931c1",
@@ -7784,6 +8204,9 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "update-manager/emaki_package_lock.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "update-manager/emaki_update_inhibit.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "update-manager/emaki_update_root.py": [
@@ -8050,6 +8473,18 @@
     "update-manager/ui/Stars.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
+    "update-manager/ui/Storefront.qml": [
+      "028caad822516bbdd2027f7c13eb3c0cf56f7a6c2972c086f8993a3fedc6f285",
+      "0d8e7c9ebe8f1d41a416db56f45ffb16ccec9ef03a2d196ccc333ea01961704e",
+      "19ee1cdc34ab272e5d04d3ef867c0eba716745c4a9476fbc3f7caa0dc46f30f1",
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "update-manager/ui/StorefrontData.js": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "update-manager/ui/StorefrontLogic.js": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
     "update-manager/ui/UpdateController.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
@@ -8073,6 +8508,12 @@
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "update-manager/ui/tests/ProgramsPagesTest.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "update-manager/ui/tests/StartupTimingTest.qml": [
+      "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
+    ],
+    "update-manager/ui/tests/StorefrontTest.qml": [
       "4b9932489172cbb8e8ff8cbac7f9457904576d567bbd8219c77c8480bfbce277"
     ],
     "update-manager/ui/tests/appearance.py": [
@@ -8108,6 +8549,12 @@
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "update-manager/ui/tests/reviews.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "update-manager/ui/tests/startup_timing.py": [
+      "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
+    ],
+    "update-manager/ui/tests/storefront.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
     ],
     "upkeep/00-emaki-package-lock.hook": [
@@ -8667,7 +9114,7 @@
     "art/logo/emaki-mark-pixel-48.png": "2147a2809eab664828867e17a19cf5599781fd46e15e1855913779ddfc2f8166",
     "art/logo/emaki-mark-pixel-outline-50.png": "916dea0cf7066ae66bac1add4391099a3e48990b2ba0e358dd97e4eb096c8daa",
     "art/logo/emakish-avatar.png": "d5bcccb792ec3d1337c34f61512bf48bb1a4526344dfef5b6aeb93785d3d52d8",
-    "art/wallpaper/fallback.png": "7fc1e5ae0084079e30c7cb5f39997deb8272d24ff5addf7b3b9d968c496021fb",
+    "art/wallpaper/fallback.png": "4b60268e1bada9cc4902638ac18e249b90fc31d2aa2628b3c9873b9b8a509c56",
     "art/wallpaper/loop-cells.png": "bd16de984e56c6a67a26ce4d0592da214767464839ed06d971b63450c0bba9b4",
     "art/wallpaper/palette.png": "e2923adcc02298e181208b6d400a458711661b4251a7c8cf1ecca30070d0babb",
     "art/wallpaper/ring-front.png": "489a0fb0340689c7168faa495822fc37a828bc0934fd02f63513e1cd9eef1a45",
@@ -8682,6 +9129,34 @@
     "boot/plymouth/keymap-render.png": "69260b03e596743394a3979bb6ebfad82de32304cc1d505e8861718c9f556fdd",
     "boot/plymouth/lock.png": "4854942e80051cec8cf6265ce011cad210954a8ee08609fce31dd59f973c7d9c",
     "boot/plymouth/watermark.png": "b1a36a65df424b207f61f0856c7b082a098bbb39f24d8034ef840b6aa9b5e91f",
+    "cursors/Emaki-Dark/cursors/crosshair": "8db5d480cdff4ef9a0ae61fe95c46dc859ff49fca8918a7c65e28dba267d0ea5",
+    "cursors/Emaki-Dark/cursors/default": "264ae287c66b632226506fb047cfe00b7bb29ef5c835d75bc54e8592a5736b5b",
+    "cursors/Emaki-Dark/cursors/ew-resize": "6f6087e0ad98404bd0706d87bdc9ce0844cccb6c57e5804d91b0435e8cfbc104",
+    "cursors/Emaki-Dark/cursors/grab": "0455018b1f54a306a1fc18a30a94c2960c9876dfe3dbb7ad0b86a55c4cabc7d8",
+    "cursors/Emaki-Dark/cursors/grabbing": "6edde358f67d9c0cab9a91affd9e3276bf93c3ed6a5591dc4c70e5c545f9112a",
+    "cursors/Emaki-Dark/cursors/move": "4ca86ca1d4c2c3b7775afc5933ff468913fb6deee82f0a1d26f0dc831c0156d6",
+    "cursors/Emaki-Dark/cursors/nesw-resize": "b77e0fdd860907e965e4b84a37b89dd80cf0ebdb68399d5242fb0e10b70bd51d",
+    "cursors/Emaki-Dark/cursors/not-allowed": "3438f5033b5e165abca5118ed89e31b21786af0da417e27094bb1f6104029df3",
+    "cursors/Emaki-Dark/cursors/ns-resize": "4852030954654967ef1f1847f472fc3034224f62c9606f4e0cd7d45af4abde16",
+    "cursors/Emaki-Dark/cursors/nwse-resize": "03a1bf8db017c2c29bb6479c2fc3355a49a6625a73e68d58b75dfd469ed3e70d",
+    "cursors/Emaki-Dark/cursors/pointer": "7b31258b6144a0b2e9a6554c15147500962d782a3328d0573caab289054620cd",
+    "cursors/Emaki-Dark/cursors/progress": "d24f532eb47ec665528abb2ec57d945f1df75d908c8377f2f67901ce469f643a",
+    "cursors/Emaki-Dark/cursors/text": "d37c760ca10f2bbc0df1d409991701b5cf9f4b78eb058a62c2cfe5d6b40a2ded",
+    "cursors/Emaki-Dark/cursors/wait": "55068430c95ea9691fb54ec3ba18a1744c2e73d898b24b3544e58afd824b82d5",
+    "cursors/Emaki-White/cursors/crosshair": "7a9186334e0362b13ea1841f6cbaffca92de9f42de9913e0ff3be7079e10c9d8",
+    "cursors/Emaki-White/cursors/default": "dd7ae8cf46f39c47ac52c7be29340bf7f089df0e92f0293038de52cf34cd68bc",
+    "cursors/Emaki-White/cursors/ew-resize": "85d5b0c72480d8a09c6e395d9e46ef1f145acbe97ff090d58d17deed60efce57",
+    "cursors/Emaki-White/cursors/grab": "e1b88569512997cb507d7e751620f7fe75799f9d6ab317d35f5ddfb392487238",
+    "cursors/Emaki-White/cursors/grabbing": "30675ce7c35829b2c4735e686efbd319d2a3b2dfc3638bd8150a0d1f25fcd6a4",
+    "cursors/Emaki-White/cursors/move": "adacb38ad08c0c02fdad9f8bbc597cd5ddd15591c1589a11c679bce378ef2fa9",
+    "cursors/Emaki-White/cursors/nesw-resize": "9861a8c3b81bc6b85305ebbe7407f4b8f6186ec31c5287f8b29624165d7cd4ed",
+    "cursors/Emaki-White/cursors/not-allowed": "f8f4973be6791d9e73d520cb547e4d3f7ac5f37cc7df61c523f23a98bb591601",
+    "cursors/Emaki-White/cursors/ns-resize": "0b73606df3c4b0e7328a59c385447202e4bc37a0efb0498a65c20ee1da9ac342",
+    "cursors/Emaki-White/cursors/nwse-resize": "63c9010b55d44466eff171c9c5a85d30d84b1d70c28b1842239e7b0144e70494",
+    "cursors/Emaki-White/cursors/pointer": "db5701fbe3423e5ed0f74ec4095b7dd15df733975036d161f5bfc4f40449734c",
+    "cursors/Emaki-White/cursors/progress": "f39ab80f0873d1bbb493daabd5e7f06693af98e963bfe0eccda69855b7fa66e0",
+    "cursors/Emaki-White/cursors/text": "b3821a17cc0fd52e57dac0c97344fc3f1b65a543cd66af374770de2c8d815ea5",
+    "cursors/Emaki-White/cursors/wait": "08fa6cd1568dfa4aaebe04ac537fa339419f54f6d08affa5ff6b10c291a0c145",
     "cursors/Emaki/cursors/crosshair": "1ddd5ec8a146ff9f348164df0975b77d6bc57af94683e1ba694e63dbb5aed86b",
     "cursors/Emaki/cursors/default": "22e25bc587d744002877666deb279334b3a22e44e7ae6e01553e91dc4934fbaf",
     "cursors/Emaki/cursors/ew-resize": "344bacee0a36670c70c8b7b6735d3915b81e5bcfc10f8117d15f32a1ef75b5ed",
@@ -8816,7 +9291,12 @@
     "packaging/mirror/exceptions/20261014T014347Z-build.alongside-acceptance-98dc.json.sig": "1039364117d2fd557078096f162b41572053b305c4d9309de279d55657885984",
     "packaging/mirror/exceptions/20261016T184554Z-build.alongside-acceptance-5c38.json.sig": "b6b87549a9d24f3ec12953de74391ba5b54d1ae21b64c94687e6453b4fc4d3ef",
     "packaging/mirror/exceptions/20261021T163518Z-build.alongside-acceptance-1c37.json.sig": "ffaaa6703322c1742120166af16cff9ee1dcc9e3874171b9d3a039d82f3a1bda",
+    "packaging/mirror/exceptions/20261102T124651Z-build.alongside-acceptance-06a6.json.sig": "32066483f87704a0f3a7d91125e46d2502655a52eaeaf2df06bc8f5a5933ad21",
     "shell/mark-bar-26.png": "f45c876e0742f47dddd412267884b8e387616c0a3dccd8d281fb60d54b40e936",
+    "shell/settings/cursors/dark-24.png": "c0e93cc6525fedfd05d13a6bc976d38a9953b3b562cea27fd5d0cd7a4e1c005f",
+    "shell/settings/cursors/dark-48.png": "18d6d6822efddd8de11931a719bc3acc06076b2bc5eeed3fa6e1938edc16adb5",
+    "shell/settings/cursors/white-24.png": "0bd8c5cd67c654e7d8ab32cbcce51b8df4e7db92474a15a5f475099f08091722",
+    "shell/settings/cursors/white-48.png": "565770ffea36c0d1d2b967d4e15d651122a6495f4ec75a35a95ee5635a57b5e7",
     "tests/fixtures/theme-light/dock.png": "101f8520466841153e2cac9314e1a464f1f0f7fb3d68d64f1d288bdff3b81cfd",
     "tests/fixtures/theme-light/launcher.png": "33946834d241c597bde9efb7e6d25095dcf2735913d956e980362ac3d984f3ac",
     "tests/fixtures/theme-light/notification.png": "9f3b7566b811e215809491ded6ae630889b9ec31ead559020dd425a4c55136b7",
@@ -8838,9 +9318,178 @@
     "tests/fixtures/vm-frames/G-eyes57-snaprow-enc.png": "03e6ea75d6fd3dfe95c4deeae35e02171bfc6241cd0a11fc815417fcdae2dae3",
     "tests/fixtures/vm-frames/G-eyes58-kernel-enc.png": "4dcbcdf82309ca773c43e1eb8d14c45c598d56de705f9a6cd019661d69017607",
     "tests/fixtures/vm-frames/G-hw37-cream.png": "df6a69c3786c2c660bc8c3054b3063e603e0d46f7c57ce6754613a1ff561a9a0",
-    "tests/fixtures/vm-frames/G-key11-greeter2560.png": "71f8f9f9c9ab9feb8003bf54de8fcbf582ef75edf92816de1332c791eb4d6e0a"
+    "tests/fixtures/vm-frames/G-key11-greeter2560.png": "71f8f9f9c9ab9feb8003bf54de8fcbf582ef75edf92816de1332c791eb4d6e0a",
+    "themes/previews/01-rose-light.jpg": "520c1aba0b21a5098b51e82bf3e771b2d252f3ef832909d5798e0ed438fcf89c",
+    "themes/previews/02-orange-light.jpg": "3620c4fb9132f836d4150891caf96f47641e25db6b9c3768384338d959e90200",
+    "themes/previews/03-coral-light.jpg": "9ab556ae5e5023c282ec2d0b97f81cdfac16244e06a09a842fc2ac8b8bb829ea",
+    "themes/previews/04-amber-light.jpg": "a45cac9ca3e7c96b41ab5175d7a3a21daed6b8c7ef398c22e13b18532adddc5a",
+    "themes/previews/05-green-light.jpg": "fcaf293065ed62c077abc4b4ecd5bfa48960fe87f6eac7e48071faf79f20bedb",
+    "themes/previews/06-teal-light.jpg": "1bb60bd0703956ff4de00107dc25a280f29448150d0a4b7d7eee466406d36626",
+    "themes/previews/07-blue-light.jpg": "14a2e8a8c439c85d0c5972ccb4a19a7e7effaedf0359c7a1f8cfebc311262b29",
+    "themes/previews/08-violet-light.jpg": "e574b16f86158744d39ebec5fb454ab8d89c3db00ea6c0c23d29a4bdd2b59002",
+    "themes/previews/09-rose-dark.jpg": "838baef6254e997543a1dbfe61ac69c0b62b0e4951422436b337d20e9aaf4bfc",
+    "themes/previews/10-orange-dark.jpg": "7de78969cfe600f27609336976d26d5975bff21d99430bc226473102cda6268c",
+    "themes/previews/11-coral-dark.jpg": "39866f1673d9544beaf9874962c0ada73416680d8392acb1bac284ec57daeea2",
+    "themes/previews/12-amber-dark.jpg": "834a284e34c4b1f5f8cce06963663d4f63035073f0983a6f5cb878485c84d917",
+    "themes/previews/13-green-dark.jpg": "cd164f60e52b9f6d24f8f18d933cb9841d8d04266d972ad93979e46f1328421d",
+    "themes/previews/14-teal-dark.jpg": "128e311eaff2e59970076df921b16eb9899bc349fbf0648d0b980dc1d734c622",
+    "themes/previews/15-blue-dark.jpg": "4374a835a5284360bbecbbaecabcc788954b16f29edb65a8635811d0cdb26107",
+    "themes/previews/16-violet-dark.jpg": "29735f38429fe6d8ccd74a5a7fa522295336271fe4dd272ba464f568dfd852f3",
+    "themes/previews/17-silver.jpg": "86ed6d84e793cfc1b99493583d34db93079b7b36e283d6ee3f4cbe9462ded498",
+    "themes/previews/18-graphite.jpg": "8d27ad5b7b5ed5af6e7102b2b134c7e1431e5c6f01fa3935aebd6660bf9fe1a9",
+    "themes/previews/emaki.jpg": "a7295e2eb9403d3b39ba80ac015d0b6aad714a60d0b2eb0614049850ed639ea5"
   },
   "links": {
+    "cursors/Emaki-Dark/cursors/alias": "default",
+    "cursors/Emaki-Dark/cursors/all-resize": "move",
+    "cursors/Emaki-Dark/cursors/all-scroll": "move",
+    "cursors/Emaki-Dark/cursors/arrow": "default",
+    "cursors/Emaki-Dark/cursors/bd_double_arrow": "nwse-resize",
+    "cursors/Emaki-Dark/cursors/bottom_left_corner": "nesw-resize",
+    "cursors/Emaki-Dark/cursors/bottom_right_corner": "nwse-resize",
+    "cursors/Emaki-Dark/cursors/bottom_side": "ns-resize",
+    "cursors/Emaki-Dark/cursors/cell": "crosshair",
+    "cursors/Emaki-Dark/cursors/circle": "not-allowed",
+    "cursors/Emaki-Dark/cursors/closedhand": "grabbing",
+    "cursors/Emaki-Dark/cursors/col-resize": "ew-resize",
+    "cursors/Emaki-Dark/cursors/context-menu": "default",
+    "cursors/Emaki-Dark/cursors/copy": "default",
+    "cursors/Emaki-Dark/cursors/cross": "crosshair",
+    "cursors/Emaki-Dark/cursors/cross_reverse": "crosshair",
+    "cursors/Emaki-Dark/cursors/crossed_circle": "not-allowed",
+    "cursors/Emaki-Dark/cursors/diamond_cross": "crosshair",
+    "cursors/Emaki-Dark/cursors/dnd-ask": "default",
+    "cursors/Emaki-Dark/cursors/dnd-copy": "default",
+    "cursors/Emaki-Dark/cursors/dnd-link": "default",
+    "cursors/Emaki-Dark/cursors/dnd-move": "move",
+    "cursors/Emaki-Dark/cursors/dnd-no-drop": "not-allowed",
+    "cursors/Emaki-Dark/cursors/dnd-none": "not-allowed",
+    "cursors/Emaki-Dark/cursors/e-resize": "ew-resize",
+    "cursors/Emaki-Dark/cursors/fd_double_arrow": "nesw-resize",
+    "cursors/Emaki-Dark/cursors/fleur": "move",
+    "cursors/Emaki-Dark/cursors/forbidden": "not-allowed",
+    "cursors/Emaki-Dark/cursors/h_double_arrow": "ew-resize",
+    "cursors/Emaki-Dark/cursors/half-busy": "progress",
+    "cursors/Emaki-Dark/cursors/hand": "pointer",
+    "cursors/Emaki-Dark/cursors/hand1": "pointer",
+    "cursors/Emaki-Dark/cursors/hand2": "pointer",
+    "cursors/Emaki-Dark/cursors/help": "default",
+    "cursors/Emaki-Dark/cursors/ibeam": "text",
+    "cursors/Emaki-Dark/cursors/left_arrow": "default",
+    "cursors/Emaki-Dark/cursors/left_ptr": "default",
+    "cursors/Emaki-Dark/cursors/left_ptr_watch": "progress",
+    "cursors/Emaki-Dark/cursors/left_side": "ew-resize",
+    "cursors/Emaki-Dark/cursors/link": "default",
+    "cursors/Emaki-Dark/cursors/n-resize": "ns-resize",
+    "cursors/Emaki-Dark/cursors/ne-resize": "nesw-resize",
+    "cursors/Emaki-Dark/cursors/no-drop": "not-allowed",
+    "cursors/Emaki-Dark/cursors/nw-resize": "nwse-resize",
+    "cursors/Emaki-Dark/cursors/openhand": "grab",
+    "cursors/Emaki-Dark/cursors/plus": "crosshair",
+    "cursors/Emaki-Dark/cursors/pointing_hand": "pointer",
+    "cursors/Emaki-Dark/cursors/question_arrow": "default",
+    "cursors/Emaki-Dark/cursors/right_side": "ew-resize",
+    "cursors/Emaki-Dark/cursors/row-resize": "ns-resize",
+    "cursors/Emaki-Dark/cursors/s-resize": "ns-resize",
+    "cursors/Emaki-Dark/cursors/sb_h_double_arrow": "ew-resize",
+    "cursors/Emaki-Dark/cursors/sb_v_double_arrow": "ns-resize",
+    "cursors/Emaki-Dark/cursors/se-resize": "nwse-resize",
+    "cursors/Emaki-Dark/cursors/size_all": "move",
+    "cursors/Emaki-Dark/cursors/size_bdiag": "nesw-resize",
+    "cursors/Emaki-Dark/cursors/size_fdiag": "nwse-resize",
+    "cursors/Emaki-Dark/cursors/size_hor": "ew-resize",
+    "cursors/Emaki-Dark/cursors/size_ver": "ns-resize",
+    "cursors/Emaki-Dark/cursors/split_h": "ew-resize",
+    "cursors/Emaki-Dark/cursors/split_v": "ns-resize",
+    "cursors/Emaki-Dark/cursors/sw-resize": "nesw-resize",
+    "cursors/Emaki-Dark/cursors/tcross": "crosshair",
+    "cursors/Emaki-Dark/cursors/top_left_arrow": "default",
+    "cursors/Emaki-Dark/cursors/top_left_corner": "nwse-resize",
+    "cursors/Emaki-Dark/cursors/top_right_corner": "nesw-resize",
+    "cursors/Emaki-Dark/cursors/top_side": "ns-resize",
+    "cursors/Emaki-Dark/cursors/v_double_arrow": "ns-resize",
+    "cursors/Emaki-Dark/cursors/vertical-text": "text",
+    "cursors/Emaki-Dark/cursors/w-resize": "ew-resize",
+    "cursors/Emaki-Dark/cursors/watch": "wait",
+    "cursors/Emaki-Dark/cursors/whats_this": "default",
+    "cursors/Emaki-Dark/cursors/xterm": "text",
+    "cursors/Emaki-Dark/cursors/zoom-in": "default",
+    "cursors/Emaki-Dark/cursors/zoom-out": "default",
+    "cursors/Emaki-White/cursors/alias": "default",
+    "cursors/Emaki-White/cursors/all-resize": "move",
+    "cursors/Emaki-White/cursors/all-scroll": "move",
+    "cursors/Emaki-White/cursors/arrow": "default",
+    "cursors/Emaki-White/cursors/bd_double_arrow": "nwse-resize",
+    "cursors/Emaki-White/cursors/bottom_left_corner": "nesw-resize",
+    "cursors/Emaki-White/cursors/bottom_right_corner": "nwse-resize",
+    "cursors/Emaki-White/cursors/bottom_side": "ns-resize",
+    "cursors/Emaki-White/cursors/cell": "crosshair",
+    "cursors/Emaki-White/cursors/circle": "not-allowed",
+    "cursors/Emaki-White/cursors/closedhand": "grabbing",
+    "cursors/Emaki-White/cursors/col-resize": "ew-resize",
+    "cursors/Emaki-White/cursors/context-menu": "default",
+    "cursors/Emaki-White/cursors/copy": "default",
+    "cursors/Emaki-White/cursors/cross": "crosshair",
+    "cursors/Emaki-White/cursors/cross_reverse": "crosshair",
+    "cursors/Emaki-White/cursors/crossed_circle": "not-allowed",
+    "cursors/Emaki-White/cursors/diamond_cross": "crosshair",
+    "cursors/Emaki-White/cursors/dnd-ask": "default",
+    "cursors/Emaki-White/cursors/dnd-copy": "default",
+    "cursors/Emaki-White/cursors/dnd-link": "default",
+    "cursors/Emaki-White/cursors/dnd-move": "move",
+    "cursors/Emaki-White/cursors/dnd-no-drop": "not-allowed",
+    "cursors/Emaki-White/cursors/dnd-none": "not-allowed",
+    "cursors/Emaki-White/cursors/e-resize": "ew-resize",
+    "cursors/Emaki-White/cursors/fd_double_arrow": "nesw-resize",
+    "cursors/Emaki-White/cursors/fleur": "move",
+    "cursors/Emaki-White/cursors/forbidden": "not-allowed",
+    "cursors/Emaki-White/cursors/h_double_arrow": "ew-resize",
+    "cursors/Emaki-White/cursors/half-busy": "progress",
+    "cursors/Emaki-White/cursors/hand": "pointer",
+    "cursors/Emaki-White/cursors/hand1": "pointer",
+    "cursors/Emaki-White/cursors/hand2": "pointer",
+    "cursors/Emaki-White/cursors/help": "default",
+    "cursors/Emaki-White/cursors/ibeam": "text",
+    "cursors/Emaki-White/cursors/left_arrow": "default",
+    "cursors/Emaki-White/cursors/left_ptr": "default",
+    "cursors/Emaki-White/cursors/left_ptr_watch": "progress",
+    "cursors/Emaki-White/cursors/left_side": "ew-resize",
+    "cursors/Emaki-White/cursors/link": "default",
+    "cursors/Emaki-White/cursors/n-resize": "ns-resize",
+    "cursors/Emaki-White/cursors/ne-resize": "nesw-resize",
+    "cursors/Emaki-White/cursors/no-drop": "not-allowed",
+    "cursors/Emaki-White/cursors/nw-resize": "nwse-resize",
+    "cursors/Emaki-White/cursors/openhand": "grab",
+    "cursors/Emaki-White/cursors/plus": "crosshair",
+    "cursors/Emaki-White/cursors/pointing_hand": "pointer",
+    "cursors/Emaki-White/cursors/question_arrow": "default",
+    "cursors/Emaki-White/cursors/right_side": "ew-resize",
+    "cursors/Emaki-White/cursors/row-resize": "ns-resize",
+    "cursors/Emaki-White/cursors/s-resize": "ns-resize",
+    "cursors/Emaki-White/cursors/sb_h_double_arrow": "ew-resize",
+    "cursors/Emaki-White/cursors/sb_v_double_arrow": "ns-resize",
+    "cursors/Emaki-White/cursors/se-resize": "nwse-resize",
+    "cursors/Emaki-White/cursors/size_all": "move",
+    "cursors/Emaki-White/cursors/size_bdiag": "nesw-resize",
+    "cursors/Emaki-White/cursors/size_fdiag": "nwse-resize",
+    "cursors/Emaki-White/cursors/size_hor": "ew-resize",
+    "cursors/Emaki-White/cursors/size_ver": "ns-resize",
+    "cursors/Emaki-White/cursors/split_h": "ew-resize",
+    "cursors/Emaki-White/cursors/split_v": "ns-resize",
+    "cursors/Emaki-White/cursors/sw-resize": "nesw-resize",
+    "cursors/Emaki-White/cursors/tcross": "crosshair",
+    "cursors/Emaki-White/cursors/top_left_arrow": "default",
+    "cursors/Emaki-White/cursors/top_left_corner": "nwse-resize",
+    "cursors/Emaki-White/cursors/top_right_corner": "nesw-resize",
+    "cursors/Emaki-White/cursors/top_side": "ns-resize",
+    "cursors/Emaki-White/cursors/v_double_arrow": "ns-resize",
+    "cursors/Emaki-White/cursors/vertical-text": "text",
+    "cursors/Emaki-White/cursors/w-resize": "ew-resize",
+    "cursors/Emaki-White/cursors/watch": "wait",
+    "cursors/Emaki-White/cursors/whats_this": "default",
+    "cursors/Emaki-White/cursors/xterm": "text",
+    "cursors/Emaki-White/cursors/zoom-in": "default",
+    "cursors/Emaki-White/cursors/zoom-out": "default",
     "cursors/Emaki/cursors/alias": "default",
     "cursors/Emaki/cursors/all-resize": "move",
     "cursors/Emaki/cursors/all-scroll": "move",
@@ -8964,7 +9613,20 @@
     "Makefile",
     "PLANS.md",
     "README.md",
+    "art/cubes/README.md",
+    "art/cubes/cubes.py",
+    "art/cubes/frames.py",
+    "art/cubes/motion_assemble.py",
+    "art/cubes/motion_export.py",
+    "art/cubes/motion_render.py",
+    "art/cubes/motion_runner.py",
+    "art/cubes/polish_look.py",
+    "art/cubes/render-final-video.sh",
+    "art/cubes/render8k.py",
+    "art/cubes/render8k.sh",
+    "art/cubes/video.py",
     "art/cursor/haze.py",
+    "art/cursor/rounded.py",
     "art/grub/background.png",
     "art/grub/background.py",
     "art/icons/emaki-install.py",
@@ -8980,6 +9642,37 @@
     "art/logo/mark.svg",
     "art/logo/wordmark.py",
     "art/logo/wordmark.svg",
+    "art/ribbons/README.md",
+    "art/ribbons/SHA256SUMS",
+    "art/ribbons/assemble_all_colours.sh",
+    "art/ribbons/assemble_final.py",
+    "art/ribbons/assemble_final.sh",
+    "art/ribbons/colour_pipeline.py",
+    "art/ribbons/final_runner.py",
+    "art/ribbons/prepare_shipping.py",
+    "art/ribbons/render_final.sh",
+    "art/ribbons/renders/r2-palettes/01-rose-light.json",
+    "art/ribbons/renders/r2-palettes/02-orange-light.json",
+    "art/ribbons/renders/r2-palettes/03-coral-light.json",
+    "art/ribbons/renders/r2-palettes/04-amber-light.json",
+    "art/ribbons/renders/r2-palettes/05-green-light.json",
+    "art/ribbons/renders/r2-palettes/06-teal-light.json",
+    "art/ribbons/renders/r2-palettes/07-blue-light.json",
+    "art/ribbons/renders/r2-palettes/08-violet-light.json",
+    "art/ribbons/renders/r2-palettes/09-rose-dark.json",
+    "art/ribbons/renders/r2-palettes/10-orange-dark.json",
+    "art/ribbons/renders/r2-palettes/11-coral-dark.json",
+    "art/ribbons/renders/r2-palettes/12-amber-dark.json",
+    "art/ribbons/renders/r2-palettes/13-green-dark.json",
+    "art/ribbons/renders/r2-palettes/14-teal-dark.json",
+    "art/ribbons/renders/r2-palettes/15-blue-dark.json",
+    "art/ribbons/renders/r2-palettes/16-violet-dark.json",
+    "art/ribbons/renders/r2-palettes/17-silver.json",
+    "art/ribbons/renders/r2-palettes/18-graphite.json",
+    "art/ribbons/ribbons.py",
+    "art/ribbons/ribbons_round2.py",
+    "art/ribbons/strips8k_runner.py",
+    "art/ribbons/strips8k_scene.py",
     "art/wallpaper/README.md",
     "art/wallpaper/fallback.png",
     "art/wallpaper/front.py",
@@ -9038,6 +9731,7 @@
     "crates/emaki-core/src/niri/stream.rs",
     "crates/emaki-core/src/settings/accent.rs",
     "crates/emaki-core/src/settings/accent/migration.rs",
+    "crates/emaki-core/src/settings/cursor.rs",
     "crates/emaki-core/src/settings/input.rs",
     "crates/emaki-core/src/settings/journal.rs",
     "crates/emaki-core/src/settings/live.rs",
@@ -9047,9 +9741,190 @@
     "crates/emaki-core/src/settings/mod.rs",
     "crates/emaki-core/src/settings/niri_live.rs",
     "crates/emaki-core/src/settings/storage.rs",
+    "crates/emaki-core/src/settings/styles.rs",
     "crates/emaki-core/src/state.rs",
     "crates/emaki-core/src/transport.rs",
     "crates/emaki-core/tests/niri.rs",
+    "cursors/Emaki-Dark/cursors/alias",
+    "cursors/Emaki-Dark/cursors/all-resize",
+    "cursors/Emaki-Dark/cursors/all-scroll",
+    "cursors/Emaki-Dark/cursors/arrow",
+    "cursors/Emaki-Dark/cursors/bd_double_arrow",
+    "cursors/Emaki-Dark/cursors/bottom_left_corner",
+    "cursors/Emaki-Dark/cursors/bottom_right_corner",
+    "cursors/Emaki-Dark/cursors/bottom_side",
+    "cursors/Emaki-Dark/cursors/cell",
+    "cursors/Emaki-Dark/cursors/circle",
+    "cursors/Emaki-Dark/cursors/closedhand",
+    "cursors/Emaki-Dark/cursors/col-resize",
+    "cursors/Emaki-Dark/cursors/context-menu",
+    "cursors/Emaki-Dark/cursors/copy",
+    "cursors/Emaki-Dark/cursors/cross",
+    "cursors/Emaki-Dark/cursors/cross_reverse",
+    "cursors/Emaki-Dark/cursors/crossed_circle",
+    "cursors/Emaki-Dark/cursors/crosshair",
+    "cursors/Emaki-Dark/cursors/default",
+    "cursors/Emaki-Dark/cursors/diamond_cross",
+    "cursors/Emaki-Dark/cursors/dnd-ask",
+    "cursors/Emaki-Dark/cursors/dnd-copy",
+    "cursors/Emaki-Dark/cursors/dnd-link",
+    "cursors/Emaki-Dark/cursors/dnd-move",
+    "cursors/Emaki-Dark/cursors/dnd-no-drop",
+    "cursors/Emaki-Dark/cursors/dnd-none",
+    "cursors/Emaki-Dark/cursors/e-resize",
+    "cursors/Emaki-Dark/cursors/ew-resize",
+    "cursors/Emaki-Dark/cursors/fd_double_arrow",
+    "cursors/Emaki-Dark/cursors/fleur",
+    "cursors/Emaki-Dark/cursors/forbidden",
+    "cursors/Emaki-Dark/cursors/grab",
+    "cursors/Emaki-Dark/cursors/grabbing",
+    "cursors/Emaki-Dark/cursors/h_double_arrow",
+    "cursors/Emaki-Dark/cursors/half-busy",
+    "cursors/Emaki-Dark/cursors/hand",
+    "cursors/Emaki-Dark/cursors/hand1",
+    "cursors/Emaki-Dark/cursors/hand2",
+    "cursors/Emaki-Dark/cursors/help",
+    "cursors/Emaki-Dark/cursors/ibeam",
+    "cursors/Emaki-Dark/cursors/left_arrow",
+    "cursors/Emaki-Dark/cursors/left_ptr",
+    "cursors/Emaki-Dark/cursors/left_ptr_watch",
+    "cursors/Emaki-Dark/cursors/left_side",
+    "cursors/Emaki-Dark/cursors/link",
+    "cursors/Emaki-Dark/cursors/move",
+    "cursors/Emaki-Dark/cursors/n-resize",
+    "cursors/Emaki-Dark/cursors/ne-resize",
+    "cursors/Emaki-Dark/cursors/nesw-resize",
+    "cursors/Emaki-Dark/cursors/no-drop",
+    "cursors/Emaki-Dark/cursors/not-allowed",
+    "cursors/Emaki-Dark/cursors/ns-resize",
+    "cursors/Emaki-Dark/cursors/nw-resize",
+    "cursors/Emaki-Dark/cursors/nwse-resize",
+    "cursors/Emaki-Dark/cursors/openhand",
+    "cursors/Emaki-Dark/cursors/plus",
+    "cursors/Emaki-Dark/cursors/pointer",
+    "cursors/Emaki-Dark/cursors/pointing_hand",
+    "cursors/Emaki-Dark/cursors/progress",
+    "cursors/Emaki-Dark/cursors/question_arrow",
+    "cursors/Emaki-Dark/cursors/right_side",
+    "cursors/Emaki-Dark/cursors/row-resize",
+    "cursors/Emaki-Dark/cursors/s-resize",
+    "cursors/Emaki-Dark/cursors/sb_h_double_arrow",
+    "cursors/Emaki-Dark/cursors/sb_v_double_arrow",
+    "cursors/Emaki-Dark/cursors/se-resize",
+    "cursors/Emaki-Dark/cursors/size_all",
+    "cursors/Emaki-Dark/cursors/size_bdiag",
+    "cursors/Emaki-Dark/cursors/size_fdiag",
+    "cursors/Emaki-Dark/cursors/size_hor",
+    "cursors/Emaki-Dark/cursors/size_ver",
+    "cursors/Emaki-Dark/cursors/split_h",
+    "cursors/Emaki-Dark/cursors/split_v",
+    "cursors/Emaki-Dark/cursors/sw-resize",
+    "cursors/Emaki-Dark/cursors/tcross",
+    "cursors/Emaki-Dark/cursors/text",
+    "cursors/Emaki-Dark/cursors/top_left_arrow",
+    "cursors/Emaki-Dark/cursors/top_left_corner",
+    "cursors/Emaki-Dark/cursors/top_right_corner",
+    "cursors/Emaki-Dark/cursors/top_side",
+    "cursors/Emaki-Dark/cursors/v_double_arrow",
+    "cursors/Emaki-Dark/cursors/vertical-text",
+    "cursors/Emaki-Dark/cursors/w-resize",
+    "cursors/Emaki-Dark/cursors/wait",
+    "cursors/Emaki-Dark/cursors/watch",
+    "cursors/Emaki-Dark/cursors/whats_this",
+    "cursors/Emaki-Dark/cursors/xterm",
+    "cursors/Emaki-Dark/cursors/zoom-in",
+    "cursors/Emaki-Dark/cursors/zoom-out",
+    "cursors/Emaki-Dark/index.theme",
+    "cursors/Emaki-White/cursors/alias",
+    "cursors/Emaki-White/cursors/all-resize",
+    "cursors/Emaki-White/cursors/all-scroll",
+    "cursors/Emaki-White/cursors/arrow",
+    "cursors/Emaki-White/cursors/bd_double_arrow",
+    "cursors/Emaki-White/cursors/bottom_left_corner",
+    "cursors/Emaki-White/cursors/bottom_right_corner",
+    "cursors/Emaki-White/cursors/bottom_side",
+    "cursors/Emaki-White/cursors/cell",
+    "cursors/Emaki-White/cursors/circle",
+    "cursors/Emaki-White/cursors/closedhand",
+    "cursors/Emaki-White/cursors/col-resize",
+    "cursors/Emaki-White/cursors/context-menu",
+    "cursors/Emaki-White/cursors/copy",
+    "cursors/Emaki-White/cursors/cross",
+    "cursors/Emaki-White/cursors/cross_reverse",
+    "cursors/Emaki-White/cursors/crossed_circle",
+    "cursors/Emaki-White/cursors/crosshair",
+    "cursors/Emaki-White/cursors/default",
+    "cursors/Emaki-White/cursors/diamond_cross",
+    "cursors/Emaki-White/cursors/dnd-ask",
+    "cursors/Emaki-White/cursors/dnd-copy",
+    "cursors/Emaki-White/cursors/dnd-link",
+    "cursors/Emaki-White/cursors/dnd-move",
+    "cursors/Emaki-White/cursors/dnd-no-drop",
+    "cursors/Emaki-White/cursors/dnd-none",
+    "cursors/Emaki-White/cursors/e-resize",
+    "cursors/Emaki-White/cursors/ew-resize",
+    "cursors/Emaki-White/cursors/fd_double_arrow",
+    "cursors/Emaki-White/cursors/fleur",
+    "cursors/Emaki-White/cursors/forbidden",
+    "cursors/Emaki-White/cursors/grab",
+    "cursors/Emaki-White/cursors/grabbing",
+    "cursors/Emaki-White/cursors/h_double_arrow",
+    "cursors/Emaki-White/cursors/half-busy",
+    "cursors/Emaki-White/cursors/hand",
+    "cursors/Emaki-White/cursors/hand1",
+    "cursors/Emaki-White/cursors/hand2",
+    "cursors/Emaki-White/cursors/help",
+    "cursors/Emaki-White/cursors/ibeam",
+    "cursors/Emaki-White/cursors/left_arrow",
+    "cursors/Emaki-White/cursors/left_ptr",
+    "cursors/Emaki-White/cursors/left_ptr_watch",
+    "cursors/Emaki-White/cursors/left_side",
+    "cursors/Emaki-White/cursors/link",
+    "cursors/Emaki-White/cursors/move",
+    "cursors/Emaki-White/cursors/n-resize",
+    "cursors/Emaki-White/cursors/ne-resize",
+    "cursors/Emaki-White/cursors/nesw-resize",
+    "cursors/Emaki-White/cursors/no-drop",
+    "cursors/Emaki-White/cursors/not-allowed",
+    "cursors/Emaki-White/cursors/ns-resize",
+    "cursors/Emaki-White/cursors/nw-resize",
+    "cursors/Emaki-White/cursors/nwse-resize",
+    "cursors/Emaki-White/cursors/openhand",
+    "cursors/Emaki-White/cursors/plus",
+    "cursors/Emaki-White/cursors/pointer",
+    "cursors/Emaki-White/cursors/pointing_hand",
+    "cursors/Emaki-White/cursors/progress",
+    "cursors/Emaki-White/cursors/question_arrow",
+    "cursors/Emaki-White/cursors/right_side",
+    "cursors/Emaki-White/cursors/row-resize",
+    "cursors/Emaki-White/cursors/s-resize",
+    "cursors/Emaki-White/cursors/sb_h_double_arrow",
+    "cursors/Emaki-White/cursors/sb_v_double_arrow",
+    "cursors/Emaki-White/cursors/se-resize",
+    "cursors/Emaki-White/cursors/size_all",
+    "cursors/Emaki-White/cursors/size_bdiag",
+    "cursors/Emaki-White/cursors/size_fdiag",
+    "cursors/Emaki-White/cursors/size_hor",
+    "cursors/Emaki-White/cursors/size_ver",
+    "cursors/Emaki-White/cursors/split_h",
+    "cursors/Emaki-White/cursors/split_v",
+    "cursors/Emaki-White/cursors/sw-resize",
+    "cursors/Emaki-White/cursors/tcross",
+    "cursors/Emaki-White/cursors/text",
+    "cursors/Emaki-White/cursors/top_left_arrow",
+    "cursors/Emaki-White/cursors/top_left_corner",
+    "cursors/Emaki-White/cursors/top_right_corner",
+    "cursors/Emaki-White/cursors/top_side",
+    "cursors/Emaki-White/cursors/v_double_arrow",
+    "cursors/Emaki-White/cursors/vertical-text",
+    "cursors/Emaki-White/cursors/w-resize",
+    "cursors/Emaki-White/cursors/wait",
+    "cursors/Emaki-White/cursors/watch",
+    "cursors/Emaki-White/cursors/whats_this",
+    "cursors/Emaki-White/cursors/xterm",
+    "cursors/Emaki-White/cursors/zoom-in",
+    "cursors/Emaki-White/cursors/zoom-out",
+    "cursors/Emaki-White/index.theme",
     "cursors/Emaki/cursors/alias",
     "cursors/Emaki/cursors/all-resize",
     "cursors/Emaki/cursors/all-scroll",
@@ -9773,6 +10648,8 @@
     "packaging/emaki-sudo-key/expected-files.list",
     "packaging/emaki-sudo-key/sudo-key.installed",
     "packaging/emaki-sudo-key/sudo-key.kdl",
+    "packaging/emaki-themes/PKGBUILD",
+    "packaging/emaki-themes/expected-files.list",
     "packaging/emaki/PKGBUILD",
     "packaging/emaki/expected-files.list",
     "packaging/mirror/acceptance.py",
@@ -9791,6 +10668,8 @@
     "packaging/mirror/exceptions/20261016T184554Z-build.alongside-acceptance-5c38.json.sig",
     "packaging/mirror/exceptions/20261021T163518Z-build.alongside-acceptance-1c37.json",
     "packaging/mirror/exceptions/20261021T163518Z-build.alongside-acceptance-1c37.json.sig",
+    "packaging/mirror/exceptions/20261102T124651Z-build.alongside-acceptance-06a6.json",
+    "packaging/mirror/exceptions/20261102T124651Z-build.alongside-acceptance-06a6.json.sig",
     "packaging/mirror/go_sources.py",
     "packaging/mirror/historical_sources.py",
     "packaging/mirror/iso-sums.sh",
@@ -9824,6 +10703,7 @@
     "packaging/niri-emaki/check-assumptions.py",
     "packaging/niri-emaki/expected-files.list",
     "packaging/niri-emaki/rust_notices.py",
+    "packaging/niri-emaki/strip-wallpaper.md",
     "packaging/private_keys.py",
     "packaging/publish.sh",
     "packaging/quickshell-emaki/0001-wlr-screencopy-raw-wl_output-for-transform.patch",
@@ -9836,6 +10716,7 @@
     "packaging/quickshell-emaki/0008-core-find-theme-icons-installed-after-startup.patch",
     "packaging/quickshell-emaki/0009-core-query-keyboard-modifiers.patch",
     "packaging/quickshell-emaki/0010-screencopy-completed-frame-damage.patch",
+    "packaging/quickshell-emaki/0011-core-clock-preserve-dst-occurrence.patch",
     "packaging/quickshell-emaki/PKGBUILD",
     "packaging/quickshell-emaki/README.md",
     "packaging/quickshell-emaki/expected-files.list",
@@ -9875,6 +10756,7 @@
     "scripts/check-delivery.py",
     "scripts/check-secureboot-key-backup.sh",
     "scripts/core-package.py",
+    "scripts/cursor-contact-sheet",
     "scripts/emaki-autostart",
     "scripts/emaki-boot-order",
     "scripts/emaki-boot-refresh",
@@ -9933,6 +10815,7 @@
     "scripts/emaki_storage.py",
     "scripts/new-secureboot-release-key.sh",
     "scripts/niri-emaki-session",
+    "scripts/prepare-theme-assets",
     "scripts/public/ci.py",
     "scripts/public/guard.py",
     "scripts/public/policy.json",
@@ -9956,6 +10839,7 @@
     "shell/Appearance.qml",
     "shell/AppearanceLogic.js",
     "shell/AuthController.qml",
+    "shell/BarBackdrop.qml",
     "shell/BarPolicy.qml",
     "shell/Calculator.js",
     "shell/CalendarEvents.qml",
@@ -10037,6 +10921,10 @@
     "shell/NumberLocale.js",
     "shell/Osd.qml",
     "shell/OutputSelection.js",
+    "shell/OverviewVideo.qml",
+    "shell/OverviewVideoContent.qml",
+    "shell/OverviewVideoPlayer.qml",
+    "shell/OverviewVideoSurface.qml",
     "shell/PasswordToggle.qml",
     "shell/PolkitAdapter.qml",
     "shell/PolkitDetails.js",
@@ -10087,6 +10975,7 @@
     "shell/SettingsRegionPage.qml",
     "shell/SettingsReset.qml",
     "shell/SettingsStoragePage.qml",
+    "shell/SettingsThemesPage.qml",
     "shell/SettingsUsersPage.qml",
     "shell/SettingsUsersService.qml",
     "shell/SettingsView.qml",
@@ -10168,10 +11057,12 @@
     "shell/helpers/clock-tools.py",
     "shell/helpers/displays.py",
     "shell/helpers/greeter-auth.py",
+    "shell/helpers/greeter-cursor.py",
     "shell/helpers/greeter-handoff.py",
     "shell/helpers/greeter-state.py",
     "shell/helpers/launcher-tools.py",
     "shell/helpers/lock-environment.py",
+    "shell/helpers/overview_background.py",
     "shell/helpers/polkit-lock-state.py",
     "shell/helpers/private-state.py",
     "shell/helpers/publish-wallpaper.py",
@@ -10182,6 +11073,7 @@
     "shell/helpers/system-tools.py",
     "shell/helpers/wallpaper.py",
     "shell/helpers/wallpaper_chooser.py",
+    "shell/helpers/wallpaper_reduce.py",
     "shell/lock.qml",
     "shell/mark-bar-26.png",
     "shell/qmldir",
@@ -10198,6 +11090,10 @@
     "shell/settings/SettingsSliderRow.qml",
     "shell/settings/SettingsTheme.qml",
     "shell/settings/SettingsToggleRow.qml",
+    "shell/settings/cursors/dark-24.png",
+    "shell/settings/cursors/dark-48.png",
+    "shell/settings/cursors/white-24.png",
+    "shell/settings/cursors/white-48.png",
     "shell/settings/icons/about.svg",
     "shell/settings/icons/accessibility.svg",
     "shell/settings/icons/appearance.svg",
@@ -10223,6 +11119,7 @@
     "shell/settings/icons/search.svg",
     "shell/settings/icons/sound.svg",
     "shell/settings/icons/storage.svg",
+    "shell/settings/icons/themes.svg",
     "shell/settings/icons/updates.svg",
     "shell/settings/icons/users.svg",
     "shell/settings/icons/wallpaper.svg",
@@ -10326,6 +11223,7 @@
     "tests/fixtures/AppearancePaletteTest.qml",
     "tests/fixtures/BackdropMemory.qml",
     "tests/fixtures/BarMaskDriver.qml",
+    "tests/fixtures/BarThemeTint.qml",
     "tests/fixtures/BatteryTest.qml",
     "tests/fixtures/CalculatorTest.qml",
     "tests/fixtures/CalendarEventsRender.qml",
@@ -10334,6 +11232,7 @@
     "tests/fixtures/ClockNotesRender.qml",
     "tests/fixtures/ClockNotificationTextTest.qml",
     "tests/fixtures/ClockScrollTest.qml",
+    "tests/fixtures/ClockSecondsTest.qml",
     "tests/fixtures/ClockTest.qml",
     "tests/fixtures/ClockToolsRender.qml",
     "tests/fixtures/ClockToolsServiceTest.qml",
@@ -10374,9 +11273,11 @@
     "tests/fixtures/NiriActionsTest.qml",
     "tests/fixtures/NotesIslandTest.qml",
     "tests/fixtures/NotesWindowRender.qml",
+    "tests/fixtures/NotificationBudgetTest.qml",
     "tests/fixtures/NotificationReachTest.qml",
     "tests/fixtures/NotificationsSettingsPageTest.qml",
     "tests/fixtures/OffscreenPanelWindow.qml",
+    "tests/fixtures/OverviewVideoTest.qml",
     "tests/fixtures/PairingTest.qml",
     "tests/fixtures/PanelDockPolicyTest.qml",
     "tests/fixtures/PasswordToggleTest.qml",
@@ -10399,6 +11300,7 @@
     "tests/fixtures/SettingsPrivacyPageTest.qml",
     "tests/fixtures/SettingsResetPageTest.qml",
     "tests/fixtures/SettingsStoragePageTest.qml",
+    "tests/fixtures/SettingsThemesScrollTest.qml",
     "tests/fixtures/SettingsUsersLifetime.qml",
     "tests/fixtures/SettingsVisualTest.qml",
     "tests/fixtures/SettingsWifiPageTest.qml",
@@ -10522,7 +11424,10 @@
     "tests/reaper.py",
     "tests/render-i18n-es-apps.py",
     "tests/render-i18n-es-shell.py",
+    "tests/render-launcher-review.py",
     "tests/render-launcher-tabs.py",
+    "tests/render-settings-cursor.py",
+    "tests/render-settings-defaults.py",
     "tests/render-shell.cpp",
     "tests/render-shell.py",
     "tests/runtime_fixture.py",
@@ -10551,6 +11456,7 @@
     "tests/test-autostart.py",
     "tests/test-backdrop-first-frame.py",
     "tests/test-backdrop.py",
+    "tests/test-bar-theme-tint.py",
     "tests/test-bar.py",
     "tests/test-battery-layout.py",
     "tests/test-battery-policy.mjs",
@@ -10581,10 +11487,12 @@
     "tests/test-clipboard-runtime.py",
     "tests/test-clock-notification-text.py",
     "tests/test-clock-scroll.py",
+    "tests/test-clock-seconds.py",
     "tests/test-clock-tools-service.py",
     "tests/test-clock-tools-ui.py",
     "tests/test-clock-tools.py",
     "tests/test-collect-sources.py",
+    "tests/test-cursor-apps.py",
     "tests/test-cursors.py",
     "tests/test-damage-capture-cadence.py",
     "tests/test-damage-capture-pixels.py",
@@ -10617,6 +11525,7 @@
     "tests/test-graphics-fallback-check.py",
     "tests/test-greeter-auth.py",
     "tests/test-greeter-compositor.py",
+    "tests/test-greeter-cursor.py",
     "tests/test-greeter-entry.py",
     "tests/test-greeter-grab.py",
     "tests/test-greeter-harness.py",
@@ -10675,6 +11584,7 @@
     "tests/test-launcher-keyboard.py",
     "tests/test-launcher-refresh.py",
     "tests/test-launcher-settings-glass.py",
+    "tests/test-launcher-symbols.mjs",
     "tests/test-launcher-tools.py",
     "tests/test-legacy-app-notice.py",
     "tests/test-licence-headers.py",
@@ -10703,6 +11613,7 @@
     "tests/test-niri-entry.sh",
     "tests/test-no-private-keys.py",
     "tests/test-notes-island.py",
+    "tests/test-notification-budget.py",
     "tests/test-notification-policy.mjs",
     "tests/test-notification-reach.py",
     "tests/test-notification-store.py",
@@ -10710,6 +11621,8 @@
     "tests/test-notifications-settings.py",
     "tests/test-notifications.py",
     "tests/test-nvidia.py",
+    "tests/test-overview-background.py",
+    "tests/test-overview-video.py",
     "tests/test-package-lock.py",
     "tests/test-packaging.py",
     "tests/test-pairing-layout.py",
@@ -10728,6 +11641,7 @@
     "tests/test-privacy-recovery.py",
     "tests/test-private-job-lists.py",
     "tests/test-programs-auth.mjs",
+    "tests/test-programs-inhibit.py",
     "tests/test-programs-logic.mjs",
     "tests/test-prompt-morph.py",
     "tests/test-prompt-queue.py",
@@ -10812,6 +11726,7 @@
     "tests/test-settings-storage.py",
     "tests/test-settings-system-pages.py",
     "tests/test-settings-terminal.py",
+    "tests/test-settings-themes.py",
     "tests/test-settings-users-home.py",
     "tests/test-settings-users-page.py",
     "tests/test-settings-users-root.py",
@@ -10847,6 +11762,7 @@
     "tests/test-spatial-keyboard.py",
     "tests/test-status-words.py",
     "tests/test-storage-arch.py",
+    "tests/test-storefront-logic.mjs",
     "tests/test-strip.py",
     "tests/test-sudo-broker.py",
     "tests/test-sudo-packaging.py",
@@ -10861,8 +11777,11 @@
     "tests/test-system-warmup.py",
     "tests/test-system.py",
     "tests/test-theme-accent-icons.py",
+    "tests/test-theme-assets.py",
     "tests/test-theme-palette.py",
     "tests/test-theme-slider-rims.py",
+    "tests/test-theme-strip-filter.py",
+    "tests/test-theme-switching.py",
     "tests/test-transaction-inhibit.py",
     "tests/test-trusted-shell-launch.py",
     "tests/test-uninstall.py",
@@ -10870,6 +11789,7 @@
     "tests/test-update-boot.py",
     "tests/test-update-channel.py",
     "tests/test-update-errors.py",
+    "tests/test-update-inhibit.py",
     "tests/test-update-menu.py",
     "tests/test-update-pins.py",
     "tests/test-update-space-alpm.py",
@@ -10891,7 +11811,10 @@
     "tests/test-wallet-stage.py",
     "tests/test-wallpaper-chooser.py",
     "tests/test-wallpaper-fallback.py",
+    "tests/test-wallpaper-large.py",
+    "tests/test-wallpaper-pending.py",
     "tests/test-wallpaper-policy.py",
+    "tests/test-wallpaper-reduce.py",
     "tests/test-wallpaper.py",
     "tests/test-web-open.py",
     "tests/test-welcome.py",
@@ -10904,6 +11827,7 @@
     "tests/test-windows-fixture-loader.py",
     "tests/test-windows-fixture.py",
     "tests/test-zsh-defaults.py",
+    "tests/theme-evidence.py",
     "tests/theme-pictures.py",
     "tests/vm/alongside-update-check.py",
     "tests/vm/boot-delivery-guest.py",
@@ -11013,6 +11937,27 @@
     "tests/vm/wifi-copy-guest.sh",
     "tests/wait_fixture.py",
     "tests/welcome-pictures.py",
+    "themes/catalog.json",
+    "themes/previews/01-rose-light.jpg",
+    "themes/previews/02-orange-light.jpg",
+    "themes/previews/03-coral-light.jpg",
+    "themes/previews/04-amber-light.jpg",
+    "themes/previews/05-green-light.jpg",
+    "themes/previews/06-teal-light.jpg",
+    "themes/previews/07-blue-light.jpg",
+    "themes/previews/08-violet-light.jpg",
+    "themes/previews/09-rose-dark.jpg",
+    "themes/previews/10-orange-dark.jpg",
+    "themes/previews/11-coral-dark.jpg",
+    "themes/previews/12-amber-dark.jpg",
+    "themes/previews/13-green-dark.jpg",
+    "themes/previews/14-teal-dark.jpg",
+    "themes/previews/15-blue-dark.jpg",
+    "themes/previews/16-violet-dark.jpg",
+    "themes/previews/17-silver.jpg",
+    "themes/previews/18-graphite.jpg",
+    "themes/previews/README.md",
+    "themes/previews/emaki.jpg",
     "tokens.toml",
     "update-manager/00-emaki-programs.rules",
     "update-manager/apply.py",
@@ -11027,6 +11972,7 @@
     "update-manager/emaki-update-manager.desktop",
     "update-manager/emaki-update.service",
     "update-manager/emaki_package_lock.py",
+    "update-manager/emaki_update_inhibit.py",
     "update-manager/emaki_update_root.py",
     "update-manager/emaki_update_space.py",
     "update-manager/flatpaks.py",
@@ -11104,6 +12050,9 @@
     "update-manager/ui/ProgramReviews.qml",
     "update-manager/ui/ProgramsController.qml",
     "update-manager/ui/Stars.qml",
+    "update-manager/ui/Storefront.qml",
+    "update-manager/ui/StorefrontData.js",
+    "update-manager/ui/StorefrontLogic.js",
     "update-manager/ui/UpdateController.qml",
     "update-manager/ui/shell.qml",
     "update-manager/ui/tests/ControllerTest.qml",
@@ -11111,6 +12060,8 @@
     "update-manager/ui/tests/LayoutTest.qml",
     "update-manager/ui/tests/ProgramsControllerTest.qml",
     "update-manager/ui/tests/ProgramsPagesTest.qml",
+    "update-manager/ui/tests/StartupTimingTest.qml",
+    "update-manager/ui/tests/StorefrontTest.qml",
     "update-manager/ui/tests/appearance.py",
     "update-manager/ui/tests/controller.py",
     "update-manager/ui/tests/fixtures/default-colours.json",
@@ -11122,6 +12073,8 @@
     "update-manager/ui/tests/programs_controller.py",
     "update-manager/ui/tests/programs_pages.py",
     "update-manager/ui/tests/reviews.py",
+    "update-manager/ui/tests/startup_timing.py",
+    "update-manager/ui/tests/storefront.py",
     "upkeep/00-emaki-package-lock.hook",
     "upkeep/00-emaki-rollback-holds.hook",
     "upkeep/00-emaki-update-space.hook",
