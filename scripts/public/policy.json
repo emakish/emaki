@@ -990,7 +990,9 @@
       "c0bcbc611d9142a917c9cdd53137a3e92a7a5164b3d35cc8a05960e566c5da94",
       "da09512a0942f15f17dff61605c407c6443d1072f5f4dbd08bb139b25346b0ca",
       "deb53374dcd6fb1fb812def3315e8e72a957f769591041cec746303e0f2b525a",
-      "dfbdad582a5500caf097fcc21068de510a08398e56cf7df2ac8134e7345d12a5"
+      "dfbdad582a5500caf097fcc21068de510a08398e56cf7df2ac8134e7345d12a5",
+      "673b79c8b667086c04a468d9ec88a3aca0384f4e6d51935ec4b2903565e5c4d4",
+      "ecd1d71cf05ccf0aefffa18ec01c908e6755577f3366c0491acaca49dc94b07a"
     ],
     "art/cubes/README.md": [
       "e8421caaa4ff99132c7e568d489943fac09410c2a9e8527e25b5d680fa52a056"
@@ -1398,6 +1400,27 @@
     ],
     "docs/mirror.md": [
       "d687935da0a14f6821afe076cb5c823958533679319b642325d7e14665c1e077"
+    ],
+    "docs/tested-hardware.md": [
+      "68beb20c0c433fcf3885c8ed605f06f3589d66f31948cc3b1704c8651251d7d7",
+      "7019d5d2187717e36969d791df0459e79ce7c68f5230018c25d3f525c729d856",
+      "576fc24964043e970627b53a33e17cbc8bc47a12bd49e150c595fdd0f1f6c0ba",
+      "3856d28fb5a5f0cb9c206dc80ac48023e167b69a7c8bf5f13ec00ffa046f9f5d",
+      "81ea7f2aba0af00885d5da0a59486c13877eca12ca4b7f6bd47da9744f7c2a8b",
+      "47888d02cc79465124267b3b457755c9d8c854df90ee15e09975bf6d1958a1c1",
+      "013fa2894df289fc9d9c1db105ba6a7f3e24af271c97ad1dab5210bc002ce377",
+      "0aaf0e926c0497720c8b974679bee26d24f525f737a6a120e8f90dcecdb39bd2",
+      "3ed229253577a4cef83a542a77b856eb37f210bbeb46dda28101e3ee88deb15f",
+      "c0bcbc611d9142a917c9cdd53137a3e92a7a5164b3d35cc8a05960e566c5da94",
+      "da09512a0942f15f17dff61605c407c6443d1072f5f4dbd08bb139b25346b0ca",
+      "2f37b6990460b16fa4af4716541001f8ac3367d191655a0a6c9c0f9dfa4f45b3",
+      "704672762f61fcda1fe8fc5afc7e7181ed2ed09c347b30a3fed7b6829a5445a7",
+      "deb53374dcd6fb1fb812def3315e8e72a957f769591041cec746303e0f2b525a",
+      "ad4f9c8fd2f229f8a799682c6997166943b8ba802263bd64e5a2ea3340416a02",
+      "87f736516501d58059d3b118656b2e396ec4db4e1e89e71c8803f41bc8c290b0",
+      "211c65b6a33a6fc2ef497f7b73625b0d61a6c2c0c0b2e984a9ac3eb0b3baebf8",
+      "9338f716231e238247c48028fc62ade34a7133f8d4d504de6a9d5b2741184254",
+      "0c7e401619fe6c1efa1d9238a90642f10e822c029f09ed01b11c083fa59ebd5b"
     ],
     "fetch/render.py": [
       "7591ea419be4c09b3aad58b4763a7e01062f28e887d28fb5bce0bd634140c0f6"
@@ -9171,11 +9194,15 @@
     "cursors/Emaki/cursors/progress": "eb917250ee277c20e50e56e5142a3a3439e2af04035f9f0a9e90b4c4216d5c7f",
     "cursors/Emaki/cursors/text": "f16d60a88c7b5c9988a030bcaed981fb96c107fef9c2f3777e1009a24aeb63c2",
     "cursors/Emaki/cursors/wait": "5fa454216f1b2b27c4ed9ca3c8603827b662dfcbe77a70e067172700ea80865c",
-    "docs/screenshots/boot-menu.png": "02ff7eb60a61c06a00e82e9aac7c6ded91290e2bc938b99c32586191121130b1",
-    "docs/screenshots/desktop.png": "5aa6d90ed0d5378a71793ff8cc149b838fddf26eac0ad715313537f8ee817e6f",
-    "docs/screenshots/installer.png": "42d960a7bacb25d5db0763bcd5fcfe011a3ed13e8f280166985315e81765c446",
-    "docs/screenshots/live-session.png": "06465944e7f8333c617494ff71bf39e60fb3cbec53b9369f61072fdd7c8089b1",
-    "docs/screenshots/login.png": "5d49ac286d685ad7789163e4a5dde0107dab9eb067d41ea4fa1865bcac783507",
+    "docs/screenshots/boot-menu.png": "e66febdb9671d17196b6f171e5021ded825c6d84bb6c193bf2cc23efaa59d649",
+    "docs/screenshots/desktop.png": "80f77239f9241c852ff4acb8c1c5f1171526c6b49aade65683f5998f7c19c2e8",
+    "docs/screenshots/installer.png": "2c2f7761542506e760776438c05f88e1f1c2e93c81976c1f6fa7babfc1ec4576",
+    "docs/screenshots/live-session.png": "545b53ffc7110a8a0a61e225185c11b08e01a423dd4a9f05488f264d1780377d",
+    "docs/screenshots/login.png": "17967528a438a0e6aaeb272d225058f214778d8f71b08ff1a535224b468a7532",
+    "docs/screenshots/overview.png": "1f58da7c8a07148f00055c678a32ddc4e8514c1bb1d30ede4d8e614ef4c62bf6",
+    "docs/screenshots/theme-a.png": "2bdc6e4fdfd498f9926c411f6f8719b737589fe39c9eaf94b87afc070480b566",
+    "docs/screenshots/theme-b.png": "d5d0942cdd480de5691d99e2c358a0841a1bc4a9f05d829476c4987c8febcb01",
+    "docs/screenshots/themes.png": "78884d88874ab6fa84a4dbe69f22f86ee9201ee4e5a48cbe326d19a5355de0e9",
     "fetch/wordmark.png": "9cb3bc93aca442e742d42a7d497ea92eaf5af792fee1a03a4b0824d198024128",
     "grub/fonts/menu-24.pf2": "98715739339e9db678fcc63eace0307094591c83cecb3ffc7fa0659dd27683c3",
     "grub/fonts/menu-32.pf2": "8d7e28deaa7ce4972c26930032a118f5eb4ffa765feb7ce43091d3869e35e037",
@@ -10025,7 +10052,12 @@
     "docs/screenshots/installer.png",
     "docs/screenshots/live-session.png",
     "docs/screenshots/login.png",
+    "docs/screenshots/overview.png",
+    "docs/screenshots/theme-a.png",
+    "docs/screenshots/theme-b.png",
+    "docs/screenshots/themes.png",
     "docs/system-map.md",
+    "docs/tested-hardware.md",
     "docs/updates.md",
     "etc-skel/.config/kitty/kitty.conf",
     "etc-skel/.config/qt6ct/qt6ct.conf",
