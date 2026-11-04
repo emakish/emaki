@@ -449,6 +449,27 @@ def assignments(text):
     return result
 
 
+def installed_boot_layout():
+    """Recognize installer ownership without requiring a healthy mounted ESP.
+
+    Fresh installations have no boot generation yet. Conversely, a missing
+    defaults file or ESP must not hide damage to an existing Emaki installation.
+    """
+    try:
+        text = Path('/etc/default/grub').read_text()
+    except FileNotFoundError:
+        text = ''
+    if (INCLUDE in text.splitlines() or OLD_INCLUDE in text.splitlines()
+            or assignments(text).get('GRUB_DISTRIBUTOR') == 'Emaki'):
+        return True
+    for name in ('/var/lib/emaki/alongside-boot.json', '/var/lib/emaki/boot-esp.json',
+                 '/boot/emaki', '/efi/EFI/Emaki'):
+        path = Path(name)
+        if path.exists() or path.is_symlink():
+            return True
+    return False
+
+
 def migrate_defaults(text, defaults):
     if INCLUDE in text.splitlines():
         return text
@@ -2833,6 +2854,9 @@ def main(argv=None):
                 or subprocess.run(['systemd-detect-virt', '--chroot', '--quiet'],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0):
             return 0
+        if args.hook and not installed_boot_layout():
+            print('Skipping Emaki boot refresh: this boot layout was not installed by Emaki.', flush=True)
+            return 0
         if shared_esp() and args.sleep_phase:
             # The hibernate drop-in (emaki-update-boot hibernate-pre/post) does
             # this around the unmount; plain suspend never starts GRUB.
@@ -2869,6 +2893,14 @@ def main(argv=None):
                     LOG.write('Another boot loader operation is running; retry at the next boot.\n')
                     return 0
                 raise
+            if args.retry and not installed_boot_layout():
+                # Old failures can leave a retry request on a foreign layout.
+                # Retire it without touching the ESP, but still recover our
+                # package lock from an interrupted attempt in an earlier boot.
+                remove_previous_boot_lock(Path('/var/lib/pacman/db.lck'), current_boot_id())
+                if Path(PENDING).exists() or Path(PENDING).is_symlink():
+                    clear_pending()
+                return 0
             # A shared ESP returns to read-only before the run lock is released.
             with shared.session():
                 if args.repair_snapshots:

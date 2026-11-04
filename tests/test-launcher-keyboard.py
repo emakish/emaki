@@ -16,10 +16,8 @@ reaper.guard()  # nothing this test starts outlives it
 ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / '.cache/n81k-evidence/launcher-look'
 # The focus ring the hover look replaced on pale controls: a 2 px rim of 60 % ink.
-DARK_RIM = ('border.color: strong ? strongInk : LiquidPalette.flatDropRim\n'
-            '    border.width: strong ? 2 : 1',
-            'border.color: Qt.rgba(LiquidPalette.flatDropRim.r, LiquidPalette.flatDropRim.g, LiquidPalette.flatDropRim.b, .6)\n'
-            '    border.width: 2')
+DARK_RIM = ('border.width: 1\n                border.color: LiquidPalette.flatDropRim',
+            'border.width: 2\n                border.color: body.ink')
 
 
 def luminance(pixel):
@@ -96,10 +94,10 @@ def run(mutation=None):
         for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET'):
             env.pop(key, None)
         result = subprocess.run(['qs', '-p', str(base / 'shell/launcher-test.qml'), '--no-color'],
-                                env=env, capture_output=True, text=True, timeout=40)
+                                env=env, capture_output=True, text=True, timeout=65)
         output = result.stdout + result.stderr
         # The completed signal precedes QtTest's cleanupTestCase counter increment.
-        assert result.returncode == 0 and 'LAUNCHER_KEYBOARD_RESULT 14 0' in output, output
+        assert result.returncode == 0 and 'LAUNCHER_KEYBOARD_RESULT 19 0' in output, output
         if mutation:
             try:
                 focus_look(output, base / 'look')
@@ -116,8 +114,8 @@ def run(mutation=None):
 
 
 rims, first_open = run()
-print('PASS: launcher modes, categories, bounded traversal, clipboard footer, Escape and visible last rows')
-print('PASS: first open puts the mode drop on the Apps tab:', first_open)
+print('PASS: launcher modes, categories, bounded traversal, clipboard footer, Escape, visible last rows and removed/scrolled result recovery')
+print('PASS: selection uses accent; one shared glass spring travels through the spatial keyboard path:', first_open)
 print('PASS: hover-look focus on the launcher path, rim contrast against the plate '
       + ', '.join(f'{name} {value:.2f}:1' for name, value in rims.items()))
-print('PASS: rejected the dark 2 px focus rim:', run(('shell/FocusRing.qml',) + DARK_RIM).args[0])
+print('PASS: rejected the dark 2 px focus rim:', run(('shell/LauncherBody.qml',) + DARK_RIM).args[0])

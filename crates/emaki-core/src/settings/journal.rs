@@ -7,6 +7,21 @@ use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) type Snapshot = BTreeMap<String, Value>;
+// Legacy pixel selections have the same meaning as an inherited cursor. Keep
+// stored records intact while comparing their current semantic values.
+fn current_value(key: &str, value: &Value) -> Value {
+    if key == CURSOR && value.as_str() == Some("emaki") {
+        Value::Null
+    } else {
+        value.clone()
+    }
+}
+fn current_snapshot(values: &Snapshot) -> Snapshot {
+    values
+        .iter()
+        .map(|(key, value)| (key.clone(), current_value(key, value)))
+        .collect()
+}
 fn project(values: &Snapshot, schema: &[Field]) -> Snapshot {
     values
         .iter()
@@ -184,7 +199,7 @@ impl Journal {
         for change in &entry.changes {
             if !recordable(&change.key, SCHEMA)
                 || !keys.insert(&change.key)
-                || self.state.get(&change.key) != Some(&change.before)
+                || self.state.get(&change.key) != Some(&current_value(&change.key, &change.before))
                 || change.before == change.after
             {
                 return Err(err("history_corrupt"));
@@ -193,7 +208,10 @@ impl Journal {
             checked.restore(&change.key, &change.after)?;
         }
         for change in &entry.changes {
-            self.state.insert(change.key.clone(), change.after.clone());
+            self.state.insert(
+                change.key.clone(),
+                current_value(&change.key, &change.after),
+            );
             self.last_change
                 .insert(change.key.clone(), entry.id.clone());
         }
@@ -393,17 +411,21 @@ pub(super) fn recover(profile: &Profile, journal: &mut Journal) -> Result<Vec<St
         {
             return Err(err("recovery_corrupt"));
         }
+        let before = current_snapshot(&pending.before);
         let current = Document::parse(read(&profile.source())?.as_deref())?;
         let was_recorded = journal.entries.last() == Some(&pending.entry);
         let mut expected_before = journal.state.clone();
         if was_recorded {
             for change in &pending.entry.changes {
-                expected_before.insert(change.key.clone(), change.before.clone());
+                expected_before.insert(
+                    change.key.clone(),
+                    current_value(&change.key, &change.before),
+                );
             }
         } else {
             journal.check_next(&pending.entry)?;
         }
-        if pending.before != expected_before {
+        if before != expected_before {
             return Err(err("recovery_corrupt"));
         }
         if current.generation.as_deref() == Some(&pending.entry.id) || was_recorded {
@@ -416,9 +438,12 @@ pub(super) fn recover(profile: &Profile, journal: &mut Journal) -> Result<Vec<St
             )?
             .ok_or_else(|| err("recovery_generation_missing"))?;
             let generated = Document::parse(Some(&snapshot))?;
-            let mut expected_after = pending.before.clone();
+            let mut expected_after = before.clone();
             for change in &pending.entry.changes {
-                expected_after.insert(change.key.clone(), change.after.clone());
+                expected_after.insert(
+                    change.key.clone(),
+                    current_value(&change.key, &change.after),
+                );
             }
             if generated.generation.as_deref() != Some(&pending.entry.id)
                 || project(&generated.overrides(), SCHEMA) != expected_after
@@ -431,7 +456,7 @@ pub(super) fn recover(profile: &Profile, journal: &mut Journal) -> Result<Vec<St
             super::storage::checkpoint(profile, "recovery_after_history")?;
             notes.push(format!("finalized:{}", pending.entry.id));
         } else if current.generation == pending.before_generation
-            && project(&current.overrides(), SCHEMA) == pending.before
+            && project(&current.overrides(), SCHEMA) == before
         {
             // No source commit: only remove the specifically tracked unselected candidate.
             if journal

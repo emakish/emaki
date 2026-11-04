@@ -90,7 +90,7 @@ def run(mutant=False):
         for name in ('runtime', 'cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)
             env['XDG_' + name.upper() + ('_DIR' if name == 'runtime' else '_HOME')] = str(root / name)
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET'):
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME'):
             env.pop(name, None)
         result = subprocess.run(['qs', '-p', str(root / 'test.qml'), '--no-color'], env=env, text=True, capture_output=True, timeout=30)
         log = result.stdout + result.stderr

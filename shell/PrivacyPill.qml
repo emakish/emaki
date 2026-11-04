@@ -79,7 +79,7 @@ Item {
     onWidthChanged: animating = true
     onPanelPresentChanged: animating = true
     readonly property var drops: {
-        tick;
+        void tick;
         const d = Liquid.drop(bubble, 0, 0);
         return d ? [d] : [];
     }
@@ -118,7 +118,7 @@ Item {
         }
     }
     readonly property real hoverAlpha: {
-        tick;
+        void tick;
         return Liquid.onGlass(bubble);
     }
     // ---- Under the glass (fading while the drop is up; drawn again on it) ----

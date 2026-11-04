@@ -65,6 +65,8 @@ ShellRoot {
             anchors.fill: parent
             niri: service
             headless: true
+            borderMode: "soft"
+            reservedSpace: Metrics.reservedSpace
             testWidth: 1536
             testHeight: 960
             skipIntro: true

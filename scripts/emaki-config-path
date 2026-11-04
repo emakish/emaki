@@ -47,10 +47,10 @@ accent_copy() {
             IFS= read -r l9 || return 1
         ! IFS= read -r extra && [ -z "$extra" ] || return 1
     } <"$accent_config"
-    base=${l5#match=} text=${l7#selection-text=}
-    colour "$base" && colour "$text" &&
+    ink=${l5#match=} base=${l6#selection=} text=${l7#selection-text=}
+    colour "$ink" && colour "$base" && colour "$text" &&
         [ "$l1" = "$accent_header" ] && [ "$l2" = "include=$EMAKI_DATADIR/fuzzel/fuzzel.ini" ] &&
-        [ -z "$l3" ] && [ "$l4" = '[colors]' ] && [ "$l5" = "match=$base" ] &&
+        [ -z "$l3" ] && [ "$l4" = '[colors]' ] && [ "$l5" = "match=$ink" ] &&
         [ "$l6" = "selection=$base" ] && [ "$l7" = "selection-text=$text" ] &&
         [ "$l8" = "selection-match=$text" ] && [ "$l9" = "border=$base" ] || return 1
     # The shell's read drops NUL bytes: the file must also be exactly as long as those lines.

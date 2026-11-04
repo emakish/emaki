@@ -87,8 +87,8 @@ REVIEWED = {
         'e9cc29129eafa86517afe0a2d6e90038dfe7678da9d9d37d2e2f1afa0c75240f',
         'geometry, damage and opaque-region output scales (754)'),
     'src/niri.rs': (
-        'e7d90c681356183bc3909cfa8a22d76157dbaa532d263e1db407f2b04315724b',
-        'own-layer exclusion, cursor scales, locked rendering static blur and keyboard arbitration, frozen bindings and the trusted shell PID (230, 464, 754, N6c, B2b, N81S)'),
+        '25bd9554dca24cd9446f6048a1126ab07120efaa63a6fe3128ba23290b809d52',
+        'own-layer exclusion, cursor scales, locked rendering static blur and keyboard arbitration, frozen bindings and the trusted shell PID (230, 464, 754, N6c, B2b, N81S); strip mode in wallpaper status (T11)'),
     'src/render_helpers/xray.rs': (
         'dac33e39cf6f79142cab756d6f93f2b61aab5a6ed980f49bbd32a114707d22c1',
         'static blur opaque coverage and geometry tests (230)'),

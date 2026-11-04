@@ -8,7 +8,7 @@ surface with a body lays a CanvasTint under its content; Settings, Report a prob
 Programs & Updates draw it whatever the switch says.
 
 Rendered part (production QML, llvmpipe, the real glass shaders; skipped with --static), light
-and dark. The default (on): the launcher header keeps the plain glass and its body is exactly
+and dark. The default (on): the entire launcher is exactly
 the Settings material, the glass under the Settings tint, 0.8.0's pixel * (1 - a) + tint * a;
 the bar islands, the dock, the OSD and the lock are the same pixels as with the switch off;
 the system panel, the update reminder, the clock drawer and the privacy panel change
@@ -108,14 +108,23 @@ class Static(unittest.TestCase):
                 self.assertLess(text.index(f'color: LiquidPalette.flatPlate'), flat)
                 self.assertLess(flat, text.index('glassReady ? [] :'))
                 glass = text.index(f'objectName: "{name}"')
-                self.assertIn(f'shown: LiquidPalette.sharedCanvas', text[glass:glass + 200])
+                self.assertIn('LiquidPalette.sharedCanvas', text[glass:glass + 200])
                 self.assertIn(f'{owner}.glassReady', text[glass:glass + 200])
 
-    def test_launcher_canvas_starts_under_the_header(self):
+    def test_launcher_canvas_covers_header_and_body(self):
         text = qml('LauncherBody.qml')
-        block = text[text.index('objectName: "launcher-canvas"'):][:600]
-        self.assertIn('shown: LiquidPalette.sharedCanvas && !body.settingsActive', block)
-        self.assertIn('y: Metrics.launcherHeader', block)
+        for name in ('launcher-canvas', 'launcher-canvas-flat'):
+            block = text[text.index(f'objectName: "{name}"'):].split('\n    }', 1)[0]
+            self.assertIn('shown: (LiquidPalette.sharedCanvas || body.settingsActive)', block)
+            self.assertNotIn('y: Metrics.launcherHeader', block[:600])
+            self.assertIn('height: body.settingsActive ? Math.min(body.shownHeight, Metrics.launcherHeader) : body.shownHeight', block)
+            self.assertIn('radius: body.shownRadius', block)
+            self.assertIn('bottomLeftRadius: body.settingsActive ? 0 : radius', block)
+            self.assertIn('bottomRightRadius: body.settingsActive ? 0 : radius', block)
+        # Settings owns its body exactly once, including with the shared switch off.
+        self.assertRegex(qml('SettingsView.qml'), r'CanvasTint \{\s+shown: root\.embedded\s+anchors.fill: parent')
+        loader = text[text.index('id: settingsLoader'):][:300]
+        self.assertIn('y: Metrics.launcherHeader', loader)
 
     def test_windows_without_glass_load_it_only_with_the_switch(self):
         for file in ('ShortcutSheet.qml', 'PolkitPromptCard.qml'):
@@ -123,7 +132,7 @@ class Static(unittest.TestCase):
                 text = qml(file)
                 self.assertIn('visible: !LiquidPalette.sharedCanvas', text)
                 self.assertIn('active: LiquidPalette.sharedCanvas', text)
-        self.assertIn('wallpaperTexture: LiquidPalette.sharedCanvas ? wallpaper.texture : ""', qml('ShellScene.qml'))
+        self.assertIn('wallpaperTexture: LiquidPalette.sharedCanvas ? wallpaperObject.texture : ""', qml('ShellScene.qml'))
         # The prompt round moved the card from the protected surface into PolkitPromptBody.qml.
         body = qml('PolkitPromptBody.qml')
         self.assertIn('wallpaperTexture: LiquidPalette.sharedCanvas ? surface.scene?.wallpaper.texture ?? "" : ""', body)
@@ -169,14 +178,14 @@ class Rendered(unittest.TestCase):
                     cls.frames[theme, shared, shot] = Image.open(target.with_suffix('.png')).convert('RGB')
                 cls.frames[theme, shared] = cls.frames[theme, shared, 'launcher']
 
-    def test_switch_off_is_the_frozen_light_default(self):
-        # Outside the approved change (the grey gear of the Settings button), as
-        # tests/theme-pictures.py --compare-only compares it.
+    def test_switch_off_keeps_the_original_plate_material(self):
+        # The selected first result casts a shadow onto the left edge. Compare the
+        # empty right side against the original glass, clear of result and header ink.
         reference = self.Image.open(ROOT / 'tests/fixtures/theme-light/launcher.png').convert('RGB')
-        frame = self.frames['light', False].copy()
-        approved = self.module.APPROVED_CHANGES['launcher']
-        frame.paste(reference.crop((approved[0], approved[1], approved[2] + 1, approved[3] + 1)), approved[:2])
-        self.assertEqual(list(reference.getdata()), list(frame.getdata()))
+        frame = self.frames['light', False]
+        for y in range(PLATE_Y + HEADER + 48, PLATE_Y + HEADER + 120):
+            for x in range(PLATE_X + PLATE_W - 180, PLATE_X + PLATE_W - 40):
+                self.assertEqual(reference.getpixel((x, y)), frame.getpixel((x, y)))
 
     def test_default_keeps_the_islands_dock_osd_and_lock(self):
         # The shipped default (on) against the switch off, which is 0.8.0's look: the frozen light
@@ -188,26 +197,18 @@ class Rendered(unittest.TestCase):
                     off, on = self.frames[theme, False, shot], self.frames[theme, True, shot]
                     self.assertIsNone(self.ImageChops.difference(off, on).getbbox())
 
-    def test_switch_on_is_the_settings_material_under_the_header(self):
+    def test_switch_on_is_one_settings_material_across_the_launcher(self):
         tints = {'light': (1, .9647058823529412, .9411764705882353), 'dark': (.11, .075, .063)}
         alpha = .58
         for theme, tint in tints.items():
             with self.subTest(theme=theme):
                 off, on = self.frames[theme, False], self.frames[theme, True]
-                # The header keeps the plain glass: away from its lower edge, where the mode
-                # bubble's refraction reaches into the body, nothing changes.
-                header = (PLATE_X + 24, PLATE_Y + 6, PLATE_X + PLATE_W - 24, PLATE_Y + HEADER - 16)
-                changed = [(x, y) for x in range(header[0], header[2]) for y in range(header[1], header[3])
-                           if off.getpixel((x, y)) != on.getpixel((x, y))]
-                self.assertEqual(changed, [])
-                # The body, from the header down to the plate's bottom (the last changed row,
-                # inside its rounded corners): wherever no content is drawn, today's pixel
-                # under the tint.
+                # The tint reaches the header and continues through the body.
                 rows = [y for y in range(PLATE_Y, off.height)
                         if any(off.getpixel((x, y)) != on.getpixel((x, y)) for x in range(PLATE_X, PLATE_X + PLATE_W, 4))]
-                self.assertEqual(rows[0], PLATE_Y + HEADER)
+                self.assertLess(rows[0], PLATE_Y + 6)
                 self.assertGreater(rows[-1], PLATE_Y + HEADER + 100)
-                body = (PLATE_X + 30, PLATE_Y + HEADER + 6, PLATE_X + PLATE_W - 30, rows[-1] - 12)
+                body = (PLATE_X + 30, PLATE_Y + 12, PLATE_X + PLATE_W - 30, rows[-1] - 12)
                 matched = total = 0
                 for x in range(body[0], body[2], 3):
                     for y in range(body[1], body[3], 3):

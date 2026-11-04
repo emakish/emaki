@@ -12,9 +12,6 @@ msgstr ""
 msgid "(no reply)"
 msgstr "(no reply)"
 
-msgid "A good place to start"
-msgstr "A good place to start"
-
 msgid "A recipe never runs as root."
 msgstr "A recipe never runs as root."
 
@@ -426,18 +423,6 @@ msgstr "Invalid shelf text"
 msgid "Invalid shelf: a package twice"
 msgstr "Invalid shelf: a package twice"
 
-msgid "Invalid storefront"
-msgstr "Invalid storefront"
-
-msgid "Invalid storefront identities"
-msgstr "Invalid storefront identities"
-
-msgid "Invalid storefront row"
-msgstr "Invalid storefront row"
-
-msgid "Invalid storefront text"
-msgstr "Invalid storefront text"
-
 msgid "Invalid transaction"
 msgstr "Invalid transaction"
 
@@ -547,9 +532,6 @@ msgstr "Permission is required to undo an install."
 
 msgid "Permission is required to update repository packages."
 msgstr "Permission is required to update repository packages."
-
-msgid "Picked by Emaki"
-msgstr "Picked by Emaki"
 
 msgid "Popularity cache too large"
 msgstr "Popularity cache too large"
@@ -682,6 +664,9 @@ msgstr "Select one repository program."
 
 msgid "Session sudo key"
 msgstr "Session sudo key"
+
+msgid "Shutdown and sleep protection could not start. The update was not started."
+msgstr "Shutdown and sleep protection could not start. The update was not started."
 
 msgid "Snapshot guard"
 msgstr "Snapshot guard"
@@ -1024,6 +1009,9 @@ msgstr "These packages will be removed."
 msgid "This additional Flatpak installation is read-only in this program manager."
 msgstr "This additional Flatpak installation is read-only in this program manager."
 
+msgid "This change could not be protected from a shutdown. Nothing was changed."
+msgstr "This change could not be protected from a shutdown. Nothing was changed."
+
 msgid "This existing Flatpak program can be removed from your account without administrator authentication."
 msgstr "This existing Flatpak program can be removed from your account without administrator authentication."
 
@@ -1102,8 +1090,8 @@ msgstr "Updated"
 msgid "Updates always include the full system"
 msgstr "Updates always include the full system"
 
-msgid "Updating Flatpak applications"
-msgstr "Updating Flatpak applications"
+msgid "Updating Emaki"
+msgstr "Updating Emaki"
 
 #, python-brace-format
 msgid "Updating Flatpak applications ({scope})…"
@@ -1123,6 +1111,9 @@ msgstr "Usage: emaki-update-manager [--status|--check|--updates]"
 
 msgid "Waiting for permission to update…"
 msgstr "Waiting for permission to update…"
+
+msgid "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
+msgstr "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
 
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "Warning: the update space check is unavailable; the package transaction will continue."

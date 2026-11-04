@@ -19,19 +19,18 @@ SHOTS = ROOT / '.cache/evidence/whatsnew'
 
 def release_contract():
     script = (ROOT / 'tests/qml-translation.js').read_text() + '\n' + (ROOT / 'shell/WhatsNewContent.js').read_text().replace('.pragma library', '')
-    versions = ['1.0', '1.0.0', '1.0.19', '0.12', '0.12.9', '1.1.0', '', '1.00.0', '10.0.0', '1.0.0-beta']
+    versions = ['1.1', '1.1.0', '1.1.19', '1.0', '1.0.9', '1.2.0', '', '1.10.0', '10.0.0', '1.1.0-beta']
     script += '\nconsole.log(JSON.stringify({title: title(), pages: pages(), available: ' + json.dumps(versions) + '.map(available)}));'
     content = json.loads(subprocess.check_output(['node', '-e', script], text=True))
-    assert content['title'] == "What's new in Emaki 1.0"
+    assert content['title'] == "What's new in Emaki 1.1"
     assert content['available'] == [True, True, True, False, False, False, False, False, False, False]
     pages = content['pages']
-    assert len(pages) == 3 and all(page['id'] == 'release' for page in pages)
-    assert [page.get('action') for page in pages] == [None, None, None]
-    assert [page['title'] for page in pages] == ['Emaki 1.0, the first beta', 'A lighter launcher', 'Fixes']
+    assert len(pages) == 4 and all(page['id'] == 'release' for page in pages)
+    assert [page.get('action') for page in pages] == [None, None, None, None]
+    assert [page['title'] for page in pages] == ['Themes for your desktop', 'A clearer launcher', 'Discover programs', 'Fixes']
     assert pages[-1]['title'] == 'Fixes' and len(pages[-1]['text'].splitlines()) == 2
-    assert not any('wallpaper' in page['title'] + page['text'] for page in pages)
-    assert pages[1]['text'].startswith('The launcher keeps nothing loaded while it is closed and opens where you left it.')
-    print('PASS: three release pages, no page action and 1.0 series boundary', flush=True)
+    assert pages[2]['text'].endswith('using the catalog already on your computer.')
+    print('PASS: four release pages, no page action and 1.1 series boundary', flush=True)
 
 
 def prepare(base):
@@ -42,7 +41,7 @@ def prepare(base):
     for name in ('home', 'config', 'data', 'cache', 'state', 'runtime'):
         (base / name).mkdir(mode=0o700)
     (base / 'state/emaki').mkdir()
-    (base / 'release').write_text('VERSION=1.0.0\n')
+    (base / 'release').write_text('VERSION=1.1.0\n')
     env = dict(os.environ, HOME=str(base / 'home'), XDG_CONFIG_HOME=str(base / 'config'),
                XDG_CONFIG_DIRS=str(base / 'config'), XDG_DATA_HOME=str(base / 'data'),
                XDG_DATA_DIRS=str(base / 'data'), XDG_CACHE_HOME=str(base / 'cache'),
@@ -99,33 +98,35 @@ def main():
         base = Path(temporary)
         env = prepare(base)
         run(base, env, 'fresh', 'fresh-install')
-        assert state(base)['seenVersion'] == '1.0.0'
+        assert state(base)['seenVersion'] == '1.1.0'
         run(base, env, 'second', 'fresh-second-login')
     with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
         base = Path(temporary)
         env = prepare(base)
         (base / 'state/emaki/welcome.json').write_text('{"version":1,"seen":true}\n')
-        (base / 'state/emaki/whatsnew.json').write_text('{"version":1,"seenVersion":"0.12.0"}\n')
+        (base / 'state/emaki/whatsnew.json').write_text('{"version":1,"seenVersion":"1.0.1"}\n')
         run(base, env, 'update', 'first-update-escape')
-        assert state(base)['seenVersion'] == '1.0.0'
+        assert state(base)['seenVersion'] == '1.1.0'
         run(base, env, 'second', 'second-login-after-escape')
-        (base / 'release').write_text('VERSION=1.0.1\n')
+        (base / 'release').write_text('VERSION=1.1.1\n')
         run(base, env, 'patch', 'patch-release')
         # The same series was already seen: quiet, and the record stays on the series.
-        assert state(base)['seenVersion'] == '1.0.0'
+        assert state(base)['seenVersion'] == '1.1.0'
         run(base, env, 'patch', 'patch-second-login')
 
-    # Someone who skips 1.0.0 and lands on 1.0.1 from 0.12 still sees the 1.0 pages once.
+    # Someone who skips 1.1.0 and lands on 1.1.1 from 1.0.x still sees the 1.1 pages once.
     with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
         base = Path(temporary)
         env = prepare(base)
         (base / 'state/emaki/welcome.json').write_text('{"version":1,"seen":true}\n')
-        (base / 'release').write_text('VERSION=1.0.1\n')
-        run(base, env, 'update', 'skipped-1.0.0-update')
-        assert state(base)['seenVersion'] == '1.0.1'
+        (base / 'state/emaki/whatsnew.json').write_text('{"version":1,"seenVersion":"1.0.0"}\n')
+        (base / 'release').write_text('VERSION=1.1.1\n')
+        run(base, env, 'update', 'skipped-1.1.0-update')
+        assert state(base)['seenVersion'] == '1.1.1'
     for label, saved, release in (
-            ('future-schema', {'version': 2, 'seenVersion': '1.0.0', 'future': True}, '1.0.0'),
-            ('rollback', {'version': 1, 'seenVersion': '1.1.0'}, '1.0.0'),
+            ('future-schema', {'version': 2, 'seenVersion': '1.1.0', 'future': True}, '1.1.0'),
+            ('rollback', {'version': 1, 'seenVersion': '1.2.0'}, '1.1.0'),
+            ('rollback-to-1.0', {'version': 1, 'seenVersion': '1.1.0'}, '1.0.1'),
             ('missing-release', None, None)):
         with tempfile.TemporaryDirectory(prefix='ewn-', dir='/tmp') as temporary:
             base = Path(temporary)
@@ -136,6 +137,8 @@ def main():
                 path.write_text(json.dumps(saved) + '\n')
             if release is None:
                 (base / 'release').unlink()
+            else:
+                (base / 'release').write_text('VERSION=' + release + '\n')
             original = path.read_bytes() if path.exists() else None
             run(base, env, 'suppressed', label)
             assert (path.read_bytes() if path.exists() else None) == original
@@ -150,7 +153,7 @@ def main():
                     (base / 'state/emaki/welcome.json').write_text('{"version":1,"seen":true}\n')
                     label = language + '-' + theme + '-' + size
                     run(base, env, 'render', label)
-                    assert state(base)['seenVersion'] == '1.0.0'
+                    assert state(base)['seenVersion'] == '1.1.0'
                     run(base, env, 'second', label + '-after-done')
     print('Screenshots and clipping diagnostics:', SHOTS)
 

@@ -313,7 +313,7 @@ for mutation in (('unavailable: root.lastAdministrator(root.edited)', 'unavailab
                  ('root.run(["set-password", root.edited.login, "--terminal"])', 'root.run(["set-password", root.edited.login])'),
                  ('visible: root.me?.picture === true', 'visible: true'),
                  ('op: "account-picture-choose"', 'op: "wallpaper-choose"'),
-                 ('pictureError = "";\n        pictureChooser.start(', 'pictureChooser.start(')):
+                 ('pictureError = "";\n        pictureChooserObject.start(', 'pictureChooserObject.start(')):
     passed, output, calls = run(TEST, mutation)
     assert not (passed and requests_ok(calls)), 'Surviving mutation: ' + str(mutation)
 print('PASS: users page fields in dark and light themes, list, add, name, password, role, removal with home choice, refusals, '

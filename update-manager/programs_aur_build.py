@@ -27,6 +27,7 @@ _ = translation('programs').gettext
 
 import codecs
 from collections import deque
+from contextlib import nullcontext
 import fcntl
 import io
 import json
@@ -42,6 +43,7 @@ import time
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_update_inhibit
 
 SERVICE = 'emaki-programs-aur'
 HELPER = str(Path(__file__).resolve())
@@ -237,9 +239,17 @@ def preinstall_snapshot():
 
 
 def stream(arguments, prefix=''):
+    # Take the lease before pacman starts downloading and retain it until exit.
+    protection = emaki_update_inhibit.inhibit() if Path(arguments[0]).name == 'pacman' else nullcontext(None)
+    with protection as descriptor:
+        return _stream(arguments, prefix, descriptor)
+
+
+def _stream(arguments, prefix='', descriptor=None):
     """Run one step and relay its output lines as progress; return its status."""
     with subprocess.Popen(arguments, cwd='/', env=environment(), stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as process:
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          pass_fds=() if descriptor is None else (descriptor,)) as process:
         lines = deque(maxlen=200)
         hook_failed = False
         line = ''

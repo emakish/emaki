@@ -20,7 +20,7 @@ import urllib.parse
 
 import iso_sources
 
-LOCAL_PACKAGES = ('emaki', 'emaki-apps', 'emaki-config', 'emaki-desktop', 'emaki-font-iosevka', 'emaki-installer',
+LOCAL_PACKAGES = ('emaki', 'emaki-apps', 'emaki-config', 'emaki-desktop', 'emaki-font-iosevka', 'emaki-themes', 'emaki-installer',
                   'emaki-keyring', 'emaki-mirrorlist', 'emaki-nvidia', 'emaki-shim-signed', 'niri-emaki',
                   'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki')
 

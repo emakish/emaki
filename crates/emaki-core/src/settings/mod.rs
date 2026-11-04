@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Typed managed settings shared by session, terminal and graphical interfaces.
 mod accent;
+mod cursor;
 mod input;
 mod journal;
 mod live;
@@ -9,6 +10,7 @@ mod machine;
 mod mime;
 mod niri_live;
 mod storage;
+mod styles;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -25,11 +27,16 @@ const NIRI_THEME: &str = include_str!("../../../../niri/theme.kdl");
 const NIRI_SHELL: &str = include_str!("../../../../niri/shell.kdl");
 const THEME: &str = "appearance.theme";
 const ACCENT: &str = "appearance.accent";
+const OVERVIEW_BACKGROUND: &str = "appearance.overview_background";
+const CURSOR: &str = "appearance.cursor";
 const LIGHT_TIME: &str = "appearance.light_time";
 const DARK_TIME: &str = "appearance.dark_time";
 const GAPS: &str = "appearance.gaps";
 const COLUMN_WIDTH: &str = "windows.default_column_width";
 const FOCUS_MOUSE: &str = "windows.focus_follows_mouse";
+const STYLE: &str = "appearance.style";
+const OVERVIEW_VIDEO: &str = "appearance.overview_video";
+const OVERVIEW_STILL: &str = "appearance.overview_still";
 const WALLPAPER: &str = "appearance.wallpaper";
 const FLOATING: &str = "keybindings.toggle_window_floating";
 const LAYOUTS: &str = "keyboard.layouts";
@@ -40,6 +47,9 @@ const FILES: &str = "defaults.files";
 const MAIL: &str = "defaults.mail";
 const EDITOR: &str = "defaults.editor";
 const CLOCK_24_HOUR: &str = "bar.clock_24_hour";
+const CLOCK_SECONDS_CLOSED: &str = "bar.clock_seconds_closed";
+const CLOCK_SECONDS_OPEN: &str = "bar.clock_seconds_open";
+const LAUNCHER_MODE_ICONS: &str = "launcher.mode_icons";
 const BAR_AUTOHIDE: &str = "bar.autohide";
 const BAR_AUTOHIDE_FULLSCREEN: &str = "bar.autohide_fullscreen";
 const BAR_AUTOHIDE_MODE: &str = "bar.autohide_mode";
@@ -88,6 +98,10 @@ struct Field {
     secret: bool,
 }
 static SCHEMA: &[Field] = &[
+    Field {
+        key: CURSOR,
+        secret: false,
+    },
     Field {
         key: THEME,
         secret: false,
@@ -177,6 +191,18 @@ static SCHEMA: &[Field] = &[
         secret: false,
     },
     Field {
+        key: CLOCK_SECONDS_CLOSED,
+        secret: false,
+    },
+    Field {
+        key: CLOCK_SECONDS_OPEN,
+        secret: false,
+    },
+    Field {
+        key: LAUNCHER_MODE_ICONS,
+        secret: false,
+    },
+    Field {
         key: BAR_AUTOHIDE,
         secret: false,
     },
@@ -196,6 +222,18 @@ static SCHEMA: &[Field] = &[
         key: DOCK_AUTO_HIDE,
         secret: false,
     },
+    Field {
+        key: STYLE,
+        secret: false,
+    },
+    Field {
+        key: OVERVIEW_VIDEO,
+        secret: false,
+    },
+    Field {
+        key: OVERVIEW_STILL,
+        secret: false,
+    },
 ];
 // Fail closed: an unregistered future field is never journalled.
 fn recordable(key: &str, schema: &[Field]) -> bool {
@@ -206,8 +244,12 @@ fn recordable(key: &str, schema: &[Field]) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Appearance {
+    style: Option<String>,
+    overview_video: Option<String>,
+    overview_still: Option<String>,
     theme: Option<String>,
     accent: Option<String>,
+    cursor: Option<String>,
     light_time: Option<String>,
     dark_time: Option<String>,
 
@@ -244,9 +286,16 @@ struct Defaults {
 #[serde(deny_unknown_fields)]
 struct Bar {
     clock_24_hour: Option<bool>,
+    clock_seconds_closed: Option<bool>,
+    clock_seconds_open: Option<bool>,
     autohide: Option<bool>,
     autohide_fullscreen: Option<bool>,
     overview_workspaces: Option<bool>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Launcher {
+    mode_icons: Option<bool>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -296,6 +345,8 @@ struct Document {
     #[serde(default)]
     bar: Bar,
     #[serde(default)]
+    launcher: Launcher,
+    #[serde(default)]
     dock: Dock,
 }
 impl Default for Document {
@@ -313,6 +364,7 @@ impl Default for Document {
             keyboard: Keyboard::default(),
             defaults: Defaults::default(),
             bar: Bar::default(),
+            launcher: Launcher::default(),
             dock: Dock::default(),
         }
     }
@@ -550,6 +602,10 @@ impl Document {
         if doc.keyboard.layouts.as_ref().is_some_and(Vec::is_empty) {
             doc.keyboard.layouts = None;
         }
+        // Retired pixel cursors inherit the current appearance.
+        if doc.appearance.cursor.as_deref() == Some("emaki") {
+            doc.appearance.cursor = None;
+        }
         // Re-validate every manual value through the same checks as `set`.
         let overrides = doc.overrides();
         for (key, value) in &overrides {
@@ -569,8 +625,12 @@ impl Document {
     }
     fn overrides(&self) -> BTreeMap<String, Value> {
         let mut values = BTreeMap::from([
+            (STYLE.into(), json!(self.appearance.style)),
+            (OVERVIEW_VIDEO.into(), json!(self.appearance.overview_video)),
+            (OVERVIEW_STILL.into(), json!(self.appearance.overview_still)),
             (THEME.into(), json!(self.appearance.theme)),
             (ACCENT.into(), json!(self.appearance.accent)),
+            (CURSOR.into(), json!(self.appearance.cursor)),
             (LIGHT_TIME.into(), json!(self.appearance.light_time)),
             (DARK_TIME.into(), json!(self.appearance.dark_time)),
             (GAPS.into(), json!(self.appearance.gaps)),
@@ -592,6 +652,15 @@ impl Document {
             (MAIL.into(), json!(self.defaults.mail)),
             (EDITOR.into(), json!(self.defaults.editor)),
             (CLOCK_24_HOUR.into(), json!(self.bar.clock_24_hour)),
+            (
+                CLOCK_SECONDS_CLOSED.into(),
+                json!(self.bar.clock_seconds_closed),
+            ),
+            (
+                CLOCK_SECONDS_OPEN.into(),
+                json!(self.bar.clock_seconds_open),
+            ),
+            (LAUNCHER_MODE_ICONS.into(), json!(self.launcher.mode_icons)),
             (BAR_AUTOHIDE.into(), json!(self.bar.autohide)),
             (
                 BAR_AUTOHIDE_FULLSCREEN.into(),
@@ -623,6 +692,9 @@ impl Document {
                 )
             };
         }
+        if key == CURSOR && value.as_str() == Some("emaki") {
+            return self.clear(CURSOR);
+        }
         let text = match (key, value) {
             (_, Value::Null) => {
                 self.clear(key)?;
@@ -639,6 +711,9 @@ impl Document {
             (
                 FOCUS_MOUSE
                 | CLOCK_24_HOUR
+                | CLOCK_SECONDS_CLOSED
+                | CLOCK_SECONDS_OPEN
+                | LAUNCHER_MODE_ICONS
                 | BAR_AUTOHIDE
                 | BAR_AUTOHIDE_FULLSCREEN
                 | BAR_OVERVIEW
@@ -649,9 +724,9 @@ impl Document {
                 Value::Bool(b),
             ) => b.to_string(),
             (
-                THEME | ACCENT | LIGHT_TIME | DARK_TIME | COLUMN_WIDTH | FLOATING | WALLPAPER
-                | SWITCH_KEY | TERMINAL | BROWSER | FILES | MAIL | EDITOR | UNTIL | SCHEDULE
-                | RULES,
+                STYLE | OVERVIEW_VIDEO | OVERVIEW_STILL | THEME | ACCENT | CURSOR | LIGHT_TIME
+                | DARK_TIME | COLUMN_WIDTH | FLOATING | WALLPAPER | SWITCH_KEY | TERMINAL | BROWSER
+                | FILES | MAIL | EDITOR | UNTIL | SCHEDULE | RULES,
                 Value::String(s),
             ) => s.clone(),
             _ => return Err(err("history_corrupt")),
@@ -663,8 +738,12 @@ impl Document {
             return input::set(self, key, "");
         }
         match key {
+            STYLE => self.appearance.style = None,
+            OVERVIEW_VIDEO => self.appearance.overview_video = None,
+            OVERVIEW_STILL => self.appearance.overview_still = None,
             THEME => self.appearance.theme = None,
             ACCENT => self.appearance.accent = None,
+            CURSOR => self.appearance.cursor = None,
             LIGHT_TIME => self.appearance.light_time = None,
             DARK_TIME => self.appearance.dark_time = None,
             GAPS => self.appearance.gaps = None,
@@ -680,6 +759,9 @@ impl Document {
             MAIL => self.defaults.mail = None,
             EDITOR => self.defaults.editor = None,
             CLOCK_24_HOUR => self.bar.clock_24_hour = None,
+            CLOCK_SECONDS_CLOSED => self.bar.clock_seconds_closed = None,
+            CLOCK_SECONDS_OPEN => self.bar.clock_seconds_open = None,
+            LAUNCHER_MODE_ICONS => self.launcher.mode_icons = None,
             BAR_AUTOHIDE => self.bar.autohide = None,
             BAR_AUTOHIDE_FULLSCREEN => self.bar.autohide_fullscreen = None,
             BAR_AUTOHIDE_MODE => {
@@ -704,10 +786,30 @@ impl Document {
         if input::known(key) {
             return input::set(self, key, value);
         }
-        if value.is_empty() && !matches!(key, GAPS | FLOATING) {
+        if value.is_empty() && !matches!(key, GAPS | FLOATING | OVERVIEW_VIDEO) {
             return self.clear(key);
         }
         match key {
+            STYLE => {
+                if !styles::valid_id(value) {
+                    return Err(err("invalid_style"));
+                }
+                self.appearance.style = Some(value.into());
+            }
+            OVERVIEW_VIDEO => {
+                self.appearance.overview_video = Some(if value.is_empty() {
+                    String::new()
+                } else {
+                    wallpaper(value)?
+                })
+            }
+            OVERVIEW_STILL => self.appearance.overview_still = Some(wallpaper(value)?),
+            CURSOR => {
+                if !matches!(value, "automatic" | "white" | "dark") {
+                    return Err(err("invalid_cursor"));
+                }
+                self.appearance.cursor = Some(value.into());
+            }
             THEME => {
                 if !matches!(value, "light" | "dark" | "automatic") {
                     return Err(err("invalid_theme"));
@@ -717,7 +819,16 @@ impl Document {
             ACCENT => {
                 if !matches!(
                     value,
-                    "orange" | "coral" | "rose" | "amber" | "green" | "teal" | "blue" | "violet"
+                    "orange"
+                        | "coral"
+                        | "rose"
+                        | "amber"
+                        | "green"
+                        | "teal"
+                        | "blue"
+                        | "violet"
+                        | "silver"
+                        | "graphite"
                 ) {
                     return Err(err("invalid_accent"));
                 }
@@ -771,6 +882,9 @@ impl Document {
             MAIL => self.defaults.mail = Some(desktop_id(value)?),
             EDITOR => self.defaults.editor = Some(desktop_id(value)?),
             CLOCK_24_HOUR => self.bar.clock_24_hour = Some(boolean(value)?),
+            CLOCK_SECONDS_CLOSED => self.bar.clock_seconds_closed = Some(boolean(value)?),
+            CLOCK_SECONDS_OPEN => self.bar.clock_seconds_open = Some(boolean(value)?),
+            LAUNCHER_MODE_ICONS => self.launcher.mode_icons = Some(boolean(value)?),
             BAR_AUTOHIDE => self.bar.autohide = Some(boolean(value)?),
             BAR_AUTOHIDE_FULLSCREEN => self.bar.autohide_fullscreen = Some(boolean(value)?),
             BAR_AUTOHIDE_MODE => {
@@ -817,9 +931,13 @@ impl Document {
             "appearance",
             vec![
                 self.appearance.gaps.map(|g| format!("gaps = {g}")),
+                string("style", &self.appearance.style),
+                string("overview_video", &self.appearance.overview_video),
+                string("overview_still", &self.appearance.overview_still),
                 string("wallpaper", &self.appearance.wallpaper),
                 string("theme", &self.appearance.theme),
                 string("accent", &self.appearance.accent),
+                string("cursor", &self.appearance.cursor),
                 string("light_time", &self.appearance.light_time),
                 string("dark_time", &self.appearance.dark_time),
             ],
@@ -862,10 +980,16 @@ impl Document {
             "bar",
             vec![
                 flag("clock_24_hour", &self.bar.clock_24_hour),
+                flag("clock_seconds_closed", &self.bar.clock_seconds_closed),
+                flag("clock_seconds_open", &self.bar.clock_seconds_open),
                 flag("autohide", &self.bar.autohide),
                 flag("autohide_fullscreen", &self.bar.autohide_fullscreen),
                 flag("overview_workspaces", &self.bar.overview_workspaces),
             ],
+        );
+        section(
+            "launcher",
+            vec![flag("mode_icons", &self.launcher.mode_icons)],
         );
         section(
             "dock",
@@ -899,7 +1023,10 @@ impl Document {
         input::text(self, &mut text);
         text
     }
-    fn files(&self, _default_gaps: u16) -> Vec<(&'static str, String)> {
+    fn files(&self, default_gaps: u16) -> Vec<(&'static str, String)> {
+        self.files_with_cursor(default_gaps, true)
+    }
+    fn files_with_cursor(&self, _default_gaps: u16, cursor: bool) -> Vec<(&'static str, String)> {
         let mut fragment = "// Emaki managed overrides. Change with emaki settings.\n".to_owned();
         let mut layout = String::new();
         if let Some(gaps) = self.appearance.gaps {
@@ -933,6 +1060,12 @@ impl Document {
             fragment.push_str(&format!("layout {{\n{layout}}}\n"));
         }
         input::fragment(self, &mut fragment);
+        if cursor {
+            fragment.push_str(&format!(
+                "cursor {{ xcursor-theme \"{}\"; }}\n",
+                cursor::theme(self)
+            ));
+        }
         // Machine keyboard layouts never enter the generated xkb configuration.
         let mut files = vec![
             ("niri.kdl", fragment),
@@ -1039,7 +1172,7 @@ pub enum Operation<'a> {
         key: &'a str,
         value: &'a str,
     },
-    /// Remove a key override, or atomically reset the four appearance page keys.
+    /// Remove a key override, or atomically reset appearance and its active style bundle.
     Reset {
         key: &'a str,
     },
@@ -1081,8 +1214,10 @@ struct Description {
 const UNDO: &str =
     "settings undo ID: restore previous override/unset, only if no later change of this key";
 const SHELL_ONLY: &str = "acknowledged live shell bindings; read again after session startup";
-fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
+fn rows(profile: Option<&storage::Profile>, doc: &Document, gaps: u16) -> Vec<Setting> {
     let mut overrides = doc.overrides();
+    let style_default = styles::defaults();
+    let inherited_wallpaper = styles::inherited_wallpaper(profile);
     // A presentation of the two persisted flags, never a third stored source of truth.
     let mode = match (
         doc.bar.autohide.unwrap_or(false),
@@ -1116,7 +1251,7 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
             default: json!(default_accent()),
             default_source: "shell default (unset)",
             value_type: "choice",
-            allowed: "orange | coral | rose | amber | green | teal | blue | violet; empty unsets",
+            allowed: "orange | coral | rose | amber | green | teal | blue | violet | silver | graphite; empty unsets",
             application: "acknowledged live shell bindings and managed niri border reload",
             validation: "typed appearance policy",
         },
@@ -1149,11 +1284,17 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
         },
         Description {
             key: WALLPAPER,
-            default: Value::Null,
-            default_source: "wpaperd config of the session (unset)",
+            default: inherited_wallpaper
+                .as_ref()
+                .map_or_else(|| json!(style_default.wallpaper), |path| json!(path)),
+            default_source: if inherited_wallpaper.is_some() {
+                "personal Emaki compositor configuration (unset)"
+            } else {
+                "builtin Emaki theme (unset)"
+            },
             value_type: "path",
             allowed: "absolute path to an existing regular image file; <=4096 bytes, no quotes/backslashes/control characters; empty unsets",
-            application: "wpaperctl with output verification; generation/wpaperd.toml at session startup",
+            application: "catalog strips and landscape use managed niri; photos use wpaperctl with output verification; unset inherits personal Emaki compositor settings or the Emaki default",
             validation: "syntax; file exists at set time",
         },
         Description {
@@ -1265,6 +1406,33 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
             validation: "boolean",
         },
         Description {
+            key: CLOCK_SECONDS_CLOSED,
+            default: json!(false),
+            default_source: "shell default (unset)",
+            value_type: "boolean",
+            allowed: "true | false; empty unsets",
+            application: SHELL_ONLY,
+            validation: "boolean",
+        },
+        Description {
+            key: CLOCK_SECONDS_OPEN,
+            default: json!(false),
+            default_source: "shell default (unset)",
+            value_type: "boolean",
+            allowed: "true | false; empty unsets",
+            application: SHELL_ONLY,
+            validation: "boolean",
+        },
+        Description {
+            key: LAUNCHER_MODE_ICONS,
+            default: json!(false),
+            default_source: "shell default (unset)",
+            value_type: "boolean",
+            allowed: "true | false; empty unsets",
+            application: SHELL_ONLY,
+            validation: "boolean",
+        },
+        Description {
             key: BAR_OVERVIEW,
             default: json!(true),
             default_source: "shell default (unset)",
@@ -1354,6 +1522,46 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
             application: "managed niri fragment; acknowledged session reload",
             validation: "boolean; niri validate fragment and combined package defaults",
         },
+        Description {
+            key: STYLE,
+            default: if styles::inherited_wallpaper(profile).is_some() {
+                Value::Null
+            } else {
+                json!(style_default.id)
+            },
+            default_source: "builtin Emaki theme (unset)",
+            value_type: "choice",
+            allowed: "catalog style id; empty unsets",
+            application: "atomic wallpaper, overview and accent",
+            validation: "catalog and local assets",
+        },
+        Description {
+            key: OVERVIEW_VIDEO,
+            default: json!(style_default.overview_video),
+            default_source: "builtin Emaki theme (unset)",
+            value_type: "path",
+            allowed: "absolute local path; empty disables video; reset restores theme video",
+            application: SHELL_ONLY,
+            validation: "local path",
+        },
+        Description {
+            key: OVERVIEW_STILL,
+            default: json!(style_default.overview_still),
+            default_source: "builtin Emaki theme (unset)",
+            value_type: "path",
+            allowed: "absolute local path; empty unsets",
+            application: SHELL_ONLY,
+            validation: "local path",
+        },
+        Description {
+            key: CURSOR,
+            default: json!("automatic"),
+            default_source: "automatic follows appearance; personal compositor cursor stays inherited",
+            value_type: "choice",
+            allowed: "automatic | white | dark; empty unsets",
+            application: "managed niri cursor; GTK settings and application activation environment; refreshed at login",
+            validation: "choice; niri validate fragment and combined package defaults",
+        },
     ];
     let mut result: Vec<_> = descriptions
         .into_iter()
@@ -1392,11 +1600,15 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
         })
         .collect();
     input::rows(doc, &mut result);
+    styles::wallpaper_row(profile, doc, &mut result);
+    // Keep existing terminal menu numbers, including dynamically described input rows.
+    result.sort_by_key(|row| matches!(row.key, STYLE | OVERVIEW_VIDEO | OVERVIEW_STILL));
     result
 }
 
 #[derive(Serialize)]
 pub struct Reply {
+    pub styles: Vec<styles::Style>,
     pub schema_version: u32,
     pub status: &'static str,
     pub reason: &'static str,
@@ -1418,6 +1630,7 @@ pub struct Reply {
 impl Reply {
     fn rejected(reason: &'static str) -> Self {
         Self {
+            styles: vec![],
             schema_version: 1,
             status: "rejected",
             reason,
@@ -1525,6 +1738,11 @@ pub fn sync_appearance(timeout: Duration) -> std::result::Result<(), &'static st
     storage::sync_appearance(timeout).map_err(|error| error.reason)
 }
 
+/// Apply the current cursor to application settings before starting the session.
+pub fn sync_cursor(timeout: Duration) -> std::result::Result<(), &'static str> {
+    storage::sync_cursor(timeout).map_err(|error| error.reason)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1541,7 +1759,7 @@ mod tests {
             assert_eq!(doc.bar.autohide, Some(desktop));
             assert_eq!(doc.bar.autohide_fullscreen, Some(fullscreen));
             assert_eq!(
-                rows(&doc, 8)
+                rows(None, &doc, 8)
                     .iter()
                     .find(|row| row.key == BAR_AUTOHIDE_MODE)
                     .unwrap()
@@ -1560,7 +1778,7 @@ mod tests {
             let text = format!("schema_version = 1\n[bar]\nautohide = {legacy}\n");
             let old = Document::parse(Some(text.as_bytes())).unwrap();
             assert_eq!(
-                rows(&old, 8)
+                rows(None, &old, 8)
                     .iter()
                     .find(|row| row.key == BAR_AUTOHIDE_MODE)
                     .unwrap()
@@ -1587,6 +1805,33 @@ mod tests {
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn launcher_preferences_round_trip_without_compositor_changes() {
+        let original = Document::default();
+        for key in [
+            CLOCK_SECONDS_CLOSED,
+            CLOCK_SECONDS_OPEN,
+            LAUNCHER_MODE_ICONS,
+        ] {
+            let mut doc = original.clone();
+            doc.set(key, "true").unwrap();
+            assert_eq!(Document::parse(Some(doc.text().as_bytes())).unwrap(), doc);
+            assert_eq!(doc.overrides()[key], json!(true));
+            let fragment = |doc: &Document| {
+                doc.files(8)
+                    .into_iter()
+                    .find(|(name, _)| *name == "niri.kdl")
+                    .unwrap()
+            };
+            assert_eq!(fragment(&doc), fragment(&original));
+            assert!(doc.set(key, "invalid").is_err());
+            doc.restore(key, &json!(false)).unwrap();
+            assert_eq!(doc.overrides()[key], json!(false));
+            doc.clear(key).unwrap();
+            assert_eq!(doc, original);
+        }
     }
 
     #[test]
@@ -1635,7 +1880,7 @@ mod tests {
         assert_eq!(default_accent(), "rose");
         let base = palette()["accents"]["rose"]["base"].as_str().unwrap();
         assert!(NIRI_THEME.contains(&format!("active-color \"#{base}ff\"")));
-        let accent = rows(&Document::default(), 8)
+        let accent = rows(None, &Document::default(), 8)
             .into_iter()
             .find(|row| row.key == ACCENT)
             .unwrap();
@@ -1647,7 +1892,10 @@ mod tests {
             .into_iter()
             .find(|(name, _)| *name == "niri.kdl")
             .unwrap();
-        assert!(niri.contains("border { active-color \"#e2733fff\"; }"), "{niri}");
+        assert!(
+            niri.contains("border { active-color \"#e2733fff\"; }"),
+            "{niri}"
+        );
     }
 
     #[test]

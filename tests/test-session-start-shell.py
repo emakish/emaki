@@ -69,9 +69,9 @@ DRIVER = '''
         onTriggered: {
             try {
                 if (stage === 0) {
-                    check(startup.enabled === FRESH, "startup enabled without fresh token");
+                    check(startupObject.enabled === FRESH, "startup enabled without fresh token");
                     check(scene.skipIntro === FRESH, "skip flag unavailable to initial scene");
-                    check(!startup.ready && !startup.reported, "component construction claimed rendered readiness");
+                    check(!startupObject.ready && !startupObject.reported, "component construction claimed rendered readiness");
                     check(scene.services.startupReady, "nonlive fixture service awaited native hardware");
                     scene.services.osdRequested("sound");
                     check(scene.osd.shown === !FRESH, "startup sound OSD suppression changed ordinary behavior");
@@ -98,16 +98,16 @@ DRIVER = '''
                 if (NATIVE_FAILED && stage === 1) {
                     check(!scene.services.startupReady && !scene.startupModelsReady,
                           "failed native Loader was treated as initial readiness");
-                    check(!startup.ready && !startup._reportStarted && !startup.reported,
+                    check(!startupObject.ready && !startupObject._reportStarted && !startupObject.reported,
                           "failed native Loader acknowledged readiness");
-                    if (startup.coverActive) return;
+                    if (startupObject.coverActive) return;
                     check(Date.now() - began >= 4750, "failed native Loader bypassed cover completion");
                     stage = 3;
                 }
                 if (NATIVE_TEST && !NATIVE_FAILED && stage === 1 && nativeStage < 3) {
                     if (!scene.services.backend) return;
                     if (nativeStage === 0) {
-                        check(!scene.services.startupReady && !scene.startupModelsReady && !startup._reportStarted,
+                        check(!scene.services.startupReady && !scene.startupModelsReady && !startupObject._reportStarted,
                               "native initial-data gate did not hold shell readiness");
                         if (Date.now() - began < 700) return;
                         check(scene.niri.connected && scene.dockStore.restored, "native gate test never loaded other models");
@@ -117,7 +117,7 @@ DRIVER = '''
                         nativeChangedAt = Date.now();
                         if (SYSTEM_ICONS) return;
                     } else if (Date.now() - nativeChangedAt >= 40) {
-                        check(!startup._reportStarted, "icon change arrived after the quiet-period acknowledgement");
+                        check(!startupObject._reportStarted, "icon change arrived after the quiet-period acknowledgement");
                         const before = scene.startupRevision;
                         const width = scene.bar.systemGlass.islandWidth;
                         if (nativeStage === 1) {
@@ -133,7 +133,7 @@ DRIVER = '''
                         check(scene.bar.systemGlass.islandWidth === width, "icon-only change altered width");
                         check(scene.startupRevision !== before, "constant-width system icon change escaped revision");
                         check(!scene.startupRevision.includes("fixture-private-ssid"), "raw network name entered startup revision");
-                        check(!startup.settled && startup.frameCounts.bar === 0 && !startup._reportStarted,
+                        check(!startupObject.settled && startupObject.frameCounts.bar === 0 && !startupObject._reportStarted,
                               "system icon change did not request fresh quiet-period frames");
                         nativeChangedAt = Date.now();
                         ++nativeStage;
@@ -143,27 +143,27 @@ DRIVER = '''
                 if (!root.surfaceWindows || (stage <= 1 && !scene.startupModelsReady))
                     return;
                 if (!FRESH && stage === 1) {
-                    check(!startup.coverActive && !startup.skipIntro && !startup.reported,
+                    check(!startupObject.coverActive && !startupObject.skipIntro && !startupObject.reported,
                           "ordinary restart started handshake or skipped animation");
                     stage = 3;
                 }
                 if (FRESH && stage === 1) {
                     if (MATERIAL_DELAYED && Date.now() - began < 650) {
-                        check(!startup._reportStarted, "unready capture acknowledged shell frames");
+                        check(!startupObject._reportStarted, "unready capture acknowledged shell frames");
                         return;
                     }
                     if (MATERIAL_CAP) {
                         // The fixture's capture starts only once the cap has sealed the
                         // material, so "late" is an order here, not a race of two clocks.
-                        if (startup.coverActive) {
-                            check(!startup._reportStarted && !root.surfaceWindows.liveMaterialsReady,
+                        if (startupObject.coverActive) {
+                            check(!startupObject._reportStarted && !root.surfaceWindows.liveMaterialsReady,
                                   "unready material bypassed cap");
                             check(Date.now() - began < 9000, "unready material held the cover past its cap");
                             return;
                         }
                         if (!cappedAt) {
                             cappedAt = Date.now();
-                            check(cappedAt - began >= 4750 && !startup.reported, "unready material bypassed cap");
+                            check(cappedAt - began >= 4750 && !startupObject.reported, "unready material bypassed cap");
                             check(root.surfaceWindows.startupMaterial === "flat", "cap did not seal flat fallback");
                         }
                         if (!root.surfaceWindows.liveMaterialsReady) {
@@ -176,11 +176,11 @@ DRIVER = '''
                     }
                     if (NO_OVERLAY_FRAMES) {
                         if (Date.now() - began < 800) return;
-                        check(startup.settled && startup.barMapped && startup.dockMapped && startup.overlayMapped,
+                        check(startupObject.settled && startupObject.barMapped && startupObject.dockMapped && startupObject.overlayMapped,
                               "negative control did not map/settle surfaces");
-                        check(startup.frameCounts.bar >= 2 && startup.frameCounts.dock >= 2
-                              && startup.frameCounts.overlay === 0, "negative control counted a missing overlay frame");
-                        check(!startup.ready && !startup.reported, "mapping without overlay frames claimed readiness");
+                        check(startupObject.frameCounts.bar >= 2 && startupObject.frameCounts.dock >= 2
+                              && startupObject.frameCounts.overlay === 0, "negative control counted a missing overlay frame");
+                        check(!startupObject.ready && !startupObject.reported, "mapping without overlay frames claimed readiness");
                         console.log("SESSION_START_SHELL_COMPLETE");
                         stop();
                         Qt.exit(0);
@@ -188,19 +188,19 @@ DRIVER = '''
                     }
                     if (FAILED_REPORT) {
                         if (Date.now() - began < 800) return;
-                        check(startup.ready && startup._reportStarted && !startup.reported,
+                        check(startupObject.ready && startupObject._reportStarted && !startupObject.reported,
                               "failed report was treated as a successful acknowledgement");
                         stage = 2;
                     }
                     if (stage === 1) {
-                    if (!startup.reported) return;
-                    check(startup.ready, "ack preceded readiness");
-                    check(startup.frameCounts.bar >= 2 && startup.frameCounts.overlay >= 2,
+                    if (!startupObject.reported) return;
+                    check(startupObject.ready, "ack preceded readiness");
+                    check(startupObject.frameCounts.bar >= 2 && startupObject.frameCounts.overlay >= 2,
                           "bar/overlay ack preceded two frames");
-                    check(!DOCK_ON || startup.frameCounts.dock >= 2, "dock ack preceded two frames");
-                    check(DOCK_ON || (!startup.dockMapped && startup.frameCounts.dock === 0),
+                    check(!DOCK_ON || startupObject.frameCounts.dock >= 2, "dock ack preceded two frames");
+                    check(DOCK_ON || (!startupObject.dockMapped && startupObject.frameCounts.dock === 0),
                           "disabled dock was required or mapped");
-                    check(startup.skipIntro && scene.skipIntro, "intro released before cover completion");
+                    check(startupObject.skipIntro && scene.skipIntro, "intro released before cover completion");
                     check(root.surfaceWindows.backdropMode === "capture", "capture was not prepared under the startup cover");
                     check(root.surfaceWindows.materialsReady, "ack preceded final glass materials");
                     coverController.revealing();
@@ -211,14 +211,14 @@ DRIVER = '''
                     check(scene.bar.leftIslands.workspaceBubble.alpha.x === 1, "workspace drop still entering");
                     check(scene.dock.visibleAmount === (DOCK_ON ? 1 : 0), "initial dock visibility unsettled");
                     check(scene.dock.plateWidth.x === scene.dock.length, "initial dock width unsettled");
-                    console.log("SESSION_START_RENDERED " + JSON.stringify(startup.frameCounts));
+                    console.log("SESSION_START_RENDERED " + JSON.stringify(startupObject.frameCounts));
                     stage = 2;
                     }
                 }
                 if (stage === 2) {
-                    if (startup.coverActive) return;
+                    if (startupObject.coverActive) return;
                     check(!LONG_COVER || Date.now() - began >= 5500, "independent shell timer cut the longer cover budget");
-                    check(!scene.skipIntro && !startup.skipIntro, "cover completion did not restore animation");
+                    check(!scene.skipIntro && !startupObject.skipIntro, "cover completion did not restore animation");
                     check(root.surfaceWindows.backdropMode === "capture", "capture did not resume after cover");
                     check(!(FAILED_WATCH || FAILED_REPORT) || Date.now() - began >= 4750, "failed helper bypassed cover completion");
                     stage = 3;
@@ -325,7 +325,7 @@ def run(scenario):
             # The capture arrives after the cover's cap sealed the material. A timer from
             # construction raced the cover's own timer and the driver's clock under load.
             # The live backdrops are the surfaces' direct children; wallpaper copies sit in Loaders.
-            surfaces, captures = re.subn(r'^(    DockBackdrop \{\n        id: \w+\n)',
+            surfaces, captures = re.subn(r'^(    (?:DockBackdrop|BarBackdrop) \{\n        id: \w+\n)',
                                          r'\1        fixtureReleased: surfaces.startupMaterial !== ""\n',
                                          surfaces, flags=re.MULTILINE)
             assert captures == 5, captures

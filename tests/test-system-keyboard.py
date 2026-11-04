@@ -192,7 +192,7 @@ run_case('dark rim on pale controls', ('FocusRing.qml', RING,
                                        'system slider focus ring light hover rim'))
 # Without the strong rim the focus disappears on orange: the pixel check must refuse it.
 run_case('light rim on orange', ('LiquidPalette.qml',
-                                 'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .75)',
+                                 'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .8)',
                                  'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .16)', None),
          theme='light')
 # Dark shades the selected drop: the warm dark ink on it is lost (1.25:1 in test-keyboard-gaps).

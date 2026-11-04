@@ -684,10 +684,15 @@ fn installed_shell_keys_apply_and_restore_previous_rows_on_unconfirmed_reply() {
         ("bar.autohide_fullscreen", "false", "true"),
         ("bar.autohide_mode", "never", "always"),
         ("bar.overview_workspaces", "false", "true"),
+        ("bar.clock_seconds_closed", "true", "false"),
+        ("bar.clock_seconds_open", "true", "false"),
+        ("launcher.mode_icons", "true", "false"),
         ("dock.on", "false", "true"),
         ("dock.auto_hide", "false", "true"),
     ] {
         let f = Fixture::new();
+        // Keep these cases focused on shell compensation rather than cursor reloads.
+        f.manual("schema_version = 1\n[appearance]\ncursor = \"white\"\n");
         installed_helper(&f, "emaki-shell", "print('applied')\n");
         let (out, reply) = installed_run(&f, &["set", key, value]);
         assert!(out.status.success(), "{reply}");
@@ -1254,6 +1259,66 @@ if sys.argv[1] == 'apply' and Path({rejected:?}).exists():
     assert_eq!(calls[4][0], "restore");
     let restored: Value = serde_json::from_str(calls[4][1].as_str().unwrap()).unwrap();
     assert_eq!(restored, json!({"screen": "previous.png"}));
+}
+
+#[test]
+fn first_wallpaper_without_personal_daemon_config_commits() {
+    let f = Fixture::new();
+    let scripts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts");
+    let picture = f.root.join("picture.png");
+    let fallback = f.root.join("fallback.png");
+    let daemon_state = f.root.join("wallpaper-state.json");
+    fs::write(&picture, b"image").unwrap();
+    fs::write(&fallback, b"fallback").unwrap();
+    fs::create_dir(f.root.join("wpaperd")).unwrap();
+    fs::write(
+        f.root.join("wpaperd/config.toml"),
+        format!("[any]\npath = {fallback:?}\n"),
+    )
+    .unwrap();
+    installed_helper(
+        &f,
+        "emaki-settings-wallpaper",
+        &format!(
+            "import runpy\nrunpy.run_path({:?}, run_name='__main__')\n",
+            scripts.join("emaki-settings-wallpaper")
+        ),
+    );
+    installed_helper(
+        &f,
+        "emaki-session-wallpaper",
+        &format!(
+            "import runpy\nm = runpy.run_path({:?})\nm['default_arguments'].__globals__['DATADIR'] = {:?}\nraise SystemExit(m['main'](force=True))\n",
+            scripts.join("emaki-session-wallpaper"),
+            f.root
+        ),
+    );
+    installed_helper(
+        &f,
+        "wpaperd",
+        &format!(
+            "import json, pathlib, sys, tomllib\nassert sys.argv[1] == '--config'\nc = tomllib.loads(pathlib.Path(sys.argv[2]).read_text())\npathlib.Path({daemon_state:?}).write_text(json.dumps({{'screen': c['any']['path']}}))\n"
+        ),
+    );
+    installed_helper(
+        &f,
+        "wpaperctl",
+        &format!(
+            "import json, pathlib, sys\np = pathlib.Path({daemon_state:?})\ns = json.loads(p.read_text())\nif sys.argv[1] == 'get-all':\n print(json.dumps([{{'display': k, 'path': v}} for k,v in s.items()]))\nelse:\n p.write_text(json.dumps(dict.fromkeys(s, sys.argv[2])))\n"
+        ),
+    );
+    let (out, reply) = installed_run(
+        &f,
+        &["set", "appearance.wallpaper", picture.to_str().unwrap()],
+    );
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["status"], "committed");
+    assert_eq!(reply["session_applied"], true);
+    assert_eq!(row(&reply, "appearance.wallpaper")["value"], json!(picture));
+    assert!(f.source().is_file());
+    assert!(!f.root.join("config/wpaperd/config.toml").exists());
+    let shown: Value = serde_json::from_slice(&fs::read(daemon_state).unwrap()).unwrap();
+    assert_eq!(shown, json!({"screen": picture}));
 }
 
 #[test]
@@ -2120,7 +2185,12 @@ fn settings_page_keys_generate_wallpaper_and_default_app_files_never_xkb_and_und
     fs::remove_file(&picture).unwrap();
     let (_, h) = f.run(&["history"]);
     let removed = f.set("appearance.wallpaper", "");
-    assert!(row(&removed, "appearance.wallpaper")["value"].is_null());
+    assert!(
+        row(&removed, "appearance.wallpaper")["value"]
+            .as_str()
+            .unwrap()
+            .ends_with("themes/emaki/wallpaper.png")
+    );
     let (out, v) = f.run(&["undo", removed["change_id"].as_str().unwrap()]);
     assert!(out.status.success(), "{v}");
     assert_eq!(
@@ -2347,10 +2417,7 @@ fn every_packaged_shortcut_has_an_editable_catalog_action() {
         assert!(!row["explanation"].as_str().unwrap().is_empty());
         assert_eq!(row["editable"], row["default"] != "Mod+Ctrl+Escape");
     }
-    assert_eq!(
-        row(&reply, "shortcuts.Alt+Tab")["title"],
-        "Switch windows"
-    );
+    assert_eq!(row(&reply, "shortcuts.Alt+Tab")["title"], "Switch windows");
 }
 
 #[test]
@@ -2592,10 +2659,19 @@ fn window_behavior_and_accent_failed_live_load_restore_previous_fragment_and_sou
         ("windows.default_column_width", "half", "proportion 0.5"),
         ("windows.focus_follows_mouse", "true", "focus-follows-mouse"),
         ("appearance.accent", "teal", "active-color"),
+        ("appearance.cursor", "dark", "xcursor-theme \"Emaki-Dark\""),
     ] {
         let f = Fixture::new();
         installed_helper(&f, "emaki-shell", "print('applied')\n");
         f.manual("schema_version = 1\n[appearance]\ngaps = 4\n");
+        if key == "appearance.cursor" {
+            installed_helper(
+                &f,
+                "gsettings",
+                "import sys\nif sys.argv[1] == 'get': print(\"'Previous-Cursor'\")\n",
+            );
+            installed_helper(&f, "dbus-update-activation-environment", "pass\n");
+        }
         let source = fs::read(f.source()).unwrap();
         let socket = std::env::temp_dir().join(format!(
             "s5-load-{}-{}",
@@ -2862,7 +2938,7 @@ fn appearance_persists_resets_and_undoes_with_validated_schedule() {
         assert_eq!(before, tree(&f.root));
     }
     for accent in [
-        "orange", "coral", "rose", "amber", "green", "teal", "blue", "violet",
+        "orange", "coral", "rose", "amber", "green", "teal", "blue", "violet", "silver", "graphite",
     ] {
         assert_eq!(
             row(&f.set("appearance.accent", accent), "appearance.accent")["value"],
@@ -2916,6 +2992,7 @@ fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
     f.set("appearance.theme", "automatic");
     f.set("appearance.accent", "blue");
     f.set("appearance.gaps", "4");
+    f.set("appearance.cursor", "dark");
     let count = f.run(&["history"]).1["history"].as_array().unwrap().len();
     for key in ["appearance.light_time", "appearance.dark_time"] {
         let (out, rejected) = f.run(&["reset", key]);
@@ -2924,6 +3001,7 @@ fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
     let (out, reset) = f.run(&["reset", "appearance"]);
     assert!(out.status.success(), "{reset}");
     for (key, value) in [
+        ("appearance.cursor", "automatic"),
         ("appearance.theme", "light"),
         ("appearance.accent", "rose"),
         ("appearance.light_time", "07:00"),
@@ -2940,13 +3018,14 @@ fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
         .iter()
         .find(|entry| entry["id"] == reset["change_id"])
         .unwrap();
-    assert_eq!(entry["changes"].as_array().unwrap().len(), 4);
+    assert_eq!(entry["changes"].as_array().unwrap().len(), 5);
     let (out, undone) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
     assert!(out.status.success(), "{undone}");
     assert_eq!(row(&undone, "appearance.light_time")["value"], "19:00");
     assert_eq!(row(&undone, "appearance.dark_time")["value"], "07:00");
     assert_eq!(row(&undone, "appearance.theme")["value"], "automatic");
     assert_eq!(row(&undone, "appearance.accent")["value"], "blue");
+    assert_eq!(row(&undone, "appearance.cursor")["value"], "dark");
     let reset = f.run(&["reset", "appearance"]).1;
     f.set("appearance.accent", "teal");
     let before = tree(&f.root);
@@ -2954,6 +3033,38 @@ fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
     assert!(!out.status.success(), "{rejected}");
     assert_eq!(rejected["reason"], "undo_conflict");
     assert_eq!(tree(&f.root), before);
+}
+
+#[test]
+fn launcher_preferences_default_off_and_reset_independently() {
+    let f = Fixture::new();
+    let keys = [
+        "bar.clock_seconds_closed",
+        "bar.clock_seconds_open",
+        "launcher.mode_icons",
+    ];
+    let initial = f.run(&["list"]).1;
+    for key in keys {
+        assert_eq!(row(&initial, key)["value"], false, "{key}");
+        assert!(row(&initial, key)["override_value"].is_null(), "{key}");
+        assert_eq!(row(&f.set(key, "true"), key)["value"], true);
+    }
+    for key in keys {
+        let (out, reset) = f.run(&["reset", key]);
+        assert!(out.status.success(), "{reset}");
+        assert_eq!(row(&reset, key)["value"], false);
+        for other in keys.into_iter().filter(|other| *other != key) {
+            assert_eq!(row(&reset, other)["value"], true, "{other}");
+        }
+        let (out, undone) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
+        assert!(out.status.success(), "{undone}");
+        assert_eq!(row(&undone, key)["value"], true);
+    }
+    let (out, reset) = f.run(&["reset", "launcher.mode_icons"]);
+    assert!(out.status.success(), "{reset}");
+    assert_eq!(row(&reset, "launcher.mode_icons")["value"], false);
+    assert_eq!(row(&reset, "bar.clock_seconds_closed")["value"], true);
+    assert_eq!(row(&reset, "bar.clock_seconds_open")["value"], true);
 }
 
 #[test]
@@ -3134,18 +3245,25 @@ fn appearance_accent_live_reload_reset_and_shell_failure_restore_border() {
         }
     };
     let accent = f.root.join("runtime/emaki-settings/accent");
-    let assert_accent = |base: &str, copies: bool| {
+    let assert_accent = |base: &str, match_text: &str, lock_copy: bool| {
         let kitty = fs::read_to_string(accent.join("kitty.conf")).unwrap();
         assert!(
             kitty.contains(&format!("selection_background #{base}")),
             "{kitty}"
         );
-        for copy in ["fuzzel/fuzzel.ini", "hypr/hyprlock.conf"] {
-            let text = fs::read_to_string(accent.join(copy)).ok();
-            assert_eq!(text.is_some(), copies, "{copy}");
-            if let Some(text) = text {
-                assert!(text.contains(base), "{copy}: {text}");
-            }
+        // The dark launcher needs readable match text even for the default accent.
+        let fuzzel = fs::read_to_string(accent.join("fuzzel/fuzzel.ini")).unwrap();
+        for line in [
+            format!("match={match_text}ff"),
+            format!("selection={base}ff"),
+            format!("border={base}ff"),
+        ] {
+            assert!(fuzzel.lines().any(|actual| actual == line), "{fuzzel}");
+        }
+        let lock = fs::read_to_string(accent.join("hypr/hyprlock.conf")).ok();
+        assert_eq!(lock.is_some(), lock_copy, "hypr/hyprlock.conf");
+        if let Some(lock) = lock {
+            assert!(lock.contains(base), "hypr/hyprlock.conf: {lock}");
         }
     };
     let run = |args: &[&str]| {
@@ -3171,11 +3289,11 @@ fn appearance_accent_live_reload_reset_and_shell_failure_restore_border() {
         let (out, reply) = run(&args);
         assert!(out.status.success(), "{reply}");
         assert_eq!(reply["session_applied"], true);
-        // The packaged default (Rose) needs no copies; kitty's file always names the accent.
+        // Reset removes the lock override but retains the terminal and launcher exports.
         match args[0] {
-            "reset" => assert_accent("e780aa", false),
-            _ if args[2] == "teal" => assert_accent("61b5a5", true),
-            _ => assert_accent("78aaf0", true),
+            "reset" => assert_accent("e780aa", "ffb0d2", false),
+            _ if args[2] == "teal" => assert_accent("61b5a5", "95d9cc", true),
+            _ => assert_accent("78aaf0", "b0cfff", true),
         }
         assert_eq!(reloads(step + 1), step + 1, "{args:?}");
         assert_eq!(
@@ -3200,7 +3318,7 @@ fn appearance_accent_live_reload_reset_and_shell_failure_restore_border() {
     assert_eq!(fs::read(f.source()).unwrap(), before);
     assert_no_transaction_candidate(&f);
     // The rollback put the terminal and copies back to blue and reloaded the terminal again.
-    assert_accent("78aaf0", true);
+    assert_accent("78aaf0", "b0cfff", true);
     assert_eq!(reloads(5), 5);
     assert_eq!(fs::read_to_string(&other_mark).unwrap(), "ready\n");
     drop(terminals);
@@ -3251,4 +3369,577 @@ fn panel_visibility_choice_round_trips_and_undo_restores_both_flags() {
         row(&f.set("bar.autohide", "false"), "bar.autohide_mode")["value"],
         "fullscreen"
     );
+}
+
+#[test]
+fn failed_theme_strip_does_not_block_other_settings_and_reset_restores_default() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::sync::{Arc, atomic::AtomicBool};
+    for args in [
+        vec!["set", "appearance.gaps", "8"],
+        vec!["set", "appearance.accent", "violet"],
+        vec!["reset", "appearance.style"],
+    ] {
+        let f = Fixture::new();
+        let clearing = args[0] == "reset";
+        let marker = f.root.join("shell-cleared");
+        installed_helper(
+            &f,
+            "emaki-shell",
+            &format!(
+                "import json, sys\nfrom pathlib import Path\nrows = {{r['key']: r['value'] for r in json.loads(sys.argv[4])['rows']}}\nif rows['appearance.overview_still'] != '/tmp/old-still.jpg':\n    Path({:?}).touch()\nprint('applied')\n",
+                marker.to_str().unwrap()
+            ),
+        );
+        f.manual("schema_version = 1\n[appearance]\nstyle = \"emaki\"\nwallpaper = \"/tmp/missing-strip.png\"\noverview_still = \"/tmp/old-still.jpg\"\noverview_video = \"/tmp/old-video.mp4\"\naccent = \"rose\"\n");
+        let default_wallpaper = row(&f.run(&["list"]).1, "appearance.wallpaper")["default"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let socket = std::env::temp_dir().join(format!(
+            "theme-live-{}-{}",
+            std::process::id(),
+            SERIAL.fetch_add(1, Ordering::Relaxed)
+        ));
+        let listener = UnixListener::bind(&socket).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let stopped = done.clone();
+        let server = std::thread::spawn(move || {
+            let mut events: Option<UnixStream> = None;
+            let mut strip_requests = 0;
+            let mut reloads = 0;
+            let deadline = Instant::now() + CHILD_DEADLINE;
+            while !stopped.load(Ordering::Relaxed) {
+                assert!(Instant::now() < deadline);
+                let mut stream = match listener.accept() {
+                    Ok((stream, _)) => stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(2));
+                        continue;
+                    }
+                    Err(error) => panic!("{error}"),
+                };
+                stream.set_read_timeout(Some(CHILD_DEADLINE)).unwrap();
+                let mut line = String::new();
+                BufReader::new(&stream).read_line(&mut line).unwrap();
+                let request: Value = serde_json::from_str(&line).unwrap();
+                if request == "EventStream" {
+                    stream
+                        .write_all(b"{\"Ok\":\"Handled\"}\n{\"ConfigLoaded\":{\"failed\":false}}\n")
+                        .unwrap();
+                    events = Some(stream);
+                } else if request == "EmakiWallpaper" {
+                    strip_requests += 1;
+                    let status = if clearing {
+                        serde_json::json!({"Ok":{"EmakiWallpaper":{"mode":"strip","files":{"ring":default_wallpaper},"load_state":"ready","error":null}}})
+                    } else {
+                        serde_json::json!({"Ok":{"EmakiWallpaper":{"mode":"strip","files":{"ring":"/tmp/missing-strip.png"},"load_state":"failed","error":"missing"}}})
+                    };
+                    writeln!(stream, "{status}").unwrap();
+                } else {
+                    assert!(request["Action"]["LoadConfigFile"]["path"].is_string());
+                    if clearing {
+                        assert!(
+                            marker.exists(),
+                            "default overview must apply before niri reload"
+                        );
+                    }
+                    reloads += 1;
+                    stream.write_all(b"{\"Ok\":\"Handled\"}\n").unwrap();
+                    events
+                        .as_mut()
+                        .unwrap()
+                        .write_all(b"{\"ConfigLoaded\":{\"failed\":false}}\n")
+                        .unwrap();
+                }
+            }
+            (strip_requests, reloads)
+        });
+        let out = f
+            .fake("ok")
+            .env("NIRI_SOCKET", &socket)
+            .args(["settings"])
+            .args(&args)
+            .arg("--json")
+            .args(write_timeout(&args))
+            .guarded_output()
+            .unwrap();
+        done.store(true, Ordering::Relaxed);
+        let counts = server.join().unwrap();
+        fs::remove_file(socket).unwrap();
+        let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(reply["session_applied"], true);
+        assert_eq!(counts, (usize::from(clearing), 1));
+    }
+}
+
+#[test]
+fn cursor_choice_maps_themes_and_preserves_personal_config() {
+    let f = Fixture::new();
+    let personal = f.root.join("config/niri/config.kdl");
+    fs::create_dir_all(personal.parent().unwrap()).unwrap();
+    fs::write(&personal, "// Personal configuration remains untouched.\n").unwrap();
+    let before = fs::read(&personal).unwrap();
+    let listed = f.run(&["list"]).1;
+    assert_eq!(row(&listed, "appearance.cursor")["value"], "automatic");
+    assert_eq!(row(&listed, "appearance.cursor")["default"], "automatic");
+    assert!(row(&listed, "appearance.cursor")["override_value"].is_null());
+    for (choice, theme) in [
+        ("white", "Emaki-White"),
+        ("dark", "Emaki-Dark"),
+        ("automatic", "Emaki-White"),
+    ] {
+        let changed = f.set("appearance.cursor", choice);
+        assert_eq!(row(&changed, "appearance.cursor")["value"], choice);
+        assert_eq!(
+            row(&f.run(&["list"]).1, "appearance.cursor")["value"],
+            choice
+        );
+        let fragment = fs::read_to_string(
+            Path::new(changed["generation_path"].as_str().unwrap()).join("niri.kdl"),
+        )
+        .unwrap();
+        assert!(
+            fragment.contains(&format!("xcursor-theme \"{theme}\"")),
+            "{fragment}"
+        );
+        assert!(!fragment.contains("xcursor-size"), "{fragment}");
+        assert_eq!(fs::read(&personal).unwrap(), before);
+    }
+    let before = tree(&f.root);
+    for value in ["White", "Emaki", "glass", "white\"; spawn SECRET"] {
+        let (out, rejected) = f.run(&["set", "appearance.cursor", value]);
+        assert!(!out.status.success(), "{rejected}");
+        assert_eq!(rejected["reason"], "invalid_cursor");
+        assert_eq!(tree(&f.root), before);
+    }
+}
+
+#[test]
+fn cursor_automatic_appearance_change_requires_compositor_before_side_effects() {
+    for cursor in [None, Some("automatic")] {
+        let f = Fixture::new();
+        let cursor_line = cursor
+            .map(|value| format!("cursor = \"{value}\"\n"))
+            .unwrap_or_default();
+        f.manual(&format!(
+            "schema_version = 1\n[appearance]\ntheme = \"light\"\n{cursor_line}"
+        ));
+        let before = fs::read(f.source()).unwrap();
+        let calls = f.root.join("unexpected-shell-call");
+        installed_helper(
+            &f,
+            "emaki-shell",
+            &format!(
+                "from pathlib import Path\nPath({:?}).touch()\nprint('applied')\n",
+                calls.to_str().unwrap()
+            ),
+        );
+        let (out, reply) = installed_run(&f, &["set", "appearance.theme", "dark"]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "niri_socket_missing");
+        assert_eq!(fs::read(f.source()).unwrap(), before);
+        assert!(!calls.exists());
+        assert!(
+            !f.root
+                .join("state/emaki/history/live-pending.json")
+                .exists()
+        );
+    }
+}
+
+#[test]
+fn cursor_legacy_selection_inherits_dark_and_undo_keeps_migration() {
+    let f = Fixture::new();
+    f.manual("schema_version = 1\n[appearance]\ncursor = \"emaki\"\ntheme = \"dark\"\n");
+    let before = fs::read(f.source()).unwrap();
+    let listed = f.run(&["list"]).1;
+    assert_eq!(row(&listed, "appearance.cursor")["value"], "automatic");
+    assert!(row(&listed, "appearance.cursor")["override_value"].is_null());
+    assert_eq!(fs::read(f.source()).unwrap(), before);
+    let change = f.set("appearance.cursor", "white");
+    let (out, undo) = f.run(&["undo", change["change_id"].as_str().unwrap()]);
+    assert!(out.status.success(), "{undo}");
+    assert_eq!(row(&undo, "appearance.cursor")["value"], "automatic");
+    let fragment =
+        fs::read_to_string(Path::new(undo["generation_path"].as_str().unwrap()).join("niri.kdl"))
+            .unwrap();
+    assert!(
+        fragment.contains("xcursor-theme \"Emaki-Dark\""),
+        "{fragment}"
+    );
+}
+
+#[test]
+fn retired_cursor_history_is_not_a_manual_edit_and_old_undo_still_works() {
+    let f = Fixture::new();
+    f.set("appearance.cursor", "white");
+    let change = f.set("appearance.cursor", "dark");
+    let id = change["change_id"].as_str().unwrap();
+    let path = fs::read_dir(f.root.join("state/emaki/history"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.file_name().unwrap().to_str().unwrap().contains(id))
+        .unwrap();
+    let mut entry: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    for change in entry["changes"].as_array_mut().unwrap() {
+        if change["key"] == "appearance.cursor" {
+            change["after"] = json!("emaki");
+        }
+    }
+    fs::write(&path, serde_json::to_vec(&entry).unwrap()).unwrap();
+    let original_record = fs::read(&path).unwrap();
+    let source = fs::read_to_string(f.source())
+        .unwrap()
+        .replace("cursor = \"dark\"", "cursor = \"emaki\"");
+    f.manual(&source);
+    let count = f.run(&["history"]).1["history"].as_array().unwrap().len();
+    f.set("appearance.gaps", "7");
+    assert_eq!(
+        f.run(&["history"]).1["history"].as_array().unwrap().len(),
+        count + 1
+    );
+    let (out, undo) = f.run(&["undo", id]);
+    assert!(out.status.success(), "{undo}");
+    assert_eq!(row(&undo, "appearance.cursor")["value"], "white");
+    assert_eq!(fs::read(path).unwrap(), original_record);
+}
+
+#[test]
+fn cursor_reset_scopes_and_undo_restore_override_and_generated_theme() {
+    for scope in ["appearance.cursor", "appearance", "all"] {
+        let f = Fixture::new();
+        f.set("appearance.cursor", "dark");
+        let count = f.run(&["history"]).1["history"].as_array().unwrap().len();
+        let (out, reset) = f.run(&["reset", scope]);
+        assert!(out.status.success(), "{reset}");
+        assert_eq!(row(&reset, "appearance.cursor")["value"], "automatic");
+        assert!(row(&reset, "appearance.cursor")["override_value"].is_null());
+        let fragment = fs::read_to_string(
+            Path::new(reset["generation_path"].as_str().unwrap()).join("niri.kdl"),
+        )
+        .unwrap();
+        assert!(
+            fragment.contains("xcursor-theme \"Emaki-White\""),
+            "{fragment}"
+        );
+        assert_eq!(
+            f.run(&["history"]).1["history"].as_array().unwrap().len(),
+            count + 1
+        );
+        let (out, undo) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
+        assert!(out.status.success(), "{undo}");
+        assert_eq!(row(&undo, "appearance.cursor")["value"], "dark");
+        let fragment = fs::read_to_string(
+            Path::new(undo["generation_path"].as_str().unwrap()).join("niri.kdl"),
+        )
+        .unwrap();
+        assert!(
+            fragment.contains("xcursor-theme \"Emaki-Dark\""),
+            "{fragment}"
+        );
+    }
+}
+
+#[test]
+fn cursor_sync_updates_toolkits_and_activation_environment_without_writing_settings() {
+    let f = Fixture::new();
+    let calls = f.root.join("cursor-calls");
+    let gtk = f.root.join("cursor-gtk");
+    fs::write(&gtk, "Previous-Cursor").unwrap();
+    for helper in ["gsettings", "dbus-update-activation-environment"] {
+        installed_helper(
+            &f,
+            helper,
+            &format!(
+                "import json, sys\nfrom pathlib import Path\np = Path({calls:?})\nwith p.open('a') as log: log.write(json.dumps([{helper:?}] + sys.argv[1:]) + '\\n')\nif {helper:?} == 'gsettings':\n    gtk = Path({gtk:?})\n    if sys.argv[1] == 'get': print(repr(gtk.read_text()))\n    if sys.argv[1] == 'set': gtk.write_text(sys.argv[4].strip(\"'\"))\n",
+                calls = calls.to_str().unwrap(),
+                gtk = gtk.to_str().unwrap(),
+            ),
+        );
+    }
+    for (choice, theme) in [
+        (None, "Emaki-White"),
+        (Some("white"), "Emaki-White"),
+        (Some("dark"), "Emaki-Dark"),
+    ] {
+        if let Some(choice) = choice {
+            f.manual(&format!(
+                "schema_version = 1\n[appearance]\ncursor = \"{choice}\"\n"
+            ));
+        }
+        let before = fs::read(f.source()).ok();
+        fs::write(&calls, "").unwrap();
+        let out = f
+            .fake("ok")
+            .env("HOME", &f.root)
+            .args(["settings", "sync-cursor"])
+            .guarded_output()
+            .unwrap();
+        let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(reply["ok"], true, "{reply}");
+        let calls: Vec<Value> = fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert!(
+            calls.iter().any(|call| call[0] == "gsettings"
+                && call[1] == "set"
+                && call[2] == "org.gnome.desktop.interface"
+                && call[3] == "cursor-theme"
+                && call[4].as_str().unwrap().trim_matches('\'') == theme),
+            "{calls:?}"
+        );
+        assert!(
+            calls.contains(&json!([
+                "dbus-update-activation-environment",
+                "--systemd",
+                format!("XCURSOR_THEME={theme}")
+            ])),
+            "{calls:?}"
+        );
+        assert_eq!(fs::read(f.source()).ok(), before);
+        assert!(!f.root.join("state/emaki/history").exists());
+    }
+    installed_helper(&f, "gsettings", "import sys\nsys.exit(1)\n");
+    let out = f
+        .fake("ok")
+        .env("HOME", &f.root)
+        .args(["settings", "sync-cursor"])
+        .guarded_output()
+        .unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(!out.status.success(), "{reply}");
+    assert_eq!(reply["ok"], false, "{reply}");
+    assert!(reply["reason"].is_string(), "{reply}");
+}
+
+#[test]
+fn cursor_live_apply_and_activation_failure_restore_actual_toolkit_state() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+    let f = Fixture::new();
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    f.manual("schema_version = 1\n[appearance]\ngaps = 4\n");
+    let gtk = f.root.join("gtk-cursor");
+    let activation = f.root.join("activation-cursor");
+    fs::write(&gtk, "'Before-Cursor'").unwrap();
+    installed_helper(
+        &f,
+        "gsettings",
+        &format!(
+            r#"import sys
+from pathlib import Path
+p = Path({gtk:?})
+assert sys.argv[2:4] == ['org.gnome.desktop.interface', 'cursor-theme']
+if sys.argv[1] == 'get': print(p.read_text())
+else:
+    value = sys.argv[4]
+    p.write_text(value if value.startswith("'") else repr(value))
+"#,
+            gtk = gtk.to_str().unwrap()
+        ),
+    );
+    installed_helper(
+        &f,
+        "dbus-update-activation-environment",
+        &format!(
+            r#"import sys
+from pathlib import Path
+assert sys.argv[1] == '--systemd'
+if sys.argv[2] == 'XCURSOR_THEME=Emaki-Dark': sys.exit(1)
+Path({activation:?}).write_text(sys.argv[2])
+"#,
+            activation = activation.to_str().unwrap()
+        ),
+    );
+    let socket = std::env::temp_dir().join(format!(
+        "cursor-{}-{}",
+        std::process::id(),
+        SERIAL.fetch_add(1, Ordering::Relaxed)
+    ));
+    let listener = UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let accept = || {
+            let deadline = Instant::now() + CHILD_DEADLINE;
+            loop {
+                match listener.accept() {
+                    Ok((stream, _)) => return stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "Compositor request timed out");
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("Compositor socket failed: {error}"),
+                }
+            }
+        };
+        for theme in ["Emaki-White", "Emaki-Dark", "Emaki-White"] {
+            let mut events = accept();
+            events.set_read_timeout(Some(CHILD_DEADLINE)).unwrap();
+            let mut line = String::new();
+            BufReader::new(&events).read_line(&mut line).unwrap();
+            assert_eq!(serde_json::from_str::<Value>(&line).unwrap(), "EventStream");
+            events
+                .write_all(b"{\"Ok\":\"Handled\"}\n{\"ConfigLoaded\":{\"failed\":false}}\n")
+                .unwrap();
+            let mut action = accept();
+            action.set_read_timeout(Some(CHILD_DEADLINE)).unwrap();
+            line.clear();
+            BufReader::new(&action).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let wrapper = fs::read_to_string(
+                request["Action"]["LoadConfigFile"]["path"]
+                    .as_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            let fragment = wrapper
+                .lines()
+                .filter_map(|line| line.strip_prefix("include \""))
+                .map(|line| line.trim_end_matches('"'))
+                .last()
+                .unwrap();
+            let fragment = fs::read_to_string(fragment).unwrap();
+            assert!(
+                fragment.contains(&format!("xcursor-theme \"{theme}\"")),
+                "{fragment}"
+            );
+            action.write_all(b"{\"Ok\":\"Handled\"}\n").unwrap();
+            events
+                .write_all(b"{\"ConfigLoaded\":{\"failed\":false}}\n")
+                .unwrap();
+        }
+    });
+    let run = |value| {
+        let out = f
+            .fake("ok")
+            .env("HOME", &f.root)
+            .env("NIRI_SOCKET", &socket)
+            .args([
+                "settings",
+                "set",
+                "appearance.cursor",
+                value,
+                "--json",
+                "--timeout-ms",
+                SLOW_MACHINE_TIMEOUT_MS,
+            ])
+            .guarded_output()
+            .unwrap();
+        let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+        (out, reply)
+    };
+    let (out, applied) = run("white");
+    assert!(out.status.success(), "{applied}");
+    assert_eq!(applied["session_applied"], true);
+    assert_eq!(fs::read_to_string(&gtk).unwrap(), "'Emaki-White'");
+    assert_eq!(
+        fs::read_to_string(&activation).unwrap(),
+        "XCURSOR_THEME=Emaki-White"
+    );
+    let source = fs::read(f.source()).unwrap();
+    let history = installed_run(&f, &["history"]).1["history"].clone();
+    // An independently changed toolkit value must survive rollback; the persisted
+    // previous choice alone is not an adequate snapshot of external state.
+    fs::write(&gtk, "'Personal-Cursor'").unwrap();
+    let (out, rejected) = run("dark");
+    assert!(!out.status.success(), "{rejected}");
+    assert_eq!(rejected["session_applied"], false);
+    server.join().unwrap();
+    fs::remove_file(socket).unwrap();
+    assert_eq!(fs::read(f.source()).unwrap(), source);
+    assert_eq!(installed_run(&f, &["history"]).1["history"], history);
+    assert_eq!(fs::read_to_string(&gtk).unwrap(), "'Personal-Cursor'");
+    assert_eq!(
+        fs::read_to_string(&activation).unwrap(),
+        "XCURSOR_THEME=Emaki-White"
+    );
+    assert!(
+        !f.root
+            .join("state/emaki/history/live-pending.json")
+            .exists()
+    );
+    assert_no_transaction_candidate(&f);
+}
+
+#[test]
+fn cursor_pending_snapshot_survives_missing_session_and_recovers_at_startup() {
+    let f = Fixture::new();
+    f.manual("schema_version = 1\n[appearance]\ncursor = \"white\"\n");
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    installed_helper(
+        &f,
+        "gsettings",
+        "import sys\nif sys.argv[1] == 'get': print(\"'Personal-Cursor'\")\n",
+    );
+    installed_helper(&f, "dbus-update-activation-environment", "pass\n");
+    let source = fs::read(f.source()).unwrap();
+    let missing = format!(
+        "/tmp/cursor-missing-{}-{}",
+        std::process::id(),
+        SERIAL.fetch_add(1, Ordering::Relaxed)
+    );
+    let out = f
+        .fake("ok")
+        .env("HOME", &f.root)
+        .env("NIRI_SOCKET", &missing)
+        .args([
+            "settings",
+            "set",
+            "appearance.cursor",
+            "dark",
+            "--json",
+            "--timeout-ms",
+            SLOW_MACHINE_TIMEOUT_MS,
+        ])
+        .guarded_output()
+        .unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(!out.status.success(), "{reply}");
+    let pending = f.root.join("state/emaki/history/live-pending.json");
+    let bytes = fs::read(&pending).unwrap();
+    let record: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(record["cursor_before"], "'Personal-Cursor'");
+    assert!(
+        record["before"]
+            .as_str()
+            .unwrap()
+            .contains("cursor = \"white\"")
+    );
+    assert!(
+        record["after"]
+            .as_str()
+            .unwrap()
+            .contains("cursor = \"dark\"")
+    );
+    assert_eq!(fs::read(f.source()).unwrap(), source);
+    // A later process without a running session must retain compensation intent.
+    for request in ["list", "history"] {
+        let (out, reply) = installed_run(&f, &[request]);
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(fs::read(&pending).unwrap(), bytes);
+    }
+    // Startup can rebuild the pre-change managed config before any compositor exists.
+    let out = f
+        .fake("ok")
+        .env("HOME", &f.root)
+        .args(["settings", "session-config"])
+        .guarded_output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert!(!pending.exists());
+    assert_eq!(fs::read(f.source()).unwrap(), source);
+    let fragment =
+        fs::read_to_string(f.root.join("runtime/emaki-settings/settings-manual.kdl")).unwrap();
+    assert!(
+        fragment.contains("xcursor-theme \"Emaki-White\""),
+        "{fragment}"
+    );
+    assert_no_transaction_candidate(&f);
 }

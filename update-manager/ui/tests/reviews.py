@@ -329,7 +329,7 @@ def main():
         for name in ('cache', 'config', 'data', 'state'):
             (root / name).mkdir()
             env['XDG_' + name.upper() + '_HOME'] = str(root / name)
-        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET'):
+        for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME'):
             env.pop(name, None)
         shots = ROOT / '.cache/evidence/F8R'
         shots.mkdir(parents=True, exist_ok=True)

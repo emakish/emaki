@@ -46,7 +46,9 @@ def stage(source, destination):
     for name in ('Platform.qml', 'helpers/emaki_paths.py'):
         if not (destination / name).exists():
             shutil.copyfile(ROOT / 'shell' / name, destination / name)
-    for path in (destination / 'manager').glob('*.qml'):
+    for path in sorted((destination / 'manager').iterdir()):
+        if path.suffix not in ('.qml', '.js'):
+            continue
         path.write_text(path.read_text().replace('file:@EMAKI_DATADIR@/shell', '..'))
     for name in ('ThemeShots.qml', 'SystemFixture.qml', 'ShellRender.qml', 'SettingsVisualTest.qml'):
         shutil.copyfile(ROOT / 'tests/fixtures' / name, destination / name)
@@ -89,7 +91,6 @@ def environment():
         (apps / (identifier + '.desktop')).write_text(
             f'[Desktop Entry]\nType=Application\nName={name}\nExec=true\nIcon={icon}\nTerminal=false\n')
     (apps / 'emaki-settings.desktop').unlink(missing_ok=True)
-    storefront = json.loads((ROOT / 'update-manager/storefront.json').read_text())
     shelf = json.loads((ROOT / 'update-manager/emaki-shelf.json').read_text())
     if isinstance(shelf, dict):
         shelf = shelf.get('items', shelf.get('programs', []))
@@ -104,7 +105,7 @@ def environment():
                 # icon does not depend on this lookup: the shell matches its name and draws it.
                 QS_ICON_THEME='hicolor',
                 TEST_ICON=icon.as_uri(), TEST_SCREENSHOT='',
-                TEST_STOREFRONT=json.dumps(storefront), TEST_SHELF=json.dumps(shelf))
+                TEST_SHELF=json.dumps(shelf))
 
 
 def fonts():

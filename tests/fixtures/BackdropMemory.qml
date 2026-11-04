@@ -119,15 +119,13 @@ ShellRoot {
         running: true
         repeat: true
         onTriggered: {
-            const ready = dock.ready && bar.ready && launcher.ready && clock.ready && system.ready
-                && welcome.glassReady && settings.ready && secondSettings.ready;
+            const ready = dock.ready && bar.ready && launcher.ready && clock.ready && system.ready && welcome.glassReady && settings.ready && secondSettings.ready;
             if (root.stage < 5 && !ready)
                 throw new Error("Backdrop was not ready");
             const materials = [welcome.material, settings.loadedMaterial, secondSettings.loadedMaterial];
             if (root.stage === 0)
                 root.retainedMaterials = materials;
-            if (root.stage > 0 && root.stage < 5
-                    && materials.some((material, index) => material !== root.retainedMaterials[index]))
+            if (root.stage > 0 && root.stage < 5 && materials.some((material, index) => material !== root.retainedMaterials[index]))
                 throw new Error("Hidden glass material was recreated");
             console.log("BACKDROP_SAMPLE", root.stage, ready);
             if (root.stage === 0)
@@ -141,9 +139,7 @@ ShellRoot {
             if (root.stage === 4)
                 root.texture = "";
             if (root.stage === 5) {
-                if (dock.ready || bar.ready || launcher.ready || clock.ready || system.ready
-                        || welcome.glassReady || settings.ready || secondSettings.ready
-                        || materials.some(material => material !== null))
+                if (dock.ready || bar.ready || launcher.ready || clock.ready || system.ready || welcome.glassReady || settings.ready || secondSettings.ready || materials.some(material => material !== null))
                     throw new Error("Revoked backdrop remained ready");
                 console.log("BACKDROP_COMPLETE");
                 Qt.quit();

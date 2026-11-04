@@ -65,12 +65,12 @@ FocusScope {
     property var focusSnapshot: null
     // Where the pointer was when the panel appeared: only a real move selects by hovering.
     property point pointerOrigin: Qt.point(-1, -1)
-    readonly property alias panel: panel
-    readonly property alias cards: cards
+    readonly property alias panel: panelObject
+    readonly property alias cards: cardsObject
     readonly property int count: rows.length
     readonly property var current: index >= 0 && index < rows.length ? rows[index] : null
     // The panel is on screen or fading out: its live pictures still need the capture.
-    readonly property bool presenting: panel.visible
+    readonly property bool presenting: panelObject.visible
     readonly property bool handedOff: pendingFocus >= 0 && niri.windows !== focusSnapshot && niri.windows.some(w => w.id === pendingFocus && w.is_focused)
     onHandedOffChanged: if (handedOff)
         Qt.callLater(() => {
@@ -251,7 +251,7 @@ FocusScope {
         recent = next;
     }
     function syncCards(): void {
-        cards.currentIndex = index;
+        cardsObject.currentIndex = index;
     }
     onIndexChanged: syncCards()
     Timer {
@@ -348,7 +348,7 @@ FocusScope {
     width: viewportWidth
     height: viewportHeight
     Item {
-        id: panel
+        id: panelObject
         objectName: "window-switcher-panel"
         readonly property real radius: 24
         width: switcher.gridShape.columns * switcher.cardWidth + 2 * switcher.pad
@@ -373,14 +373,14 @@ FocusScope {
         // The Settings material: the Regular glass under the Settings canvas tint.
         WelcomeGlass {
             anchors.fill: parent
-            radius: panel.radius
+            radius: panelObject.radius
             wallpaperTexture: switcher.wallpaperTexture
             dpr: switcher.dpr
         }
         CanvasTint {
             shown: true
             anchors.fill: parent
-            radius: panel.radius
+            radius: panelObject.radius
         }
         // Presses on the plate stay in the switcher (outside it, the scene cancels).
         MouseArea {
@@ -388,7 +388,7 @@ FocusScope {
             acceptedButtons: Qt.AllButtons
         }
         GridView {
-            id: cards
+            id: cardsObject
             objectName: "window-switcher-cards"
             x: switcher.pad
             y: switcher.pad

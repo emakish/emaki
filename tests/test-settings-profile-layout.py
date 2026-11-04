@@ -121,7 +121,7 @@ def main():
                    EMAKI_LOCALE_DIR=str(ROOT / 'i18n/locale'),
                    DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-session-bus'),
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(base / 'no-system-bus'))
-        for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'NIRI_SOCKET'):
+        for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME'):
             env.pop(key, None)
         for language in LANGUAGES:
             result = subprocess.run(['qs', '-p', str(fixture), '--no-color'],

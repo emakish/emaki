@@ -13,7 +13,15 @@ vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 
 vm.runInContext(fs.readFileSync(new URL('../shell/ScreenShare.js', import.meta.url), 'utf8')
     .replace(/^\.pragma library\s*$/m, ''), screenShare);
 function run(sources) {
+    function bindIds(file, context) {
+        // Standalone function fixtures retain the component's public aliases.
+        for (const [, alias, id] of sources[file].matchAll(/readonly property alias (\w+): (\w+)\s*$/gm)) {
+            if (alias !== id && !Object.prototype.hasOwnProperty.call(context, id))
+                Object.defineProperty(context, id, {get() { return context[alias]; }});
+        }
+    }
     function production(file, name, parameters, context) {
+        bindIds(file, context);
         vm.runInContext(fs.readFileSync(new URL('qml-translation.js', import.meta.url), 'utf8'), context);
         const source = sources[file];
         const marker = source.indexOf('function ' + name + '(');
@@ -28,6 +36,7 @@ function run(sources) {
         return vm.runInContext('(function(' + parameters + '){' + source.slice(start + 1, end - 1) + '})', context);
     }
     function binding(file, property, context) {
+        bindIds(file, context);
         const lines = sources[file].split('\n');
         const index = lines.findIndex(line => line.trim().startsWith(property + ':'));
         assert.notEqual(index, -1, property);
@@ -436,7 +445,7 @@ function run(sources) {
     const overview = fixture(true); overview.niri.overviewOpen = true; overview.showNotification(1);
     assert.deepEqual(Array.from(overview.peekIds), [1], 'overview gate');
     const overlapping = fixture(true); overlapping.showNotification(1);
-    const clock = sources['ShellScene.qml'].split('id: clockPanel')[1];
+    const clock = sources['ShellScene.qml'].split('id: clockPanelObject')[1];
     assert.ok(vm.runInContext(clock.match(/\bz: (.*)/)[1], overlapping) > 35, 'preview stacks above open panels');
     overlapping.drawerOpen = true;
     assert.equal(vm.runInContext(clock.match(/\bopened: (.*)/)[1], overlapping), false, 'drawer keeps pairing actions in preview');
@@ -447,7 +456,7 @@ function run(sources) {
     toggle('bt');
     assert.equal(overlapping.systemOpen, false);
     assert.deepEqual(Array.from(overlapping.peekIds), [1]);
-    const systemPanel = sources['ShellScene.qml'].split('id: systemPanel')[1];
+    const systemPanel = sources['ShellScene.qml'].split('id: systemPanelObject')[1];
     const escapeHandler = systemPanel.match(/Keys.onEscapePressed: ([^\n]+)/);
     assert.ok(escapeHandler, 'system panel has an Escape handler');
     for (const fromBar of [false, true]) {

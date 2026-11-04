@@ -83,17 +83,23 @@ msgstr ""
 msgid "Usage: emaki niri <command> [options]\n  snapshot | watch [--json] [--timeout-ms N]\n  focus-window --id N [--json] [--timeout-ms N]\n  focus-workspace --id N [--json] [--timeout-ms N]\n  move-window-to-workspace --id N --workspace-id M [--json] [--timeout-ms N]\n  close-window --id N [--json] [--timeout-ms N]\n  switch-layout --index N [--json] [--timeout-ms N]\nniri IPC 26.04 only. Separate observation/action JSON schemas, each version 1.\nSnapshot/watch are read-only. Actions require explicit decimal u64 niri IDs.\nSwitch-layout addresses a configured keyboard layout by its decimal index (0..255), never next/prev.\nActions check fresh target state, send once, and confirm a postcondition on the same socket.\nMove uses focus=false. Close is a request to the app, never force-kill.\nAction outcomes: confirmed=0, rejected=1, unconfirmed=3; invalid arguments/output=2.\nAction --json writes one compact JSON object followed by a newline, for every outcome.\nDelivery is not_sent/sent/unknown, independently of Handled acknowledgement.\nAction timeout covers preflight, send, reply and confirmation together; no retry.\nWatch emits complete JSON objects, one per changed model/connection; flushes each line.\nWindows/workspaces come from EventStream; outputs are polled every 1000 ms.\nEach reconnect replaces the entire model and increments generation; old IDs expire.\nDisconnected/incompatible: model=null, explicit reason; watch retries every 500 ms.\nNo titles, app IDs, PIDs, workspace names, monitor serials or socket paths in output.\nSnapshot has exit code 0 connected, 1 unavailable, 2 bad arguments/output error.\nWatch runs until interrupted (Ctrl+C); failures are observations, not silent exit.\n--timeout-ms: 10..10000, bounds startup/requests/partial lines, not idle watch duration."
 msgstr ""
 
-msgid "Usage: emaki settings [page | command] [options]\nWithout a command, open settings inside the running shell launcher.\nUse a page name (for example, wifi) to open that page.\n  list                       List settings, current values, defaults and sources\n  get KEY                    Read one setting\n  set KEY VALUE              Validate, save and apply a setting\n  reset KEY                  Restore the package default\n  reset appearance           Restore theme, accent and schedule together\n  history                    List persisted changes\n  undo ID                    Restore changed keys, refusing later-key conflicts\nOptions:\n  --text                     Open the keyboard settings menu instead\n  --json                     Print a command reply as JSON (not for the menu)\n  --profile-root PATH        Use an isolated test profile with matching XDG paths\n  --timeout-ms N             Write/menu validation deadline: 10..10000 ms (default 2000)\nThe default store belongs to the logged-in person in Emaki's managed settings zone.\nPersonal niri configuration is never edited. Application failures are reported by\nthe core; session_applied describes the result, not just whether a value was saved.\nUse list for each key's type, allowed values and application details.\nExit codes: 0 success, 1 rejected/conflict, 2 arguments/output error,\n3 committed with incomplete durability/history; the next call recovers."
+msgid "Usage: emaki settings [page | command] [options]\nWithout a command, open settings inside the running shell launcher.\nUse a page name (for example, wifi) to open that page.\n  list                       List settings, current values, defaults and sources\n  get KEY                    Read one setting\n  set KEY VALUE              Validate, save and apply a setting\n  reset KEY                  Restore the package default\n  reset appearance           Restore theme, accent, cursor and schedule together\n  history                    List persisted changes\n  undo ID                    Restore changed keys, refusing later-key conflicts\nOptions:\n  --text                     Open the keyboard settings menu instead\n  --json                     Print a command reply as JSON (not for the menu)\n  --profile-root PATH        Use an isolated test profile with matching XDG paths\n  --timeout-ms N             Write/menu validation deadline: 10..10000 ms (default 2000)\nThe default store belongs to the logged-in person in Emaki's managed settings zone.\nPersonal niri configuration is never edited. Application failures are reported by\nthe core; session_applied describes the result, not just whether a value was saved.\nUse list for each key's type, allowed values and application details.\nExit codes: 0 success, 1 rejected/conflict, 2 arguments/output error,\n3 committed with incomplete durability/history; the next call recovers."
 msgstr ""
 
 #, python-brace-format
 msgid "Zones (package, managed, yours) are explained in {page}\n"
 msgstr ""
 
+msgid "absolute local path; empty unsets"
+msgstr ""
+
 msgid "absolute path to an existing regular image file; <=4096 bytes, no quotes/backslashes/control characters; empty unsets"
 msgstr ""
 
 msgid "always | desktop | fullscreen | never; empty unsets both visibility flags"
+msgstr ""
+
+msgid "catalog style id; empty unsets"
 msgstr ""
 
 #, python-brace-format
@@ -137,7 +143,7 @@ msgstr ""
 msgid "niri {connection_status}: {connection_reason}; generation={generation}, sequence={sequence}\n"
 msgstr ""
 
-msgid "orange | coral | rose | amber | green | teal | blue | violet; empty unsets"
+msgid "orange | coral | rose | amber | green | teal | blue | violet | silver | graphite; empty unsets"
 msgstr ""
 
 #, python-brace-format

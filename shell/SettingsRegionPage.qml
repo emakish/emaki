@@ -24,7 +24,10 @@ Column {
         if (key === "time.zone") {
             const seen = {};
             result.forEach(r => seen[r.label] = (seen[r.label] || 0) + 1);
-            result = result.map(r => seen[r.label] > 1 ? {label: r.label + " (" + r.value + ")", value: r.value} : r);
+            result = result.map(r => seen[r.label] > 1 ? {
+                    label: r.label + " (" + r.value + ")",
+                    value: r.value
+                } : r);
         }
         if (key === "locale.formats")
             result.unshift({

@@ -13,7 +13,7 @@ import "Liquid.js" as Liquid
 // Without a GPU (software Qt, headless tests) a flat stand-in is drawn instead.
 // Coordinates: the bar's, which are screen coordinates offset by `screenOrigin`.
 Item {
-    id: left
+    id: leftObject
     property bool skipIntro: false
     required property NiriService niri
     required property string outputName
@@ -39,7 +39,7 @@ Item {
     readonly property bool glassReady: backdrop !== null && backdrop.ready && GraphicsInfo.api !== GraphicsInfo.Software
     readonly property alias logo: logoHit
     readonly property alias workspaces: workspaceHit
-    readonly property alias strip: strip
+    readonly property alias strip: stripObject
     // For tests/glass-shots.py: the glass draws and the layers under and on them.
     readonly property alias logoGlass: logoGlass
     readonly property alias workspaceGlass: workspaceGlass
@@ -60,7 +60,7 @@ Item {
     readonly property real logoOpacity: 1 - shift
     // 8 px on both sides of the cells. The mockup's island ended flush with the last cell
     // (width n·30 + 6); the right inset is made equal to the left one.
-    readonly property rect workspaceRect: Qt.rect(Metrics.workspaceX, Metrics.top - 70 * workspaceShift, strip.implicitWidth + 2 * Metrics.workspaceInset, Metrics.islandHeight)
+    readonly property rect workspaceRect: Qt.rect(Metrics.workspaceX, Metrics.top - 70 * workspaceShift, stripObject.implicitWidth + 2 * Metrics.workspaceInset, Metrics.islandHeight)
     // launcher.js surfaces(): the islands fade as the panel reaches them.
     readonly property real workspaceOpacity: (1 - Liquid.clamp((launcherRight - workspaceRect.x) / 60, 0, 1) * Liquid.smooth(launcherExpansion * 2.5)) * (1 - workspaceShift)
     function glassStatus(): var {
@@ -91,17 +91,17 @@ Item {
         animating = true;
     }
     FrameAnimation {
-        running: left.animating
-        onTriggered: left.frame(Date.now(), frameTime)
+        running: leftObject.animating
+        onTriggered: leftObject.frame(Date.now(), frameTime)
     }
     function frame(now: real, elapsed: real): void {
         const dt = Math.min(elapsed > 0 ? elapsed : 1 / 60, .04);
         let active = false;
         // The active workspace is a drop 32 × 42 that stands 3 px proud of the island and
         // 2 px beside its cell; hovering does not move it, only a real switch does.
-        const position = strip.activePosition;
+        const position = stripObject.activePosition;
         if (niri.connected && position >= 0)
-            active = Liquid.place(workspaceBubble, [strip.x - workspaceRect.x + strip.cellX(position) - 2, -3, Metrics.workspaceCell + 4, Metrics.islandHeight + 6], radius, now) || active;
+            active = Liquid.place(workspaceBubble, [stripObject.x - workspaceRect.x + stripObject.cellX(position) - 2, -3, Metrics.workspaceCell + 4, Metrics.islandHeight + 6], radius, now) || active;
         else
             active = Liquid.vanish(workspaceBubble, now) || active;
         if (logoHovered && !launcherPresent)
@@ -124,18 +124,18 @@ Item {
             animating = false;
     }
     Connections {
-        target: left.strip
+        target: leftObject.strip
         function onActivePositionChanged(): void {
-            left.wake();
+            leftObject.wake();
         }
         function onEntriesChanged(): void {
-            left.wake();
+            leftObject.wake();
         }
     }
     Connections {
-        target: left.niri
+        target: leftObject.niri
         function onConnectedChanged(): void {
-            left.wake();
+            leftObject.wake();
         }
     }
     onLogoHoveredChanged: wake()
@@ -144,17 +144,17 @@ Item {
     Component.onCompleted: wake()
     // The drops in bar coordinates (Liquid.drop adds the island's origin).
     readonly property var logoDrops: {
-        tick;
+        void tick;
         const d = Liquid.drop(logoBubble, logoRect.x, logoRect.y);
         return d ? [d] : [];
     }
     readonly property var workspaceDrops: {
-        tick;
+        void tick;
         const d = Liquid.drop(workspaceBubble, workspaceRect.x, workspaceRect.y);
         return d ? [d] : [];
     }
     readonly property real logoBubbleAlpha: {
-        tick;
+        void tick;
         return Liquid.onGlass(logoBubble);
     }
 
@@ -170,9 +170,9 @@ Item {
         y: r.y
         width: r.width
         height: r.height
-        radius: left.radius
+        radius: leftObject.radius
         color: LiquidPalette.flatPlate
-        visible: !left.glassReady && opacity > .001
+        visible: !leftObject.glassReady && opacity > .001
     }
     component FlatDrop: Rectangle {
         required property var drop
@@ -185,62 +185,62 @@ Item {
         color: LiquidPalette.flatDrop
         border.width: 1
         border.color: LiquidPalette.flatDropRim
-        visible: !left.glassReady
+        visible: !leftObject.glassReady
     }
     FlatPlate {
-        r: left.logoRect
-        opacity: left.logoOpacity
-        visible: !left.glassReady && !left.handedOver && opacity > .001
+        r: leftObject.logoRect
+        opacity: leftObject.logoOpacity
+        visible: !leftObject.glassReady && !leftObject.handedOver && opacity > .001
     }
     FlatPlate {
-        r: left.workspaceRect
-        opacity: left.workspaceOpacity
+        r: leftObject.workspaceRect
+        opacity: leftObject.workspaceOpacity
     }
     Repeater {
-        model: left.handedOver ? [] : left.logoDrops
+        model: leftObject.handedOver ? [] : leftObject.logoDrops
         FlatDrop {
             required property var modelData
             drop: modelData
         }
     }
     Repeater {
-        model: left.workspaceDrops
+        model: leftObject.workspaceDrops
         FlatDrop {
             required property var modelData
             drop: modelData
-            opacity: modelData.params.w * left.workspaceOpacity
+            opacity: modelData.params.w * leftObject.workspaceOpacity
         }
     }
 
     // ---- Content under the glass: the arrow (fading while the bubble is up) and the digits ----
     Item {
         id: ink
-        width: left.workspaceRect.x + left.workspaceRect.width + 16
+        width: leftObject.workspaceRect.x + leftObject.workspaceRect.width + 16
         height: Metrics.top + Metrics.islandHeight + 16
         Icon {
-            x: left.logoRect.x + 9
-            y: left.logoRect.y + 9
+            x: leftObject.logoRect.x + 9
+            y: leftObject.logoRect.y + 9
             width: 18
             height: 18
             kind: "logo"
             ink: ShellPalette.accent
-            opacity: (1 - left.logoBubbleAlpha) * left.logoOpacity
-            visible: !left.handedOver
+            opacity: (1 - leftObject.logoBubbleAlpha) * leftObject.logoOpacity
+            visible: !leftObject.handedOver
         }
         WorkspaceStrip {
-            id: strip
+            id: stripObject
             // The strip origin lands on a whole device pixel so its digits and marks can be
             // pixel-exact at scale 1.25.
-            x: left.workspaceRect.x + left.snapAt(left.workspaceRect.x, Metrics.workspaceInset, left.screenOrigin.x)
-            y: left.workspaceRect.y + left.snapAt(left.workspaceRect.y, 0, left.screenOrigin.y)
+            x: leftObject.workspaceRect.x + leftObject.snapAt(leftObject.workspaceRect.x, Metrics.workspaceInset, leftObject.screenOrigin.x)
+            y: leftObject.workspaceRect.y + leftObject.snapAt(leftObject.workspaceRect.y, 0, leftObject.screenOrigin.y)
             width: implicitWidth
             height: implicitHeight
-            opacity: left.workspaceOpacity
-            niri: left.niri
-            outputName: left.outputName
-            ink: left.ink
-            dim: left.dim
-            faint: left.faint
+            opacity: leftObject.workspaceOpacity
+            niri: leftObject.niri
+            outputName: leftObject.outputName
+            ink: leftObject.ink
+            dim: leftObject.dim
+            faint: leftObject.faint
         }
     }
     ShaderEffectSource {
@@ -248,51 +248,51 @@ Item {
         width: ink.width
         height: ink.height
         sourceItem: ink
-        hideSource: left.glassReady
+        hideSource: leftObject.glassReady
         live: true
         visible: false
     }
 
     // ---- Glass: IslandGlass (launcher.js material) over the ink texture ----
     component BarGlass: IslandGlass {
-        backdrop: left.backdrop
+        backdrop: leftObject.backdrop
         uIcons: inkTexture
         uSceneSize: Qt.point(ink.width, ink.height)
-        uCover: left.backdrop ? left.backdrop.coverFor(left.screenOrigin) : Qt.vector4d(0, 0, 1, 1)
-        uRadius: left.radius
+        uCover: leftObject.backdrop ? leftObject.backdrop.coverFor(leftObject.screenOrigin) : Qt.vector4d(0, 0, 1, 1)
+        uRadius: leftObject.radius
     }
     BarGlass {
         id: logoGlass
-        plate: left.logoRect
-        visible: left.glassReady && !left.handedOver && left.logoOpacity > .001
-        drops: left.logoDrops
-        uOpacity: left.logoOpacity
+        plate: leftObject.logoRect
+        visible: leftObject.glassReady && !leftObject.handedOver && leftObject.logoOpacity > .001
+        drops: leftObject.logoDrops
+        uOpacity: leftObject.logoOpacity
     }
     BarGlass {
         id: workspaceGlass
-        plate: left.workspaceRect
-        visible: left.glassReady && left.workspaceOpacity > .001
-        drops: left.workspaceDrops
+        plate: leftObject.workspaceRect
+        visible: leftObject.glassReady && leftObject.workspaceOpacity > .001
+        drops: leftObject.workspaceDrops
         // The drop is small: no refraction or dispersion, a thin glass, a tight union so
         // the island's edges do not swell (24.09).
         uBulge: Qt.vector4d(5, 0, 1, 0)
         uRefraction: 0
         uDispersion: 0
         uThickness: 1.5
-        uOpacity: left.workspaceOpacity
+        uOpacity: leftObject.workspaceOpacity
     }
     // The arrow on the glass while the button is a bubble (drawn on the material, not
     // bent by the bubble's own edge).
     Icon {
         id: arrowOnGlass
-        x: left.logoRect.x + 9
-        y: left.logoRect.y + 9
+        x: leftObject.logoRect.x + 9
+        y: leftObject.logoRect.y + 9
         width: 18
         height: 18
         kind: "logo"
         ink: ShellPalette.accent
-        opacity: left.logoBubbleAlpha * left.logoOpacity
-        visible: !left.handedOver && opacity > .001
+        opacity: leftObject.logoBubbleAlpha * leftObject.logoOpacity
+        visible: !leftObject.handedOver && opacity > .001
     }
 
     // ---- Input: the islands themselves (also the surface's input mask) ----
@@ -301,31 +301,31 @@ Item {
         KeyboardTarget {
             property bool keyboardFirst: true
             label: qsTranslate("LeftIslands", "Open launcher")
-            onActivated: left.launch()
+            onActivated: leftObject.launch()
         }
-        x: left.logoRect.x
-        y: left.logoRect.y
-        width: left.logoRect.width
-        height: left.logoRect.height
-        opacity: left.logoOpacity
-        visible: !left.launcherPresent && opacity > 0
+        x: leftObject.logoRect.x
+        y: leftObject.logoRect.y
+        width: leftObject.logoRect.width
+        height: leftObject.logoRect.height
+        opacity: leftObject.logoOpacity
+        visible: !leftObject.launcherPresent && opacity > 0
         TipTarget {
-            tip: left.tip
+            tip: leftObject.tip
             label: qsTranslate("LeftIslands", "Launcher")
             shortcut: "Super+D"
         }
         // Passive, like the tooltip's: a hovering MouseArea would take the hover from it.
         HoverHandler {
-            onHoveredChanged: left.logoHovered = hovered
+            onHoveredChanged: leftObject.logoHovered = hovered
         }
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: left.launch()
+            onClicked: leftObject.launch()
         }
         Accessible.role: Accessible.Button
         Accessible.name: qsTranslate("LeftIslands", "Open launcher")
-        Accessible.onPressAction: left.launch()
+        Accessible.onPressAction: leftObject.launch()
     }
     // Under the digits (z −1): the tooltip's TapHandler keeps a mouse press accepted (Qt 6.11
     // resets it for touch only, qquicktaphandler.cpp), and above the ink layer it took every
@@ -333,14 +333,14 @@ Item {
     Item {
         id: workspaceHit
         z: -1
-        x: left.workspaceRect.x
-        y: left.workspaceRect.y
-        width: left.workspaceRect.width
-        height: left.workspaceRect.height
-        opacity: left.workspaceOpacity
+        x: leftObject.workspaceRect.x
+        y: leftObject.workspaceRect.y
+        width: leftObject.workspaceRect.width
+        height: leftObject.workspaceRect.height
+        opacity: leftObject.workspaceOpacity
         visible: opacity > 0
         TipTarget {
-            tip: left.tip
+            tip: leftObject.tip
             label: qsTranslate("LeftIslands", "Workspaces · scroll to switch")
         }
         // Wheel only (the digit cells above it have no wheel handler and pass it on).
@@ -349,7 +349,7 @@ Item {
             acceptedButtons: Qt.NoButton
             onWheel: event => {
                 event.accepted = true;
-                left.strip.wheel(event.angleDelta.y || event.pixelDelta.y);
+                leftObject.strip.wheel(event.angleDelta.y || event.pixelDelta.y);
             }
         }
     }

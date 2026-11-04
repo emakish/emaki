@@ -29,7 +29,7 @@ import time
 import tomllib
 import warnings
 
-from wallpaper import MAX_CONFIG, MAX_IMAGE, MAX_PIXELS, PUBLISHED_FORMATS, WallpaperPending, compositor_wallpaper, current_wallpaper_config, bounded_descriptor, bounded_no_symlinks, open_no_symlinks
+from wallpaper import MAX_CONFIG, MAX_IMAGE, MAX_PIXELS, PUBLISHED_FORMATS, WallpaperPending, compositor_wallpaper, current_wallpaper_config, bounded_descriptor, bounded_no_symlinks, open_no_symlinks, reduced_strip, publication_geometry
 
 PUBLISH_ROOT = Path('/var/lib/emaki-greeter/users')
 PENDING_FALLBACK = 10
@@ -44,6 +44,7 @@ LOOK_FIELDS = {
     'accent': re.compile(r'[a-z]{1,16}\Z'),
     'light_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
     'dark_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
+    'cursor': re.compile(r'(?:automatic|white|dark)\Z'),
 }
 REFUSAL_REASONS = frozenset(('root_refused', 'invalid_user', 'image_path_invalid',
                            'config_limit', 'output_selection_unsupported', 'mode_unsupported',
@@ -70,8 +71,8 @@ def settings_path():
 
 
 def look_bytes(settings):
-    """The login screen's copy of this person's look: [appearance] theme, accent and switch
-    times only. No other setting, path or name leaves the home. None keeps the last copy."""
+    """The login screen's copy of this person's theme, accent, switch times and cursor.
+    No other setting, path or name leaves the home. None keeps the last copy."""
     look = {'version': 1}
     try:
         data, _ = bounded_no_symlinks(settings, MAX_CONFIG)
@@ -146,8 +147,12 @@ def read_config(config_path, wait=True):
     return config
 
 
-def image_bytes(path):
+def image_bytes(path, mode='center', offset=.5):
     from PIL import Image
+    if mode == 'center':
+        reduced = reduced_strip(path, 1, 1, strict=True, offset=offset, geometry=publication_geometry)
+        if reduced is not None:
+            return reduced
     data, _ = bounded_no_symlinks(path, MAX_IMAGE)
     Image.MAX_IMAGE_PIXELS = MAX_PIXELS
     with warnings.catch_warnings():
@@ -240,7 +245,7 @@ def prepare_publication(config_path, destination, wait=True):
         lines = ['[' + json.dumps(name) + ']']
         if 'path' in options:
             source = image_path(options['path'])
-            data = image_bytes(source)
+            data = image_bytes(source, options.get('mode', 'center'), options.get('offset', .5))
             filename = 'wallpaper-' + hashlib.sha256(data).hexdigest() + '.image'
             if filename not in images:
                 total += len(data)
@@ -293,15 +298,23 @@ def publish(config_path, destination, wait=True):
             raise ValueError('unsafe_output')
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            images, config_data = prepare_publication(config_path, destination, wait)
-        except FileNotFoundError:
-            # Recheck after editors' brief delete/replace gap. Persistently missing
-            # config or a selected image means revoke, not preserve a private photo.
-            time.sleep(.15)
             try:
                 images, config_data = prepare_publication(config_path, destination, wait)
             except FileNotFoundError:
-                return unpublish(parent)
+                # Recheck after editors' brief delete/replace gap. Persistently missing
+                # config or a selected image means revoke, not preserve a private photo.
+                time.sleep(.15)
+                try:
+                    images, config_data = prepare_publication(config_path, destination, wait)
+                except FileNotFoundError:
+                    return unpublish(parent)
+        except WallpaperPending:
+            raise
+        except Exception:
+            # A known selection that cannot be published must not leave the old
+            # picture visible. Unknown compositor state is handled separately above.
+            unpublish(parent)
+            raise
         config_directory = child_directory(parent, 'wpaperd')
         previous_images = set()
         try:
@@ -324,6 +337,9 @@ def publish(config_path, destination, wait=True):
             for name, data in images.items():
                 atomic_write(parent, name, data)
             atomic_write(config_directory, 'config.toml', config_data)
+        except Exception:
+            unpublish(parent)
+            raise
         finally:
             os.close(config_directory)
         # Keep one previous generation for readers that already hold its config;
@@ -494,7 +510,9 @@ def watch(config_path, destination, settings=None):
             # another attempt. The bounded retry also heals missing parent folders.
             candidates = watch_paths(config_path)
             notifier.update(candidates | look_sources)
-            identity = watch_identity(candidates)
+            # Reduced copies retain the active outputs' centre region. A mode or
+            # topology change must regenerate it even if the source did not change.
+            identity = (watch_identity(candidates), publication_geometry())
             look_identity = watch_identity(look_sources)
             if look_sources and look_identity != look_previous:
                 published = look_attempt(settings, destination)['state'] == 'published'

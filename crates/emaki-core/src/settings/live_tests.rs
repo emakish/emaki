@@ -50,6 +50,7 @@ impl Fixture {
             wallpaper: Some("previous-wallpaper".into()),
             mime_before: Some("previous MIME contents\n".into()),
             legacy_mime_before: None,
+            cursor_before: None,
         }
     }
     fn stage(&self, marker: &Pending) {
@@ -240,13 +241,110 @@ fn session_wrapper_derives_overrides_and_wallpaper_mode_without_editing_generati
     document.appearance.wallpaper = None;
     document.appearance.gaps = None;
     assert_eq!(config(&fixture.profile, &document).unwrap(), path);
+    let reset_wrapper = fs::read_to_string(&path).unwrap();
+    assert!(reset_wrapper.contains(&format!(
+        "mode \"strip\"; ring \"{}\"",
+        styles::defaults().wallpaper
+    )));
+    assert!(!reset_wrapper.contains("mode \"image\""));
+    assert!(!fs::read_to_string(&fragment).unwrap().contains("gaps"));
+    assert!(!fixture.profile.generations().exists());
+}
+
+#[test]
+fn style_fork_nodes_live_only_in_runtime_wrapper() {
+    let fixture = Fixture::new();
+    let mut document = fixture.after.clone();
+    let style = styles::defaults();
+    document.appearance.style = Some(style.id.clone());
+    document.appearance.wallpaper = Some(style.wallpaper.clone());
+    let still = fixture.root.join("overview.png");
+    let video = fixture.root.join("overview.mp4");
+    document.appearance.overview_still = Some(still.to_string_lossy().into_owned());
+    document.appearance.overview_video = Some(video.to_string_lossy().into_owned());
+    let path = config(&fixture.profile, &document).unwrap();
+    let wrapper = fs::read_to_string(&path).unwrap();
+    assert!(wrapper.contains(&format!("mode \"strip\"; ring \"{}\"", style.wallpaper)));
+    assert!(!wrapper.contains("emaki-backdrop { off; }"));
+    // The wrapper only needs to determine availability; decoding belongs to the shell.
+    for media in [&still, &video] {
+        fs::write(media, b"available media fixture").unwrap();
+        assert_eq!(config(&fixture.profile, &document).unwrap(), path);
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("emaki-backdrop { off; }")
+        );
+        fs::remove_file(media).unwrap();
+    }
+    config(&fixture.profile, &document).unwrap();
     assert!(
         !fs::read_to_string(&path)
             .unwrap()
-            .contains("emaki-wallpaper")
+            .contains("emaki-backdrop { off; }")
     );
-    assert!(!fs::read_to_string(&fragment).unwrap().contains("gaps"));
+    assert!(wrapper.contains("place-within-backdrop true"));
+    assert!(!wrapper.contains("mode \"image\""));
+    let fragment = fixture.profile.runtime.join(format!(
+        "settings-{}.kdl",
+        document.generation.as_deref().unwrap()
+    ));
+    let fragment = fs::read_to_string(fragment).unwrap();
+    assert!(!fragment.contains("emaki-wallpaper"));
+    assert!(!fragment.contains("emaki-backdrop"));
     assert!(!fixture.profile.generations().exists());
+}
+
+#[test]
+fn personal_defaults_follow_active_includes_and_preserve_unreadable_choices() {
+    let mut fixture = Fixture::new();
+    fixture.profile.installed = false;
+    let personal = fixture.profile.config.join("niri-emaki.kdl");
+    let included = fixture.profile.config.join("personal.kdl");
+    let linked = fixture.profile.config.join("linked.kdl");
+    fs::write(
+        &included,
+        "cursor { xcursor-theme \"Personal\"; }\nemaki-wallpaper { mode \"ring\"; }\n",
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&included, &linked).unwrap();
+    fs::write(&personal, "include \"linked.kdl\"\n").unwrap();
+    for node in ["xcursor-theme", "emaki-wallpaper"] {
+        assert!(styles::personal_node(Some(&fixture.profile), node));
+    }
+    fs::write(
+        &personal,
+        "/* include \"missing.kdl\" */\n/- include \"linked.kdl\"\n",
+    )
+    .unwrap();
+    for node in ["xcursor-theme", "emaki-wallpaper"] {
+        assert!(!styles::personal_node(Some(&fixture.profile), node));
+    }
+    fs::write(
+        &personal,
+        format!(
+            "include \"{}\"\n",
+            data_dir().join("niri/default.kdl").display()
+        ),
+    )
+    .unwrap();
+    assert!(!styles::personal_node(
+        Some(&fixture.profile),
+        "xcursor-theme"
+    ));
+    fs::write(&personal, "include optional=true \"missing.kdl\"\n").unwrap();
+    for node in ["xcursor-theme", "emaki-wallpaper"] {
+        assert!(!styles::personal_node(Some(&fixture.profile), node));
+    }
+    fs::write(&personal, "include \"missing.kdl\"\n").unwrap();
+    assert!(styles::personal_node(
+        Some(&fixture.profile),
+        "xcursor-theme"
+    ));
+    assert!(styles::personal_node(
+        Some(&fixture.profile),
+        "emaki-wallpaper"
+    ));
 }
 
 #[test]

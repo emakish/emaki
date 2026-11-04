@@ -43,8 +43,9 @@ prefer-no-csd
 // niri starts children asynchronously underneath its own fresh-login cover.
 // The wallpaper wrapper starts immediately and claims one instance per compositor.
 // niri always uses its normal configuration; no startup opacity rules are added.
-// Wallpaper paths live in ~/.config/wpaperd/config.toml; the login-screen copy
-// follows that file. wpaperctl set changes only the running session's wallpaper.
+// Managed settings select the wallpaper; personal wpaperd configuration remains
+// available, and an unset selection uses the packaged cube fallback.
+// wpaperctl set changes only the running session's wallpaper.
 //   wpaperctl get <output>   show the current wallpaper
 //   wpaperctl set <file>     change it in memory; update the config to publish it
 spawn-at-startup "emaki-autostart" "wallpaper" "emaki-session-wallpaper"
@@ -130,7 +131,7 @@ environment {
 }
 
 cursor {
-    xcursor-theme "Emaki"
+    xcursor-theme "Emaki-White"
     xcursor-size 24
 }
 

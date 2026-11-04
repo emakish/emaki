@@ -401,6 +401,9 @@ msgstr "Пароль не изменён."
 msgid "Pictures"
 msgstr "Изображения"
 
+msgid "Pictures and videos"
+msgstr "Изображения и видео"
+
 msgid "Play or pause media"
 msgstr "Воспроизвести или приостановить"
 
@@ -745,3 +748,6 @@ msgstr "Прочитать QR-код"
 #, python-brace-format
 msgid "{amount} GiB"
 msgstr "{amount} GiB"
+
+msgid "Choose an overview background"
+msgstr "Выбрать фон обзора"

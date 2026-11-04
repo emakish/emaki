@@ -242,6 +242,42 @@ QtObject {
             "shade": "#8661bd",
             "deep": "#513177",
             "hover": "#69429b"
+        },
+        {
+            "id": "silver",
+            "display_selected": "#dce2e7",
+            "avatar_start": "#d0d8df",
+            "avatar_end": "#7d8995",
+            "polkit": "#a7b2bc",
+            "focus": "#4b5662",
+            "name": qsTranslate("ShellPalette", "Silver"),
+            "base": "#a7b2bc",
+            "on_light": "#4b5662",
+            "on_dark": "#d0d8df",
+            "text": "#101820",
+            "soft": "#d0d8df",
+            "strong": "#7d8995",
+            "shade": "#6c7884",
+            "deep": "#36424e",
+            "hover": "#4b5662"
+        },
+        {
+            "id": "graphite",
+            "display_selected": "#cbd2d9",
+            "avatar_start": "#bac4ce",
+            "avatar_end": "#586471",
+            "polkit": "#6c7682",
+            "focus": "#39434f",
+            "name": qsTranslate("ShellPalette", "Graphite"),
+            "base": "#6c7682",
+            "on_light": "#39434f",
+            "on_dark": "#bac4ce",
+            "text": "#fefefe",
+            "soft": "#bac4ce",
+            "strong": "#586471",
+            "shade": "#4b5662",
+            "deep": "#27323e",
+            "hover": "#39434f"
         }
     ]
     readonly property var chosenAccent: accents.find(entry => entry.id === Appearance.accent) || accents.find(entry => entry.id === defaultAccent)

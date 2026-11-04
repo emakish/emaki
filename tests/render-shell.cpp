@@ -23,6 +23,7 @@
 #include <QtCore/QCommandLineParser>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QFile>
+#include <QtCore/QDir>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -173,6 +174,8 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
     QCommandLineParser parser;
     parser.addHelpOption();
     parser.addOptions({{"qml", "Fixture with an ordinary Item root", "path"}, {"png", "Output image", "path"},
+                       {"frames-directory", "Optional framebuffer recording directory", "path"},
+                       {"frame-interval-ms", "Recording frame interval", "number", "125"},
                        {"stats", "Output JSON counters", "path"}, {"width", "Logical width", "number", "640"},
                        {"height", "Logical height", "number", "480"}, {"scale", "Render target DPR", "number", "1"},
                        {"milliseconds", "Measured duration after warmup", "number", "1000"}, {"warmup", "Uncounted warmup duration", "number", "500"},
@@ -188,6 +191,10 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
     const int width = parser.value("width").toInt(), height = parser.value("height").toInt();
     const qreal scale = parser.value("scale").toDouble();
     const int warmup = parser.value("warmup").toInt(), duration = parser.value("milliseconds").toInt();
+    const QString framesDirectory = parser.value("frames-directory");
+    const int frameInterval = parser.value("frame-interval-ms").toInt();
+    if (!framesDirectory.isEmpty() && (frameInterval <= 0 || !QDir().mkpath(framesDirectory)))
+        qFatal("Invalid recording interval or directory");
     const QByteArray readyProperty = parser.value("ready-property").toUtf8();
     if (width <= 0 || height <= 0 || scale <= 0 || warmup < 0 || duration < 0) qFatal("Invalid size/scale/duration");
     QJsonParseError parseError;
@@ -230,12 +237,36 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
         root = qobject_cast<QQuickItem *>(object.get());
         if (!root) qFatal("Root must be Item: %s", qPrintable(component.errorString()));
     }
+    auto *secondaryRoot = qobject_cast<QQuickItem *>(root->property("secondarySurface").value<QObject *>());
+    if (secondaryRoot) secondaryRoot->setParentItem(nullptr);
     root->setParentItem(window.contentItem());
     if (!readyProperty.isEmpty() && !root->property(readyProperty.constData()).isValid())
         qFatal("Readiness property does not exist: %s", readyProperty.constData());
     bool dirty = true;
     QObject::connect(&control, &QQuickRenderControl::renderRequested, [&] { dirty = true; });
     QObject::connect(&control, &QQuickRenderControl::sceneChanged, [&] { dirty = true; });
+    // Optional second surface exercises window-local texture ownership without a display.
+    std::unique_ptr<QQuickRenderControl> secondaryControl;
+    std::unique_ptr<QQuickWindow> secondaryWindow;
+    GLuint secondaryTexture = 0;
+    bool secondaryDirty = true;
+    quint64 secondaryFrames = 0;
+    if (secondaryRoot) {
+        secondaryControl = std::make_unique<QQuickRenderControl>();
+        secondaryWindow = std::make_unique<QQuickWindow>(secondaryControl.get());
+        secondaryWindow->setGraphicsDevice(QQuickGraphicsDevice::fromRhi(rhi.get()));
+        const QSize secondarySize(qRound(secondaryRoot->width()), qRound(secondaryRoot->height()));
+        const QSize secondaryPixels(qRound(secondarySize.width() * scale), qRound(secondarySize.height() * scale));
+        secondaryWindow->setGeometry(0, 0, secondarySize.width(), secondarySize.height());
+        if (!secondaryControl->initialize()) qFatal("Secondary RenderControl initialize failed");
+        glGenTextures(1, &secondaryTexture); glBindTexture(GL_TEXTURE_2D, secondaryTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, secondaryPixels.width(), secondaryPixels.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        auto secondaryTarget = QQuickRenderTarget::fromOpenGLTexture(secondaryTexture, secondaryPixels);
+        secondaryTarget.setDevicePixelRatio(scale); secondaryWindow->setRenderTarget(secondaryTarget);
+        secondaryRoot->setParentItem(secondaryWindow->contentItem());
+        QObject::connect(secondaryControl.get(), &QQuickRenderControl::renderRequested, [&] { secondaryDirty = true; });
+        QObject::connect(secondaryControl.get(), &QQuickRenderControl::sceneChanged, [&] { secondaryDirty = true; });
+    }
     QElapsedTimer elapsed; elapsed.start();
     QElapsedTimer warmupElapsed, measurement;
     QJsonObject fixtureStart;
@@ -243,6 +274,22 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
     QJsonObject lastRetainedLayer;
     bool renderedOnce = false;
     qint64 readinessElapsedMs = 0;
+    QJsonArray recordedFrames;
+    qint64 nextCaptureMs = 0;
+    auto captureFrame = [&](const QString &path) {
+        GLint previousDrawFramebuffer = 0, previousReadFramebuffer = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFramebuffer);
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFramebuffer);
+        GLuint framebuffer;
+        glGenFramebuffers(1, &framebuffer); glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+        QImage image(pixelSize, QImage::Format_RGBA8888);
+        glReadPixels(0, 0, pixelSize.width(), pixelSize.height(), GL_RGBA, GL_UNSIGNED_BYTE, image.bits());
+        if (!image.flipped(Qt::Vertical).save(path)) qFatal("Recording frame save failed");
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer);
+        glDeleteFramebuffers(1, &framebuffer);
+    };
     while (true) {
         if (!measurement.isValid() && warmupElapsed.isValid() && warmupElapsed.elapsed() >= warmup) {
             counts.enabled = true;
@@ -250,6 +297,11 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
             fixtureStart = QJsonObject::fromVariantMap(root->property("renderStats").toMap());
         }
         app.processEvents();
+        if (secondaryControl && secondaryDirty) {
+            secondaryDirty = false;
+            secondaryControl->polishItems(); secondaryControl->beginFrame(); secondaryControl->sync(); secondaryControl->render(); secondaryControl->endFrame();
+            ++secondaryFrames;
+        }
         if (dirty) {
             dirty = false;
             control.polishItems(); control.beginFrame(); control.sync(); control.render(); control.endFrame();
@@ -272,6 +324,12 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
                 readinessElapsedMs = elapsed.elapsed();
                 warmupElapsed.start();
             }
+        }
+        if (!framesDirectory.isEmpty() && measurement.isValid() && nextCaptureMs < duration && measurement.elapsed() >= nextCaptureMs) {
+            const QString filename = QStringLiteral("frame-%1.png").arg(recordedFrames.size(), 5, 10, QLatin1Char('0'));
+            recordedFrames.append(QJsonObject{{"file", filename}, {"elapsed_ms", measurement.elapsed()}});
+            captureFrame(QDir(framesDirectory).filePath(filename));
+            nextCaptureMs += frameInterval;
         }
         if (measurement.isValid() && measurement.elapsed() >= duration) break;
         QThread::msleep(1);
@@ -297,6 +355,7 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
                       {"renderer", renderer}, {"qt", QT_VERSION_STR}, {"width", width}, {"height", height}, {"scale", scale},
                       {"screen_dpr", window.screen()->devicePixelRatio()}, {"window_dpr", window.QWindow::devicePixelRatio()},
                       {"effective_window_dpr", window.effectiveDevicePixelRatio()},
+                      {"secondary_surface", secondaryRoot != nullptr}, {"secondary_frames", qint64(secondaryFrames)},
                       {"rounding_policy", int(QGuiApplication::highDpiScaleFactorRoundingPolicy())},
                       {"ready_property", QString::fromUtf8(readyProperty)}, {"readiness_reached", true}, {"readiness_elapsed_ms", readinessElapsedMs},
                       {"warmup_ms", warmup}, {"measurement_ms", duration}, {"measured_elapsed_ms", measurement.elapsed()}, {"elapsed_ms", elapsed.elapsed()},
@@ -305,12 +364,21 @@ int renderScene(int argc, char **argv, QQuickItem *externalRoot = nullptr) {
                       {"fixture_start", fixtureStart}, {"fixture_end", QJsonObject::fromVariantMap(root->property("renderStats").toMap())},
                       {"retained_layer_states", retainedLayers},
                       {"images", imageStats(root)}, {"memory", memoryStats()}};
+    if (!framesDirectory.isEmpty())
+        stats["recording"] = QJsonObject{{"interval_ms", frameInterval}, {"frames", recordedFrames}, {"includes_readback_cost", true}};
     if (parser.isSet("stats")) {
         QFile file(parser.value("stats"));
         if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(stats).toJson()) < 0) qFatal("JSON save failed");
     }
     qInfo().noquote() << "RENDER_SHELL" << QJsonDocument(stats).toJson(QJsonDocument::Compact);
     root->setParentItem(nullptr);
+    if (secondaryRoot) {
+        secondaryRoot->setParentItem(nullptr);
+        secondaryControl->invalidate();
+        secondaryWindow.reset();
+        secondaryControl.reset();
+        glDeleteTextures(1, &secondaryTexture);
+    }
     object.reset(); control.invalidate();
     glDeleteTextures(1, &texture);
     return 0;

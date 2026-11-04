@@ -12,9 +12,6 @@ msgstr ""
 msgid "(no reply)"
 msgstr "[(ñö ŕéþļÿ)··]"
 
-msgid "A good place to start"
-msgstr "[À ĝööð þļàçé ţö šţàŕţ······]"
-
 msgid "A recipe never runs as root."
 msgstr "[À ŕéçîþé ñéṽéŕ ŕûñš àš ŕööţ.········]"
 
@@ -426,18 +423,6 @@ msgstr "[Îñṽàļîð šĥéļƒ ţéẋţ·····]"
 msgid "Invalid shelf: a package twice"
 msgstr "[Îñṽàļîð šĥéļƒ: à þàçķàĝé ţŵîçé·········]"
 
-msgid "Invalid storefront"
-msgstr "[Îñṽàļîð šţöŕéƒŕöñţ·····]"
-
-msgid "Invalid storefront identities"
-msgstr "[Îñṽàļîð šţöŕéƒŕöñţ îðéñţîţîéš·········]"
-
-msgid "Invalid storefront row"
-msgstr "[Îñṽàļîð šţöŕéƒŕöñţ ŕöŵ······]"
-
-msgid "Invalid storefront text"
-msgstr "[Îñṽàļîð šţöŕéƒŕöñţ ţéẋţ·······]"
-
 msgid "Invalid transaction"
 msgstr "[Îñṽàļîð ţŕàñšàçţîöñ·····]"
 
@@ -547,9 +532,6 @@ msgstr "[Þéŕɱîššîöñ îš ŕéǫûîŕéð ţö ûñðö àñ îñšţ�
 
 msgid "Permission is required to update repository packages."
 msgstr "[Þéŕɱîššîöñ îš ŕéǫûîŕéð ţö ûþðàţé ŕéþöšîţöŕÿ þàçķàĝéš.·················]"
-
-msgid "Picked by Emaki"
-msgstr "[Þîçķéð ƀÿ Éɱàķî····]"
 
 msgid "Popularity cache too large"
 msgstr "[Þöþûļàŕîţÿ çàçĥé ţöö ļàŕĝé········]"
@@ -682,6 +664,9 @@ msgstr "[Šéļéçţ öñé ŕéþöšîţöŕÿ þŕöĝŕàɱ.·······�
 
 msgid "Session sudo key"
 msgstr "[Šéššîöñ šûðö ķéÿ····]"
+
+msgid "Shutdown and sleep protection could not start. The update was not started."
+msgstr "[Šĥûţðöŵñ àñð šļééþ þŕöţéçţîöñ çöûļð ñöţ šţàŕţ. Ţĥé ûþðàţé ŵàš ñöţ šţàŕţéð.························]"
 
 msgid "Snapshot guard"
 msgstr "[Šñàþšĥöţ ĝûàŕð···]"
@@ -1024,6 +1009,9 @@ msgstr "[Ţĥéšé þàçķàĝéš ŵîļļ ƀé ŕéɱöṽéð.······�
 msgid "This additional Flatpak installation is read-only in this program manager."
 msgstr "[Ţĥîš àððîţîöñàļ Ƒļàţþàķ îñšţàļļàţîöñ îš ŕéàð-öñļÿ îñ ţĥîš þŕöĝŕàɱ ɱàñàĝéŕ.························]"
 
+msgid "This change could not be protected from a shutdown. Nothing was changed."
+msgstr "[Ţĥîš çĥàñĝé çöûļð ñöţ ƀé þŕöţéçţéð ƒŕöɱ à šĥûţðöŵñ. Ñöţĥîñĝ ŵàš çĥàñĝéð.························]"
+
 msgid "This existing Flatpak program can be removed from your account without administrator authentication."
 msgstr "[Ţĥîš éẋîšţîñĝ Ƒļàţþàķ þŕöĝŕàɱ çàñ ƀé ŕéɱöṽéð ƒŕöɱ ÿöûŕ àççöûñţ ŵîţĥöûţ àðɱîñîšţŕàţöŕ àûţĥéñţîçàţîöñ.·································]"
 
@@ -1102,8 +1090,8 @@ msgstr "[Ûþðàţéð·]"
 msgid "Updates always include the full system"
 msgstr "[Ûþðàţéš àļŵàÿš îñçļûðé ţĥé ƒûļļ šÿšţéɱ············]"
 
-msgid "Updating Flatpak applications"
-msgstr "[Ûþðàţîñĝ Ƒļàţþàķ àþþļîçàţîöñš·········]"
+msgid "Updating Emaki"
+msgstr "[Ûþðàţîñĝ Éɱàķî···]"
 
 #, python-brace-format
 msgid "Updating Flatpak applications ({scope})…"
@@ -1123,6 +1111,9 @@ msgstr "[Ûšàĝé: éɱàķî-ûþðàţé-ɱàñàĝéŕ [--šţàţûš|--ç
 
 msgid "Waiting for permission to update…"
 msgstr "[Ŵàîţîñĝ ƒöŕ þéŕɱîššîöñ ţö ûþðàţé…··········]"
+
+msgid "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
+msgstr "[Ŵàŕñîñĝ: šĥûţðöŵñ àñð šļééþ þŕöţéçţîöñ îš ûñàṽàîļàƀļé; ţĥé þàçķàĝé ţŕàñšàçţîöñ ŵîļļ çöñţîñûé.·······························]"
 
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "[Ŵàŕñîñĝ: ţĥé ûþðàţé šþàçé çĥéçķ îš ûñàṽàîļàƀļé; ţĥé þàçķàĝé ţŕàñšàçţîöñ ŵîļļ çöñţîñûé.·····························]"

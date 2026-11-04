@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import programs_catalog as catalog
 import programs_arch as arch
 import emaki_update_root
+import emaki_update_inhibit
 
 ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'}
 # The update window's lock: a removal and a full update never overlap.
@@ -93,10 +94,11 @@ def remove(name, expected):
     # ignore the signals a closing caller sends, and keep pacman out of its group.
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
         signal.signal(signum, signal.SIG_IGN)
-    with subprocess.Popen(['/usr/bin/pacman', '-Rn', '--noconfirm', *answer['packages']], stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ENV, cwd='/',
-                          start_new_session=True) as process:
-        output = process.communicate()[0]
+    with emaki_update_inhibit.inhibit() as descriptor:
+        with subprocess.Popen(['/usr/bin/pacman', '-Rn', '--noconfirm', *answer['packages']], stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ENV, cwd='/',
+                              start_new_session=True, pass_fds=() if descriptor is None else (descriptor,)) as process:
+            output = process.communicate()[0]
     remaining = [package for package in answer['packages'] if pacman('-Q', package).returncode == 0]
     if process.returncode == 0 and not remaining:
         return emit('removed', packages=answer['packages'])
@@ -135,7 +137,10 @@ def main(argv):
                 emit(str(refusal))
                 return 1
             remove(argv[0], argv[1])
-    except (OSError, subprocess.SubprocessError):
+    except emaki_update_inhibit.AcquisitionError:
+        emit('protection-unavailable')
+        return 1
+    except (OSError, RuntimeError, subprocess.SubprocessError):
         emit('unknown')
         return 1
     return 0

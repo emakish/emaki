@@ -60,20 +60,20 @@ Scope {
         pending = true;
         worker.running = true;
     }
-    readonly property alias pictureChooser: pictureChooser
+    readonly property alias pictureChooser: pictureChooserObject
     property string pictureError: ""
     readonly property string pictureChooserFailed: qsTranslate("SettingsUsersService", "Could not choose a picture. Your picture has not changed.")
     function choosePicture(): void {
-        if (pending || passwordPending || pictureChooser.busy || !accounts.some(user => user.current))
+        if (pending || passwordPending || pictureChooserObject.busy || !accounts.some(user => user.current))
             return;
         pictureError = "";
-        pictureChooser.start({
+        pictureChooserObject.start({
             op: "account-picture-choose"
         });
     }
     // The portal hands over a path; emaki-settings-users decodes it and gives AccountsService a copy.
     PrivateJob {
-        id: pictureChooser
+        id: pictureChooserObject
         timeoutMs: 130000
         onCompleted: result => {
             if (result.state === "ready" && typeof result.path === "string" && result.path.startsWith("/")) {

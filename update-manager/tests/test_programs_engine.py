@@ -543,46 +543,10 @@ assert 'connection failed' in records[0]
                 self.assertEqual(Path(arguments[1]).name, 'emaki-programs-install')
                 self.assertEqual(arguments[2:], ['extra/paint', 'a' * 64])
 
-    def test_browse_picks_come_from_the_storefront_file_and_the_window_names_none(self):
-        path = Path(engine.__file__).with_name('storefront.json')
-        written = json.loads(path.read_text())
-        served = self.engine.catalog()['storefront']
-        self.assertEqual(served, engine.storefront_value(written))
-        self.assertEqual(served['featured']['programs'], [name.lower() for name in written['featured']['programs']])
-        self.assertEqual(len(served['featured']['programs']), 3)
-        # Browse has no hand-made category rows (the 13.10 layout): picks, then live shelves.
-        self.assertEqual(served['rows'], [])
-        identities = (written['featured']['programs'] + [name for row in written['rows'] for name in row['first']]
-                      + list(written['names']) + list(written['names'].values()))
-        ui = Path(engine.__file__).with_name('ui')
-        for source in sorted(ui.glob('*.qml')) + sorted(ui.glob('*.js')):
-            text = source.read_text().lower()
-            for identity in identities:
-                self.assertNotIn('"' + identity.lower() + '"', text, f'{source.name} names {identity}')
-
-    def test_a_broken_storefront_file_shows_no_picks_rather_than_guessing(self):
-        good = json.loads(Path(engine.__file__).with_name('storefront.json').read_text())
-        empty = dict(featured=dict(title='', note='', programs=[]), rows=[], names={})
-        broken = [
-            '{', '[]', json.dumps(dict(good, version=2)), json.dumps(dict(good, extra=1)),
-            json.dumps(dict(good, featured=dict(good['featured'], programs=['a.b', 'c.d', 'e.f', 'g.h']))),
-            json.dumps(dict(good, featured=dict(good['featured'], programs=['--root']))),
-            json.dumps(dict(good, featured=dict(good['featured'], title='x' * 65))),
-            json.dumps(dict(good, featured=dict(good['featured'], note='Picked‮by'))),
-            json.dumps(dict(good, rows=[dict(category='Graphics', first=['krita'], extra=1)])),
-            json.dumps(dict(good, rows=[dict(category='../x', first=[])])),
-            json.dumps(dict(good, names={'org.gimp.GIMP': 7})),
-        ]
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'storefront.json'
-            for text in broken:
-                with self.subTest(text=text[:60]):
-                    path.write_text(text)
-                    self.assertEqual(engine.storefront([path, Path(engine.__file__).with_name('storefront.json')]), empty)
-            # A missing file falls through to the installed copy.
-            self.assertEqual(engine.storefront([Path(directory) / 'missing.json', path.with_name('none.json')]), empty)
-            path.write_text(json.dumps(good))
-            self.assertEqual(engine.storefront([Path(directory) / 'missing.json', path])['names'], {'org.gimp.gimp': 'GIMP'})
+    def test_catalog_does_not_serve_editorial_picks(self):
+        catalog = self.engine.catalog()
+        self.assertNotIn('storefront', catalog)
+        self.assertIn('shelf', catalog)
 
     def test_popular_aur_list_needs_consent_and_keeps_the_aurs_order(self):
         names = Mock(return_value=(['zeta', 'yay', 'paint-bin'], False))

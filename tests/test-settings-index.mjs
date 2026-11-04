@@ -38,7 +38,7 @@ for (const [mode, desktop, fullscreen] of [['always', true, true], ['desktop', t
     assert.equal(applyRows(JSON.stringify({ rows }), bridge), 'invalid_settings');
     assert.equal(bridge.applyEpoch, epoch);
 }
-const ids = ['wifi', 'bluetooth', 'network', 'appearance', 'wallpaper', 'panel',
+const ids = ['wifi', 'bluetooth', 'network', 'themes', 'appearance', 'wallpaper', 'panel',
     'windows', 'displays', 'sound', 'keyboard', 'mouse', 'notifications', 'battery',
     'lock', 'apps', 'updates', 'privacy', 'region', 'users', 'storage',
     'about', 'assistants'];
@@ -104,8 +104,9 @@ for (const section of index.sections()) {
     assert.match(svg, /SPDX-License-Identifier: GPL-3.0-or-later/);
     assert.doesNotMatch(svg, /<(?:filter|mask|image|script)\b/);
 }
-const coreKeys = ['appearance.gaps', 'appearance.wallpaper', 'windows.default_column_width', 'windows.focus_follows_mouse', 'keybindings.toggle_window_floating',
+const coreKeys = ['appearance.cursor', 'appearance.gaps', 'appearance.wallpaper', 'windows.default_column_width', 'windows.focus_follows_mouse', 'keybindings.toggle_window_floating',
     'keyboard.layouts', 'keyboard.switch_key', 'bar.autohide_mode', 'bar.overview_workspaces',
+    'bar.clock_seconds_closed', 'bar.clock_seconds_open', 'launcher.mode_icons',
     'dock.on', 'dock.auto_hide', 'defaults.terminal', 'defaults.browser', 'defaults.files'];
 for (const key of coreKeys) {
     const results = index.search(key, available, targets);
@@ -127,7 +128,9 @@ for (const query of ['slideshow', 'animations', 'panel position', 'installed pro
     assert.equal(index.search(query, available).length, 0, query);
 // Dark appearance exists since the Appearance page (light/dark themes with automatic hours).
 assert.deepEqual(plain(index.search('dark', available).map(result => [result.page, result.key])),
-    [['appearance', 'appearance.theme'], ['appearance', 'appearance.dark_time']]);
+    [['appearance', 'appearance.theme'], ['appearance', 'appearance.dark_time'], ['appearance', 'appearance.cursor']]);
+assert.equal(index.search('glass', available, targets)[0].key, 'appearance.cursor');
+assert.equal(index.search('cursor style', available, targets)[0].enabled, true);
 for (const query of ['', ' \t\n', 'unfindable-word', 'dock fingerprint'])
     assert.equal(index.search(query, available).length, 0, query);
 assert.equal(index.search('keyboard').length, 0);

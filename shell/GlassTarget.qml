@@ -11,7 +11,7 @@ import "Keyboard.js" as Keyboard
 // `glass` is the ClockPanel, the SystemPanel or the SystemIsland (var: the glass contains its
 // targets); without one nothing fades.
 Item {
-    id: target
+    id: targetObject
     property var glass: null
     // Unique within the panel; the resting drops (today, the active player) find it by key.
     required property string key
@@ -32,7 +32,7 @@ Item {
     signal clicked
     activeFocusOnTab: activeFocus || (pressable && enabled && visible)
     Keys.onPressed: event => {
-        const scope = Keyboard.boundary(target);
+        const scope = Keyboard.boundary(targetObject);
         if (scope && scope.keyboardMode !== undefined)
             scope.keyboardMode = true;
         if ([Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space].includes(event.key) && pressable) {
@@ -40,17 +40,17 @@ Item {
                 clicked();
             event.accepted = true;
         } else {
-            Keyboard.handle(Keyboard.boundary(target), event);
+            Keyboard.handle(Keyboard.boundary(targetObject), event);
         }
     }
     onActiveFocusChanged: if (activeFocus)
-        Keyboard.reveal(target)
+        Keyboard.reveal(targetObject)
     FocusRing {
-        shown: target.activeFocus && !(target.glass && (target.glass.glassReady || target.glass.drawsKeyboardFocus === true))
-        strong: target.accent
+        shown: targetObject.activeFocus && !(targetObject.glass && (targetObject.glass.glassReady || targetObject.glass.drawsKeyboardFocus === true))
+        strong: targetObject.accent
         // Under its own drop (the selected one) or on a flat accent track (drop: false).
-        strongInk: target.drop ? LiquidPalette.focusOnSelected : LiquidPalette.focusOnAccent
-        radius: target.bubbleRadius
+        strongInk: targetObject.drop ? LiquidPalette.focusOnSelected : LiquidPalette.focusOnAccent
+        radius: targetObject.bubbleRadius
     }
     readonly property bool pointerInside: hoverHandler.hovered
     // The glass lifts its current target fully while the drop exists. Departing targets
@@ -59,32 +59,32 @@ Item {
     // Passive: several handlers may watch one point (the owner and the panel see it too).
     HoverHandler {
         id: hoverHandler
-        enabled: target.pressable && target.enabled
+        enabled: targetObject.pressable && targetObject.enabled
         cursorShape: Qt.PointingHandCursor
         onHoveredChanged: {
-            if (!target.glass)
+            if (!targetObject.glass)
                 return;
             if (hovered)
-                target.glass.hover(target);
-            else if (target.glass.hoverKey === target.key && target.owner && target.owner.pointerInside)
-                target.glass.hover(target.owner);
+                targetObject.glass.hover(targetObject);
+            else if (targetObject.glass.hoverKey === targetObject.key && targetObject.owner && targetObject.owner.pointerInside)
+                targetObject.glass.hover(targetObject.owner);
         }
     }
     MouseArea {
         anchors.fill: parent
-        enabled: target.pressable && target.enabled
+        enabled: targetObject.pressable && targetObject.enabled
         onPressed: {
-            const scope = Keyboard.boundary(target);
+            const scope = Keyboard.boundary(targetObject);
             if (scope && scope.keyboardMode !== undefined)
                 scope.keyboardMode = false;
         }
-        onClicked: target.clicked()
+        onClicked: targetObject.clicked()
     }
     // A list rebuilt under a resting pointer (a notification arrived): the new delegate with
     // the same key takes the drop over, so it does not melt and grow back.
     Component.onCompleted: {
         if (glass && glass.hoverKey === key)
-            glass.hover(target);
+            glass.hover(targetObject);
     }
     Accessible.role: Accessible.Button
     Accessible.name: label

@@ -17,7 +17,7 @@ Use a page name (for example, wifi) to open that page.
   get KEY                    Read one setting
   set KEY VALUE              Validate, save and apply a setting
   reset KEY                  Restore the package default
-  reset appearance           Restore theme, accent and schedule together
+  reset appearance           Restore theme, accent, cursor and schedule together
   history                    List persisted changes
   undo ID                    Restore changed keys, refusing later-key conflicts
 Options:
@@ -33,6 +33,12 @@ Exit codes: 0 success, 1 rejected/conflict, 2 arguments/output error,
 3 committed with incomplete durability/history; the next call recovers.";
 
 pub(super) fn run(args: &[&str]) -> ExitCode {
+    if args == ["sync-cursor"] {
+        return match emaki_core::settings::sync_cursor(Duration::from_secs(2)) {
+            Ok(()) => output("{\"ok\":true}\n", 0),
+            Err(reason) => output(&format!("{{\"ok\":false,\"reason\":\"{reason}\"}}\n"), 1),
+        };
+    }
     if args == ["sync-appearance"] {
         return match emaki_core::settings::sync_appearance(Duration::from_secs(2)) {
             Ok(()) => output("{\"ok\":true}\n", 0),
@@ -129,6 +135,7 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
 
 // Every page of shell/SettingsPageRegistry.qml, in its order (the test below compares them).
 const PAGES: &[&str] = &[
+    "themes",
     "appearance",
     "privacy",
     "assistants",

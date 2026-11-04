@@ -65,7 +65,8 @@ MODIFIERS_NOT_PROVEN = (f'SKIP, NOT PROVEN HERE: the qmllint check of shell/Wind
                         'QML_IMPORT_DIR=<dir>/lib/qt6/qml:/usr/lib/qt6/qml')
 lint = subprocess.run([str(TOOLS / 'qmllint'), '--ignore-settings', '-W', '0', '--json', '-', '--bare',
                        *(argument for directory in IMPORTS for argument in ('-I', directory)),
-                       '-I', 'shell', '-I', str(CACHE / 'sudo-build/qml'), *FILES], text=True, capture_output=True, timeout=30)
+                       '-I', 'shell', '-I', str(CACHE / 'sudo-build/qml'),
+                       '-i', 'shell/qmldir', '-i', 'shell/settings/qmldir', *FILES], text=True, capture_output=True, timeout=30)
 report = json.loads(lint.stdout)
 (CACHE / 'shell-qmllint.json').write_text(lint.stdout)
 known = []
@@ -106,8 +107,37 @@ additional_metadata = {
     ('ReportController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('AccountPicture.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
 }
+# Qt-generated dependent-module metadata marks these reference types opaque
+# values, shadowing their complete Quickshell core declarations. The core
+# qmltypes define all listed properties; real offscreen service/window tests
+# exercise them. Keep the exemptions exact and tied to that metadata defect:
+# each one is (file, id, message) -> the exact number of occurrences, so a new
+# read of an opaque member in a listed file fails instead of hiding under it.
+native_metadata = {}
+def opaque_native_type(module, name):
+    return any((path := Path(directory) / 'Quickshell' / module).is_file()
+               and f'isTypeOpaque: true; name: "{name}"; accessSemantics: "value"' in path.read_text()
+               for directory in IMPORTS)
+
+if opaque_native_type('_Window/quickshell-window.qmltypes', 'QuickshellScreenInfo'):
+    for filename, members, optional_chains in (('ReportWindow.qml', ('width', 'height', 'name'), 1),
+                                               ('WelcomeWindow.qml', ('width', 'height', 'name'), 1),
+                                               ('SnapshotRecovery.qml', ('width', 'height'), 2)):
+        for member in members:
+            native_metadata[(filename, 'missing-property', f'Member "{member}" not found on type "QuickshellScreenInfo"')] = 1
+        native_metadata[(filename, 'redundant-optional-chaining',
+                         'Redundant optional chaining for lookup on non-voidable and non-nullable type QuickshellScreenInfo')] = optional_chains
+for filename, module, reads in (('MediaBlock.qml', 'Services/Mpris/quickshell-service-mpris.qmltypes', 1),
+                                ('SystemNative.qml', 'Services/Pipewire/quickshell-service-pipewire.qmltypes', 9),
+                                ('TrayItems.qml', 'Services/SystemTray/quickshell-service-statusnotifier.qmltypes', 1)):
+    if opaque_native_type(module, 'UntypedObjectModel'):
+        native_metadata[(filename, 'missing-property', 'Member "values" not found on type "UntypedObjectModel"')] = reads
+native_seen = {}
 for file in report['files']:
     for warning in file['warnings']:
+        native_key = (Path(file['filename']).name, warning['id'], warning['message'])
+        if native_key in native_metadata:
+            native_seen[native_key] = native_seen.get(native_key, 0) + 1
         # QS registers PanelWindow's backend at runtime. Its installed 0.3.1
         # qmltypes mark the interface uncreatable and omit BackgroundEffect's
         # cross-module Region type. No blanket warning suppression.
@@ -115,10 +145,10 @@ for file in report['files']:
             ('uncreatable-type', 'Type PanelWindow is not creatable.'),
             ('missing-type', 'No type found for property "blurRegion". This may be due to a missing import statement or incomplete qmltypes files.'),
         }
-        capture_panel_metadata = (Path(file['filename']).name in ('LockCapturePanel.qml', 'greeter.qml', 'session-cover.qml', 'PolkitPromptSurface.qml', 'SudoPromptService.qml', 'SudoKeyWarningSurface.qml', 'CaptureOverlay.qml')
+        capture_panel_metadata = (Path(file['filename']).name in ('LockCapturePanel.qml', 'greeter.qml', 'session-cover.qml', 'PolkitPromptSurface.qml', 'SudoPromptService.qml', 'SudoKeyWarningSurface.qml', 'CaptureOverlay.qml', 'OverviewVideoSurface.qml')
             and warning['id'] == 'uncreatable-type' and warning['message'] == 'Type PanelWindow is not creatable.')
         if (Path(file['filename']).name == 'Surfaces.qml'
-                and (warning['id'], warning['message']) in permitted) or capture_panel_metadata or (Path(file['filename']).name, warning['id'], warning['message']) in additional_metadata:
+                and (warning['id'], warning['message']) in permitted) or capture_panel_metadata or native_key in additional_metadata or native_key in native_metadata:
             known.append(warning)
         elif OLD_QUICKSHELL and (Path(file['filename']).name, warning['id'], warning['message']) == ICON_REVISION_GAP:
             print(NOT_PROVEN)  # repeated as the run's last line
@@ -136,7 +166,10 @@ for file in report['files']:
 # The 0.9.0 greeter, start-up repair and recovery branches each counted against 54 alone;
 # merged into one tree they reach 55, every one listed above by file.
 # Clock tools add two Process exit handlers, covered by the isolated service test.
-assert len(known) <= 57, known
+# OverviewVideoSurface uses the same runtime-registered PanelWindow interface.
+# The opaque-metadata exemptions above are counted exactly, apart from this ceiling.
+assert native_seen == native_metadata, ('opaque-metadata diagnostics changed', native_seen, native_metadata)
+assert len(known) <= 58, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 
@@ -177,7 +210,7 @@ def honours_show_in():
     A qs that has 0006 must also get the empty-key and escape cases right."""
     with tempfile.TemporaryDirectory(prefix='showin-', dir=CACHE) as temporary:
         base = Path(temporary)
-        for part in ('data/applications', 'qml', 'runtime', 'cache', 'state'):
+        for part in ('data/applications', 'qml', 'runtime', 'cache', 'state', 'config'):
             (base / part).mkdir(parents=True, mode=0o700)
         for name, (key, _shown) in SHOW_IN_FIXTURES.items():
             (base / f'data/applications/{name}.desktop').write_text(
@@ -201,8 +234,10 @@ ShellRoot {
 }
 ''')
         env = {key: value for key, value in os.environ.items()
-               if key not in ('WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'XDG_CURRENT_DESKTOP')}
+               if key not in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY', 'NIRI_SOCKET',
+                              'XDG_CURRENT_DESKTOP', 'QT_QPA_PLATFORMTHEME', 'DBUS_SESSION_BUS_ADDRESS')}
         env.update(HOME=str(base), QT_QPA_PLATFORM='offscreen', XDG_DATA_DIRS=str(base / 'data'),
+                   XDG_CONFIG_HOME=str(base / 'config'), XDG_CONFIG_DIRS=str(base / 'config'),
                    XDG_DATA_HOME=str(base / 'none'), XDG_RUNTIME_DIR=str(base / 'runtime'),
                    XDG_CACHE_HOME=str(base / 'cache'), XDG_STATE_HOME=str(base / 'state'),
                    XDG_CURRENT_DESKTOP='ni ri:x;y')
@@ -307,6 +342,14 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
                 # Connections can close before subscribing during shell teardown.
                 if not request:
                     continue
+                # The wallpaper helper's read-only status query (45f4bc0): the same
+                # deterministic image-mode answer as tests/fixtures/niri_server.py.
+                if request == b'"EmakiWallpaper"\n':
+                    conn.sendall((json.dumps({'Ok': {'EmakiWallpaper': dict(
+                        mode='image', load_state='image', error=None,
+                        files=dict(ring='', front='', train_frames='', train=''),
+                        trains_enabled=False, train_gap=[20.0, 60.0], outputs=[], workspaces=[])}}) + '\n').encode())
+                    continue
                 if request != b'"EventStream"\n':
                     server_errors.append(request)
                     continue
@@ -315,22 +358,26 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
                 pass
     thread = threading.Thread(target=titles_server, daemon=True)
     thread.start()
-    env = dict(os.environ, QML_IMPORT_PATH=str(CACHE / 'sudo-build/qml'), QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
+    env = dict(os.environ, HOME=str(profile), QML_IMPORT_PATH=str(CACHE / 'sudo-build/qml'), QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                QML_DISABLE_DISK_CACHE='1', QT_SCALE_FACTOR=str(scale),
                EMAKI_BIN=str(ROOT / 'tests/fixtures/shell-core.py'),
+               EMAKI_NOTES_HELPER=str(ROOT / 'notes/backend.py'),
                EMAKI_TERMINAL=str(terminal_capture), EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_SHELL_FIXTURE=str(profile), PATH=str(profile / 'bin') + os.pathsep + os.environ['PATH'],
                XDG_DATA_DIRS=str(profile / 'data'),
                EMAKI_SHELL_BORDER='soft', EMAKI_SHELL_HEADLESS='1',
                EMAKI_SHELL_TEST_WIDTH=str(width), EMAKI_SHELL_TEST_HEIGHT=str(height),
                EMAKI_SHELL_EXCLUSIVE_ZONE='0', EMAKI_SHELL_OUTPUT='',
                XDG_RUNTIME_DIR=str(runtime), XDG_CACHE_HOME=str(profile / 'cache'),
-               XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
+               XDG_CONFIG_HOME=str(profile / 'config'), XDG_CONFIG_DIRS=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                XDG_DATA_HOME=str(profile / 'data'), TMPDIR=str(profile / 'tmp'))
     if exclusive_zone is None:
         env.pop('EMAKI_SHELL_EXCLUSIVE_ZONE', None)
     else:
         env['EMAKI_SHELL_EXCLUSIVE_ZONE'] = str(exclusive_zone)
-    for key in ('WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS'):
+    # qt6ct copies a system selector on first start, before any shell code runs.
+    # This fixture checks the shell's writes, with no host platform theme or config.
+    for key in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY', 'NIRI_SOCKET',
+                'DBUS_SESSION_BUS_ADDRESS', 'QT_QPA_PLATFORMTHEME'):
         env.pop(key, None)
     env['NIRI_SOCKET'] = str(runtime / 'niri.sock')
     install(profile, env)
@@ -612,7 +659,9 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
     assert any(re.fullmatch(rf'started {proc.pid} [0-9a-f]+-[0-9a-f]*', call) for call in health_calls), health_calls
     assert not list((profile / 'config').rglob('*'))
     # notifications.json: the failed launch of Fail is reported as a drawer notice.
-    assert {str(p.relative_to(profile/'state')) for p in (profile/'state').rglob('*')} == {'emaki','emaki/frequent.lock','emaki/frequent.json','emaki/recent.lock','emaki/recent.json','emaki/notifications.json'}
+    # Notes initializes an empty private state directory; no notes were edited here.
+    assert (profile / 'state/emaki/notes').is_dir()
+    assert {str(p.relative_to(profile/'state')) for p in (profile/'state').rglob('*')} == {'emaki','emaki/frequent.lock','emaki/frequent.json','emaki/recent.lock','emaki/recent.json','emaki/notifications.json','emaki/notes'}
     notices = {(e['app'], e['summary']) for e in json.loads((profile/'state/emaki/notifications.json').read_text())['entries']}
     assert {('Launcher', 'No default application for this file type.'), ('Launcher', 'This file no longer exists.')} <= notices, notices
     launches(profile, ['emaki-alpha', 'emaki-fail', 'emaki-terminal', 'emaki-file-test'])

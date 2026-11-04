@@ -15,25 +15,25 @@ Scope {
     property bool pending: false
     property bool presentedThisRun: false
     property string shortcutError: ""
-    property alias releasePath: whatsNewStore.releasePath
+    property alias releasePath: whatsNewStoreObject.releasePath
     property bool showingWhatsNew: false
-    readonly property bool hasWhatsNew: whatsNewStore.available
-    readonly property alias whatsNewStore: whatsNewStore
+    readonly property bool hasWhatsNew: whatsNewStoreObject.available
+    readonly property alias whatsNewStore: whatsNewStoreObject
     // Opens the shell's searchable shortcut list, the one Super + / opens (shell.qml sets it to
     // the active scene's openKeyboard("shortcuts")); returns whether it opened.
     property var openShortcutList: null
     readonly property WelcomeWindow window: windowLoader.item as WelcomeWindow
-    readonly property alias store: store
+    readonly property alias store: storeObject
     readonly property bool opened: windowLoader.active
     signal opening
     signal languageRequested
     function maybePresent(): void {
-        if (!enabled || !ready || liveSession || !store.restored || !whatsNewStore.restored)
+        if (!enabled || !ready || liveSession || !storeObject.restored || !whatsNewStoreObject.restored)
             return;
-        whatsNewStore.initialize(store.seen);
-        if (pending || (!store.seen && !presentedThisRun))
+        whatsNewStoreObject.initialize(storeObject.seen);
+        if (pending || (!storeObject.seen && !presentedThisRun))
             present();
-        else if (!opened && whatsNewStore.pending)
+        else if (!opened && whatsNewStoreObject.pending)
             presentWhatsNew();
     }
     function present(): string {
@@ -56,7 +56,7 @@ Scope {
     function presentWhatsNew(): string {
         if (!enabled || liveSession || !ready || !hasWhatsNew)
             return "unavailable";
-        whatsNewStore.initialize(store.seen);
+        whatsNewStoreObject.initialize(storeObject.seen);
         if (!showingWhatsNew)
             windowLoader.active = false;
         showingWhatsNew = true;
@@ -84,11 +84,11 @@ Scope {
     onEnabledChanged: Qt.callLater(maybePresent)
     Component.onCompleted: Qt.callLater(maybePresent)
     WelcomeStore {
-        id: store
+        id: storeObject
         onRestoredChanged: Qt.callLater(controller.maybePresent)
     }
     WhatsNewStore {
-        id: whatsNewStore
+        id: whatsNewStoreObject
         onRestoredChanged: Qt.callLater(controller.maybePresent)
     }
     Loader {
@@ -98,17 +98,15 @@ Scope {
             whatsNew: controller.showingWhatsNew
             whatsNewAvailable: controller.hasWhatsNew
             loadWallpaper: controller.loadWallpaper
-            error: controller.shortcutError || (controller.showingWhatsNew
-                ? (whatsNewStore.saveFailed ? ReleaseContent.saveError() : "")
-                : (store.saveFailed ? qsTranslate("WelcomeController", "Could not save welcome progress. This screen may appear again next login.") : ""))
+            error: controller.shortcutError || (controller.showingWhatsNew ? (whatsNewStoreObject.saveFailed ? ReleaseContent.saveError() : "") : (storeObject.saveFailed ? qsTranslate("WelcomeController", "Could not save welcome progress. This screen may appear again next login.") : ""))
             onBackingWindowVisibleChanged: {
                 if (backingWindowVisible) {
                     if (controller.showingWhatsNew) {
-                        whatsNewStore.markSeen();
+                        whatsNewStoreObject.markSeen();
                     } else {
-                        whatsNewStore.initialize(store.seen);
+                        whatsNewStoreObject.initialize(storeObject.seen);
                         controller.presentedThisRun = true;
-                        store.markSeen();
+                        storeObject.markSeen();
                     }
                 }
             }

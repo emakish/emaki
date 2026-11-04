@@ -25,6 +25,8 @@ struct Pending {
     mime_before: Option<String>,
     #[serde(default)]
     legacy_mime_before: Option<String>,
+    #[serde(default)]
+    cursor_before: Option<String>,
 }
 fn pending_path(profile: &Profile) -> PathBuf {
     profile.history().join("live-pending.json")
@@ -52,7 +54,7 @@ pub(super) fn replace(path: &Path, contents: Option<&[u8]>) -> Result<()> {
 /// A ring session runs no image daemon; the wallpaper helper starts it on the first photo and
 /// waits up to 3 s for it, longer than the default per-helper deadline.
 const WALLPAPER_START: Duration = Duration::from_secs(6);
-fn command(
+pub(super) fn command(
     profile: &Profile,
     program: &str,
     args: &[&str],
@@ -86,7 +88,7 @@ fn shell_rows(rows: Vec<Setting>) -> Vec<Value> {
         .collect()
 }
 fn shell(profile: &Profile, doc: &Document, gaps: u16, timeout: Duration) -> Result<()> {
-    let rows = serde_json::to_string(&json!({"rows": shell_rows(rows(doc, gaps))}))
+    let rows = serde_json::to_string(&json!({"rows": shell_rows(rows(Some(profile), doc, gaps))}))
         .map_err(|_| err("invalid_settings"))?;
     if command(
         profile,
@@ -139,12 +141,12 @@ pub(super) fn config(profile: &Profile, doc: &Document) -> Result<PathBuf> {
         ));
     }
     text.push_str(&format!("include {base:?}\n"));
-    if doc.overrides().values().any(|value| !value.is_null()) {
+    {
         let id = doc.generation.as_deref().unwrap_or("manual");
         // Re-derive from current package defaults after an update, retaining only overrides.
         let fragment = profile.runtime.join(format!("settings-{id}.kdl"));
         let contents = doc
-            .files(default_gaps()?)
+            .files_with_cursor(default_gaps()?, !cursor::personal(profile, doc))
             .into_iter()
             .find(|(name, _)| *name == "niri.kdl")
             .expect("niri fragment")
@@ -160,9 +162,14 @@ pub(super) fn config(profile: &Profile, doc: &Document) -> Result<PathBuf> {
             serde_json::to_string(path).unwrap()
         ));
     }
-    if doc.appearance.wallpaper.is_some() {
+    if styles::lane(Some(profile), doc).is_none()
+        && !styles::landscape(doc)
+        && !(doc.appearance.wallpaper.is_none()
+            && styles::inherited_wallpaper(Some(profile)).is_some())
+    {
         text.push_str("emaki-wallpaper { mode \"image\"; }\n");
     }
+    styles::fragment(Some(profile), doc, &mut text);
     let path = profile.runtime.join(format!(
         "session-{}.kdl",
         doc.generation.as_deref().unwrap_or("default")
@@ -224,6 +231,11 @@ impl Pending {
             }
             accent::reload_terminals();
         }
+        if !offline && let Some(before) = &self.cursor_before {
+            if let Err(e) = cursor::restore(profile, &doc, before, timeout) {
+                failure = Some(e);
+            }
+        }
         failure.map_or(Ok(()), Err)
     }
 }
@@ -240,23 +252,42 @@ pub(super) fn apply(
         // these inert values is not replayed (set them with `emaki settings set`).
         return Err(err("machine_setting_not_in_history"));
     }
-    let niri = before.input != after.input
+    let cursor_changed =
+        changed(before, after, &[CURSOR]) || cursor::theme(before) != cursor::theme(after);
+    let niri = cursor_changed
+        || before.input != after.input
         || before.shortcuts != after.shortcuts
         || changed(
             before,
             after,
-            &[ACCENT, GAPS, FLOATING, COLUMN_WIDTH, FOCUS_MOUSE],
+            &[
+                ACCENT,
+                CURSOR,
+                GAPS,
+                FLOATING,
+                COLUMN_WIDTH,
+                FOCUS_MOUSE,
+                STYLE,
+                OVERVIEW_STILL,
+            ],
         )
         || (changed(before, after, &[WALLPAPER]) && std::env::var_os("NIRI_SOCKET").is_some());
     let shell_changed = changed(
         before,
         after,
         &[
+            STYLE,
+            OVERVIEW_VIDEO,
+            OVERVIEW_STILL,
             THEME,
             ACCENT,
+            CURSOR,
             LIGHT_TIME,
             DARK_TIME,
             CLOCK_24_HOUR,
+            CLOCK_SECONDS_CLOSED,
+            CLOCK_SECONDS_OPEN,
+            LAUNCHER_MODE_ICONS,
             BAR_AUTOHIDE,
             BAR_AUTOHIDE_FULLSCREEN,
             BAR_OVERVIEW,
@@ -270,7 +301,9 @@ pub(super) fn apply(
         ],
     );
     let mime = changed(before, after, &[BROWSER, FILES, MAIL, EDITOR]);
-    let wallpaper_changed = changed(before, after, &[WALLPAPER]);
+    let wallpaper_changed = changed(before, after, &[WALLPAPER])
+        && styles::lane(Some(profile), after).is_none()
+        && !styles::landscape(after);
     for key in [TERMINAL, BROWSER, FILES, MAIL, EDITOR] {
         if changed(before, after, &[key]) {
             if let Some(id) = after.overrides().get(key).and_then(Value::as_str) {
@@ -334,6 +367,11 @@ pub(super) fn apply(
     } else {
         None
     };
+    let cursor_before = if cursor_changed {
+        Some(cursor::snapshot(profile, timeout)?)
+    } else {
+        None
+    };
     let pending = Pending {
         schema_version: 1,
         candidate: after
@@ -349,6 +387,7 @@ pub(super) fn apply(
         wallpaper,
         mime_before,
         legacy_mime_before,
+        cursor_before,
     };
     let snapshot = serde_json::to_vec(&pending).unwrap();
     // Recovery uses the same bounded reader as the source; reject before side effects.
@@ -357,12 +396,27 @@ pub(super) fn apply(
     }
     write_new(&pending_path(profile), &snapshot)?;
     sync_dir(&profile.history())?;
+    let shell_first = shell_changed
+        && before.appearance.overview_still.is_some()
+        && after.appearance.overview_still.is_none();
     let result = (|| {
+        // Remove the still surface while its backdrop placement rule still exists.
+        if shell_first {
+            shell(profile, after, gaps, timeout)?;
+        }
         if niri {
             niri_live::load(&config(profile, after)?, timeout)?;
+            if changed(before, after, &[STYLE, WALLPAPER]) {
+                if let Some(path) = styles::lane(Some(profile), after) {
+                    niri_live::wallpaper(&path)?;
+                }
+            }
             if changed(before, after, &[ACCENT]) {
                 accent::reload_terminals();
             }
+        }
+        if cursor_changed {
+            cursor::apply(profile, after, timeout)?;
         }
         if wallpaper_changed {
             command(
@@ -380,7 +434,7 @@ pub(super) fn apply(
             }
             mime::verify(profile, after, timeout)?;
         }
-        if shell_changed {
+        if shell_changed && !shell_first {
             shell(profile, after, gaps, timeout)?;
         }
         Ok(())
@@ -441,7 +495,10 @@ pub(super) fn recover(profile: &Profile, timeout: Duration, offline: bool) -> Re
     if !offline
         && std::env::var_os("NIRI_SOCKET").is_none()
         && std::env::var_os("WAYLAND_DISPLAY").is_none()
-        && (pending.niri || pending.shell || pending.wallpaper.is_some())
+        && (pending.niri
+            || pending.shell
+            || pending.wallpaper.is_some()
+            || pending.cursor_before.is_some())
     {
         return Err(err("session_recovery_deferred"));
     }
@@ -456,10 +513,13 @@ pub(super) fn recover(profile: &Profile, timeout: Duration, offline: bool) -> Re
                 niri_live::load(&config(profile, &current)?, timeout)?;
                 accent::reload_terminals();
             }
+            if pending.cursor_before.is_some() {
+                cursor::apply(profile, &current, timeout)?;
+            }
             if pending.shell {
                 shell(profile, &current, default_gaps()?, timeout)?;
             }
-            if pending.wallpaper.is_some() {
+            if pending.wallpaper.is_some() && styles::lane(Some(profile), &current).is_none() {
                 command(
                     profile,
                     "emaki-settings-wallpaper",

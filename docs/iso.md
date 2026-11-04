@@ -219,7 +219,7 @@ contains exactly this single `HookDir`; a changed setting stops the build.
 | `/etc/pacman.conf` in live root | Same offline-only repository configuration |
 | `/etc/emaki-live/greetd.toml` | Normal Emaki greeter plus one-time initial `live` session |
 | `/home/live/.config/emaki/niri-emaki.kdl` | Only `spawn-at-startup "emaki-install"` |
-| `/home/live/.config/wpaperd/config.toml` | Installed `/usr/share/emaki/wallpaper/fallback.png` (centred) |
+| `/home/live/.config/wpaperd/config.toml` | Installed `/usr/share/emaki/wallpaper/fallback.png` (centred 2160-high cube crop) |
 | `/etc/emaki-test/authorized_keys` | Test builds only; installer uses it for target SSH |
 
 The `live` account has UID/GID 1000, no password, Bash, membership in `wheel`,

@@ -2420,6 +2420,18 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Colour for icons, highlights and controls.</source>
             <translation>Цвет значков, выделения и элементов управления.</translation>
         </message>
+        <message>
+            <source>Cursor</source>
+            <translation>Указатель</translation>
+        </message>
+        <message>
+            <source>Cursor style</source>
+            <translation>Стиль указателя</translation>
+        </message>
+        <message>
+            <source>White</source>
+            <translation>Белый</translation>
+        </message>
     </context>
     <context>
         <name>SettingsAppsPage</name>
@@ -2677,6 +2689,18 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <source>Could not choose a picture. Your wallpaper has not changed.</source>
             <translation>Не удалось выбрать изображение. Обои не изменились.</translation>
         </message>
+        <message>
+            <source>This file could not be played or opened.</source>
+            <translation>Не удалось воспроизвести или открыть этот файл.</translation>
+        </message>
+        <message>
+            <source>Could not choose an overview background. Try again.</source>
+            <translation>Не удалось выбрать фон обзора. Повторите попытку.</translation>
+        </message>
+        <message>
+            <source>The change could not be confirmed. Check the current value before trying again.</source>
+            <translation>Не удалось подтвердить изменение. Проверьте текущее значение перед повтором.</translation>
+        </message>
     </context>
     <context>
         <name>SettingsCorePage</name>
@@ -2795,6 +2819,42 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Follow mouse</source>
             <translation>За мышью</translation>
+        </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>Секунды в часах на панели</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>Показывать секунды, пока панель часов закрыта.</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>Секунды в открытых часах</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>Показывать секунды, пока панель часов открыта.</translation>
+        </message>
+        <message>
+            <source>Launcher</source>
+            <translation>Меню приложений</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>Обозначения режимов</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>Показывать режимы меню приложений текстом или значками.</translation>
+        </message>
+        <message>
+            <source>Text</source>
+            <translation>Текст</translation>
+        </message>
+        <message>
+            <source>Icons</source>
+            <translation>Значки</translation>
         </message>
     </context>
     <context>
@@ -3065,8 +3125,8 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
     <context>
         <name>SettingsPageRegistry</name>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>Выберите светлую или тёмную тему, расписание и акцентный цвет.</translation>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>Выберите светлую или тёмную тему, автоматическое расписание, цвет акцента и стиль указателя.</translation>
         </message>
         <message>
             <source>Review recovery, encryption, sudo keys and remembered portal permissions.</source>
@@ -3143,6 +3203,14 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Change your password and choose when to lock.</source>
             <translation>Измените пароль и выберите время блокировки.</translation>
+        </message>
+        <message>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>Обои, фоны обзора и акцентные цвета.</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>Выберите светлую или тёмную тему, расписание и акцентный цвет.</translation>
         </message>
     </context>
     <context>
@@ -4243,8 +4311,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Своё изображение</translation>
         </message>
         <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>Выберите изображение для всех экранов. Сброс восстановит унаследованные обои.</translation>
+            <source>Choose a picture for every display.</source>
+            <translation>Выберите изображение для всех экранов.</translation>
         </message>
         <message>
             <source>Choosing…</source>
@@ -4265,6 +4333,26 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>No wallpapers were found in the installed collection.</source>
             <translation>В установленной коллекции обои не найдены.</translation>
+        </message>
+        <message>
+            <source>Overview background</source>
+            <translation>Фон обзора</translation>
+        </message>
+        <message>
+            <source>Your own video or picture</source>
+            <translation>Своё видео или изображение</translation>
+        </message>
+        <message>
+            <source>Videos play only while the overview is open. A picture stays still. Changing the theme replaces this background.</source>
+            <translation>Видео воспроизводится только при открытом обзоре. Изображение остаётся неподвижным. При смене темы этот фон заменяется.</translation>
+        </message>
+        <message>
+            <source>Choose video or picture…</source>
+            <translation>Выбрать видео или изображение…</translation>
+        </message>
+        <message>
+            <source>Theme background</source>
+            <translation>Фон темы</translation>
         </message>
     </context>
     <context>
@@ -5173,8 +5261,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Личное</translation>
         </message>
         <message>
-            <source>Choose light or dark, automatic hours and an accent colour.</source>
-            <translation>Выберите светлую или тёмную тему, расписание и акцентный цвет.</translation>
+            <source>Choose light or dark, automatic hours, an accent colour and a cursor style.</source>
+            <translation>Выберите светлую или тёмную тему, автоматическое расписание, цвет акцента и стиль указателя.</translation>
         </message>
         <message>
             <source>theme light dark automatic</source>
@@ -5189,8 +5277,8 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <translation>Акцентный цвет</translation>
         </message>
         <message>
-            <source>orange coral rose amber green teal blue violet color</source>
-            <translation>оранжевый коралловый розовый янтарный зелёный бирюзовый синий фиолетовый цвет</translation>
+            <source>orange coral rose amber green teal blue violet silver graphite color</source>
+            <translation>оранжевый коралловый розовый янтарный зелёный бирюзовый синий фиолетовый цвет серебро графит silver graphite</translation>
         </message>
         <message>
             <source>Colour for icons, highlights and controls.</source>
@@ -5239,10 +5327,6 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Your own picture image file</source>
             <translation>своё изображение картинка файл</translation>
-        </message>
-        <message>
-            <source>Choose a picture for every display. Reset restores your inherited wallpaper.</source>
-            <translation>Выберите изображение для всех экранов. Сброс восстановит унаследованные обои.</translation>
         </message>
         <message>
             <source>Panel &amp; Dock</source>
@@ -6444,6 +6528,66 @@ Shared or compressed extents can make returned space smaller. Only these exact e
             <source>Your files and app settings are not touched.</source>
             <translation>Ваши файлы и настройки приложений не изменятся.</translation>
         </message>
+        <message>
+            <source>Show seconds in the panel clock</source>
+            <translation>Секунды в часах на панели</translation>
+        </message>
+        <message>
+            <source>clock time seconds closed</source>
+            <translation>часы время секунды закрытые</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is closed.</source>
+            <translation>Показывать секунды, пока панель часов закрыта.</translation>
+        </message>
+        <message>
+            <source>Show seconds in the open clock</source>
+            <translation>Секунды в открытых часах</translation>
+        </message>
+        <message>
+            <source>clock time seconds open calendar</source>
+            <translation>часы время секунды открытые календарь</translation>
+        </message>
+        <message>
+            <source>Show seconds while the clock panel is open.</source>
+            <translation>Показывать секунды, пока панель часов открыта.</translation>
+        </message>
+        <message>
+            <source>Mode labels</source>
+            <translation>Обозначения режимов</translation>
+        </message>
+        <message>
+            <source>launcher modes text icons</source>
+            <translation>меню приложений режимы текст значки</translation>
+        </message>
+        <message>
+            <source>Show launcher modes as text or icons.</source>
+            <translation>Показывать режимы меню приложений текстом или значками.</translation>
+    </message>
+    <message>
+            <source>Themes</source>
+            <translation>Темы</translation>
+        </message>
+        <message>
+            <source>Wallpapers, overview backgrounds and accent colours.</source>
+            <translation>Обои, фоны обзора и акцентные цвета.</translation>
+        </message>
+        <message>
+            <source>style wallpaper overview video accent colour</source>
+            <translation>стиль обои обзор видео акцент цвет</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>Выберите обои, фон обзора и акцентный цвет вместе.</translation>
+        </message>
+        <message>
+            <source>cursor pointer glass white dark</source>
+            <translation>курсор указатель стекло белый тёмный</translation>
+        </message>
+        <message>
+            <source>Choose light or dark, automatic hours and an accent colour.</source>
+            <translation>Выберите светлую или тёмную тему, расписание и акцентный цвет.</translation>
+        </message>
     </context>
     <context>
         <name>ShellPalette</name>
@@ -6478,6 +6622,14 @@ Shared or compressed extents can make returned space smaller. Only these exact e
         <message>
             <source>Violet</source>
             <translation>Фиолетовый</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>Серебро</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>Графит</translation>
         </message>
     </context>
     <context>
@@ -7788,32 +7940,6 @@ Save your work first.</source>
             <translation>Что нового</translation>
         </message>
         <message>
-            <source>What's new in Emaki 1.0</source>
-            <translation>Что нового в Emaki 1.0</translation>
-        </message>
-        <message>
-            <source>Emaki 1.0, the first beta</source>
-            <translation>Emaki 1.0, первая бета</translation>
-        </message>
-        <message>
-            <source>Emaki is ready for everyday use. Every update can still be undone from the boot menu, and on a computer we haven't tested something can still break: tell us with Report a problem.</source>
-            <translation>Emaki готов к работе каждый день. Любое обновление по-прежнему можно откатить из меню загрузки, а на компьютере, который мы не проверяли, что-то всё ещё может сломаться: сообщите нам через «Сообщить о проблеме».</translation>
-        </message>
-        <message>
-            <source>A lighter launcher</source>
-            <translation>Меню запуска стало легче</translation>
-        </message>
-        <message>
-            <source>The launcher keeps nothing loaded while it is closed and opens where you left it.</source>
-            <translation>Окно запуска ничего не держит, пока закрыто, и открывается там же, где вы остановились.</translation>
-        </message>
-        <message>
-            <source>• Settings can be found in the launcher by its name in your language
-• The account description in Settings is no longer cut short</source>
-            <translation>• Настройки находятся в меню запуска по названию на вашем языке
-• Описание учётной записи в Настройках больше не обрезается</translation>
-        </message>
-        <message>
             <source>Close what's new</source>
             <translation>Закрыть «Что нового»</translation>
         </message>
@@ -7830,8 +7956,42 @@ Save your work first.</source>
             <translation>Не удалось запомнить, что вы уже прочитали новости. Этот экран может появиться при следующем входе.</translation>
         </message>
         <message>
+            <source>What's new in Emaki 1.1</source>
+            <translation>Что нового в Emaki 1.1</translation>
+        </message>
+        <message>
+            <source>Themes for your desktop</source>
+            <translation>Темы для рабочего стола</translation>
+        </message>
+        <message>
+            <source>Choose a theme in Settings to change your wallpaper, overview background and accent together.</source>
+            <translation>Выберите тему в настройках, чтобы вместе изменить обои, фон обзора и акцентный цвет.</translation>
+        </message>
+        <message>
+            <source>A clearer launcher</source>
+            <translation>Более понятный запуск приложений</translation>
+        </message>
+        <message>
+            <source>Follow the moving highlight with the arrow keys, and choose icons for launcher modes in Settings.</source>
+            <translation>Перемещайте выделение клавишами со стрелками и выбирайте значки режимов запуска в настройках.</translation>
+        </message>
+        <message>
+            <source>Discover programs</source>
+            <translation>Открывайте новые программы</translation>
+        </message>
+        <message>
+            <source>Browse recommendations and categories on the new Programs start screen, using the catalog already on your computer.</source>
+            <translation>Просматривайте рекомендации и категории на новом начальном экране «Программ» из каталога, который уже есть на компьютере.</translation>
+        </message>
+        <message>
             <source>Fixes</source>
             <translation>Исправления</translation>
+        </message>
+        <message>
+            <source>• Wallpaper changes reach the lock and login screens reliably
+• Installing, removing and updating programs blocks sleep and shutdown until the operation finishes</source>
+            <translation>• Изменения обоев корректно отображаются на экранах блокировки и входа
+• Установка, удаление и обновление программ блокируют сон и выключение до завершения операции</translation>
         </message>
     </context>
     <context>
@@ -8091,6 +8251,98 @@ Save your work first.</source>
             <source>sudo keys</source>
             <translation>ключи sudo</translation>
         </message>
+        <message>
+            <source>Open %1 settings.</source>
+            <translation>Открыть настройки: %1.</translation>
+        </message>
+        <message>
+            <source>Lock the screen and keep your apps open.</source>
+            <translation>Заблокировать экран, оставив приложения открытыми.</translation>
+        </message>
+        <message>
+            <source>Ask to end your session.</source>
+            <translation>Запросить завершение сеанса.</translation>
+        </message>
+        <message>
+            <source>Ask to restart the computer.</source>
+            <translation>Запросить перезагрузку компьютера.</translation>
+        </message>
+        <message>
+            <source>Ask to turn off the computer.</source>
+            <translation>Запросить выключение компьютера.</translation>
+        </message>
+        <message>
+            <source>Use dark colours for the desktop.</source>
+            <translation>Использовать тёмные цвета рабочего стола.</translation>
+        </message>
+        <message>
+            <source>Use light colours for the desktop.</source>
+            <translation>Использовать светлые цвета рабочего стола.</translation>
+        </message>
+        <message>
+            <source>Use warmer screen colours.</source>
+            <translation>Использовать более тёплые цвета экрана.</translation>
+        </message>
+        <message>
+            <source>Restore normal screen colours.</source>
+            <translation>Восстановить обычные цвета экрана.</translation>
+        </message>
+        <message>
+            <source>Open Programs &amp; Updates to check for updates.</source>
+            <translation>Открыть «Программы и обновления» для проверки обновлений.</translation>
+        </message>
+        <message>
+            <source>Browse programs in Programs &amp; Updates.</source>
+            <translation>Просмотреть программы в разделе «Программы и обновления».</translation>
+        </message>
+        <message>
+            <source>Choose an area of the screen to capture.</source>
+            <translation>Выбрать область экрана для снимка.</translation>
+        </message>
+        <message>
+            <source>Open the screen recording controls.</source>
+            <translation>Открыть управление записью экрана.</translation>
+        </message>
+        <message>
+            <source>Recognise and copy text from a screen area.</source>
+            <translation>Распознать и скопировать текст из области экрана.</translation>
+        </message>
+        <message>
+            <source>Read a QR code from a screen area.</source>
+            <translation>Считать QR-код из области экрана.</translation>
+        </message>
+        <message>
+            <source>Find development tools in Programs &amp; Updates.</source>
+            <translation>Найти инструменты разработки в разделе «Программы и обновления».</translation>
+        </message>
+        <message>
+            <source>Manage website apps in Programs &amp; Updates.</source>
+            <translation>Управлять веб-приложениями в разделе «Программы и обновления».</translation>
+        </message>
+        <message>
+            <source>Find and copy something from your clipboard history.</source>
+            <translation>Найти и скопировать запись из истории буфера обмена.</translation>
+        </message>
+        <message>
+            <source>Find an emoji and copy it to the clipboard.</source>
+            <translation>Найти эмодзи и скопировать его в буфер обмена.</translation>
+        </message>
+        <message>
+            <source>View the desktop keyboard shortcuts.</source>
+            <translation>Посмотреть сочетания клавиш рабочего стола.</translation>
+        </message>
+        <message>
+            <source>Write a note or checklist.</source>
+            <translation>Написать заметку или список дел.</translation>
+        </message>
+        <message>
+            <source>Describe a problem and choose what to include.</source>
+            <translation>Описать проблему и выбрать, что включить в отчёт.</translation>
+        </message>
+        <message>
+            <source>Choose which settings to restore to their defaults.</source>
+            <translation>Выбрать настройки для сброса к исходным значениям.</translation>
+        </message>
     </context>
     <context>
         <name>EmojiCatalog</name>
@@ -8156,6 +8408,116 @@ Save your work first.</source>
         <message>
             <source>Your Emaki settings were kept. Some may show their defaults until you change a setting or log in again.</source>
             <translation>Ваши настройки Emaki сохранены. Некоторые могут отображаться со значениями по умолчанию, пока вы не измените настройку или не войдёте снова.</translation>
+        </message>
+    </context>
+    <context>
+        <name>SettingsThemesPage</name>
+        <message>
+            <source>Rose Light</source>
+            <translation>Светлый розовый</translation>
+        </message>
+        <message>
+            <source>Orange Light</source>
+            <translation>Светлый оранжевый</translation>
+        </message>
+        <message>
+            <source>Coral Light</source>
+            <translation>Светлый коралловый</translation>
+        </message>
+        <message>
+            <source>Amber Light</source>
+            <translation>Светлый янтарный</translation>
+        </message>
+        <message>
+            <source>Green Light</source>
+            <translation>Светлый зелёный</translation>
+        </message>
+        <message>
+            <source>Teal Light</source>
+            <translation>Светлый бирюзовый</translation>
+        </message>
+        <message>
+            <source>Blue Light</source>
+            <translation>Светлый синий</translation>
+        </message>
+        <message>
+            <source>Violet Light</source>
+            <translation>Светлый фиолетовый</translation>
+        </message>
+        <message>
+            <source>Rose Dark</source>
+            <translation>Тёмный розовый</translation>
+        </message>
+        <message>
+            <source>Orange Dark</source>
+            <translation>Тёмный оранжевый</translation>
+        </message>
+        <message>
+            <source>Coral Dark</source>
+            <translation>Тёмный коралловый</translation>
+        </message>
+        <message>
+            <source>Amber Dark</source>
+            <translation>Тёмный янтарный</translation>
+        </message>
+        <message>
+            <source>Green Dark</source>
+            <translation>Тёмный зелёный</translation>
+        </message>
+        <message>
+            <source>Teal Dark</source>
+            <translation>Тёмный бирюзовый</translation>
+        </message>
+        <message>
+            <source>Blue Dark</source>
+            <translation>Тёмный синий</translation>
+        </message>
+        <message>
+            <source>Violet Dark</source>
+            <translation>Тёмный фиолетовый</translation>
+        </message>
+        <message>
+            <source>Silver</source>
+            <translation>Серебро</translation>
+        </message>
+        <message>
+            <source>Graphite</source>
+            <translation>Графит</translation>
+        </message>
+        <message>
+            <source>Themes</source>
+            <translation>Темы</translation>
+        </message>
+        <message>
+            <source>Choose a wallpaper, overview background and accent colour together.</source>
+            <translation>Выберите обои, фон обзора и акцентный цвет вместе.</translation>
+        </message>
+        <message>
+            <source>Current theme</source>
+            <translation>Текущая тема</translation>
+        </message>
+        <message>
+            <source>Not installed</source>
+            <translation>Не установлено</translation>
+        </message>
+        <message>
+            <source>Still overview background</source>
+            <translation>Неподвижный фон обзора</translation>
+        </message>
+        <message>
+            <source>No themes were found in the installed collection.</source>
+            <translation>В установленной коллекции не найдено тем.</translation>
+        </message>
+    </context>
+    <context>
+        <name>OverviewVideoContent</name>
+        <message>
+            <source>This video cannot be played. Showing the still background.</source>
+            <translation>Не удалось воспроизвести это видео. Показан неподвижный фон.</translation>
+        </message>
+        <message>
+            <source>This picture cannot be opened. Showing the default background.</source>
+            <translation>Не удалось открыть это изображение. Показан фон по умолчанию.</translation>
         </message>
     </context>
 </TS>

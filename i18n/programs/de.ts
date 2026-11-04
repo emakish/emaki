@@ -683,18 +683,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Werkzeuge</translation>
         </message>
         <message>
-            <source>Popular</source>
-            <translation>Beliebt</translation>
-        </message>
-        <message>
-            <source>Essentials</source>
-            <translation>Grundausstattung</translation>
-        </message>
-        <message>
-            <source>New and updated</source>
-            <translation>Neu und aktualisiert</translation>
-        </message>
-        <message>
             <source>Programs &amp; Updates</source>
             <translation>Programme &amp; Aktualisierungen</translation>
         </message>
@@ -876,18 +864,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Wird installiert…</translation>
         </message>
         <message>
-            <source>Our picks are not available right now. Try Refresh.</source>
-            <translation>Unsere Auswahl ist gerade nicht verfügbar. Versuchen Sie „Auffrischen“.</translation>
-        </message>
-        <message>
-            <source>Most installed this month</source>
-            <translation>Diesen Monat am häufigsten installiert</translation>
-        </message>
-        <message>
-            <source>What the full install adds</source>
-            <translation>Was die vollständige Installation hinzufügt</translation>
-        </message>
-        <message>
             <source>From Emaki</source>
             <translation>Von Emaki</translation>
         </message>
@@ -900,10 +876,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Installieren</translation>
         </message>
         <message>
-            <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
-            <translation>Es konnten keine Programme geladen werden. Prüfen Sie die Internetverbindung und wählen Sie dann „Auffrischen“.</translation>
-        </message>
-        <message>
             <source>All</source>
             <translation>Alle</translation>
         </message>
@@ -914,14 +886,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>See all ›</source>
             <translation>Alle ansehen ›</translation>
-        </message>
-        <message>
-            <source>All %1 ›</source>
-            <translation>Alle %1 ›</translation>
-        </message>
-        <message>
-            <source>See the whole set</source>
-            <translation>Alle ansehen</translation>
         </message>
         <message>
             <source>AUR — nobody checked these programs.</source>
@@ -1148,6 +1112,38 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Finish setup</source>
             <translation>Einrichtung abschließen</translation>
+        </message>
+        <message>
+            <source>Popular</source>
+            <translation>Beliebt</translation>
+        </message>
+        <message>
+            <source>Essentials</source>
+            <translation>Grundausstattung</translation>
+        </message>
+        <message>
+            <source>New and updated</source>
+            <translation>Neu und aktualisiert</translation>
+        </message>
+        <message>
+            <source>Most installed this month</source>
+            <translation>Diesen Monat am häufigsten installiert</translation>
+        </message>
+        <message>
+            <source>What the full install adds</source>
+            <translation>Was die vollständige Installation hinzufügt</translation>
+        </message>
+        <message>
+            <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
+            <translation>Es konnten keine Programme geladen werden. Prüfen Sie die Internetverbindung und wählen Sie dann „Auffrischen“.</translation>
+        </message>
+        <message>
+            <source>All %1 ›</source>
+            <translation>Alle %1 ›</translation>
+        </message>
+        <message>
+            <source>See the whole set</source>
+            <translation>Alle ansehen</translation>
         </message>
     </context>
     <context>
@@ -1461,4 +1457,67 @@ Die Erinnerung konnte nicht ausgeblendet werden. Drücken Sie erneut „Später�
             <translation>App und ihre Daten entfernen</translation>
         </message>
     </context>
+  <context>
+    <name>StorefrontData</name>
+    <message>
+      <source>Discover your next favorite</source>
+      <translation>Entdecke deinen nächsten Favoriten</translation>
+    </message>
+    <message>
+      <source>A few ideas for your computer. Recommendations stay on this device.</source>
+      <translation>Ein paar Ideen für deinen Computer. Empfehlungen bleiben auf diesem Gerät.</translation>
+    </message>
+    <message>
+      <source>App of the day</source>
+      <translation>App des Tages</translation>
+    </message>
+    <message>
+      <source>Explore app</source>
+      <translation>App entdecken</translation>
+    </message>
+    <message>
+      <source>See all</source>
+      <translation>Alle anzeigen</translation>
+    </message>
+    <message>
+      <source>Find your next possibility</source>
+      <translation>Entdecke neue Möglichkeiten</translation>
+    </message>
+    <message>
+      <source>Because you have %1</source>
+      <translation>Weil du %1 hast</translation>
+    </message>
+    <message>
+      <source>Ideas based on programs installed on this computer.</source>
+      <translation>Ideen auf Grundlage der Programme auf diesem Computer.</translation>
+    </message>
+    <message>
+      <source>More to discover soon</source>
+      <translation>Bald gibt es mehr zu entdecken</translation>
+    </message>
+    <message>
+      <source>Browse the categories. Ideas appear when matching programs are available in the catalog.</source>
+      <translation>Stöbere in den Kategorien. Ideen erscheinen, sobald passende Programme im Katalog verfügbar sind.</translation>
+    </message>
+    <message>
+      <source>Preview unavailable</source>
+      <translation>Vorschau nicht verfügbar</translation>
+    </message>
+    <message>
+      <source>Coming from Windows?</source>
+      <translation>Kommst du von Windows?</translation>
+    </message>
+    <message>
+      <source>Familiar ways to browse, work and watch.</source>
+      <translation>Vertraute Wege zum Surfen, Arbeiten und Videoschauen.</translation>
+    </message>
+    <message>
+      <source>Make something new</source>
+      <translation>Erschaffe etwas Neues</translation>
+    </message>
+    <message>
+      <source>Turn an idea into a drawing, a design or a new world.</source>
+      <translation>Verwandle eine Idee in eine Zeichnung, einen Entwurf oder eine neue Welt.</translation>
+    </message>
+  </context>
 </TS>

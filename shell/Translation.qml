@@ -30,13 +30,11 @@ QtObject {
         if (text.indexOf("(s)") < 0 && text.indexOf("(es)") < 0 && text.indexOf("(ies)") < 0)
             return text;
         const singular = count === 1;
-        return text.replace("need(s) what it added.", singular ? "needs what it added." : "need what it added.")
-            .replace("update(s) are ready to install.", singular ? "update is ready to install." : "updates are ready to install.")
-            .replace(/\(s\)/g, singular ? "" : "s")
-            .replace(/\(es\)/g, singular ? "" : "es")
-            .replace(/\(ies\)/g, singular ? "y" : "ies");
+        return text.replace("need(s) what it added.", singular ? "needs what it added." : "need what it added.").replace("update(s) are ready to install.", singular ? "update is ready to install." : "updates are ready to install.").replace(/\(s\)/g, singular ? "" : "s").replace(/\(es\)/g, singular ? "" : "es").replace(/\(ies\)/g, singular ? "y" : "ies");
     }
-    function initialize(): bool { return bridge !== null; }
+    function initialize(): bool {
+        return bridge !== null;
+    }
     function timeZoneLabel(zone: string, language: string): string {
         return (bridge ? bridge.zoneLabel(zone, language) : "") || zone.replace(/_/g, " ");
     }

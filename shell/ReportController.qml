@@ -9,7 +9,7 @@ import Quickshell.Io
 // and review it, and only on Send hands the prefilled issue address to the browser.
 // Nothing here posts anything; notices only offer to open this window.
 Scope {
-    id: controller
+    id: controllerObject
     property NotificationStore store: null
     property bool enabled: true
     readonly property var parts: ["shell", "update", "install", "other"]
@@ -217,20 +217,20 @@ Scope {
         property bool received: false
         stdout: StdioCollector {
             onStreamFinished: {
-                if (controller.state !== "composing")
+                if (controllerObject.state !== "composing")
                     return;
                 try {
-                    const value = controller.parseReport(text);
+                    const value = controllerObject.parseReport(text);
                     composer.received = true;
-                    controller.report = value;
-                    controller.items = value.items;
+                    controllerObject.report = value;
+                    controllerObject.items = value.items;
                     const next = {};
                     for (const item of value.items)
                         next[item.id] = item.default;
-                    controller.chosen = next;
-                    controller.state = "ready";
-                    if (controller.previewOpen)
-                        controller.refreshPreview();
+                    controllerObject.chosen = next;
+                    controllerObject.state = "ready";
+                    if (controllerObject.previewOpen)
+                        controllerObject.refreshPreview();
                 } catch (_) {}
             }
         }
@@ -239,9 +239,9 @@ Scope {
         onRunningChanged: {
             if (!running)
                 Qt.callLater(() => {
-                    if (!composer.running && !composer.received && controller.state === "composing") {
-                        controller.state = "failed";
-                        controller.message = controller.unprepared;
+                    if (!composer.running && !composer.received && controllerObject.state === "composing") {
+                        controllerObject.state = "failed";
+                        controllerObject.message = controllerObject.unprepared;
                     }
                 });
         }
@@ -249,7 +249,7 @@ Scope {
     Timer {
         id: previewDelay
         interval: 250
-        onTriggered: controller.refreshPreview()
+        onTriggered: controllerObject.refreshPreview()
     }
     Process {
         id: previewer
@@ -263,14 +263,14 @@ Scope {
         }
         stdout: StdioCollector {
             onStreamFinished: {
-                if (previewer.key.length === 0 || JSON.parse(previewer.key)[0] !== controller.generation)
+                if (previewer.key.length === 0 || JSON.parse(previewer.key)[0] !== controllerObject.generation)
                     return;
                 try {
-                    const reply = controller.parseUrlReply(text);
+                    const reply = controllerObject.parseUrlReply(text);
                     previewer.received = true;
-                    controller.shown = reply;
-                    controller.preview = controller.outgoing(reply);
-                    controller.shownKey = previewer.key;
+                    controllerObject.shown = reply;
+                    controllerObject.preview = controllerObject.outgoing(reply);
+                    controllerObject.shownKey = previewer.key;
                 } catch (_) {}
             }
         }
@@ -280,15 +280,15 @@ Scope {
                 Qt.callLater(() => {
                     if (previewer.running)
                         return;
-                    if (!previewer.received && previewer.key.length > 0 && JSON.parse(previewer.key)[0] === controller.generation) {
-                        controller.shown = null;
-                        controller.preview = qsTranslate("ReportController", "The preview could not be prepared.");
-                        controller.shownKey = previewer.key;
+                    if (!previewer.received && previewer.key.length > 0 && JSON.parse(previewer.key)[0] === controllerObject.generation) {
+                        controllerObject.shown = null;
+                        controllerObject.preview = qsTranslate("ReportController", "The preview could not be prepared.");
+                        controllerObject.shownKey = previewer.key;
                     }
                     previewer.document = "";
                     if (previewer.again) {
                         previewer.again = false;
-                        controller.refreshPreview();
+                        controllerObject.refreshPreview();
                     }
                 });
         }
@@ -301,16 +301,16 @@ Scope {
             if (!running)
                 Qt.callLater(() => {
                     if (!browser.completed)
-                        controller.message = qsTranslate("ReportController", "The browser could not be opened. Nothing was sent.");
+                        controllerObject.message = qsTranslate("ReportController", "The browser could not be opened. Nothing was sent.");
                 });
         }
         onExited: code => {
             completed = true;
             if (code !== 0) {
-                controller.message = qsTranslate("ReportController", "The browser could not be opened. Nothing was sent.");
+                controllerObject.message = qsTranslate("ReportController", "The browser could not be opened. Nothing was sent.");
             } else {
-                controller.sent = true;
-                controller.message = qsTranslate("ReportController", "The issue form is open in your browser with this report filled in. It is posted only when you submit it there.");
+                controllerObject.sent = true;
+                controllerObject.message = qsTranslate("ReportController", "The issue form is open in your browser with this report filled in. It is posted only when you submit it there.");
             }
         }
     }
@@ -318,33 +318,33 @@ Scope {
         id: windowLoader
         active: false
         sourceComponent: ReportWindow {
-            controller: controller
-            onClosed: controller.close()
+            controller: controllerObject
+            onClosed: controllerObject.close()
         }
     }
     Connections {
-        target: controller.store
+        target: controllerObject.store
         function onLocalActionRequested(action: string): void {
             if (action.startsWith("report:"))
-                controller.open(action.slice(7));
+                controllerObject.open(action.slice(7));
         }
     }
     IpcHandler {
         target: "report"
         function open(part: string): string {
-            return controller.open(part || "other");
+            return controllerObject.open(part || "other");
         }
         function offer(part: string): string {
-            return controller.offer(part);
+            return controllerObject.offer(part);
         }
         function status(): string {
             return JSON.stringify({
-                opened: controller.opened,
-                part: controller.part,
-                state: controller.state,
-                chosen: controller.chosenIds(),
-                previewOpen: controller.previewOpen,
-                sent: controller.sent
+                opened: controllerObject.opened,
+                part: controllerObject.part,
+                state: controllerObject.state,
+                chosen: controllerObject.chosenIds(),
+                previewOpen: controllerObject.previewOpen,
+                sent: controllerObject.sent
             });
         }
     }

@@ -121,7 +121,7 @@ MUTANTS = [
     # Accepting a non-web address.
     ('badurl', 'ReportController.qml', 'reply.url.startsWith("https://")', 'true'),
     # A notice action that does not open the window.
-    ('ok', 'ReportController.qml', 'controller.open(action.slice(7));', ''),
+    ('ok', 'ReportController.qml', 'controllerObject.open(action.slice(7));', ''),
     # Send runs `emaki-report url` again instead of handing over the reply of the shown preview.
     ('ok', 'ReportController.qml', 'browser.command = ["xdg-open", shown.url];',
      'previewer.again = false; refreshPreview(); browser.command = ["xdg-open", shown.url];'),
@@ -130,8 +130,8 @@ MUTANTS = [
     # Send ignores a preview that was never opened.
     ('unopened', 'ReportController.qml', 'if (!previewOpen || previewStale) {', 'if (previewOpen && previewStale) {'),
     # The preview step opens the browser itself: sending before Send.
-    ('ok', 'ReportController.qml', 'controller.preview = controller.outgoing(reply);',
-     'controller.preview = controller.outgoing(reply); browser.command = ["xdg-open", reply.url]; browser.running = true;'),
+    ('ok', 'ReportController.qml', 'controllerObject.preview = controllerObject.outgoing(reply);',
+     'controllerObject.preview = controllerObject.outgoing(reply); browser.command = ["xdg-open", reply.url]; browser.running = true;'),
     # Too big: Send copies nothing.
     ('big', 'ReportController.qml', 'Quickshell.clipboardText = shown.body;', ''),
     # The composed document back in argv through a `sh -c` wrapper.

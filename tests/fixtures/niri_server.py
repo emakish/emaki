@@ -39,6 +39,10 @@ class Server(socketserver.ThreadingUnixStreamServer):
             self.mode = 'apply'
             self.layouts = dict(names=['English (US)', 'Russian'], current_idx=0)
             self.overview_open = False
+            self.wallpaper = dict(mode='image', load_state='image', error=None,
+                                  files=dict(ring='', front='', train_frames='', train=''),
+                                  trains_enabled=False, train_gap=[20.0, 60.0],
+                                  outputs=[], workspaces=[])
             self.actions = []
 
     def set_mode(self, mode):
@@ -106,6 +110,8 @@ class Handler(socketserver.StreamRequestHandler):
                         self.send({'Ok': {'KeyboardLayouts': self.server.layouts}})
                     elif request == 'OverviewState':
                         self.send({'Ok': {'OverviewState': {'is_open': self.server.overview_open}}})
+                    elif request == 'EmakiWallpaper':
+                        self.send({'Ok': {'EmakiWallpaper': self.server.wallpaper}})
                     elif request == 'EventStream':
                         self.send({'Ok': 'Handled'})
                         self.send({'WorkspacesChanged': {'workspaces': self.server.workspaces}})

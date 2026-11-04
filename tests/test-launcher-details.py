@@ -39,9 +39,14 @@ Scope {
     property var labels: ''' + json.dumps(LABELS) + '''
     property var results: []
     property var iconItems: []
+    property var commandRows: []
     Component {
         id: factory
         LauncherItem { width: 100; height: 84; shape: "tile" }
+    }
+    Component {
+        id: rowFactory
+        LauncherItem { height: 44; shape: "row" }
     }
     function texts(node) {
         let out = [];
@@ -63,6 +68,16 @@ Scope {
             const item = factory.createObject(test, {row: {kind: "app", label: "Fixture", entry: {icon: name}}});
             iconItems.push({name: name, item: item});
         }
+        // A translation-sized description must reserve its displayed width, even when
+        // its unelided text is wider than the entire launcher.
+        for (const width of [280, 436, 676]) {
+            const label = "Change display and colour preferences";
+            const detail = "Choose the screen arrangement, scaling, refresh rate, and colour preferences for each connected display. Review every screen before applying the new arrangement and colour preferences.";
+            const item = rowFactory.createObject(test, {width: width, row: {
+                kind: "command", label: label, detail: detail, icon: "preferences-system-symbolic"
+            }});
+            commandRows.push({item: item, label: label, detail: detail});
+        }
         report.start();
     }
     Timer {
@@ -70,6 +85,15 @@ Scope {
         interval: 500
         onTriggered: {
             for (const row of test.iconItems) test.results.push({name: row.name, icon: row.item.icon});
+            for (const row of test.commandRows) {
+                const parts = test.texts(row.item);
+                const title = parts.find(text => text.text === row.label && text.parent.cy !== undefined);
+                const detail = parts.find(text => text.text === row.detail && text.horizontalAlignment === Text.AlignRight);
+                test.results.push({commandWidth: row.item.width,
+                    titleX: title.x, titleWidth: title.width,
+                    detailX: detail.x, detailWidth: detail.width, detailNaturalWidth: detail.implicitWidth,
+                    detailVisible: detail.visible, detailElided: detail.truncated});
+            }
             console.log("LAUNCHER_RESULT " + JSON.stringify(test.results));
             Qt.quit();
         }
@@ -91,7 +115,14 @@ Scope {
     assert result, log
     results = json.loads(result)
     for item in results:
-        if 'label' in item:
+        if 'commandWidth' in item:
+            assert item['detailVisible'] and item['detailElided'], item
+            assert item['detailNaturalWidth'] > item['commandWidth'], item
+            assert item['titleX'] >= 0 and item['titleWidth'] > 0, item
+            assert item['titleX'] + item['titleWidth'] < item['detailX'], item
+            assert item['detailX'] >= 0 and item['detailWidth'] > 0, item
+            assert item['detailX'] + item['detailWidth'] <= item['commandWidth'], item
+        elif 'label' in item:
             assert not item['truncated'], item
             assert 1 <= item['lines'] <= 2 and item['bottom'] <= 84, item
         elif item['name'] == 'missing-fixture-icon':
@@ -109,3 +140,4 @@ Scope {
     monitor = next(item for item in json.loads(result) if item.get('name') == 'utilities-system-monitor')
     assert monitor['icon'] == '', monitor
 print('PASS: complete launcher names, Breeze and hicolor fallbacks, exhausted candidates; no icon binding loops')
+print('PASS: command titles retain positive space and never overlap long descriptions at 280, 436 and 676 px')

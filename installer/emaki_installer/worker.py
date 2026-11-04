@@ -1368,7 +1368,7 @@ class Worker:
             self.runner.chroot(['chown', '-h', uid + ':' + gid, *written], self.target)
         self.files.write('/var/lib/emaki-installer/home-files.json', home_files_manifest(owned), 0o600)
         self.runner.run(['emaki-greeter-provision', '--root', str(self.target), '--user', user['login']])
-        # The first login screen shows the default wallpaper: the session's own publisher runs once
+        # The first login screen shows the cube fallback: the session's own publisher runs once
         # as the new account with the default wpaperd config, never reading the home. Each login
         # publishes again from the account's own config (DECISIONS: the published copy).
         answer = self.runner.chroot(['setpriv', '--reuid', uid, '--regid', gid, '--clear-groups', '--no-new-privs',

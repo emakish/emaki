@@ -928,24 +928,20 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>[Îñšţàļļîñĝ…··]</translation>
         </message>
         <message>
-            <source>Development kits</source>
-            <translation>[Ðéṽéļöþɱéñţ ķîţš····]</translation>
-        </message>
-        <message>
-            <source>Websites as apps</source>
-            <translation>[Ŵéƀšîţéš àš àþþš····]</translation>
-        </message>
-        <message>
-            <source>Our picks are not available right now. Try Refresh.</source>
-            <translation>[Öûŕ þîçķš àŕé ñöţ àṽàîļàƀļé ŕîĝĥţ ñöŵ. Ţŕÿ Ŕéƒŕéšĥ.················]</translation>
-        </message>
-        <message>
             <source>Most installed this month</source>
             <translation>[Ṁöšţ îñšţàļļéð ţĥîš ɱöñţĥ·······]</translation>
         </message>
         <message>
             <source>What the full install adds</source>
             <translation>[Ŵĥàţ ţĥé ƒûļļ îñšţàļļ àððš········]</translation>
+        </message>
+        <message>
+            <source>Development kits</source>
+            <translation>[Ðéṽéļöþɱéñţ ķîţš····]</translation>
+        </message>
+        <message>
+            <source>Websites as apps</source>
+            <translation>[Ŵéƀšîţéš àš àþþš····]</translation>
         </message>
         <message>
             <source>From Emaki</source>
@@ -1423,6 +1419,69 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>%1k</source>
             <translation>[%1ķ]</translation>
+        </message>
+    </context>
+    <context>
+        <name>StorefrontData</name>
+        <message>
+            <source>Discover your next favorite</source>
+            <translation>[Ðîšçöṽéŕ ÿöûŕ ñéẋţ ƒàṽöŕîţé········]</translation>
+        </message>
+        <message>
+            <source>A few ideas for your computer. Recommendations stay on this device.</source>
+            <translation>[À ƒéŵ îðéàš ƒöŕ ÿöûŕ çöɱþûţéŕ. Ŕéçöɱɱéñðàţîöñš šţàÿ öñ ţĥîš ðéṽîçé.······················]</translation>
+        </message>
+        <message>
+            <source>App of the day</source>
+            <translation>[Àþþ öƒ ţĥé ðàÿ···]</translation>
+        </message>
+        <message>
+            <source>Explore app</source>
+            <translation>[Éẋþļöŕé àþþ··]</translation>
+        </message>
+        <message>
+            <source>See all</source>
+            <translation>[Šéé àļļ·]</translation>
+        </message>
+        <message>
+            <source>Find your next possibility</source>
+            <translation>[Ƒîñð ÿöûŕ ñéẋţ þöššîƀîļîţÿ········]</translation>
+        </message>
+        <message>
+            <source>Because you have %1</source>
+            <translation>[Ɓéçàûšé ÿöû ĥàṽé %1·····]</translation>
+        </message>
+        <message>
+            <source>Ideas based on programs installed on this computer.</source>
+            <translation>[Îðéàš ƀàšéð öñ þŕöĝŕàɱš îñšţàļļéð öñ ţĥîš çöɱþûţéŕ.················]</translation>
+        </message>
+        <message>
+            <source>More to discover soon</source>
+            <translation>[Ṁöŕé ţö ðîšçöṽéŕ šööñ······]</translation>
+        </message>
+        <message>
+            <source>Browse the categories. Ideas appear when matching programs are available in the catalog.</source>
+            <translation>[Ɓŕöŵšé ţĥé çàţéĝöŕîéš. Îðéàš àþþéàŕ ŵĥéñ ɱàţçĥîñĝ þŕöĝŕàɱš àŕé àṽàîļàƀļé îñ ţĥé çàţàļöĝ.·····························]</translation>
+        </message>
+        <message>
+            <source>Preview unavailable</source>
+            <translation>[Þŕéṽîéŵ ûñàṽàîļàƀļé·····]</translation>
+        </message>
+        <message>
+            <source>Coming from Windows?</source>
+            <translation>[Çöɱîñĝ ƒŕöɱ Ŵîñðöŵš?·····]</translation>
+        </message>
+        <message>
+            <source>Familiar ways to browse, work and watch.</source>
+            <translation>[Ƒàɱîļîàŕ ŵàÿš ţö ƀŕöŵšé, ŵöŕķ àñð ŵàţçĥ.············]</translation>
+        </message>
+        <message>
+            <source>Make something new</source>
+            <translation>[Ṁàķé šöɱéţĥîñĝ ñéŵ·····]</translation>
+        </message>
+        <message>
+            <source>Turn an idea into a drawing, a design or a new world.</source>
+            <translation>[Ţûŕñ àñ îðéà îñţö à ðŕàŵîñĝ, à ðéšîĝñ öŕ à ñéŵ ŵöŕļð.·················]</translation>
         </message>
     </context>
     <context>

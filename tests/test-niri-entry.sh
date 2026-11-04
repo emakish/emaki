@@ -192,7 +192,7 @@ python3 "$R/scripts/render-paths" --prefix "$T/prefix" --source "$T/session"
 cp "$R/scripts/niri-emaki-session" "$T/session/scripts/"
 mkdir -p "$T/bin"
 # Config selection is under test, not the installed settings writer.
-printf '#!/bin/sh\nexit 1\n' > "$T/bin/emaki"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/core-calls"\nexit 1\n' "$T" > "$T/bin/emaki"
 chmod +x "$T/bin/emaki"
 printf '#!/bin/sh\ncat >/dev/null\n' > "$T/bin/systemd-cat"
 chmod +x "$T/bin/systemd-cat"
@@ -200,9 +200,14 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/args"\n' "$T" > "$T/bin/niri-emaki
 chmod +x "$T/bin/niri-emaki"
 chooses() {   # chooses "<name>" "<HOME>" "<expected arguments>"
     rm -f "$T/args"
+    rm -f "$T/core-calls"
     HOME="$2" PATH="$T/bin:$PATH" EMAKI_LOGIN_HANDOFF='' bash "$T/session/scripts/niri-emaki-session" --compositor
     got=$(cat "$T/args" 2>/dev/null)
     if [ "$got" = "$3" ]; then ok "$1"; else bad "$1: got [$got] want [$3]"; fi
+    calls=$(cat "$T/core-calls" 2>/dev/null)
+    expected=$(printf 'settings session-config\nsettings sync-cursor')
+    if [ "$calls" = "$expected" ]; then ok "cursor sync follows config recovery; failure permits login";
+    else bad "cursor startup order: [$calls]"; fi
 }
 chooses "session: personal config -> fork.kdl" "$T/home" \
     "--session -c $T/prefix/share/emaki/niri/fork.kdl"

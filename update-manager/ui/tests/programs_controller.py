@@ -166,7 +166,7 @@ for line in sys.stdin:
             for page in Path(os.environ['TEST_REPLAY'], 'pages.jsonl').read_text().splitlines():
                 event = json.loads(page)
                 large += event.pop('programs')
-            shared = {name: event[name] for name in ('storefront', 'shelf', 'essentials', 'warnings', 'partial') if name in event}
+            shared = {name: event[name] for name in ('shelf', 'essentials', 'warnings', 'partial') if name in event}
         offset, limit = params.get('offset', 0), params['limit']
         value.update(shared, programs=large[offset:offset + limit], total=len(large), offset=offset, limit=limit)
     elif method == 'catalog':
@@ -183,8 +183,7 @@ for line in sys.stdin:
         # The refresh after a build syncs repositories and asks the AUR again: it takes a while.
         if scenario == 'aur-install' and params.get('refresh') and marker.exists(): time.sleep(1.5)
         offset = params.get('offset', 0)
-        value.update(programs=rows[offset:offset + limit], total=len(rows), warnings=[],
-                     storefront=dict(featured=dict(title='Worth trying', note='Picked by Emaki', programs=['org.example.editor']), rows=[], names={}))
+        value.update(programs=rows[offset:offset + limit], total=len(rows), warnings=[])
     elif method == 'search':
         query = params['query']
         if query == 'old': time.sleep(.2)

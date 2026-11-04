@@ -44,7 +44,7 @@ FloatingWindow {
         id: viewLoader
         anchors.fill: parent
         sourceComponent: window.whatsNew ? releaseView : welcomeView
-        onLoaded: item.takeFocus()
+        onLoaded: (item as Welcome).takeFocus()
     }
     Component {
         id: welcomeView

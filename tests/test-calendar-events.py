@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='calendar-events-') as temporary:
                             env=env, capture_output=True, text=True, timeout=20)
     output = result.stdout + result.stderr
     assert result.returncode == 0 and 'CALENDAR_EVENTS_RESULT 6 0' in output, output
-    assert not any(error in output for error in ('TypeError:', 'ReferenceError:', 'Binding loop')), output
+    assert not any(error in output for error in ('TypeError:', 'ReferenceError:', 'Binding loop', 'items in the process of being created')), output
 print('PASS: calendar selection, editing, duration, reminder, conflict and deletion')
 
 if args.evidence:

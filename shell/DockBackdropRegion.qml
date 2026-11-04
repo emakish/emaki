@@ -19,7 +19,7 @@ QtObject {
     // Same outer shadow padding as Dock's tooltip glass.
     readonly property real tooltipPad: Math.ceil(28 * 1.8 + 5 + 12 + 6)
     readonly property bool needsHeadroom: {
-        dock.tick;
+        void dock.tick;
         return dock.popupOpen || dock.popupProgress > 0 || dock.drag !== null || dock.holdBubble() || dock.bubble.following || (dock.tipOpacity > .001 && windowTop + dock.tipRect.y - tooltipPad < idleTop);
     }
     readonly property bool moving: dock.animating

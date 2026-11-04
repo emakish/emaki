@@ -12,6 +12,7 @@ Item {
     id: line
     required property string time
     required property string date
+    readonly property bool showSeconds: SettingsBridge.values.find(row => row.key === "bar.clock_seconds_closed")?.value ?? false
     property bool dnd: false
     property int notificationCount: 0
     property color ink: LiquidPalette.inkOnDark
@@ -21,16 +22,16 @@ Item {
     // Reading .font makes the bindings follow the font (a method call alone is not tracked,
     // and the first evaluation may see the default font).
     readonly property real timeAdvance: {
-        timeMetrics.font;
+        void timeMetrics.font;
         if (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true)
-            return timeMetrics.advanceWidth("00:00");
+            return timeMetrics.advanceWidth(line.showSeconds ? "00:00:00" : "00:00");
         let widest = 0;
         for (let hour = 0; hour < 24; ++hour)
-            widest = Math.max(widest, timeMetrics.advanceWidth(new Date(2026, 0, 1, hour, 0).toLocaleTimeString(Qt.locale(), "h:mm AP")));
+            widest = Math.max(widest, timeMetrics.advanceWidth(new Date(2026, 0, 1, hour, 0).toLocaleTimeString(Qt.locale(), line.showSeconds ? "h:mm:ss AP" : "h:mm AP")));
         return widest;
     }
     readonly property real widestDate: {
-        dateMetrics.font;
+        void dateMetrics.font;
         let widest = 0;
         for (let month = 0; month < 12; ++month)
             for (let day = 0; day < 7; ++day)

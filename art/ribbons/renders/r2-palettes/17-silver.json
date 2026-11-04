@@ -1,0 +1,8 @@
+{
+  "copyright": "Copyright (C) 2026 Artur Yakymenko",
+  "license": "SPDX-License-Identifier: GPL-3.0-or-later",
+  "base": "#C1C4CA",
+  "pale": "#DADBE0",
+  "deep": "#797C83",
+  "white": "#FFFFFF"
+}

@@ -71,6 +71,13 @@ def main():
                        EMAKI_SHELL_SHADER_DIR=str(profile / 'missing-shaders'))
             for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_LOGGING_RULES', 'QT_SCALE_FACTOR'):
                 env.pop(name, None)
+            # Shipped marks and cursor previews are inputs, not saved captures.
+            # Compare bytes as well as paths so overwriting an input is rejected.
+            def disk_images():
+                return {path.relative_to(profile): path.read_bytes()
+                        for pattern in ('*.png', '*.jpg') for path in profile.rglob(pattern)}
+
+            images_before = disk_images()
             result = subprocess.run(['qs', '-p', str(profile / 'qml/check.qml'), '--no-color'],
                                     env=env, text=True, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, timeout=15)
@@ -80,8 +87,7 @@ def main():
             # Captured pixels stay solely in Qt memory. Even this synthetic fixture
             # never saves screenshots or prints the image-provider capability URL.
             assert 'itemgrabber:' not in result.stdout, 'Capture URL leaked into output'
-            assert not list(profile.rglob('*.png')), 'Fixture wrote captured pixels to disk'
-            assert not list(profile.rglob('*.jpg')), 'Fixture wrote captured pixels to disk'
+            assert disk_images() == images_before, 'Fixture wrote captured pixels to disk'
             for line in result.stdout.splitlines():
                 if 'LOCK_CAPTURE_PASS ' in line:
                     print(line[line.index('LOCK_CAPTURE_PASS '):])

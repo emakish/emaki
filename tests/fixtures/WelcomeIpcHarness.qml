@@ -14,6 +14,7 @@ ShellRoot {
     Shell.WelcomeController {
         id: controller
         loadWallpaper: false
+        releasePath: Quickshell.env("WELCOME_RELEASE")
         ready: Quickshell.env("WELCOME_READY") !== "0"
         openShortcutList: () => {
             ++harness.listOpened;

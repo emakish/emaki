@@ -44,12 +44,11 @@ ShellRoot {
     function presentationScenario(): void {
         check(sawInitialLoading, "the first catalog load still displays progress");
         const cachedRows = controller.allRows;
-        const cachedStorefront = controller.storefront;
         windowHook.present();
         check(controller.phase === "catalog" && controller.catalogLoaded && !controller.foregroundBusy,
               "reopening refreshes a loaded catalog without the loading line");
-        check(controller.allRows === cachedRows && controller.storefront === cachedStorefront,
-              "reopening immediately retains the complete catalog and Browse picks");
+        check(controller.allRows === cachedRows,
+              "reopening immediately retains the complete catalog");
         controller.openProgram(cachedRows[0]);
         check(!!controller.selectedProgram && controller.heldByRefresh && controller.foregroundBusy && controller.quietRefresh,
               "a program opens during the quiet refresh and shows that it waits");
@@ -116,7 +115,6 @@ ShellRoot {
         check(controller.aurRows.length === 0 && !controller.aurSearched, "a closed AUR section sends no AUR search");
         controller.setAur(true, true); settle();
         check(controller.aurEnabled && controller.aurShowWarning, "accepting the warning opens the section");
-        check(controller.storefront.featured.programs[0] === "org.example.editor", "Browse's picks arrive with the catalog");
         controller.readPopular(); settle();
         check(controller.aurPopularLoaded && controller.aurPopular.map(row => row.key).join() === "aur:yay,aur:editor-tools", "the popular list keeps the engine's order");
         controller.readPopular();

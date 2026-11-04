@@ -1,0 +1,197 @@
+{
+  "copyright": "Copyright (C) 2026 Artur Yakymenko",
+  "license": "SPDX-License-Identifier: GPL-3.0-or-later",
+  "schema_version": 1,
+  "styles": [
+    {
+      "id": "emaki",
+      "name": "Emaki",
+      "accent": "rose",
+      "mode": "light",
+      "wallpaper": "emaki/wallpaper.png",
+      "overview_video": "emaki/overview.mp4",
+      "overview_still": "emaki/overview.jpg",
+      "thumbnail": "emaki/thumbnail.jpg"
+    },
+    {
+      "id": "01-rose-light",
+      "name": "Rose Light",
+      "accent": "rose",
+      "mode": "light",
+      "wallpaper": "01-rose-light/wallpaper.png",
+      "overview_video": "01-rose-light/overview.mp4",
+      "overview_still": "01-rose-light/overview.jpg",
+      "thumbnail": "01-rose-light/thumbnail.jpg"
+    },
+    {
+      "id": "02-orange-light",
+      "name": "Orange Light",
+      "accent": "orange",
+      "mode": "light",
+      "wallpaper": "02-orange-light/wallpaper.png",
+      "overview_video": "02-orange-light/overview.mp4",
+      "overview_still": "02-orange-light/overview.jpg",
+      "thumbnail": "02-orange-light/thumbnail.jpg"
+    },
+    {
+      "id": "03-coral-light",
+      "name": "Coral Light",
+      "accent": "coral",
+      "mode": "light",
+      "wallpaper": "03-coral-light/wallpaper.png",
+      "overview_video": "03-coral-light/overview.mp4",
+      "overview_still": "03-coral-light/overview.jpg",
+      "thumbnail": "03-coral-light/thumbnail.jpg"
+    },
+    {
+      "id": "04-amber-light",
+      "name": "Amber Light",
+      "accent": "amber",
+      "mode": "light",
+      "wallpaper": "04-amber-light/wallpaper.png",
+      "overview_video": "04-amber-light/overview.mp4",
+      "overview_still": "04-amber-light/overview.jpg",
+      "thumbnail": "04-amber-light/thumbnail.jpg"
+    },
+    {
+      "id": "05-green-light",
+      "name": "Green Light",
+      "accent": "green",
+      "mode": "light",
+      "wallpaper": "05-green-light/wallpaper.png",
+      "overview_video": "05-green-light/overview.mp4",
+      "overview_still": "05-green-light/overview.jpg",
+      "thumbnail": "05-green-light/thumbnail.jpg"
+    },
+    {
+      "id": "06-teal-light",
+      "name": "Teal Light",
+      "accent": "teal",
+      "mode": "light",
+      "wallpaper": "06-teal-light/wallpaper.png",
+      "overview_video": "06-teal-light/overview.mp4",
+      "overview_still": "06-teal-light/overview.jpg",
+      "thumbnail": "06-teal-light/thumbnail.jpg"
+    },
+    {
+      "id": "07-blue-light",
+      "name": "Blue Light",
+      "accent": "blue",
+      "mode": "light",
+      "wallpaper": "07-blue-light/wallpaper.png",
+      "overview_video": "07-blue-light/overview.mp4",
+      "overview_still": "07-blue-light/overview.jpg",
+      "thumbnail": "07-blue-light/thumbnail.jpg"
+    },
+    {
+      "id": "08-violet-light",
+      "name": "Violet Light",
+      "accent": "violet",
+      "mode": "light",
+      "wallpaper": "08-violet-light/wallpaper.png",
+      "overview_video": "08-violet-light/overview.mp4",
+      "overview_still": "08-violet-light/overview.jpg",
+      "thumbnail": "08-violet-light/thumbnail.jpg"
+    },
+    {
+      "id": "09-rose-dark",
+      "name": "Rose Dark",
+      "accent": "rose",
+      "mode": "dark",
+      "wallpaper": "09-rose-dark/wallpaper.png",
+      "overview_video": "09-rose-dark/overview.mp4",
+      "overview_still": "09-rose-dark/overview.jpg",
+      "thumbnail": "09-rose-dark/thumbnail.jpg"
+    },
+    {
+      "id": "10-orange-dark",
+      "name": "Orange Dark",
+      "accent": "orange",
+      "mode": "dark",
+      "wallpaper": "10-orange-dark/wallpaper.png",
+      "overview_video": "10-orange-dark/overview.mp4",
+      "overview_still": "10-orange-dark/overview.jpg",
+      "thumbnail": "10-orange-dark/thumbnail.jpg"
+    },
+    {
+      "id": "11-coral-dark",
+      "name": "Coral Dark",
+      "accent": "coral",
+      "mode": "dark",
+      "wallpaper": "11-coral-dark/wallpaper.png",
+      "overview_video": "11-coral-dark/overview.mp4",
+      "overview_still": "11-coral-dark/overview.jpg",
+      "thumbnail": "11-coral-dark/thumbnail.jpg"
+    },
+    {
+      "id": "12-amber-dark",
+      "name": "Amber Dark",
+      "accent": "amber",
+      "mode": "dark",
+      "wallpaper": "12-amber-dark/wallpaper.png",
+      "overview_video": "12-amber-dark/overview.mp4",
+      "overview_still": "12-amber-dark/overview.jpg",
+      "thumbnail": "12-amber-dark/thumbnail.jpg"
+    },
+    {
+      "id": "13-green-dark",
+      "name": "Green Dark",
+      "accent": "green",
+      "mode": "dark",
+      "wallpaper": "13-green-dark/wallpaper.png",
+      "overview_video": "13-green-dark/overview.mp4",
+      "overview_still": "13-green-dark/overview.jpg",
+      "thumbnail": "13-green-dark/thumbnail.jpg"
+    },
+    {
+      "id": "14-teal-dark",
+      "name": "Teal Dark",
+      "accent": "teal",
+      "mode": "dark",
+      "wallpaper": "14-teal-dark/wallpaper.png",
+      "overview_video": "14-teal-dark/overview.mp4",
+      "overview_still": "14-teal-dark/overview.jpg",
+      "thumbnail": "14-teal-dark/thumbnail.jpg"
+    },
+    {
+      "id": "15-blue-dark",
+      "name": "Blue Dark",
+      "accent": "blue",
+      "mode": "dark",
+      "wallpaper": "15-blue-dark/wallpaper.png",
+      "overview_video": "15-blue-dark/overview.mp4",
+      "overview_still": "15-blue-dark/overview.jpg",
+      "thumbnail": "15-blue-dark/thumbnail.jpg"
+    },
+    {
+      "id": "16-violet-dark",
+      "name": "Violet Dark",
+      "accent": "violet",
+      "mode": "dark",
+      "wallpaper": "16-violet-dark/wallpaper.png",
+      "overview_video": "16-violet-dark/overview.mp4",
+      "overview_still": "16-violet-dark/overview.jpg",
+      "thumbnail": "16-violet-dark/thumbnail.jpg"
+    },
+    {
+      "id": "17-silver",
+      "name": "Silver",
+      "accent": "silver",
+      "mode": "light",
+      "wallpaper": "17-silver/wallpaper.png",
+      "overview_video": "17-silver/overview.mp4",
+      "overview_still": "17-silver/overview.jpg",
+      "thumbnail": "17-silver/thumbnail.jpg"
+    },
+    {
+      "id": "18-graphite",
+      "name": "Graphite",
+      "accent": "graphite",
+      "mode": "dark",
+      "wallpaper": "18-graphite/wallpaper.png",
+      "overview_video": "18-graphite/overview.mp4",
+      "overview_still": "18-graphite/overview.jpg",
+      "thumbnail": "18-graphite/thumbnail.jpg"
+    }
+  ]
+}

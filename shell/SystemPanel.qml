@@ -124,7 +124,7 @@ Item {
     onViewportWidthChanged: wake()
     readonly property real shownWidth: islandWidth + (targetWidth - islandWidth) * morph
     readonly property real shownHeight: {
-        tick;
+        void tick;
         return Metrics.islandHeight + (Math.max(Metrics.islandHeight, heightSpring.x) - Metrics.islandHeight) * morph;
     }
     readonly property real shownX: islandX + (frameX - islandX) * morph
@@ -187,7 +187,7 @@ Item {
         wake();
     }
     function restBubble(key: string): var {
-        tick;
+        void tick;
         return restBubbles[key] ?? null;
     }
     // A rectangle of an item in screen coordinates (the layers sit at the screen origin).
@@ -396,7 +396,7 @@ Item {
     }
     // The tab first, then the hover drop, then the page's: eight at most.
     readonly property var drops: {
-        tick;
+        void tick;
         const list = [];
         if (!carrying) {
             const keys = Object.keys(restBubbles);
@@ -580,8 +580,8 @@ Item {
     // its rendered result; a small patch runs the very same optics for the meter.
     // During motion or near a clipped edge use the original single content layer.
     readonly property rect meterRect: {
-        tick;
-        body.scroller.contentY;
+        void tick;
+        void body.scroller.contentY;
         const meter = body.micMeterItem;
         const p = body.micMeterOwner.mapToItem(layer, meter.x, meter.y);
         return Qt.rect(p.x, p.y, meter.width, meter.height);
@@ -595,7 +595,7 @@ Item {
         return Qt.rect(x, y, Math.ceil((meterRect.x + meterRect.width + 2) * renderDpr) / renderDpr - x, Math.ceil((meterRect.y + meterRect.height + 2) * renderDpr) / renderDpr - y);
     }
     readonly property rect meterViewRect: {
-        tick;
+        void tick;
         const view = body.scroller;
         const p = view.mapToItem(layer, 0, 0);
         return Qt.rect(p.x, p.y, view.width, view.height);
@@ -703,7 +703,7 @@ Item {
             GlassCopy {
                 required property string modelData
                 readonly property GlassTarget item: {
-                    panel.tick;
+                    void panel.tick;
                     const c = panel.head.cell(modelData) as GlassTarget;
                     return c && !panel.restCopies.some(r => r.item === c) ? c : null;
                 }
@@ -732,7 +732,7 @@ Item {
                 id: dot
                 required property var modelData
                 readonly property var b: {
-                    panel.tick;
+                    void panel.tick;
                     const bubble = panel.restBubbles[dot.modelData.key];
                     return bubble ? [bubble.x.x + bubble.w.x / 2, bubble.y.x + bubble.h.x / 2, Liquid.smooth(bubble.alpha.x)] : [0, 0, 0];
                 }
@@ -754,8 +754,8 @@ Item {
         readonly property Item focused: panel.Window.window?.activeFocusItem ?? null
         readonly property bool belongs: focused !== null && Keyboard.boundary(focused) === panel
         readonly property point position: {
-            panel.tick;
-            body.scroller.contentY;
+            void panel.tick;
+            void body.scroller.contentY;
             return belongs ? focused.mapToItem(panel, 0, 0) : Qt.point(0, 0);
         }
         x: position.x

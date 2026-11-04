@@ -289,7 +289,8 @@ class Space(unittest.TestCase):
                 check = Mock(side_effect=space.InsufficientSpace('measured shortage'))
                 run = Mock(return_value=0)
                 with patch.dict(module['main'].__globals__, preflight=check, run=run,
-                                upgrades=Mock(return_value={})), \
+                                upgrades=Mock(return_value={}),
+                                inhibit=lambda *, required: contextlib.nullcontext()), \
                         patch.object(os, 'geteuid', return_value=0), \
                         patch.object(sys, 'argv', ['emaki-update', *arguments]), \
                         contextlib.redirect_stderr(io.StringIO()):
@@ -302,6 +303,7 @@ class Space(unittest.TestCase):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
         calls = []
         with patch.dict(module['main'].__globals__,
+                        inhibit=lambda *, required: contextlib.nullcontext(),
                         preflight=lambda: calls.append('preflight'),
                         update=lambda *a, **kw: calls.append('transaction') or 0), \
                 patch.object(os, 'geteuid', return_value=0), \

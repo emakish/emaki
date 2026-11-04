@@ -2,6 +2,7 @@
   "copyright": "Copyright (C) 2026 Artur Yakymenko",
   "license": "SPDX-License-Identifier: GPL-3.0-or-later",
   "messages": {
+    "Cursor": "The cursor term has the same spelling.",
     "  outputs={outputs_len} workspaces={workspaces_len} windows={windows_len} focused_output={focused_output} links_pending={links_pending} overview_open={overview_open}\n": "Stable command-line field names and placeholders.",
     "  window id={id} workspace={workspace_id} focused={is_focused} floating={is_floating} urgent={is_urgent}\n": "Stable command-line field names and placeholders.",
     "  workspace id={id} idx={idx} output={output} active={is_active} focused={is_focused} window={active_window_id}\n": "Stable command-line field names and placeholders.",

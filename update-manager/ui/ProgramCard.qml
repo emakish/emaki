@@ -19,6 +19,8 @@ C.AbstractButton {
     implicitHeight: Math.max(featured ? 104 : 74, topPadding + implicitContentHeight + bottomPadding)
     // Set by a narrow window: the large card keeps the small card's icon and puts Install under its text.
     property bool compact: false
+    // Collection cards can be narrower than a plain shelf in a small niri column.
+    readonly property bool stacked: width < 220
     padding: featured && !compact ? 18 : 12
     focusPolicy: Qt.StrongFocus
     Keys.onReturnPressed: clicked()
@@ -38,18 +40,19 @@ C.AbstractButton {
         border.width: card.activeFocus ? 2 : 1
     }
     contentItem: GridLayout {
-        columns: card.featured && !card.compact ? 3 : 2
+        columns: card.stacked ? 1 : card.featured && !card.compact ? 3 : 2
         columnSpacing: card.featured && !card.compact ? 16 : 12
         rowSpacing: 10
         ProgramIcon {
             program: card.program
+            allowRemote: false
             Layout.preferredWidth: card.featured && !card.compact ? 68 : 46
             Layout.preferredHeight: card.featured && !card.compact ? 68 : 46
             Layout.alignment: Qt.AlignVCenter
             Layout.row: 0; Layout.column: 0
         }
         ColumnLayout {
-            Layout.row: 0; Layout.column: 1
+            Layout.row: card.stacked ? 1 : 0; Layout.column: card.stacked ? 0 : 1
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
             spacing: 2
@@ -83,7 +86,8 @@ C.AbstractButton {
         ManagerButton {
             objectName: "featured-install"
             visible: card.featured
-            Layout.row: card.featured && !card.compact ? 0 : 1; Layout.column: card.featured && !card.compact ? 2 : 1
+            Layout.row: card.stacked ? 2 : card.featured && !card.compact ? 0 : 1
+            Layout.column: card.stacked ? 0 : card.featured && !card.compact ? 2 : 1
             text: card.program.installed ? qsTranslate("ProgramCard", "Installed") : qsTranslate("ProgramCard", "Install")
             primary: !card.program.installed
             enabled: !card.program.installed && card.installEnabled

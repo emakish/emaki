@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from runtime_fixture import runtime_path
@@ -40,8 +41,11 @@ with tempfile.TemporaryDirectory(prefix='network-settings-') as temporary:
     commands = base / 'bin'
     commands.mkdir()
     helper = commands / 'emaki-settings-network'
-    env['PATH'] = str(commands) + os.pathsep + env['PATH']
-    helper_source = '''#!/usr/bin/env python3
+    # Removing the fixture must not fall through to an installed machine helper.
+    quickshell = shutil.which('qs')
+    assert quickshell, 'Quickshell is required'
+    env['PATH'] = str(commands)
+    helper_source = '#!' + sys.executable + '''
 import json
 import pathlib
 import sys
@@ -67,7 +71,7 @@ else:
         env['NETWORK_SETTINGS_SHOT'] = str(EVIDENCE / 'network-page') if label == 'normal' else ''
         helper.write_text(helper_source)
         helper.chmod(0o755)
-        result = subprocess.run(['qs', '-p', str(base / 'shell/test.qml'), '--no-color'],
+        result = subprocess.run([quickshell, '-p', str(base / 'shell/test.qml'), '--no-color'],
                                 env=env, capture_output=True, text=True, timeout=40)
         output = result.stdout + result.stderr
         (EVIDENCE / ('network-settings-' + label + '.log')).write_text(output)

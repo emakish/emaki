@@ -28,8 +28,24 @@ ShellRoot {
         property string lastStatus: ""
         property bool sessionApplied: true
         property var calls: []
+        property string lastChoice: ""
         property var history: []
         property var values: [
+            {
+                key: "bar.clock_seconds_closed",
+                value: false,
+                default: false
+            },
+            {
+                key: "bar.clock_seconds_open",
+                value: false,
+                default: false
+            },
+            {
+                key: "launcher.mode_icons",
+                value: false,
+                default: false
+            },
             {
                 key: "bar.autohide_mode",
                 value: "fullscreen",
@@ -71,8 +87,15 @@ ShellRoot {
                 default: 2
             }
         ]
+        function value(key) {
+            return row(key)?.value ?? null;
+        }
         function row(key) {
             return values.find(row => row.key === key) || null;
+        }
+        function applyChoice(choice, key, value) {
+            lastChoice = choice;
+            set(key, value);
         }
         function set(key, value) {
             calls = calls.concat([

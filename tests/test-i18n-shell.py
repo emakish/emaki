@@ -142,6 +142,7 @@ def english_template():
     bindings = []
     for filename, marker, key in (
         ('StaticBar.qml', 'readonly property string clockTime:', 'clockTime'),
+        ('StaticBar.qml', 'readonly property string clockOpenTime:', 'clockTime'),
         ('StaticBar.qml', 'readonly property string clockDate:', 'clockDate'),
         ('StaticBar.qml', 'readonly property string clockLongDate:', 'clockLongDate'),
         ('DisplaysSettingsPage.qml', 'explanation: qsTranslate("DisplaysSettingsPage", "%1 K.', 'temperature'),
@@ -151,13 +152,20 @@ def english_template():
                     if line.strip().startswith(marker))
         expression = line.split(':', 1)[1].strip()
         expected = RELEASE_010[key]
-        for name in ('dateTime', 'dayNames', 'monthNames'):
+        for name in ('dateTime', 'dayNames', 'monthNames', 'clock24Hour', 'secondsClosed', 'secondsOpen'):
             expression = expression.replace(name, 'window.' + name)
             expected = expected.replace(name, 'window.' + name)
+        expression = expression.replace('time.date', 'window.clockTick.date')
         expected = expected.replace('SettingsBridge.values', '[]')
         value = 4000 if key == 'temperature' else 1000
         bindings.append('Text { property int value: %s; text: %s; property string expected: %s }'
                         % (value, expression, expected))
+    # Exercise the production defaults alongside both clock expressions; the
+    # dedicated seconds fixture covers all enabled combinations and live ticks.
+    bar_lines = (ROOT / 'shell/StaticBar.qml').read_text().splitlines()
+    clock_defaults = '\n'.join(next(line for line in bar_lines
+                                   if line.strip().startswith('readonly property bool ' + name + ':'))
+                               for name in ('clock24Hour', 'secondsClosed', 'secondsOpen'))
     objects = []
     current = []
     for name, filename in (('bytes', 'shell/SettingsStoragePage.qml'),
@@ -185,6 +193,8 @@ ShellRoot {
         id: window
         implicitWidth: 900; implicitHeight: 400
         property date dateTime: new Date(2026, @MONTH@, 21, 14, 30)
+        property var clockTick: ({date: dateTime})
+''' + clock_defaults + '''
         property var dayNames: ''' + RELEASE_010['dayNames'] + '''
         property var monthNames: ''' + RELEASE_010['monthNames'] + '''
         property var programs: ({plan: {transaction: {packages: [{downloadSize: 2000000000000}]}}})

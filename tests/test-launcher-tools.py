@@ -119,13 +119,15 @@ try:
     # Empty All is Recent (nothing yet); Apps keeps the Frequent row + grid. The launcher opens on Apps.
     ipc('mode','All');wait_for(lambda:state()['search']['recent']['state']=='ready');assert state()['search']['result_count']==0 and state()['search']['recent']['count']==0
     ipc('mode','Apps');wait_for(lambda:state()['search']['result_count']==3)   # Frequent tile + two fixture apps
-    # Down from the search moves the shown selection on (Frequent tile -> first grid app) and
-    # enters the results there. Up walks back spatially: the category chips between the rows
-    # keep the selection, the next Up lands on the Frequent tile, the last one on the search.
+    # Arrows visit each visual layer: search, Frequent, categories, then the app grid.
+    # Category focus preserves the result selection; Up retraces the same layers
+    # and reaches the header control nearest the Frequent tile.
+    ipc('down');assert state()['search']['selected_index']==0 and not state()['input_focused']
+    ipc('down');assert state()['search']['selected_index']==0 and not state()['input_focused']
     ipc('down');assert state()['search']['selected_index']==1 and not state()['input_focused']
     ipc('up');assert state()['search']['selected_index']==1 and not state()['input_focused']
     ipc('up');assert state()['search']['selected_index']==0 and not state()['input_focused']
-    ipc('up');assert state()['search']['selected_index']==0 and state()['input_focused']
+    ipc('up');assert state()['search']['selected_index']==0 and ipc('nearestHeaderFocused')=='true'
     ipc('mode','Clipboard');wait_for(lambda:state()['search']['clipboard']['count']==2)
     # Recorder: started with the shell as `wl-paste --watch cliphist store`; Pause kills it, history stays; Resume restarts.
     wait_for(lambda:(root/'recorder.json').exists() and state()['search']['clipboard']['recorder']=='recording')
@@ -175,13 +177,17 @@ try:
     before = state()
     assert apply_rows([]) == 'invalid_settings'
     assert apply_rows([dict(rows[0], key=None)] + rows) == 'invalid_settings'
+    for key in ('bar.clock_seconds_closed', 'bar.clock_seconds_open', 'launcher.mode_icons'):
+        assert apply_rows([dict(row, value='true') if row['key'] == key else row for row in rows]) == 'invalid_settings'
+        assert apply_rows(rows + [next(row for row in rows if row['key'] == key)]) == 'invalid_settings'
     shell_keys = ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide')
     # A full list, as the settings window reads it, then a compact apply keeps its descriptions.
     assert apply_rows([row for row in rows if row['key'] in shell_keys], full=True) == 'applied'
     described = next(row['application'] for row in rows if row['key'] == 'dock.on')
     assert described
     assert state()['dock']['on'] == before['dock']['on']
-    changed = [dict(row, value=not row['value']) if row['key'] in ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide') else row for row in rows]
+    toggled_keys = ('bar.autohide', 'bar.overview_workspaces', 'bar.clock_seconds_closed', 'bar.clock_seconds_open', 'launcher.mode_icons', 'dock.on', 'dock.auto_hide')
+    changed = [dict(row, value=not row['value']) if row['key'] in toggled_keys else row for row in rows]
     # A derived mode from the previous flags must be rejected before any values change.
     assert apply_rows(changed) == 'invalid_settings'
     assert state()['bar_policy']['auto_hide'] == before['bar_policy']['auto_hide']
@@ -189,7 +195,7 @@ try:
     assert apply_rows(changed) == 'applied'
     assert json.loads(run(['qs', '-p', str(qml), 'ipc', 'call', 'second-settings', 'described', 'dock.on'])) == described
     for row in changed:
-        if row['key'] in ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide'):
+        if row['key'] in toggled_keys:
             shared = run(['qs', '-p', str(qml), 'ipc', 'call', 'second-settings', 'value', row['key']])
             assert json.loads(shared) == row['value']
     now = state()

@@ -208,7 +208,7 @@ ShellRoot {
                 launcher.takeFocus(true);
                 tryVerify(() => launcher.results.length >= 70);
                 tryVerify(() => launcher.geometryOf(launcher.selected) !== null);
-                check(launcher.selectedGeometry() !== null, "Empty search shows the Enter target");
+                check(launcher.selectedGeometry() !== null, "Search focus shows the Enter target");
                 keyClick(Qt.Key_F);
                 keyClick(Qt.Key_I);
                 keyClick(Qt.Key_X);
@@ -246,11 +246,11 @@ ShellRoot {
                         }));
                 tryVerify(() => launcher.results.length === 40, 2000, "Forty clipboard rows");
                 check(launcher.inputFocused, "Search keeps focus over the clipboard list");
-                // The first row is shown as Enter's target; Down moves on to the second.
+                // Down enters the nearest layer at its first row.
                 keyClick(Qt.Key_Down);
-                equal(launcher.selected, 1);
+                equal(launcher.selected, 0);
                 check(!launcher.inputFocused, "Down from search enters the results");
-                for (let i = 2; i < 40; ++i)
+                for (let i = 1; i < 40; ++i)
                     keyClick(Qt.Key_Down);
                 equal(launcher.selected, 39);
                 tryVerify(selectionVisible, 1000, "Last clipboard row is fully visible");
@@ -272,31 +272,119 @@ ShellRoot {
                 tryVerify(selectionVisible, 1000, "Last app tile is fully visible");
                 for (let i = 0; i < 20; ++i)
                     keyClick(Qt.Key_Up);
-                check(launcher.inputFocused, "Long grid Up returns through categories to search");
+                check(launcher.headerControls().includes(window.activeFocusItem), "Long grid Up returns through categories to the nearest header control");
             }
-            // The first open after the shell starts: the mode drop stands on the Apps tab (pad 4)
-            // and its label is drawn on the glass over it, never an 8x8 drop at (-4, -4) with the
-            // tab's own label faded out.
-            function test_mode_drop_first_open() {
+            function test_removed_result_recovery() {
+                window.requestActivate();
+                launcher.setQuery("");
+                launcher.setMode("Clipboard");
+                tryVerify(() => launcher.clipboard.state !== "pending" && launcher.clipboard.actionState !== "pending");
+                const clips = [0, 1, 2].map(index => ({
+                            id: "recovery-" + index,
+                            preview: "Recovery row " + index,
+                            text: "Row " + index
+                        }));
+                launcher.clipboard.entries = clips;
+                tryVerify(() => launcher.results.length === 3);
+                launcher.selectAt(1);
+                launcher.focusResults();
+                keyClick(Qt.Key_Delete);
+                check(launcher.clipboard.actionState === "pending", "Delete requests removal of the selected clip");
+                tryVerify(() => launcher.clipboard.actionState !== "pending");
+                // Deliver the refreshed history after the deletion completes.
+                launcher.clipboard.entries = [clips[0], clips[2]];
+                tryVerify(() => launcher.selected === -1);
+                keyClick(Qt.Key_Down);
+                equal(launcher.selected, 0);
+                tryVerify(selectionVisible, 2000, "Down recovers after deleting the selected clip");
+                keyClick(Qt.Key_Down);
+                equal(launcher.selected, 1);
+
+                service.model = {
+                    windows: {
+                        1: {
+                            id: 1
+                        },
+                        2: {
+                            id: 2
+                        }
+                    },
+                    workspaces: {},
+                    keyboard_layouts: null,
+                    overview_open: false
+                };
+                service.connection = "connected";
+                launcher.setMode("Windows");
+                tryVerify(() => launcher.results.length === 2);
+                launcher.selectAt(1);
+                launcher.focusResults();
+                service.model = {
+                    windows: {
+                        1: {
+                            id: 1
+                        }
+                    },
+                    workspaces: {},
+                    keyboard_layouts: null,
+                    overview_open: false
+                };
+                tryVerify(() => launcher.selected === -1);
+                keyClick(Qt.Key_Down);
+                equal(launcher.selected, 0);
+                tryVerify(selectionVisible, 2000, "Down recovers after the selected window closes");
+                keyClick(Qt.Key_Up);
+                check(launcher.inputFocused, "Up from the recovered first window reaches search");
+                service.connection = "connecting";
+                service.model = null;
+            }
+            function test_wheel_scrolled_result_recovery() {
+                window.requestActivate();
+                launcher.setQuery("");
+                for (const mode of ["Clipboard", "Apps"]) {
+                    launcher.setMode(mode);
+                    if (mode === "Clipboard") {
+                        tryVerify(() => launcher.clipboard.state !== "pending" && launcher.clipboard.actionState !== "pending");
+                        launcher.clipboard.entries = Array.from({
+                            length: 40
+                        }, (_, index) => ({
+                                    id: "wheel-" + index,
+                                    preview: "Wheel row " + index,
+                                    text: "Row " + index
+                                }));
+                    }
+                    tryVerify(() => launcher.results.length >= 40);
+                    launcher.selectAt(0);
+                    launcher.focusResults();
+                    tryVerify(selectionVisible);
+                    const view = findChild(launcher, mode === "Apps" ? "launcher-grid" : "launcher-list");
+                    mouseWheel(view, view.width / 2, view.height / 2, 0, -1200);
+                    tryVerify(() => launcher.geometryOf(launcher.selected) === null, 2000, "Wheel hides the selected " + mode + " result");
+                    tryVerify(() => !view.moving, 2000);
+                    check(window.activeFocusItem.objectName === "launcher-results", "Wheel retains result keyboard focus");
+                    keyClick(Qt.Key_Down);
+                    equal(launcher.selected, 0);
+                    tryVerify(selectionVisible, 2000, "Arrow reveals the wheel-scrolled " + mode + " selection");
+                    keyClick(Qt.Key_Down);
+                    equal(launcher.selected, mode === "Apps" ? 7 : 1);
+                    tryVerify(selectionVisible);
+                }
+            }
+            function test_first_open_selection_uses_accent() {
                 const fresh = createTemporaryObject(freshLauncher, stage, {
                     expansion: 0,
                     opened: false
                 });
-                verify(fresh !== null, "fresh launcher");
+                verify(fresh !== null);
                 wait(50);
                 fresh.opened = true;
                 fresh.expansion = 1;
-                equal(fresh.modes[fresh.modeIndex], "Apps");
                 const tab = findChild(fresh, "launcher-tab-apps");
-                verify(tab !== null, "Apps tab");
-                tryVerify(() => fresh.modeAlpha > .99 && !fresh.animating, 3000, "mode drop up and at rest");
-                const p = tab.mapToItem(fresh, 0, 0);
-                check(tab.width > 0 && tab.height > 0, "Apps tab has its geometry");
-                const r = fresh.modeRect;
-                const drop = fresh.glassStatus().mode;
-                console.log("LAUNCHER_FIRST_OPEN_MODE " + JSON.stringify(drop));
-                check(Math.abs(r.x - p.x) < .5 && Math.abs(r.y - p.y) < .5 && Math.abs(r.width - tab.width) < .5 && Math.abs(r.height - tab.height) < .5, "mode rect " + r + " is the Apps tab " + p.x + "," + p.y + " " + tab.width + "x" + tab.height);
-                check(Math.abs(drop.x - (p.x - 4)) <= 1 && Math.abs(drop.y - (p.y - 4)) <= 1 && Math.abs(drop.width - (tab.width + 8)) <= 1 && Math.abs(drop.height - (tab.height + 8)) <= 1, "mode drop " + JSON.stringify(drop) + " stands on the Apps tab");
+                tryVerify(() => tab !== null && !fresh.animating, 3000);
+                equal(fresh.modes[fresh.modeIndex], "Apps");
+                verify(tab.Accessible.selected);
+                equal(fresh.glassStatus().mode.alpha, 0);
+                equal(fresh.glassStatus().category.alpha, 0);
+                console.log("LAUNCHER_FIRST_OPEN_MODE " + JSON.stringify(fresh.glassStatus().mode));
             }
             // A launcher off the screen holds no app tiles (each with its icons); showing it
             // builds them, hiding it releases them (1.0 lightness).
@@ -484,6 +572,8 @@ ShellRoot {
                 const search = launcher.headerControls()[1];
                 check(search.activeFocus, "the launcher opens in the search");
                 keyClick(Qt.Key_Down);
+                equal(launcher.selected, 0);
+                keyClick(Qt.Key_Down);
                 equal(launcher.selected, 1);
                 check(window.activeFocusItem.objectName === "launcher-results", "Down enters the recent programs");
                 lookShot("1-down-recent", null);
@@ -491,8 +581,8 @@ ShellRoot {
                 equal(launcher.selected, 0);
                 lookShot("2-up-recent", null);
                 keyClick(Qt.Key_Up);
-                check(search.activeFocus, "Up from the first recent program reaches Search everything");
-                lookShot("3-up-search", search);
+                check(search.activeFocus, "Up reaches search");
+                lookShot("3-up-search", null);
                 keyClick(Qt.Key_Right);
                 check(launcher.headerControls()[2].activeFocus, "Right reaches All");
                 lookShot("4-right-all", launcher.headerControls()[2], launcher.tabFocusPad);
@@ -500,6 +590,163 @@ ShellRoot {
                 check(launcher.headerControls()[3].activeFocus, "Right reaches Apps");
                 lookShot("5-right-apps", launcher.headerControls()[3], launcher.tabFocusPad);
                 keyClick(Qt.Key_Escape);
+            }
+            function nearestAtX(controls, x) {
+                return controls.slice().sort((a, b) => {
+                    const ap = a.mapToItem(launcher, a.width / 2, a.height / 2);
+                    const bp = b.mapToItem(launcher, b.width / 2, b.height / 2);
+                    return Math.abs(ap.x - x) - Math.abs(bp.x - x);
+                })[0];
+            }
+            function test_spatial_layers_and_smooth_travel() {
+                window.requestActivate();
+                launcher.setMode("Apps");
+                launcher.setQuery("");
+                launcher.category = "All";
+                tryVerify(() => launcher.results.length >= 70 && launcher.categoryControls().length === 8);
+                launcher.selectAt(5);
+                launcher.focusResults();
+                tryVerify(() => !launcher.animating, 3000);
+                const start = launcher.geometryOf(5).rect;
+                const target = nearestAtX(launcher.categoryControls(), start.x + start.width / 2);
+                check(target.modelData !== "All", "The spatial target differs from the selected category");
+                const before = launcher.glassStatus().select;
+                keyClick(Qt.Key_Up);
+                check(target.activeFocus, "Up reaches the nearest category, not the selected one");
+                const after = launcher.glassStatus().select;
+                check(Math.abs(after.y - before.y) < 1, "Up retargets the existing bubble without an instant jump");
+                tryVerify(() => !launcher.animating, 3000);
+                const targetRect = target.mapToItem(launcher, 0, 0, target.width, target.height);
+                const rest = launcher.glassStatus().select;
+                check(Math.abs(rest.x - targetRect.x + launcher.tabFocusPad) <= 1 && Math.abs(rest.y - targetRect.y + launcher.tabFocusPad) <= 1, "The shared glass settles on the category");
+                equal(launcher.glassStatus().drops.length, 1);
+                const header = nearestAtX(launcher.headerControls(), targetRect.x + targetRect.width / 2);
+                keyClick(Qt.Key_Up);
+                check(header.activeFocus, "Up from categories reaches the nearest header control");
+                keyClick(Qt.Key_Down);
+                const hp = header.mapToItem(launcher, header.width / 2, header.height / 2);
+                check(nearestAtX(launcher.categoryControls(), hp.x).activeFocus, "Down from modes reaches the nearest category");
+                keyClick(Qt.Key_Down);
+                check(window.activeFocusItem.objectName === "launcher-results", "Down enters the grid");
+                const row = launcher.selected;
+                check(row >= 0 && row < 7, "Down enters the first visual row");
+                keyClick(Qt.Key_Right);
+                equal(launcher.selected, Math.min(6, row + 1));
+                keyClick(Qt.Key_Down);
+                equal(launcher.selected, Math.min(6, row + 1) + 7);
+                launcher.takeFocus(true);
+                keyClick(Qt.Key_Right);
+                tryVerify(() => !launcher.animating, 3000);
+                const left = launcher.glassStatus().select.x;
+                keyClick(Qt.Key_Right);
+                check(Math.abs(launcher.glassStatus().select.x - left) < 1, "Right does not instantly move the glass");
+                wait(40);
+                const moving = launcher.glassStatus().select.x;
+                check(moving > left, "Right advances the same spring");
+                tryVerify(() => !launcher.animating, 3000);
+                check(launcher.glassStatus().select.x > moving, "Right travels smoothly before settling");
+                equal(launcher.glassStatus().drops.length, 1);
+                const originalWidth = launcher.width;
+                launcher.width = 480;
+                launcher.setMode("All");
+                launcher.takeFocus(true);
+                keyClick(Qt.Key_Right);
+                tryVerify(() => !launcher.animating, 3000);
+                const strip = findChild(launcher, "launcher-mode-strip");
+                const tab = findChild(launcher, "launcher-tab-all");
+                check(tab.activeFocus, "The first tab carries keyboard focus");
+                // Scroll the viewport while retaining focus, as a touch gesture can do.
+                strip.contentX = 12;
+                tryVerify(() => !launcher.animating, 3000);
+                const clipped = launcher.glassStatus().drops.find(drop => drop.kind === "select");
+                const stripRect = strip.mapToItem(launcher, 0, 0, strip.width, strip.height);
+                check(!clipped || (clipped.x >= stripRect.x && clipped.x + clipped.width <= stripRect.x + stripRect.width && clipped.alpha <= 1), "Focused glass clips to the mode viewport");
+                strip.contentX = 30;
+                tryVerify(() => !launcher.animating, 3000);
+                const faded = launcher.glassStatus().drops.find(drop => drop.kind === "select");
+                check(strip.fadeLeft && (!faded || faded.alpha < 1), "Focused glass fades when label ink enters the fade");
+                const ink = findChild(launcher, "launcher-mode-ink");
+                check(ink.parent.clip && ink.parent.layer.effect !== null && ink.parent.layer.enabled === strip.layer.enabled, "Focused mode ink uses the same clipped fade layer");
+                launcher.width = originalWidth;
+                launcher.takeFocus();
+            }
+            function test_mode_icons_keep_keyboard_and_accessibility() {
+                SettingsBridge.values = [
+                    {
+                        key: "appearance.theme",
+                        value: "light"
+                    },
+                    {
+                        key: "launcher.mode_icons",
+                        value: true
+                    }
+                ];
+                launcher.setMode("Apps");
+                launcher.takeFocus(true);
+                tryVerify(() => launcher.modeIcons);
+                keyClick(Qt.Key_Right);
+                for (let i = 0; i < launcher.modes.length; ++i) {
+                    const tab = findChild(launcher, "launcher-tab-" + launcher.modes[i].toLowerCase());
+                    check(tab.activeFocus, "Icon tab is keyboard reachable");
+                    equal(tab.Accessible.name, launcher.modeLabels[i]);
+                    equal(tab.width, 38);
+                    keyClick(Qt.Key_Return);
+                    equal(launcher.modeIndex, i);
+                    if (i + 1 < launcher.modes.length)
+                        keyClick(Qt.Key_Right);
+                }
+                const tooltip = findChild(launcher, "launcher-mode-tooltip");
+                const query = findChild(launcher, "launcher-search");
+                verify(!!tooltip, "Icon modes have a hover label");
+                for (let i = 0; i < launcher.modes.length; ++i) {
+                    const tab = findChild(launcher, "launcher-tab-" + launcher.modes[i].toLowerCase());
+                    mouseMove(tab, tab.width / 2, tab.height / 2);
+                    tryVerify(() => tooltip.visible, 1000, "Mode name appears on hover");
+                    equal(tooltip.label, launcher.modeLabels[i]);
+                    mouseClick(tab, tab.width / 2, tab.height / 2);
+                    equal(launcher.modeIndex, i, "Hover label preserves tab clicks");
+                    tryVerify(() => !tooltip.visible, 1000, "Click dismisses the label");
+                }
+                const allTab = findChild(launcher, "launcher-tab-all");
+                mouseMove(query, 2, 2);
+                mouseMove(allTab, allTab.width / 2, allTab.height / 2);
+                tryVerify(() => tooltip.visible, 1000);
+                mouseMove(query, 2, 2);
+                tryVerify(() => !tooltip.visible, 1000, "Leaving hides the label");
+                SettingsBridge.values = [
+                    {
+                        key: "appearance.theme",
+                        value: "light"
+                    }
+                ];
+                tryVerify(() => !launcher.modeIcons);
+                mouseMove(allTab, allTab.width / 2, allTab.height / 2);
+                wait(500);
+                verify(!tooltip.visible, "Text modes do not show redundant tooltips");
+            }
+            function test_emoji_grid_and_search() {
+                launcher.setMode("Emoji");
+                launcher.setQuery("");
+                window.requestActivate();
+                tryVerify(() => launcher.emoji.state === "ready", 5000);
+                const grid = findChild(launcher, "launcher-grid");
+                tryVerify(() => grid.count > 14 && launcher.gridMode && launcher.categoryControls().length === 0);
+                keyClick(Qt.Key_Down);
+                check(window.activeFocusItem.objectName === "launcher-results", "Down enters emoji tiles");
+                const start = launcher.selected;
+                keyClick(Qt.Key_Right);
+                equal(launcher.selected, Math.min(6, start + 1));
+                keyClick(Qt.Key_Down);
+                equal(launcher.selected, Math.min(6, start + 1) + 7);
+                keyClick(Qt.Key_Left);
+                equal(launcher.selected, Math.max(7, Math.min(6, start + 1) + 6));
+                launcher.setQuery("heart");
+                launcher.takeFocus(true);
+                tryVerify(() => launcher.results.length > 0 && grid.count === launcher.results.length);
+                check(launcher.results.every(row => row.kind === "emoji"), "Search results remain emoji tiles");
+                keyClick(Qt.Key_Down);
+                check(launcher.geometryOf(launcher.selected).shape === "tile", "Search supports grid keyboard navigation");
+                launcher.setQuery("");
             }
             function test_controls() {
                 window.requestActivate();
@@ -529,7 +776,7 @@ ShellRoot {
                 keyClick(Qt.Key_Down);
                 check(window.activeFocusItem.objectName === "launcher-results", "Down enters recent results");
                 keyClick(Qt.Key_Up);
-                check(query.activeFocus, "Up from recent app reaches Search Everything");
+                check(query.activeFocus, "Up from recent app reaches search");
                 keyClick(Qt.Key_Right);
                 check(launcher.headerControls()[2].activeFocus, "Right reaches All tab");
                 keyClick(Qt.Key_Right);

@@ -69,7 +69,7 @@ ShellRoot {
    .replace('WIRE', re.search(r'    function wireMode\(.*?^    }', (ROOT / 'shell/DisplaysSettingsPage.qml').read_text(), re.M | re.S).group(0)) \
    .replace('RATE', next(line.strip().removeprefix('label: ') for line in (ROOT / 'shell/DisplaysSettingsPage.qml').read_text().splitlines() if 'label: qsTranslate("DisplaysSettingsPage", "%1 Hz")' in line)) \
    .replace('SHORT', binding('StaticBar.qml', 'readonly property string clockDate:')) \
-   .replace('NOTE', 'dateTime' + (ROOT / 'shell/NotesView.qml').read_text().split('text: new Date(entry.modelData.updated * 1000)', 1)[1].split('; color:', 1)[0]) \
+   .replace('NOTE', 'dateTime' + (ROOT / 'shell/NotesView.qml').read_text().split('text: new Date(entry.modelData.updated * 1000)', 1)[1].split('\n', 1)[0].split('; color:', 1)[0]) \
    .replace('HEADING', binding('CalendarEvents.qml', 'readonly property string dateHeading:'))
 
 

@@ -110,14 +110,18 @@ Item {
     // Morph of the launcher panel (0..1): the workspaces island fades as it arrives.
     property real launcherExpansion: 0
     // Keep second-level wake/time-change detection, but publish only changed
-    // minutes to the calendar and glass. SystemClock has no resume hook.
+    // minutes to the calendar and clocks with seconds hidden. SystemClock has no resume hook.
     readonly property double minuteTime: Math.floor(time.date.getTime() / 60000) * 60000
     property date dateTime: new Date(minuteTime)
     function refreshTimeZone(): void {
         Date.timeZoneUpdated();
         dateTimeChanged();
     }
-    readonly property string clockTime: dateTime.toLocaleTimeString(Qt.locale(), (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true) ? "HH:mm" : "h:mm AP")
+    readonly property bool clock24Hour: SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true
+    readonly property bool secondsClosed: SettingsBridge.values.find(row => row.key === "bar.clock_seconds_closed")?.value ?? false
+    readonly property bool secondsOpen: SettingsBridge.values.find(row => row.key === "bar.clock_seconds_open")?.value ?? false
+    readonly property string clockTime: (secondsClosed ? time.date : dateTime).toLocaleTimeString(Qt.locale(), clock24Hour ? (secondsClosed ? "HH:mm:ss" : "HH:mm") : (secondsClosed ? "h:mm:ss AP" : "h:mm AP"))
+    readonly property string clockOpenTime: (secondsOpen ? time.date : dateTime).toLocaleTimeString(Qt.locale(), clock24Hour ? (secondsOpen ? "HH:mm:ss" : "HH:mm") : (secondsOpen ? "h:mm:ss AP" : "h:mm AP"))
     // English sessions keep 0.10's names ("Sep", not en_GB's "Sept"); other languages name days and months themselves.
     //: Qt date pattern: ddd, d and MMM are fields; put literal words in single quotes.
     readonly property string clockDate: dateTime.toLocaleDateString(Qt.locale().name === "C" || Qt.locale().name.startsWith("en_") ? Qt.locale("en_US") : Qt.locale(), qsTranslate("StaticBar", "ddd d MMM"))

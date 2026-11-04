@@ -26,10 +26,10 @@ Item {
     readonly property int layoutCount: niri.layouts?.names.length ?? 0
     readonly property var pages: (UpdateService.pending > 0 ? ["updates", "tray"] : ["tray"]).concat(layoutCount > 1 ? ["kb"] : []).concat(["wifi", "bt", "sound", "light", "power"])
     readonly property real cellsWidth: cellRow.implicitWidth
-    readonly property alias cells: cells
+    readonly property alias cells: cellsObject
     function cell(page: string): Item {
         const i = pages.indexOf(page);
-        return i >= 0 ? cells.itemAt(i) : null;
+        return i >= 0 ? cellsObject.itemAt(i) : null;
     }
     implicitWidth: cellsWidth
     implicitHeight: 26
@@ -109,7 +109,7 @@ Item {
         height: 26
         spacing: 2
         Repeater {
-            id: cells
+            id: cellsObject
             model: row.pages
             GlassTarget {
                 id: cell

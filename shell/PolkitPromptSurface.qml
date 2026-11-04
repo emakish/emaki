@@ -12,7 +12,7 @@ PanelWindow {
     required property ShellScene scene
     property bool presented: false
     screen: scene?.output ?? null
-    visible: body.present
+    visible: bodyObject.present
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "emaki-auth-prompt"
@@ -24,7 +24,7 @@ PanelWindow {
         left: true
         right: true
     }
-    readonly property alias body: body
+    readonly property alias body: bodyObject
     WallpaperSource {
         id: wallpaper
         refreshManaged: true
@@ -43,14 +43,14 @@ PanelWindow {
         screen: surface.screen
         wallpaperTexture: wallpaper.texture
         sharedWallpaper: true
-        screenWidth: body.width
-        screenHeight: body.height
+        screenWidth: bodyObject.width
+        screenHeight: bodyObject.height
         dpr: surface.scene?.output?.devicePixelRatio ?? 1
         region: Qt.rect(Math.max(0, Math.floor((screenWidth - reach) / 2)), 0, Math.min(screenWidth, reach), screenHeight)
-        active: body.present && body.card.contentAlpha < 1
+        active: bodyObject.present && bodyObject.card.contentAlpha < 1
     }
     PolkitPromptBody {
-        id: body
+        id: bodyObject
         controller: surface.controller
         scene: surface.scene
         presented: surface.presented
@@ -66,6 +66,6 @@ PanelWindow {
     onVisibleChanged: {
         presented = false;
         if (visible)
-            Qt.callLater(body.takeFocus);
+            Qt.callLater(bodyObject.takeFocus);
     }
 }

@@ -139,7 +139,6 @@ Item {
     readonly property real calendarTop: header + (hasMedia ? player.implicitHeight + 14 : 0)
     readonly property real legacyNotesTop: calendarTop + calendar.height + 16
     readonly property real notesTop: legacyNotesTop + calendarEvents.height + 42
-    readonly property real addedHeight: notesTop - legacyNotesTop
     readonly property bool serverNote: serverState !== "active"
     readonly property real listTop: notesTop + 36 + (store.scheduleResumeNote ? 22 : 0) + (serverNote ? 22 : 0)
     readonly property string actionNote: store.actionState === "action_unavailable" ? qsTranslate("ClockBody", "This notification has no available action") : ""
@@ -150,7 +149,10 @@ Item {
         let chosen = null;
         for (let cap = 6; cap >= 1; --cap) {
             chosen = notePlan(cap);
-            if (listTop - addedHeight + chosen.height + (actionNote ? 22 : 0) + 14 <= maxHeight)
+            // Reserve every visible control, but let the plate's optional bottom padding
+            // shrink at the screen edge instead of dropping a card that fits.
+            const bottom = actionNote ? chosen.height + 18 : chosen.contentHeight;
+            if (listTop + bottom <= maxHeight)
                 break;
         }
         return chosen;
@@ -258,13 +260,14 @@ Item {
     }
     function notePlan(cap: int): var {
         const items = [];
-        let y = 0, rows = 0, hidden = 0, lastBucket = "";
+        let y = 0, contentHeight = 0, rows = 0, hidden = 0, lastBucket = "";
         const groups = store.groups();
         if (!groups.length) {
             items.push({
                 kind: "empty",
                 y: y
             });
+            contentHeight = y + 28;
             y += 32;
         }
         for (const g of groups) {
@@ -311,11 +314,14 @@ Item {
                 kind: "clear",
                 y: y + 4
             });
+            // The footer targets are 26 high; the rest is preferred trailing space.
+            contentHeight = y + 4 + 26;
             y += 36;
         }
         return {
             items: items,
-            height: y
+            height: y,
+            contentHeight: contentHeight
         };
     }
     function age(time: double): string {
@@ -355,6 +361,7 @@ Item {
         height: body.header
         Text {
             id: bigTime
+            objectName: "clock-open-time"
             x: body.side
             y: 20
             height: 30
@@ -367,7 +374,8 @@ Item {
             color: body.ink
         }
         Text {
-            x: bigTime.x + bigTime.implicitWidth + 14
+            objectName: "clock-open-date"
+            x: bigTime.x + bigTimeMetrics.advance + 14
             // clock.js: the date centred 2 px below the time's centre (reads as one baseline).
             y: 22
             height: 30
@@ -379,12 +387,19 @@ Item {
             font.weight: Font.Medium
             color: body.dim
         }
-        Rectangle {
-            x: body.side
-            y: body.header - 8
-            width: body.inner
-            height: 1
-            color: body.faint
+        FontMetrics {
+            id: bigTimeMetrics
+            font: bigTime.font
+            readonly property real advance: {
+                void font;
+                const seconds = SettingsBridge.values.find(row => row.key === "bar.clock_seconds_open")?.value ?? false;
+                if (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true)
+                    return advanceWidth(seconds ? "00:00:00" : "00:00");
+                let widest = 0;
+                for (let hour = 0; hour < 24; ++hour)
+                    widest = Math.max(widest, advanceWidth(new Date(2026, 0, 1, hour, 0).toLocaleTimeString(Qt.locale(), seconds ? "h:mm:ss AP" : "h:mm AP")));
+                return widest;
+            }
         }
     }
 
@@ -395,12 +410,28 @@ Item {
         width: body.width
         height: Math.max(1, body.drawerHeight - y)
         contentWidth: width
-        contentHeight: body.listTop + list.height + 36 - body.header
+        contentHeight: body.fullHeight - body.header
         clip: true
-        // Scrolling the shade down anywhere opens the older notification groups, as the list did.
-        onContentYChanged: if (contentY > 0 && body.opened)
+        // A drawer that fits has no scroll range; AutoFlickDirection would then refuse the drag that opens history.
+        flickableDirection: Flickable.VerticalFlick
+        // Only input expands history: layout can also adjust contentY when its range shrinks.
+        onContentYChanged: if (contentY > 0 && body.opened && (dragging || flicking || mainBar.pressed))
             body.historyExpanded = true
-        ScrollBar.vertical: ScrollBar {}
+        WheelHandler {
+            target: null
+            onWheel: event => {
+                const delta = event.pixelDelta.y || event.angleDelta.y / 3;
+                if (delta < 0)
+                    body.historyExpanded = true;
+                Qt.callLater(() => {
+                    mainScroll.contentY = Math.max(0, Math.min(mainScroll.contentHeight - mainScroll.height, mainScroll.contentY - delta));
+                });
+                event.accepted = true;
+            }
+        }
+        ScrollBar.vertical: ScrollBar {
+            id: mainBar
+        }
         Item {
             id: scrollContent
             y: -body.header
@@ -603,7 +634,7 @@ Item {
         property bool peek: false
         readonly property var actions: body.actionsOf(note)
         // The row or one of its own targets (close, an action) holds the hover drop.
-        readonly property bool open: pointerInside || activeFocus || dismiss.activeFocus || body.focusedKey(row).length > 0 || (body.glass ? body.glass.hoverKey === key || body.glass.hoverKey.startsWith(key + ":") : false)
+        readonly property bool open: pointerInside || activeFocus || dismiss.activeFocus || body.focusedKey(row).length > 0 || (body.glass ? body.glass.hoverKey === key || (body.glass.hoverKey ?? "").startsWith(key + ":") : false)
         key: (peek ? "peek-" : "note-") + note.id
         label: note.summary
         glass: body.glass
@@ -794,18 +825,6 @@ Item {
         contentWidth: width
         clip: true
         interactive: false
-        WheelHandler {
-            target: null
-            onWheel: event => {
-                const delta = event.pixelDelta.y || event.angleDelta.y / 3;
-                if (delta < 0)
-                    body.historyExpanded = true;
-                Qt.callLater(() => {
-                    mainScroll.contentY = Math.max(0, Math.min(mainScroll.contentHeight - mainScroll.height, mainScroll.contentY - delta));
-                });
-                event.accepted = true;
-            }
-        }
         Repeater {
             model: body.opened ? body.plan.items : []
             Item {

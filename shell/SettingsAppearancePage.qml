@@ -122,7 +122,7 @@ Column {
             explanation: qsTranslate("SettingsAppearancePage", "Colour for icons, highlights and controls.")
             fallbackValue: ShellPalette.defaultAccent
             formatValue: value => ShellPalette.accents.find(choice => choice.id === value)?.name || value
-            controlWidth: 304
+            controlWidth: ShellPalette.accents.length * 38
             control: Component {
                 Row {
                     spacing: 6
@@ -190,6 +190,111 @@ Column {
                                     radius: 4
                                     color: SettingsTheme.ink
                                     visible: choice.selected
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    SettingsCard {
+        width: parent.width
+        title: qsTr("Cursor")
+        SettingsRow {
+            id: cursorRow
+            width: parent.width
+            catalog: page.catalog
+            settingKey: "appearance.cursor"
+            title: qsTr("Cursor style")
+            fallbackValue: "automatic"
+            controlWidth: 304
+            readonly property var options: [
+                {
+                    value: "automatic",
+                    label: qsTr("Automatic")
+                },
+                {
+                    value: "white",
+                    label: qsTr("White")
+                },
+                {
+                    value: "dark",
+                    label: qsTr("Dark")
+                }
+            ]
+            formatValue: value => options.find(option => option.value === value)?.label || String(value)
+            control: Component {
+                Row {
+                    spacing: 6
+                    Repeater {
+                        id: cursors
+                        model: cursorRow.options
+                        delegate: SettingsButton {
+                            id: choice
+                            required property var modelData
+                            required property int index
+                            readonly property bool selected: cursorRow.value === modelData.value
+                            width: (cursorRow.controlWidth - (cursors.count - 1) * 6) / cursors.count
+                            height: 86
+                            padding: 4
+                            objectName: "cursor-" + modelData.value
+                            text: modelData.label
+                            checked: selected
+                            Accessible.name: cursorRow.title + ": " + text
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.checked: selected
+                            ToolTip.visible: hovered || activeFocus
+                            ToolTip.text: text
+                            Keys.onPressed: event => {
+                                const offset = event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1 : 0;
+                                const next = index + offset;
+                                if (offset && next >= 0 && next < cursors.count) {
+                                    cursors.itemAt(next).forceActiveFocus(Qt.TabFocusReason);
+                                    event.accepted = true;
+                                } else if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_Tab, Qt.Key_Backtab].includes(event.key)) {
+                                    page.navigatePage(parent, event);
+                                }
+                            }
+                            onClicked: cursorRow.requestValue(modelData.value)
+                            contentItem: Column {
+                                spacing: 2
+                                Item {
+                                    width: parent.width
+                                    height: 48
+                                    Image {
+                                        objectName: "cursor-preview-" + choice.modelData.value
+                                        anchors.centerIn: parent
+                                        readonly property int previewScale: Screen.devicePixelRatio >= 2 ? 2 : 1
+                                        source: "settings/cursors/" + (choice.modelData.value === "automatic" ? (Appearance.dark ? "dark" : "white") : choice.modelData.value) + "-" + (24 * previewScale) + ".png"
+                                        // Preserve native cursor pixels at each screen scale.
+                                        width: sourceSize.width / previewScale
+                                        height: sourceSize.height / previewScale
+                                        smooth: false
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: choice.text
+                                    textFormat: Text.PlainText
+                                    font: choice.font
+                                    color: SettingsTheme.ink
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            background: Rectangle {
+                                radius: 10
+                                color: choice.hovered ? SettingsTheme.dropHover : SettingsTheme.drop
+                                border.width: choice.selected || choice.activeFocus ? 2 : 1
+                                border.color: choice.selected ? SettingsTheme.accent : choice.activeFocus ? SettingsTheme.ink : SettingsTheme.rim
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -3
+                                    radius: 13
+                                    color: "transparent"
+                                    border.color: SettingsTheme.ink
+                                    visible: choice.activeFocus
                                 }
                             }
                         }

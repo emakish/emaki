@@ -12,9 +12,6 @@ msgstr ""
 msgid "(no reply)"
 msgstr "(нет ответа)"
 
-msgid "A good place to start"
-msgstr "С чего начать"
-
 msgid "A recipe never runs as root."
 msgstr "Рецепт никогда не выполняется от root."
 
@@ -387,18 +384,6 @@ msgstr "Недопустимый текст подборки"
 msgid "Invalid shelf: a package twice"
 msgstr "Недопустимая подборка: пакет указан дважды"
 
-msgid "Invalid storefront"
-msgstr "Недопустимая витрина"
-
-msgid "Invalid storefront identities"
-msgstr "Недопустимые идентификаторы витрины"
-
-msgid "Invalid storefront row"
-msgstr "Недопустимая строка витрины"
-
-msgid "Invalid storefront text"
-msgstr "Недопустимый текст витрины"
-
 msgid "Invalid transaction"
 msgstr "Недопустимая транзакция"
 
@@ -499,9 +484,6 @@ msgstr "Для отката установки требуется разреше
 
 msgid "Permission is required to update repository packages."
 msgstr "Для обновления пакетов репозиториев требуется разрешение."
-
-msgid "Picked by Emaki"
-msgstr "Выбор Emaki"
 
 msgid "Popularity cache too large"
 msgstr "Кэш популярности слишком велик"
@@ -628,6 +610,9 @@ msgstr "Выберите одну программу репозитория."
 
 msgid "Session sudo key"
 msgstr "Ключ sudo для сеанса"
+
+msgid "Shutdown and sleep protection could not start. The update was not started."
+msgstr "Не удалось включить защиту от выключения и перехода в спящий режим. Обновление не было начато."
 
 msgid "Snapshot guard"
 msgstr "Защита снимками"
@@ -945,6 +930,9 @@ msgstr "Эту установленную программу Flatpak можно 
 msgid "This hardware uses the built-in graphics driver. NVIDIA support is not needed."
 msgstr "Это оборудование использует встроенный графический драйвер. Поддержка NVIDIA не нужна."
 
+msgid "This change could not be protected from a shutdown. Nothing was changed."
+msgstr "Не удалось защитить это изменение от выключения. Ничего не изменено."
+
 msgid "This install can no longer be taken back as it was."
 msgstr "Эту установку больше нельзя откатить в точности."
 
@@ -1008,8 +996,8 @@ msgstr "Обновлено"
 msgid "Updates always include the full system"
 msgstr "Обновления всегда охватывают всю систему"
 
-msgid "Updating Flatpak applications"
-msgstr "Обновление приложений Flatpak"
+msgid "Updating Emaki"
+msgstr "Обновление Emaki"
 
 #, python-brace-format
 msgid "Updating Flatpak applications ({scope})…"
@@ -1029,6 +1017,9 @@ msgstr "Использование: emaki-update-manager [--status|--check|--upd
 
 msgid "Waiting for permission to update…"
 msgstr "Ожидание разрешения на обновление…"
+
+msgid "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
+msgstr "Предупреждение: защита от выключения и сна недоступна; операция с пакетами продолжится."
 
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "Предупреждение: проверка места для обновления недоступна; транзакция пакетов продолжится."

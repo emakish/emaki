@@ -8,6 +8,7 @@ emaki-keyring
 emaki-mirrorlist
 emaki-nvidia
 emaki-shim-signed
+emaki-themes
 niri-emaki
 quickshell-emaki
 xdg-desktop-portal-gnome-emaki

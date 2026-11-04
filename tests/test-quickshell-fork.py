@@ -13,7 +13,7 @@ Probed offscreen: 0005 (no WAYLAND_SOCKET in children), 0006 (OnlyShowIn/NotShow
 0007 (the desktop-entry watcher), 0008 (Quickshell.iconThemeRevision), 0009
 (Quickshell.queryKeyboardModifiers), 0010 (completed-frame damage API). Not observable here:
 0001 (needs a compositor's screencopy), 0002 (needs NetworkManager), 0003 (a build fix),
-0004 (needs polkitd)."""
+0004 (needs polkitd), 0011 (needs controlled wall time; tested separately)."""
 import os
 from pathlib import Path
 import queue
@@ -52,6 +52,8 @@ REVIEWED = (
      'd7227add293f3e69752d7c8a8f903b1f2caf14f110473695bdaa5446e8464e5e'),
     ('0010-screencopy-completed-frame-damage.patch',
      '70b21d7553f7347de7d92be03c60261c234aad7f488e3d08cb7d6403285b1355'),
+    ('0011-core-clock-preserve-dst-occurrence.patch',
+     '504d088df5eb982ee722fcb34159c97c2333f4b584b6454370fb55e229cdabf9'),
 )
 # tests/build-quickshell-fork.sh installs qs into <directory>/bin.
 REMEDY = 'tests/build-quickshell-fork.sh <directory>, then PATH=<directory>/bin:$PATH'

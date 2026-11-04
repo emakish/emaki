@@ -4,7 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 
 Item {
-    id: target
+    id: targetObject
     anchors.fill: parent
     property HoverTip tip
     property string label: ""
@@ -14,27 +14,27 @@ Item {
     property point screenOffset: Qt.point(0, 0)
     HoverHandler {
         onHoveredChanged: {
-            if (!target.tip)
+            if (!targetObject.tip)
                 return;
-            if (hovered && target.enabled && target.label)
-                target.tip.offerFrom(target, target.label, target.shortcut, target.side, target.screenOffset);
+            if (hovered && targetObject.enabled && targetObject.label)
+                targetObject.tip.offerFrom(targetObject, targetObject.label, targetObject.shortcut, targetObject.side, targetObject.screenOffset);
             else
-                target.tip.leave(target);
+                targetObject.tip.leave(targetObject);
         }
     }
     // Passive tap observation: existing MouseAreas retain their click actions.
     TapHandler {
         onPressedChanged: {
-            if (pressed && target.tip)
-                target.tip.hide();
+            if (pressed && targetObject.tip)
+                targetObject.tip.hide();
         }
     }
     onEnabledChanged: {
         if (!enabled && tip)
-            tip.leave(target);
+            tip.leave(targetObject);
     }
     onVisibleChanged: {
         if (!visible && tip)
-            tip.leave(target);
+            tip.leave(targetObject);
     }
 }

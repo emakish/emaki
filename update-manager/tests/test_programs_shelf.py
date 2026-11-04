@@ -126,7 +126,7 @@ class ShelfRowTests(unittest.TestCase):
         self.shelf_file = self.root / 'emaki-shelf.json'
         self.shelf_file.write_text(json.dumps(GOOD))
         self.enterContext(patch.object(engine, 'storefront_paths',
-                                       side_effect=lambda name=engine.STOREFRONT: [
+                                       side_effect=lambda name: [
                                            self.shelf_file if name == engine.SHELF else SHIPPED.with_name(name)]))
 
     def gpu(self, *devices):

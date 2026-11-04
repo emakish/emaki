@@ -38,7 +38,7 @@ ShellRoot {
         onTriggered: {
             const strings = [];
             walk(view, strings);
-            const unchanged = strings.filter(text => ["Browse", "Installed", "Updates", "Popular", "Essentials", "Install", "All", "Refresh", "Picked by Emaki", "A good place to start", "Update all", "Check again", "Details", "IF SOMETHING BROKE"].includes(text));
+            const unchanged = strings.filter(text => ["Browse", "Installed", "Updates", "Discover your next favorite", "App of the day", "See all", "Install", "All", "Refresh", "Coming from Windows?", "Make something new", "Update all", "Check again", "Details", "IF SOMETHING BROKE"].includes(text));
             const translated = strings.filter(text => text.startsWith("[") && text.endsWith("]"));
             if (unchanged.length || translated.length < 8) {
                 console.error("ASSERTION_FAILED pseudo labels: " + JSON.stringify(strings));

@@ -374,6 +374,36 @@ ShellRoot {
                 if (!install)
                     return test.check(false, "welcome choice is named installChoice");
                 test.check(install.activeFocus, "welcome starts with focus on Install Emaki");
+                controller.session.availableLocales = ["en_US.UTF-8", "es_MX.UTF-8", "pt_BR.UTF-8", "de_DE.UTF-8", "fr_FR.UTF-8", "ru_RU.UTF-8"];
+                controller.publish();
+                const language = test.findItem(content, "languageChoice") as C.ComboBox;
+                language.forceActiveFocus();
+                const originalLanguage = language.currentIndex;
+                input.keyClick(Qt.Key_Space);
+                input.wait(50);
+                test.check(language.popup.visible, "Space opens the language list");
+                input.keyClick(Qt.Key_Down);
+                test.check(language.highlightedIndex === originalLanguage + 1, "Down highlights the next language");
+                input.keyClick(Qt.Key_Escape);
+                test.check(!language.popup.visible && language.currentIndex === originalLanguage, "Escape dismisses without selecting");
+                input.keyClick(Qt.Key_Space);
+                input.keyClick(Qt.Key_Down);
+                input.keyClick(Qt.Key_Return);
+                test.check(!language.popup.visible && language.currentIndex === originalLanguage + 1, "Enter commits the highlighted language");
+                input.keyClick(Qt.Key_Up);
+                test.check(language.currentIndex === originalLanguage, "closed list keyboard selection restores English");
+                language.model = Array.from({
+                    length: 40
+                }, (_, index) => ({
+                            label: "Option " + index
+                        }));
+                input.keyClick(Qt.Key_Space);
+                input.keyClick(Qt.Key_End);
+                input.wait(50);
+                test.check(language.highlightedIndex === 39 && (language.popup.contentItem as ListView).contentY > 0, "End reveals the final item in a scrolling list");
+                input.keyClick(Qt.Key_Escape);
+                language.model = Qt.binding(() => controller.languageChoices);
+                install.forceActiveFocus();
                 controller.catalog = Object.assign({}, controller.catalog, {
                     trial: true
                 });
@@ -1232,7 +1262,29 @@ ShellRoot {
                 test.reveal(open);
                 input.mouseClick(open, open.width / 2, open.height / 2);
                 const use = test.find("createUse-" + rest.id);
-                use.currentIndex = 3;
+                test.reveal(use);
+                use.forceActiveFocus();
+                test.settleLayout("disk use list before scrolling");
+                const diskFlick = (test.find("installerBody") as C.ScrollView).contentItem as Flickable;
+                const useTop = use.mapToItem(diskFlick.contentItem, 0, 0).y;
+                // Open at the bottom first, then scroll the same field upward and reopen.
+                // Neither the field's local position nor the popup height changes.
+                diskFlick.contentY = Math.max(0, useTop - diskFlick.height + use.height + 8);
+                test.settleLayout("disk use list near the bottom");
+                test.check(diskFlick.contentY > 0, "the disk list is reached after scrolling");
+                input.keyClick(Qt.Key_Space);
+                input.wait(50);
+                test.check(use.popup.visible && use.popup.y < 0, "disk list opens above its field near the bottom");
+                input.keyClick(Qt.Key_Escape);
+                diskFlick.contentY = Math.min(useTop - 8, diskFlick.contentHeight - diskFlick.height);
+                test.settleLayout("disk use list scrolled upward");
+                input.keyClick(Qt.Key_Space);
+                input.wait(50);
+                // Overlay positioning can round fractional scroll coordinates.
+                test.check(use.popup.visible && Math.abs(use.popup.y - use.height - 4) < 0.5, "reopening after scrolling recalculates the downward direction (offset " + use.popup.y + ")");
+                input.keyClick(Qt.Key_End);
+                input.keyClick(Qt.Key_Return);
+                test.check(!use.popup.visible && use.activeFocus && use.currentIndex === 3, "disk list keyboard selection closes and retains focus");
                 test.check(use.currentValue === "swap", "the use list offers swap");
                 const add = test.find("createAction-" + rest.id);
                 test.reveal(add);
@@ -1356,7 +1408,9 @@ ShellRoot {
                 const savedDeadline = controller.session.deadline;
                 controller.mode = "alongside";
                 // Changing the mode invalidates the review; supply a fresh reviewed plan.
-                controller.session.plan = Object.assign({}, savedPlan, {token: "alongside-fixture"});
+                controller.session.plan = Object.assign({}, savedPlan, {
+                    token: "alongside-fixture"
+                });
                 controller.session.deadline = Date.now() + 600000;
                 controller.publish();
                 input.wait(50);

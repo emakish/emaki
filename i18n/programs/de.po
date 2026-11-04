@@ -12,9 +12,6 @@ msgstr ""
 msgid "(no reply)"
 msgstr "(keine Antwort)"
 
-msgid "A good place to start"
-msgstr "Ein guter Ausgangspunkt"
-
 msgid "A recipe never runs as root."
 msgstr "Eine Bauanleitung wird niemals als root ausgeführt."
 
@@ -387,18 +384,6 @@ msgstr "Ungültiger Auswahltext"
 msgid "Invalid shelf: a package twice"
 msgstr "Ungültige Auswahl: ein Paket doppelt"
 
-msgid "Invalid storefront"
-msgstr "Ungültige Store-Ansicht"
-
-msgid "Invalid storefront identities"
-msgstr "Ungültige Kennungen der Store-Ansicht"
-
-msgid "Invalid storefront row"
-msgstr "Ungültige Zeile der Store-Ansicht"
-
-msgid "Invalid storefront text"
-msgstr "Ungültiger Text der Store-Ansicht"
-
 msgid "Invalid transaction"
 msgstr "Ungültige Transaktion"
 
@@ -499,9 +484,6 @@ msgstr "Zum Rückgängigmachen einer Installation ist eine Berechtigung erforder
 
 msgid "Permission is required to update repository packages."
 msgstr "Zum Aktualisieren von Paketen aus Paketquellen ist eine Berechtigung erforderlich."
-
-msgid "Picked by Emaki"
-msgstr "Von Emaki ausgewählt"
 
 msgid "Popularity cache too large"
 msgstr "Beliebtheitszwischenspeicher zu groß"
@@ -628,6 +610,9 @@ msgstr "Wählen Sie ein Programm aus einer Paketquelle."
 
 msgid "Session sudo key"
 msgstr "Sudo-Schlüssel für die Sitzung"
+
+msgid "Shutdown and sleep protection could not start. The update was not started."
+msgstr "Der Schutz vor dem Herunterfahren und dem Wechsel in Bereitschaft konnte nicht aktiviert werden. Die Aktualisierung wurde nicht gestartet."
 
 msgid "Snapshot guard"
 msgstr "Schnappschussschutz"
@@ -945,6 +930,9 @@ msgstr "Dieses vorhandene Flatpak-Programm kann ohne Administratorauthentifizier
 msgid "This hardware uses the built-in graphics driver. NVIDIA support is not needed."
 msgstr "Diese Hardware verwendet den eingebauten Grafiktreiber. NVIDIA-Unterstützung ist nicht erforderlich."
 
+msgid "This change could not be protected from a shutdown. Nothing was changed."
+msgstr "Diese Änderung konnte nicht vor einem Herunterfahren geschützt werden. Es wurde nichts geändert."
+
 msgid "This install can no longer be taken back as it was."
 msgstr "Diese Installation kann nicht mehr in ihrer ursprünglichen Form zurückgenommen werden."
 
@@ -1008,8 +996,8 @@ msgstr "Aktualisiert"
 msgid "Updates always include the full system"
 msgstr "Aktualisierungen umfassen immer das gesamte System"
 
-msgid "Updating Flatpak applications"
-msgstr "Flatpak-Anwendungen werden aktualisiert"
+msgid "Updating Emaki"
+msgstr "Emaki wird aktualisiert"
 
 #, python-brace-format
 msgid "Updating Flatpak applications ({scope})…"
@@ -1029,6 +1017,9 @@ msgstr "Aufruf: emaki-update-manager [--status|--check|--updates]"
 
 msgid "Waiting for permission to update…"
 msgstr "Warten auf die Berechtigung zum Aktualisieren…"
+
+msgid "Warning: shutdown and sleep protection is unavailable; the package transaction will continue."
+msgstr "Warnung: Der Schutz vor Herunterfahren und Ruhezustand ist nicht verfügbar; der Paketvorgang wird fortgesetzt."
 
 msgid "Warning: the update space check is unavailable; the package transaction will continue."
 msgstr "Warnung: Die Speicherprüfung für die Aktualisierung ist nicht verfügbar; die Pakettransaktion wird fortgesetzt."

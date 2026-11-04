@@ -92,7 +92,7 @@ def validate_frame(path, log, screen, width, height, version, *, scrolled=False)
 
 
 def validate_restart(path, log, width, height, *, removable=False):
-    """Check the real popup's opaque backing, contrast, focus and rendered glyphs."""
+    """Check the real popup's rendered backing, contrast, focus and glyphs."""
     evidence = json.loads(re.search(r'RESTART_FRAME (\{[^\n]+\})', log)[1])
     expected = 'Remove the USB stick, then press Enter to restart.' if removable else 'Press Enter to restart.'
     assert evidence['text'] == expected, evidence
@@ -106,8 +106,8 @@ def validate_restart(path, log, width, height, *, removable=False):
         channels = [v / 255 for v in color]
         linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in channels]
         return sum(a * b for a, b in zip(linear, (.2126, .7152, .0722)))
-    ink, backing = rgb(evidence['color']), rgb(evidence['background'])
-    assert (luminance(backing) + .05) / (luminance(ink) + .05) >= 7, evidence
+    ink = rgb(evidence['color'])
+    assert evidence['glass'], evidence
     with Image.open(path) as frame:
         ratio = frame.width / width
         area = tuple(round(evidence[k] * ratio) for k in ('x', 'y'))
@@ -116,4 +116,7 @@ def validate_restart(path, log, width, height, *, removable=False):
         region = frame.convert('RGB').crop(bounds)
         pixels = [region.getpixel((x, y)) for y in range(region.height) for x in range(region.width)]
         assert sum(max(abs(a - b) for a, b in zip(pixel, ink)) < 20 for pixel in pixels) >= 30
-        assert sum(max(abs(a - b) for a, b in zip(pixel, backing)) < 3 for pixel in pixels) > len(pixels) / 2
+        from collections import Counter
+        backing, count = Counter(pixels).most_common(1)[0]
+        assert count > len(pixels) / 2
+        assert (luminance(backing) + .05) / (luminance(ink) + .05) >= 7, evidence

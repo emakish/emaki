@@ -15,8 +15,8 @@ ShellRoot {
     readonly property int testWidth: Number(Quickshell.env("EMAKI_SHELL_TEST_WIDTH") || "0")
     readonly property int testHeight: Number(Quickshell.env("EMAKI_SHELL_TEST_HEIGHT") || "0")
     readonly property bool valid: ["soft", "full"].includes(borderMode) && reservedSpace >= 0 && testWidth >= 0 && testHeight >= 0 && (!headless || (testWidth > 0 && testHeight > 0))
-    readonly property ShellScene scene: outputs.activeScene
-    readonly property Surfaces surfaceWindows: outputs.instances.find(i => i.scene === scene)?.surfaces ?? null
+    readonly property ShellScene scene: outputsObject.activeScene
+    readonly property Surfaces surfaceWindows: outputsObject.instances.find(i => i.scene === scene)?.surfaces ?? null
     // The lowercase standalone entry has no named QML type for a typed Loader cast.
     readonly property var coverController: coverLoader.item
 
@@ -29,7 +29,7 @@ ShellRoot {
             // an exit from here is ignored, so defer it by one event-loop turn.
             Qt.callLater(Qt.exit, 1);
         } else if (!headless) {
-            if (startup.coverActive)
+            if (startupObject.coverActive)
                 coverLoader.setSource(Qt.resolvedUrl("session-cover.qml"));
         }
     }
@@ -37,8 +37,12 @@ ShellRoot {
     property bool applicationPalettePending: true
     Connections {
         target: Appearance
-        function onDarkChanged() { root.applicationPalettePending = true; }
-        function onAccentChanged() { root.applicationPalettePending = true; }
+        function onDarkChanged() {
+            root.applicationPalettePending = true;
+        }
+        function onAccentChanged() {
+            root.applicationPalettePending = true;
+        }
     }
     Timer {
         interval: 100
@@ -56,17 +60,21 @@ ShellRoot {
         id: coreService
         binary: Quickshell.env("EMAKI_BIN")
     }
+    OverviewVideo {
+        niri: coreService
+        enabled: root.valid && !root.headless
+    }
     SessionStartup {
-        id: startup
-        modelsReady: outputs.modelsReady
-        modelRevision: outputs.modelRevision
-        dockRequired: outputs.shared.dockStore.on
-        barMapped: outputs.barMapped
-        dockMapped: outputs.dockMapped
-        overlayMapped: outputs.overlayMapped
+        id: startupObject
+        modelsReady: outputsObject.modelsReady
+        modelRevision: outputsObject.modelRevision
+        dockRequired: outputsObject.shared.dockStore.on
+        barMapped: outputsObject.barMapped
+        dockMapped: outputsObject.dockMapped
+        overlayMapped: outputsObject.overlayMapped
         onCoverActiveChanged: {
             if (!coverActive) {
-                outputs.sealStartupMaterial();
+                outputsObject.sealStartupMaterial();
                 root.coverController?.complete();
             }
         }
@@ -74,35 +82,35 @@ ShellRoot {
     WelcomeController {
         id: welcome
         enabled: root.valid && !root.headless
-        ready: !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
-        onOpening: outputs.closeAll()
+        ready: !startupObject.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        onOpening: outputsObject.closeAll()
         openShortcutList: () => root.scene?.openKeyboard("shortcuts") ?? false
-        onLanguageRequested: outputs.shared.settingsController.open("region")
+        onLanguageRequested: outputsObject.shared.settingsController.open("region")
     }
     ShellRecoveryNotice {
-        store: outputs.shared.notifications
-        ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        store: outputsObject.shared.notifications
+        ready: root.valid && !root.headless && !startupObject.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
     ReportController {
-        id: report
-        store: outputs.shared.notifications
+        id: reportObject
+        store: outputsObject.shared.notifications
         enabled: root.valid && !root.headless
-        onOpening: outputs.closeAll()
-        Component.onCompleted: ReportBridge.controller = report
+        onOpening: outputsObject.closeAll()
+        Component.onCompleted: ReportBridge.controller = reportObject
     }
     SessionUpdateNotice {
-        store: outputs.shared.notifications
-        ready: root.valid && !root.headless && !startup.coverActive && !(root.scene?.pairingPeekOpen ?? false) && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        store: outputsObject.shared.notifications
+        ready: root.valid && !root.headless && !startupObject.coverActive && !(root.scene?.pairingPeekOpen ?? false) && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
     SecureBootNotice {
-        store: outputs.shared.notifications
-        ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
-        onSettingsRequested: outputs.shared.settingsController.open("privacy")
+        store: outputsObject.shared.notifications
+        ready: root.valid && !root.headless && !startupObject.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        onSettingsRequested: outputsObject.shared.settingsController.open("privacy")
     }
     UpdatesNotice {
-        store: outputs.shared.notifications
+        store: outputsObject.shared.notifications
         pending: UpdateService.pending
-        ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        ready: root.valid && !root.headless && !startupObject.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
         onOpenRequested: UpdateService.open()
     }
     IpcHandler {
@@ -112,9 +120,9 @@ ShellRoot {
         }
     }
     ShellOutputs {
-        id: outputs
+        id: outputsObject
         niri: coreService
-        startup: startup
+        startup: startupObject
         enabled: root.valid
         firstRunPresent: welcome.opened
         requestedOutput: root.requestedOutput
@@ -127,21 +135,21 @@ ShellRoot {
     LazyLoader {
         active: root.valid && !root.headless
         PolkitPromptService {
-            outputs: outputs
+            outputs: outputsObject
         }
     }
     LazyLoader {
         active: root.valid && !root.headless
         CaptureService {
-            outputs: outputs
+            outputs: outputsObject
         }
     }
     LazyLoader {
-        active: !root.headless && !startup.coverActive
+        active: !root.headless && !startupObject.coverActive
         SnapshotRecovery {
             id: snapshotRecovery
             Binding {
-                target: outputs.shared.services
+                target: outputsObject.shared.services
                 property: "recovery"
                 value: snapshotRecovery
             }
@@ -150,16 +158,16 @@ ShellRoot {
     Loader {
         id: coverLoader
         onStatusChanged: if (status === Loader.Error)
-            startup.finish()
+            startupObject.finish()
         // The compositor owns startup coverage until this same-client cover is ready.
     }
     Connections {
         target: coverLoader.item
         function onRevealing(): void {
-            outputs.sealStartupMaterial();
+            outputsObject.sealStartupMaterial();
         }
         function onCompleted(): void {
-            startup.finish();
+            startupObject.finish();
         }
     }
     IpcHandler {
@@ -168,7 +176,7 @@ ShellRoot {
             root.scene?.openLauncher(true);
         }
         function close(): void {
-            outputs.closeAll();
+            outputsObject.closeAll();
         }
         function toggle(): void {
             root.scene?.toggleLauncher(true);
@@ -235,11 +243,11 @@ ShellRoot {
             root.scene?.openKeyboard("clock");
         }
         function close(): void {
-            outputs.closeAll();
+            outputsObject.closeAll();
         }
         function toggle(): void {
             if (root.scene?.drawerOpen)
-                outputs.closeAll();
+                outputsObject.closeAll();
             else
                 root.scene?.openKeyboard("clock");
         }
@@ -247,13 +255,13 @@ ShellRoot {
             root.scene?.openKeyboard("notifications");
         }
         function dnd(enabled: bool): void {
-            outputs.shared.notifications.setDnd(enabled);
+            outputsObject.shared.notifications.setDnd(enabled);
         }
         function media(action: string): bool {
             return root.scene?.clockBody.mediaAction(action) ?? false;
         }
         function clear(): void {
-            outputs.shared.notifications.dismiss(outputs.shared.notifications.entries.map(n => n.id));
+            outputsObject.shared.notifications.dismiss(outputsObject.shared.notifications.entries.map(n => n.id));
         }
         function status(): string {
             return root.scene?.status() ?? "{}";
@@ -268,24 +276,24 @@ ShellRoot {
             return root.scene?.openKeyboard(page) ?? false;
         }
         function close(): void {
-            outputs.closeAll();
+            outputsObject.closeAll();
         }
         function status(): string {
             return root.scene?.status() ?? "{}";
         }
     }
     DockIpc {
-        shared: outputs.shared
+        shared: outputsObject.shared
         scene: root.scene
     }
     IpcHandler {
         target: "review"
         function barAutoHide(value: bool): void {
-            for (const instance of outputs.instances)
+            for (const instance of outputsObject.instances)
                 instance.scene.barPolicy.autoHide = value;
         }
         function overviewWorkspaces(value: bool): void {
-            for (const instance of outputs.instances)
+            for (const instance of outputsObject.instances)
                 instance.scene.barPolicy.overviewWorkspaces = value;
         }
         function border(mode: string): bool {

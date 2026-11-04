@@ -304,7 +304,7 @@ class SessionFiles(unittest.TestCase):
                 elif change == 'core':
                     self.binary.write_text('#!/bin/sh\necho new-core\n')
                 else:
-                    package = self.packages / 'quickshell-emaki-0.3.1-14/desc'
+                    package = self.packages / 'quickshell-emaki-0.3.1-15/desc'
                     package.parent.mkdir(parents=True, exist_ok=True)
                     package.write_text('%NAME%\nquickshell-emaki\n')
                 self.assert_notice(thread, notices, within=3)

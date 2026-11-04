@@ -212,7 +212,10 @@ Scope {
             // The whole query at the start of the shown name wins over scattered words.
             if (words.length > 1 && entry.fields[0].text.startsWith(folded))
                 total = 0;
-            found.push({ entry: entry, total: total });
+            found.push({
+                entry: entry,
+                total: total
+            });
         }
         // Equal scores: the shorter name is the closer match ("red heart" before "smiling face
         // with heart-eyes"), then the Unicode order.

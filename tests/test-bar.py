@@ -171,8 +171,8 @@ print('PASS: native panel band mask, pointer hold through gaps/top margin, hidde
 # Restoring the old broad band must fail at the UI reveal, using the same native mask.
 scene_path=mq/'ShellScene.qml'
 scene_source=scene_path.read_text()
-assert scene_source.count(' && barPolicy.pointerRevealed')==1
-scene_path.write_text(scene_source.replace(' && barPolicy.pointerRevealed',''))
+assert scene_source.count(' && barPolicyObject.pointerRevealed')==1
+scene_path.write_text(scene_source.replace(' && barPolicyObject.pointerRevealed',''))
 r=subprocess.run(['qs','-p',str(mq/'check.qml'),'--no-color'],env=menv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
 assert r.returncode!=0 and 'BAR_MASK_FAILED band mask at 0,25 expected false' in r.stdout,r.stdout
 print('PASS: native mask regression rejects the old band during a UI reveal')

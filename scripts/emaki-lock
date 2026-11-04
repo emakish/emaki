@@ -65,6 +65,7 @@ ACCENT_HEADER = b'# Emaki accent: written by the session from settings.toml; edi
 ACCENTS = {
     'orange': (b'e2733f', b'2a0f05'), 'coral': (b'ef786b', b'300f0c'), 'rose': (b'e780aa', b'300c1c'),
     'amber': (b'dca745', b'281b04'), 'green': (b'83b969', b'12230b'), 'teal': (b'61b5a5', b'08251f'),
+    'silver': (b'a7b2bc', b'101820'), 'graphite': (b'6c7682', b'fefefe'),
     'blue': (b'78aaf0', b'0b1b36'), 'violet': (b'b294e8', b'211035'),
 }
 DEFAULT_ACCENT = 'rose'

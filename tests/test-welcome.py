@@ -68,8 +68,8 @@ def content_contract():
     assert desktop['Desktop Entry']['Icon'] == 'emaki-welcome'
     main = (ROOT / 'shell/shell.qml').read_text()
     assert 'enabled: root.valid && !root.headless' in main
-    assert 'ready: !startup.coverActive' in main
-    assert 'onOpening: outputs.closeAll()' in main
+    assert 'ready: !startupObject.coverActive' in main
+    assert 'onOpening: outputsObject.closeAll()' in main
     # All shortcuts opens the list Super + / opens, not niri's overlay.
     assert 'openShortcutList: () => root.scene?.openKeyboard("shortcuts") ?? false' in main
     assert binds['Mod+Slash'] == 'spawn "emaki-shell" "call" "keyboard" "open" "shortcuts";'
@@ -108,6 +108,9 @@ def prepare(base, scale):
         (base / 'shell' / fixture).write_text(text)
     for name in ('home', 'config', 'data', 'cache', 'state', 'runtime', 'bin'):
         (base / name).mkdir(mode=0o700)
+    # Welcome navigation is independent of the installed release's news pages.
+    # The separate What's New suite exercises releases that provide those pages.
+    (base / 'release').write_text('VERSION=0.9.0\n')
     (base / 'data/applications').mkdir()
     shutil.copyfile(ROOT / 'shell/emaki-welcome.desktop', base / 'data/applications/emaki-welcome.desktop')
     fake = base / 'bin/niri'
@@ -124,6 +127,7 @@ def prepare(base, scale):
                QT_QUICK_CONTROLS_STYLE='Basic', QT_SCALE_FACTOR=str(scale),
                QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1',
                WELCOME_SHOTS=str(SHOTS), WELCOME_PROFILE=str(base),
+               WELCOME_RELEASE=str(base / 'release'),
                PATH=str(base / 'bin') + os.pathsep + os.environ['PATH'],
                DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-bus'),
                DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(base / 'no-system-bus'))

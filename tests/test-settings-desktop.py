@@ -53,6 +53,14 @@ with tempfile.TemporaryDirectory(prefix='settings-desktop-') as temporary:
                           ', "path": os.environ["SETTINGS_CHOSEN_IMAGE"]}))\n')
         env['SETTINGS_CHOOSER_' + state.upper()] = str(helper)
 
+    for kind in ('PICTURE', 'VIDEO', 'BROKEN', 'PORTAL_FAILED', 'PORTAL_UNAVAILABLE', 'CANCELLED'):
+        helper = base / ('overview-' + kind + '.py')
+        state = {'BROKEN': 'invalid_overview_background', 'PORTAL_FAILED': 'portal_failed',
+                 'PORTAL_UNAVAILABLE': 'portal_unavailable', 'CANCELLED': 'cancelled'}.get(kind, 'ready')
+        result = dict(schema_version=1, state=state, kind=kind.lower(), path=env['SETTINGS_CHOSEN_IMAGE'])
+        helper.write_text('import json, sys, time\nrequest = json.loads(sys.stdin.readline())\nassert request == {"op": "overview-choose"}\ntime.sleep(.2)\nprint(' + repr(json.dumps(result)) + ')\n')
+        env['SETTINGS_OVERVIEW_' + kind] = str(helper)
+
     def run(label, expected=True):
         shot_dir = EVIDENCE if expected else base / ('shots-' + label)
         shot_dir.mkdir(exist_ok=True)
@@ -61,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='settings-desktop-') as temporary:
                                 env=env, capture_output=True, text=True, timeout=50)
         output = result.stdout + result.stderr
         (EVIDENCE / ('desktop-' + label + '.log')).write_text(output)
-        passed = result.returncode == 0 and 'SETTINGS_DESKTOP_RESULT 7 0' in output
+        passed = result.returncode == 0 and 'SETTINGS_DESKTOP_RESULT 8 0' in output
         if expected:
             assert passed, output
             for error in ('ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign'):
@@ -83,8 +91,11 @@ with tempfile.TemporaryDirectory(prefix='settings-desktop-') as temporary:
          'page.catalog.reset("appearance.wallpaper")',
          'page.catalog.reset("appearance.gaps")'),
         ('portal-cancel', 'SettingsCatalog.qml',
-         'result.state === "ready"',
-         '(result.state === "ready" || result.state === "cancelled")'),
+         'if (result.state === "ready" && typeof result.path === "string" && result.path.startsWith("/")) {\n                settings.wallpaperChooserError',
+         'if ((result.state === "ready" || result.state === "cancelled") && typeof result.path === "string" && result.path.startsWith("/")) {\n                settings.wallpaperChooserError'),
+        ('overview-failure-write', 'SettingsCatalog.qml',
+         'settings.overviewChoiceFailed(qsTr("This file could not be played or opened."));',
+         'settings.overviewChoiceFailed(qsTr("This file could not be played or opened.")); settings.set("appearance.overview_video", "");'),
     ]
     for label, filename, before, after in mutations:
         path = base / 'shell' / filename

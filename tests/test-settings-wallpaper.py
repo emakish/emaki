@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -92,7 +93,7 @@ elif os.environ.get('FAKE_IGNORE') != '1':
             with patch.dict(os.environ, EMAKI_GREETER_WALLPAPER_ROOT=str(self.root / 'published')):
                 self.assertEqual(module.texture(16, 16, 1, 'DP-1')['state'], 'config_missing')
 
-    def test_bad_settings_start_plain_wallpaper(self):
+    def test_bad_settings_start_default_wallpaper(self):
         module = load(ROOT / 'scripts/emaki-session-wallpaper')
         config = self.root / 'config/emaki/settings.toml'
         config.parent.mkdir(parents=True)
@@ -105,7 +106,7 @@ elif os.environ.get('FAKE_IGNORE') != '1':
                 fd = os.open(claim, os.O_RDWR)
                 with patch.dict(os.environ, self.env, clear=True), patch.object(module, 'claim_file', return_value=fd), patch('os.execvpe') as execute:
                     self.assertEqual(module.main(), 0)
-                    execute.assert_called_once_with('wpaperd', ['wpaperd'], self.env)
+                    execute.assert_called_once_with('wpaperd', module.default_arguments(self.env), self.env)
 
     def test_ring_startup_skips_daemon_without_claiming_it(self):
         module = load(ROOT / 'scripts/emaki-session-wallpaper')
@@ -113,10 +114,11 @@ elif os.environ.get('FAKE_IGNORE') != '1':
         from types import SimpleNamespace
         def status(mode, state):
             return SimpleNamespace(returncode=0, stdout=json.dumps(dict(mode=mode, load_state=state)))
-        with patch.dict(os.environ, env, clear=True), patch.object(module, 'claim_file') as claim, patch.object(module.subprocess, 'run', side_effect=[status('ring', 'loading'), status('ring', 'ready')]), patch.object(module.time, 'sleep'):
-            self.assertEqual(module.main(), 0)
-            claim.assert_not_called()
-        for mode, state in (('image', 'image'), ('ring', 'failed')):
+        for mode in ('ring', 'strip'):
+            with patch.dict(os.environ, env, clear=True), patch.object(module, 'claim_file') as claim, patch.object(module.subprocess, 'run', side_effect=[status(mode, 'loading'), status(mode, 'ready')]), patch.object(module.time, 'sleep'):
+                self.assertEqual(module.main(), 0)
+                claim.assert_not_called()
+        for mode, state in (('image', 'image'), ('ring', 'failed'), ('strip', 'failed')):
             with patch.object(module.subprocess, 'run', return_value=status(mode, state)):
                 self.assertFalse(module.compositor_draws_wallpaper(env))
         with patch.object(module.subprocess, 'run', side_effect=FileNotFoundError()):
@@ -128,7 +130,7 @@ elif os.environ.get('FAKE_IGNORE') != '1':
         with patch.dict(os.environ, env, clear=True), patch.object(module, 'claim_file', return_value=descriptor), patch.object(module, 'compositor_draws_wallpaper') as query, patch.object(module.os, 'execvpe') as execute:
             self.assertEqual(module.main(force=True), 0)
             query.assert_not_called()
-            execute.assert_called_once_with('wpaperd', ['wpaperd'], env)
+            execute.assert_called_once_with('wpaperd', module.default_arguments(env), env)
 
     def test_settings_start_image_daemon_on_demand(self):
         module = load(HELPER)
@@ -141,6 +143,50 @@ elif os.environ.get('FAKE_IGNORE') != '1':
         with patch.object(module, 'command', return_value=response), patch.object(module.subprocess, 'run') as start:
             self.assertEqual(module.snapshot(), self.old)
             start.assert_not_called()
+
+    def test_snapshot_retries_empty_paths_until_all_outputs_are_ready(self):
+        module = load(HELPER)
+        ready = json.dumps([dict(display=key, path=value) for key, value in self.old.items()])
+        empty = json.dumps([dict(display=key, path='') for key in self.old])
+        partial = json.dumps([dict(display='DP-1', path=self.old['DP-1']),
+                              dict(display='DP-2', path='')])
+        for first, starts in ((ValueError('wallpaper_command_failed'), 1), (empty, 0)):
+            with self.subTest(starts=starts), patch.object(module, 'command', side_effect=[first, empty, partial, ready]) as query, patch.object(module.subprocess, 'run') as start, patch.object(module.time, 'sleep') as sleep:
+                self.assertEqual(module.snapshot(), self.old)
+                self.assertEqual(query.call_count, 4)
+                self.assertEqual(start.call_count, starts)
+                self.assertEqual(sleep.call_count, 3)
+
+    def test_snapshot_empty_paths_exhaust_bounded_retry(self):
+        module = load(HELPER)
+        empty = json.dumps([dict(display='DP-1', path='')])
+        for first, starts in ((ValueError('wallpaper_command_failed'), 1), (empty, 0)):
+            with self.subTest(starts=starts), patch.object(module, 'command', side_effect=[first] + [empty] * 30) as query, patch.object(module.subprocess, 'run') as start, patch.object(module.time, 'sleep') as sleep:
+                with self.assertRaisesRegex(ValueError, '^wallpaper_not_ready$'):
+                    module.snapshot()
+                self.assertEqual(query.call_count, 31)
+                self.assertEqual(start.call_count, starts)
+                self.assertEqual(sleep.call_count, 30)
+                self.assertTrue(all(call.args == (.1,) for call in sleep.call_args_list))
+
+    def test_snapshot_invalid_payload_is_not_retried(self):
+        module = load(HELPER)
+        invalid = [None, {}, [], [dict(display='DP-1', path='relative')],
+                   [dict(display='DP-1', path=None)], [dict(display='DP-1', path=[])],
+                   [dict(display='DP-1', path='/ok', extra=True)],
+                   [dict(display='-option', path='')],
+                   [dict(display='DP-1', path=''), dict(display='DP-1', path='/ok')],
+                   [dict(display='DP-1', path=''), dict(display='DP-2', path='relative')],
+                   [dict(display='DP-1', path=''), dict(display='DP-2', path='/bad\0path')]]
+        for payload in ['{'] + [json.dumps(value) for value in invalid]:
+            for spawned in (False, True):
+                replies = ([ValueError('wallpaper_command_failed')] if spawned else []) + [payload]
+                with self.subTest(payload=payload, spawned=spawned), patch.object(module, 'command', side_effect=replies) as query, patch.object(module.subprocess, 'run') as start, patch.object(module.time, 'sleep') as sleep:
+                    with self.assertRaises(ValueError):
+                        module.snapshot()
+                    self.assertEqual(query.call_count, 1 + int(spawned))
+                    self.assertEqual(start.call_count, int(spawned))
+                    self.assertEqual(sleep.call_count, int(spawned))
 
     def test_spawn_asks_the_compositor_and_falls_back_to_a_detached_start(self):
         from types import SimpleNamespace
@@ -189,10 +235,72 @@ elif os.environ.get('FAKE_IGNORE') != '1':
         env = dict(self.env, XDG_STATE_HOME=str(state))
         self.assertEqual(module.wallpaper_arguments(env), ['wpaperd', '--config', str(generated)])
         config.write_text('schema_version = 1\n')
-        self.assertEqual(module.wallpaper_arguments(env), ['wpaperd'])
+        self.assertEqual(module.wallpaper_arguments(env), module.default_arguments(env))
         config.write_text('schema_version = 1\ngeneration = "../escape"\n[appearance]\nwallpaper = ' + json.dumps(str(self.image)))
         with self.assertRaises(ValueError):
             module.wallpaper_arguments(env)
+
+    def test_first_picture_without_personal_config_starts_with_explicit_default(self):
+        # Exercise the real snapshot/start/apply chain with an isolated image daemon.
+        data = self.root / 'data'
+        packaged = data / 'wpaperd/config.toml'
+        packaged.parent.mkdir(parents=True)
+        fallback = data / 'wallpaper/fallback.png'
+        fallback.parent.mkdir()
+        fallback.write_bytes(b'fallback')
+        rendered = subprocess.run(
+            [sys.executable, str(ROOT / 'scripts/render-paths'), '--datadir', str(data),
+             '--text', str(ROOT / 'etc-skel/.config/wpaperd/config.toml')],
+            text=True, capture_output=True, check=True)
+        packaged.write_text(rendered.stdout)
+        runtime = self.root / 'runtime'
+        runtime.mkdir(mode=0o700)
+        starter = self.root / 'emaki-session-wallpaper'
+        starter.write_text('#!/usr/bin/python3\nimport runpy\n'
+                           + 'module = runpy.run_path(' + repr(str(ROOT / 'scripts/emaki-session-wallpaper')) + ')\n'
+                           + 'module["default_arguments"].__globals__["DATADIR"] = ' + repr(str(data)) + '\n'
+                           + 'raise SystemExit(module["main"](force=True))\n')
+        starter.chmod(0o700)
+        daemon = self.root / 'wpaperd'
+        daemon.write_text('''#!/usr/bin/python3
+import json, os, pathlib, sys, tomllib
+assert sys.argv[1] == '--config'
+config = tomllib.loads(pathlib.Path(sys.argv[2]).read_text())
+path = config['any']['path']
+assert pathlib.Path(path).is_file()
+pathlib.Path(os.environ['FAKE_STATE']).write_text(json.dumps({'DP-1': path}))
+''')
+        daemon.chmod(0o700)
+        personal = self.root / 'config/wpaperd/config.toml'
+        source = self.root / 'config/emaki/settings.toml'
+        source.parent.mkdir(parents=True)
+        for settings in (None, 'schema_version = 1\n[appearance]\nstyle = "07-blue-light"\n'):
+            with self.subTest(settings=settings):
+                if settings is not None:
+                    source.write_text(settings)
+                self.state.unlink()
+                before = self.run_helper('snapshot', XDG_RUNTIME_DIR=str(runtime))
+                self.assertEqual(before.returncode, 0, before.stderr)
+                self.assertEqual(json.loads(before.stdout), {'DP-1': str(fallback)})
+                applied = self.run_helper('apply', str(self.image), XDG_RUNTIME_DIR=str(runtime))
+                self.assertEqual(applied.returncode, 0, applied.stderr)
+                self.assertEqual(json.loads(self.state.read_text()), {'DP-1': str(self.image)})
+                self.assertEqual(self.run_helper('restore', before.stdout).returncode, 0)
+                self.assertEqual(json.loads(self.state.read_text()), {'DP-1': str(fallback)})
+                self.assertFalse(personal.exists())
+                if settings is None:
+                    self.assertFalse(source.exists())
+                else:
+                    self.assertEqual(source.read_text(), settings)
+
+    def test_personal_configuration_keeps_precedence_over_packaged_default(self):
+        module = load(ROOT / 'scripts/emaki-session-wallpaper')
+        personal = self.root / 'config/wpaperd/config.toml'
+        personal.parent.mkdir(parents=True)
+        personal.write_text('[default]\npath = ' + json.dumps(str(self.image)))
+        before = personal.read_bytes()
+        self.assertEqual(module.wallpaper_arguments(self.env), ['wpaperd'])
+        self.assertEqual(personal.read_bytes(), before)
 
 
 if __name__ == '__main__':

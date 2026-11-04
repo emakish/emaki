@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import stat
 import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -27,6 +28,10 @@ import warnings
 
 MAX_CONFIG = 65536
 MAX_IMAGE = 32 * 1024 * 1024
+# Large PNG strips are streamed through a separate, bounded decoder. These are
+# source limits only; published images and textures retain their existing bounds.
+MAX_STRIP_BYTES = 128 * 1024 * 1024
+MAX_STRIP_PIXELS = 256_000_000
 # Published bytes are account-controlled input to the greeter. Restrict plugin
 # selection itself, before Image.open can dispatch to EPS/Ghostscript or another
 # external decoder. The ordinary C8/user reader keeps its existing format policy.
@@ -127,7 +132,7 @@ def sharp_cache(path, pw, ph, mode, offset, source_info=None):
     """Cache wallpaper only; a new stat/geometry/config identity gets a new private name."""
     try:
         info = source_info if source_info is not None else path.stat()
-        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_IMAGE:
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_STRIP_BYTES:
             return None
         identity = ('sharp-v1', str(path), info.st_dev, info.st_ino, info.st_size,
                     info.st_mtime_ns, info.st_ctime_ns, pw, ph, mode, offset)
@@ -188,17 +193,75 @@ def save_sharp(path, image):
             temporary.unlink(missing_ok=True)
 
 
+def reduced_strip(path, width, height, *, offset=.5, strict=False, geometry=None):
+    """Reduce oversized PNG input without allocating its full decoded panorama.
+
+    None leaves ordinary images on the existing reader path. Only the session's
+    source reader uses this extension; account-controlled greeter copies retain
+    the original byte, pixel and decoder limits.
+    """
+    from PIL import Image
+    descriptor = (open_no_symlinks(path) if strict else
+                  os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC))
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_STRIP_BYTES:
+            raise ValueError('image_limit')
+        with os.fdopen(os.dup(descriptor), 'rb') as stream, warnings.catch_warnings():
+            warnings.simplefilter('ignore', Image.DecompressionBombWarning)
+            previous_limit = Image.MAX_IMAGE_PIXELS
+            try:
+                Image.MAX_IMAGE_PIXELS = None  # Header only; never load this source.
+                with Image.open(stream, formats=PUBLISHED_FORMATS if strict else None) as header:
+                    sw, sh = header.size
+                    if sw * sh <= MAX_PIXELS and info.st_size <= MAX_IMAGE:
+                        return None
+                    if (header.format != 'PNG' or sw <= sh or sw > 65536 or sh > 16384
+                            or sw * sh > MAX_STRIP_PIXELS or getattr(header, 'n_frames', 1) != 1):
+                        raise ValueError('image_limit')
+            finally:
+                Image.MAX_IMAGE_PIXELS = previous_limit
+        if geometry is not None:
+            width, height = geometry()
+            factor = min(1, sw / width, sh / height)
+            width, height = max(1, round(width * factor)), max(1, round(height * factor))
+        ratio = width / height
+        sx, sy = min(ratio / (sw / sh), 1), min((sw / sh) / ratio, 1)
+        box = (offset * (1 - sx) * sw, offset * (1 - sy) * sh,
+               (sx + offset * (1 - sx)) * sw, (sy + offset * (1 - sy)) * sh)
+        if width * height > (MAX_PIXELS if geometry is not None else MAX_OUTPUT):
+            raise ValueError('image_limit')
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        with tempfile.TemporaryFile() as output:
+            result = subprocess.run(
+                [sys.executable, '-I', '-B', str(Path(__file__).with_name('wallpaper_reduce.py')),
+                 str(descriptor), str(width), str(height), *map(str, box)],
+                pass_fds=(descriptor,), stdin=subprocess.DEVNULL, stdout=output,
+                stderr=subprocess.DEVNULL, timeout=6)
+            if result.returncode or output.tell() > MAX_IMAGE:
+                raise ValueError('image_limit')
+            output.seek(0)
+            data = output.read(MAX_IMAGE + 1)
+        with Image.open(io.BytesIO(data), formats=('PNG',)) as reduced:
+            if reduced.size != (width, height):
+                raise ValueError('image_limit')
+            reduced.load()
+        return data
+    finally:
+        os.close(descriptor)
+
+
 class WallpaperPending(Exception):
     """The compositor has not yet supplied its current wallpaper."""
 
 
-def compositor_wallpaper(endpoint):
-    """The compositor's wallpaper status; OSError when it does not answer."""
+def compositor_query(endpoint, request):
+    """One bounded compositor status query; no display connection."""
     deadline = time.monotonic() + .2
     with socket.socket(socket.AF_UNIX) as stream:
         stream.settimeout(.2)
         stream.connect(endpoint)
-        stream.sendall(b'"EmakiWallpaper"\n')
+        stream.sendall((json.dumps(request) + '\n').encode())
         data = b''
         while b'\n' not in data:
             remaining = deadline - time.monotonic()
@@ -209,7 +272,36 @@ def compositor_wallpaper(endpoint):
             if not chunk:
                 raise ValueError('compositor_response')
             data += chunk
-    return json.loads(data.split(b'\n', 1)[0])['Ok']['EmakiWallpaper']
+    return json.loads(data.split(b'\n', 1)[0])['Ok'][request]
+
+
+def compositor_wallpaper(endpoint):
+    """The compositor's wallpaper status; OSError when it does not answer."""
+    return compositor_query(endpoint, 'EmakiWallpaper')
+
+
+def publication_geometry():
+    """Keep enough centre pixels for the tallest and widest active outputs."""
+    endpoint = os.environ.get('NIRI_SOCKET')
+    if endpoint:
+        try:
+            outputs = compositor_query(endpoint, 'Outputs')
+            sizes = []
+            for output in outputs.values():
+                index = output.get('current_mode')
+                if isinstance(index, int) and not isinstance(index, bool) and index >= 0:
+                    mode = output['modes'][index]
+                    width, height = mode['width'], mode['height']
+                    if output.get('logical', {}).get('transform') in ('90', '270', 'Flipped90', 'Flipped270'):
+                        width, height = height, width
+                    if 0 < width * height <= MAX_OUTPUT and 0 < height <= 8192:
+                        sizes.append((width, height))
+            if sizes:
+                height = max(height for _, height in sizes)
+                return math.ceil(max(width / height for width, height in sizes) * height), height
+        except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
+            pass
+    return 3840, 2160
 
 
 def current_wallpaper_config(config_root, *, strict=False, wait=None):
@@ -222,35 +314,48 @@ def current_wallpaper_config(config_root, *, strict=False, wait=None):
     """
     wait = strict if wait is None else wait
     endpoint = os.environ.get('NIRI_SOCKET')
+    unknown = False
     if endpoint:
         try:
             status = compositor_wallpaper(endpoint)
-            if wait and status['mode'] == 'ring' and status['load_state'] == 'loading':
+            if wait and status['mode'] in ('ring', 'strip') and status['load_state'] == 'loading':
                 raise WallpaperPending()
-            if status['mode'] == 'ring' and status['load_state'] == 'ready':
+            if status['mode'] in ('ring', 'strip') and (status['load_state'] == 'ready'
+                    or not wait and status['load_state'] == 'loading'):
                 path = status['files']['ring']
                 # niri reports the configured string and expands a leading ~ component itself.
                 if isinstance(path, str) and Path(path).parts[:1] == ('~',):
                     path = str(Path.home().joinpath(*Path(path).parts[1:]))
                 if isinstance(path, str) and Path(path).is_absolute() and '\0' not in path:
                     return {'default': {'path': path, 'mode': 'center'}}
-        except OSError:
+                raise ValueError('compositor_response')
+        except (OSError, ValueError, KeyError, TypeError):
+            unknown = True
             if wait:
                 raise WallpaperPending() from None
-        except (ValueError, KeyError, TypeError):
-            pass
     try:
         source = Path(config_root) / 'emaki/settings.toml'
         data = bounded_no_symlinks(source, MAX_CONFIG)[0] if strict else bounded_read(source, MAX_CONFIG)
         settings = tomllib.loads(data.decode())
         appearance = settings.get('appearance', {})
         if settings.get('schema_version') != 1 or not isinstance(appearance, dict):
-            return None
+            raise ValueError('settings_invalid')
         path = appearance.get('wallpaper')
         if isinstance(path, str) and Path(path).is_absolute() and '\0' not in path:
+            # Session-only dependency: the isolated published-image reader does
+            # not load local modules or inspect personal settings.
+            import emaki_paths
+            # The former managed landscape choice keeps its meaning after the
+            # packaged static fallback changes to cubes, even during IPC recovery.
+            if Path(path) == Path(emaki_paths.DATADIR) / 'wallpaper/fallback.png':
+                path = str(Path(emaki_paths.DATADIR) / 'wallpaper/ring.png')
             return {'default': {'path': path, 'mode': 'center'}}
     except (OSError, ValueError, UnicodeError):
         pass
+    if strict and unknown:
+        # No committed selection can resolve this uncertainty. In particular,
+        # an unset style is not evidence that the person's wallpaper was removed.
+        raise WallpaperPending()
     return None
 
 
@@ -323,7 +428,11 @@ def texture(width, height, scale, output, variant='glass'):
     if cached_sharp(cache, (pw, ph)):
         return {'state': 'ready', 'mode': mode, 'texture': cache.as_uri()}
     try:
-        data = io.BytesIO(source_bytes if source_bytes is not None else bounded_read(path, MAX_IMAGE))
+        reduced = None
+        if not published_root and mode == 'center':
+            reduced = reduced_strip(path, pw, ph, offset=offset)
+        data = io.BytesIO(reduced if reduced is not None else
+                          source_bytes if source_bytes is not None else bounded_read(path, MAX_IMAGE))
         with Image.open(data, formats=PUBLISHED_FORMATS if published_root else None) as original:
             if original.width * original.height > MAX_PIXELS or getattr(original, 'n_frames', 1) != 1:
                 return {'state': 'image_limit'}

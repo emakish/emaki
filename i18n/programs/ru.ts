@@ -689,18 +689,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Утилиты</translation>
         </message>
         <message>
-            <source>Popular</source>
-            <translation>Популярное</translation>
-        </message>
-        <message>
-            <source>Essentials</source>
-            <translation>Основное</translation>
-        </message>
-        <message>
-            <source>New and updated</source>
-            <translation>Новое и обновлённое</translation>
-        </message>
-        <message>
             <source>Programs &amp; Updates</source>
             <translation>Программы и обновления</translation>
         </message>
@@ -885,18 +873,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Установка…</translation>
         </message>
         <message>
-            <source>Our picks are not available right now. Try Refresh.</source>
-            <translation>Наша подборка сейчас недоступна. Попробуйте «Обновить».</translation>
-        </message>
-        <message>
-            <source>Most installed this month</source>
-            <translation>Чаще всего устанавливают в этом месяце</translation>
-        </message>
-        <message>
-            <source>What the full install adds</source>
-            <translation>Что добавляет полная установка</translation>
-        </message>
-        <message>
             <source>From Emaki</source>
             <translation>От Emaki</translation>
         </message>
@@ -909,10 +885,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Установить</translation>
         </message>
         <message>
-            <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
-            <translation>Не удалось загрузить программы. Проверьте подключение к интернету и нажмите «Обновить».</translation>
-        </message>
-        <message>
             <source>All</source>
             <translation>Все</translation>
         </message>
@@ -923,14 +895,6 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>See all ›</source>
             <translation>Все ›</translation>
-        </message>
-        <message>
-            <source>All %1 ›</source>
-            <translation>Все %1 ›</translation>
-        </message>
-        <message>
-            <source>See the whole set</source>
-            <translation>Посмотреть весь набор</translation>
         </message>
         <message>
             <source>AUR — nobody checked these programs.</source>
@@ -1160,6 +1124,38 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>Finish setup</source>
             <translation>Завершить настройку</translation>
+        </message>
+        <message>
+            <source>Popular</source>
+            <translation>Популярное</translation>
+        </message>
+        <message>
+            <source>Essentials</source>
+            <translation>Основное</translation>
+        </message>
+        <message>
+            <source>New and updated</source>
+            <translation>Новое и обновлённое</translation>
+        </message>
+        <message>
+            <source>Most installed this month</source>
+            <translation>Чаще всего устанавливают в этом месяце</translation>
+        </message>
+        <message>
+            <source>What the full install adds</source>
+            <translation>Что добавляет полная установка</translation>
+        </message>
+        <message>
+            <source>No programs could be loaded. Check the internet connection, then Refresh.</source>
+            <translation>Не удалось загрузить программы. Проверьте подключение к интернету и нажмите «Обновить».</translation>
+        </message>
+        <message>
+            <source>All %1 ›</source>
+            <translation>Все %1 ›</translation>
+        </message>
+        <message>
+            <source>See the whole set</source>
+            <translation>Посмотреть весь набор</translation>
         </message>
     </context>
     <context>
@@ -1476,4 +1472,67 @@ The reminder could not be hidden. Press Later again.</source>
             <translation>Удалить приложение и его данные</translation>
         </message>
     </context>
+  <context>
+    <name>StorefrontData</name>
+    <message>
+      <source>Discover your next favorite</source>
+      <translation>Найдите новую любимую программу</translation>
+    </message>
+    <message>
+      <source>A few ideas for your computer. Recommendations stay on this device.</source>
+      <translation>Несколько идей для вашего компьютера. Рекомендации остаются на этом устройстве.</translation>
+    </message>
+    <message>
+      <source>App of the day</source>
+      <translation>Приложение дня</translation>
+    </message>
+    <message>
+      <source>Explore app</source>
+      <translation>Подробнее о приложении</translation>
+    </message>
+    <message>
+      <source>See all</source>
+      <translation>Показать всё</translation>
+    </message>
+    <message>
+      <source>Find your next possibility</source>
+      <translation>Откройте новые возможности</translation>
+    </message>
+    <message>
+      <source>Because you have %1</source>
+      <translation>Поскольку у вас есть %1</translation>
+    </message>
+    <message>
+      <source>Ideas based on programs installed on this computer.</source>
+      <translation>Идеи на основе программ, установленных на этом компьютере.</translation>
+    </message>
+    <message>
+      <source>More to discover soon</source>
+      <translation>Скоро будет больше интересного</translation>
+    </message>
+    <message>
+      <source>Browse the categories. Ideas appear when matching programs are available in the catalog.</source>
+      <translation>Просмотрите категории. Идеи появятся, когда в каталоге будут доступны подходящие программы.</translation>
+    </message>
+    <message>
+      <source>Preview unavailable</source>
+      <translation>Предпросмотр недоступен</translation>
+    </message>
+    <message>
+      <source>Coming from Windows?</source>
+      <translation>Переходите с Windows?</translation>
+    </message>
+    <message>
+      <source>Familiar ways to browse, work and watch.</source>
+      <translation>Привычные способы пользоваться интернетом, работать и смотреть видео.</translation>
+    </message>
+    <message>
+      <source>Make something new</source>
+      <translation>Создайте что-нибудь новое</translation>
+    </message>
+    <message>
+      <source>Turn an idea into a drawing, a design or a new world.</source>
+      <translation>Превратите идею в рисунок, дизайн или новый мир.</translation>
+    </message>
+  </context>
 </TS>

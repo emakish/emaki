@@ -363,7 +363,7 @@ def run(scale, mutation=''):
             before = 'model: outputs.enabled ? outputs.selectedScreens : []'
             after = 'model: outputs.enabled ? outputs.selectedScreens.slice(0, 1) : []'
         elif mutation == 'destruction-handoff':
-            before = 'if (outputs.previousScene === scene)'
+            before = 'if (outputs.previousScene === sceneObject)'
             after = 'if (false)'
         elif mutation == 'settings-hotplug':
             before = 'Component.onCompleted: applyManagedSettings()'

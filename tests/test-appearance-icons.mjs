@@ -26,7 +26,8 @@ for (const file of ['shell/LauncherBody.qml', 'shell/SymbolIcon.qml', 'shell/Ico
 {
     const launcher = read('shell/LauncherBody.qml');
     assert.match(launcher, /source: SystemIcons\.settingsSvg\(body\.dim\)/);
-    assert.match(launcher, /color: !body\.settingsActive && body\.modeIndex === modeItem\.index \? body\.ink : body\.dim/);
+    assert.match(launcher, /color: !body\.settingsActive && body\.modeIndex === modeItem\.index \? body\.selectedInk : body\.dim/);
+    assert.match(launcher, /readonly property color selectedInk: ShellPalette\.accentDeepForeground/);
     assert.match(read('shell/SymbolIcon.qml'), /SystemIcons\.isSettings\(name\) \? SystemIcons\.settingsSvg\(ink\) : ""/);
 }
 assert.doesNotMatch(read('shell/SettingsView.qml'), /settingsSvg|settingsGearCandidate/);

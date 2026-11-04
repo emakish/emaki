@@ -70,6 +70,14 @@ FocusScope {
     readonly property string accountName: service.accountName
     readonly property var pageKeys: pageRegistry.definition(page)?.resetKeys || []
     function canReset(key): bool {
+        if (key === "appearance.overview_background") {
+            const style = (catalog.styles || []).find(style => style.id === (catalog.value("appearance.style") || "emaki"));
+            return ["appearance.overview_video", "appearance.overview_still"].some(field => {
+                const row = catalog.row(field);
+                const expected = style ? style[field === "appearance.overview_video" ? "overview_video" : "overview_still"] : row?.default;
+                return !!row && row.editable !== false && row.value !== undefined && expected !== undefined && row.value !== expected;
+            });
+        }
         const row = catalog.row(key);
         return !!row && row.editable !== false && row.value !== undefined && row.default !== undefined && JSON.stringify(row.value) !== JSON.stringify(row.default);
     }
@@ -133,7 +141,9 @@ FocusScope {
     }
     function keepFocusVisible(): void {
         const item = root.Window.window?.activeFocusItem;
-        if (!item)
+        // Disabling a focused page control temporarily focuses its Loader scope.
+        // Revealing that page-sized container would move the user's viewport.
+        if (!item || item === pageLoader)
             return;
         let ancestor = item;
         while (ancestor && ancestor !== pageColumn && ancestor !== navColumn)
@@ -654,8 +664,12 @@ FocusScope {
                                 return;
                             }
                             for (const key of root.pageKeys) {
-                                if (root.canReset(key))
-                                    root.catalog.reset(key);
+                                if (root.canReset(key)) {
+                                    if (key === "appearance.overview_background")
+                                        root.catalog.resetOverview();
+                                    else
+                                        root.catalog.reset(key);
+                                }
                             }
                         }
                     }

@@ -81,7 +81,6 @@ that the person must find on a separate screen.
 | Retry / Continue | Повторить / Продолжить |
 | Keep it (partition) | Не удалять |
 | Restart after (update badge) | Нужен перезапуск |
-| Picked by Emaki | Выбор Emaki |
 | A good place to start | С чего начать |
 | Make yourself at home | Чувствуйте себя как дома |
 

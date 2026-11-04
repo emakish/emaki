@@ -7,6 +7,11 @@ CapturePanel 1.0 CapturePanel.qml
 singleton ShellPalette 1.0 ShellPalette.qml
 singleton Appearance 1.0 Appearance.qml
 SettingsAppearancePage 1.0 SettingsAppearancePage.qml
+SettingsThemesPage 1.0 SettingsThemesPage.qml
+OverviewVideo 1.0 OverviewVideo.qml
+OverviewVideoSurface 1.0 OverviewVideoSurface.qml
+OverviewVideoContent 1.0 OverviewVideoContent.qml
+OverviewVideoPlayer 1.0 OverviewVideoPlayer.qml
 singleton Metrics 1.0 Metrics.qml
 Icon 1.0 Icon.qml
 LauncherBody 1.0 LauncherBody.qml
@@ -59,6 +64,7 @@ DockPolicy 1.0 DockPolicy.qml
 DockInputRegion 1.0 DockInputRegion.qml
 Dock 1.0 Dock.qml
 DockBackdrop 1.0 DockBackdrop.qml
+BarBackdrop 1.0 BarBackdrop.qml
 DockBackdropRegion 1.0 DockBackdropRegion.qml
 DockIpc 1.0 DockIpc.qml
 NightLight 1.0 NightLight.qml

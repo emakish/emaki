@@ -6,10 +6,10 @@ import Quickshell
 
 FloatingWindow {
     id: window
-    readonly property bool identified: Translation.identify(view.Window.window, "emaki-report")
+    readonly property bool identified: Translation.identify(viewObject.Window.window, "emaki-report")
     required property var controller
     property bool loadWallpaper: true
-    readonly property alias view: view
+    readonly property alias view: viewObject
     title: qsTranslate("ReportWindow", "Report a problem")
     implicitWidth: Math.min(720, screen ? screen.width - 48 : 720)
     implicitHeight: Math.min(700, screen ? screen.height - 120 : 700)
@@ -21,8 +21,8 @@ FloatingWindow {
             visible = true;
         }
         minimized = false;
-        view.Window.window?.requestActivate();
-        view.takeFocus();
+        viewObject.Window.window?.requestActivate();
+        viewObject.takeFocus();
     }
     WallpaperSource {
         id: wallpaper
@@ -34,7 +34,7 @@ FloatingWindow {
         variant: "sharp"
     }
     ReportView {
-        id: view
+        id: viewObject
         anchors.fill: parent
         controller: window.controller
         wallpaperTexture: wallpaper.texture

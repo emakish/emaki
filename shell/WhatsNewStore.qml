@@ -45,7 +45,10 @@ Scope {
         if (futureState || !installedVersion || !newerThanSeen())
             return;
         seenVersion = installedVersion;
-        stateFile.setText(JSON.stringify({version: 1, seenVersion: seenVersion}) + "\n");
+        stateFile.setText(JSON.stringify({
+            version: 1,
+            seenVersion: seenVersion
+        }) + "\n");
     }
     Component.onCompleted: {
         try {

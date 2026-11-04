@@ -99,7 +99,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 1.0.1: BIOS boot, installing alongside another Linux.
+media codecs. Not in 1.1.0: BIOS boot, installing alongside another Linux.
 
 ## Security notes
 
@@ -142,7 +142,7 @@ Installed Emaki on another machine? Reports are welcome in the issues.
 
 MacBook is a trademark of Apple Inc. and ThinkPad a trademark of Lenovo; Emaki is an independent project.
 
-### Known issues in 1.0.1
+### Known issues in 1.1.0
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.
@@ -179,7 +179,7 @@ An installed system updates with `pacman -Syu`. Emaki's own packages come from t
 GPL-3.0-or-later, see [LICENSE](LICENSE). Copyright (C) 2026 Artur Yakymenko.
 
 Patches to other projects keep those projects' licences: the niri patches in
-`packaging/niri-emaki/` are GPL-3.0-or-later like niri; the ten Quickshell patches in
+`packaging/niri-emaki/` are GPL-3.0-or-later like niri; the eleven Quickshell patches in
 `packaging/quickshell-emaki/` are LGPL-3.0-only like Quickshell.
 
 Third-party fonts, images and map data keep their own licences. An installed system keeps each

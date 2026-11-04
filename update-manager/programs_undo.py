@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import programs_catalog as catalog
 import programs_receipts as receipts
 import emaki_update_root
+import emaki_update_inhibit
 import restore
 
 ENV = {'PATH': os.defpath, 'LC_ALL': 'C'}
@@ -47,6 +48,7 @@ MESSAGES = {
     'restart': _('Restart into the normal system before changing programs. Nothing was removed.'),
     'failed': _('The undo could not be checked. Nothing was removed.'),
     'not-removed': _('The undo did not finish. Nothing was removed.'),
+    'protection-unavailable': _('This change could not be protected from a shutdown. Nothing was changed.'),
     'unknown': _('The undo did not finish as expected. Check the installed programs again.'),
 }
 
@@ -93,10 +95,11 @@ def undo(identity, package, expected):
     # A started removal finishes even when the window closes.
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
         signal.signal(signum, signal.SIG_IGN)
-    with subprocess.Popen(['pacman', '-Rn', '--noconfirm', '--', *plan['remove']], stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ENV, cwd='/',
-                          start_new_session=True) as process:
-        output = process.communicate()[0]
+    with emaki_update_inhibit.inhibit() as descriptor:
+        with subprocess.Popen(['pacman', '-Rn', '--noconfirm', '--', *plan['remove']], stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ENV, cwd='/',
+                              start_new_session=True, pass_fds=() if descriptor is None else (descriptor,)) as process:
+            output = process.communicate()[0]
     remaining = [name for name in plan['remove'] if pacman('-Q', name).returncode == 0]
     if process.returncode == 0 and not remaining:
         receipts.mark_undone(path, value)
@@ -133,6 +136,8 @@ def main(argv):
             except RuntimeError as refusal:
                 return emit(str(refusal))
             return undo(*argv)
+    except emaki_update_inhibit.AcquisitionError:
+        return emit('protection-unavailable')
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         return emit('unknown')
 

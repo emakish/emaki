@@ -215,7 +215,7 @@ function expression(file, prefix, context) {
 }
 for (const active of [false, true]) {
     const scene = {batteryPeekOpen: active, pairingPeekOpen: false, peekOpen: active, systemOpen: false, drawerOpen: true};
-    const panel = source('ShellScene.qml').split('id: clockPanel')[1];
+    const panel = source('ShellScene.qml').split('id: clockPanelObject')[1];
     const z = panel.match(/\n\s*z: ([^\n]+)/)[1];
     assert.equal(vm.runInNewContext(z, {scene}), active ? 40 : 0);
     assert.equal(vm.runInNewContext(panel.match(/\n\s*opened: ([^\n]+)/)[1], {scene}), !active);
@@ -228,6 +228,11 @@ const transition = vm.createContext({batteryPeekOpen: true, pairingPeekOpen: fal
     systemBody: {reset() {}}, dock: {closePopup() {}, leaveKeyboard() {}}, closeAllRequested() {},
     switcher: {cancel() { transition.switcherCancels = (transition.switcherCancels ?? 0) + 1; }}, switcherOpen: true,
     bar: {returnItem: {}}, pinnedNotes: {expanded: true}});
+// Match the component's private IDs to the same public objects in this fixture.
+for (const [, alias, id] of source('ShellScene.qml').matchAll(/readonly property alias (\w+): (\w+)\s*$/gm)) {
+    if (alias !== id && !Object.prototype.hasOwnProperty.call(transition, id))
+        Object.defineProperty(transition, id, {get() { return transition[alias]; }});
+}
 const closePanels = vm.runInContext('(function(preserveBattery){' + body('ShellScene.qml', 'closePanels') + '})', transition);
 closePanels(true); assert.equal(transition.drawerOpen, false);
 assert.equal(transition.switcherCancels, 1, 'closing panels closes the window switcher');

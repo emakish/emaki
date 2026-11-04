@@ -40,7 +40,7 @@ SettingsRow {
                         active: root.itemLeading !== null
                     }
                     Image {
-                        id: icon
+                        id: iconObject
                         anchors.verticalCenter: parent.verticalCenter
                         width: visible ? 24 : 0
                         height: 24
@@ -51,7 +51,7 @@ SettingsRow {
                     SettingsButton {
                         id: primary
                         objectName: "list-item"
-                        x: leading.active ? leading.width + 8 : (icon.visible ? icon.width + 8 : 0)
+                        x: leading.active ? leading.width + 8 : (iconObject.visible ? iconObject.width + 8 : 0)
                         width: Math.max(0, parent.width - x - (trailing.active ? trailing.width + 8 : (actions.visible ? actions.width + 8 : 0)))
                         implicitHeight: Math.max(34, labels.implicitHeight + 12)
                         text: entryRow.modelData.label

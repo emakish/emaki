@@ -2,6 +2,7 @@
   "copyright": "Copyright (C) 2026 Artur Yakymenko",
   "license": "SPDX-License-Identifier: GPL-3.0-or-later",
   "messages": {
+    "Cursor": "The cursor term has the same spelling.",
     "%1 B": "Fixed unit, number or placeholder-only label.",
     "%1 GB": "Fixed unit, number or placeholder-only label.",
     "%1 GiB": "Fixed unit, number or placeholder-only label.",

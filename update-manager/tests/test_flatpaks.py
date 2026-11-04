@@ -83,14 +83,16 @@ class Flatpaks(unittest.TestCase):
         self.assertEqual(flatpaks.pending(rows, command), [])
         self.assertEqual(command.call_args.args[0][1], 'list')
 
-    def test_updates_have_sleep_and_lid_inhibition_and_only_fixed_arguments(self):
+    def test_updates_have_shutdown_sleep_and_lid_inhibition_and_only_fixed_arguments(self):
         command = Mock(side_effect=[f'{REF}\t{OLD}\t1\tflathub\tuser\n', 'updated'])
         emit = Mock()
         self.assertTrue(flatpaks.update(command, emit))
         self.assertEqual(emit.call_args_list[0].kwargs['phase'], 'flatpak')
         args = command.call_args.args[0]
         self.assertEqual(args[0], 'systemd-inhibit')
-        self.assertIn('--what=sleep:handle-lid-switch', args)
+        self.assertIn('--what=shutdown:sleep:handle-lid-switch', args)
+        self.assertIn('--mode=block', args)
+        self.assertIn('--why=Updating Emaki', args)
         self.assertEqual(args[-4:], ['update', '--user', '--noninteractive', '--assumeyes'])
 
 

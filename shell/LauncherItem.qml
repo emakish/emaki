@@ -21,7 +21,9 @@ Item {
     property string term: ""
     readonly property string kind: row?.kind ?? ""
     readonly property var iconCandidates: {
-        if (kind === "command" || kind === "emoji")
+        if (kind === "command")
+            return [SystemIcons.launcherSvg(row.icon, ink)];
+        if (kind === "emoji")
             return [];
         if (kind === "settings")
             return [SystemIcons.settingsSvg(dim)];
@@ -29,7 +31,7 @@ Item {
         // Quickshell keeps looking up a missing icon for two seconds and changes
         // iconThemeRevision when it arrives, so a program's icon installed after its tile appears
         // still shows.
-        Quickshell.iconThemeRevision;
+        void Quickshell.iconThemeRevision;
         if (name === "emaki-programs-updates")
             return [SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk)];
         if (name === "emaki-notes")
@@ -67,9 +69,9 @@ Item {
             web: "web-browser-symbolic",
             clip: "edit-paste-symbolic"
         })[kind] ?? (kind === "command" ? row.icon ?? "" : "")
-    readonly property string trailing: kind === "window" ? String(row.tag ?? "") : kind === "calculator" ? qsTranslate("LauncherItem", "Copy") : kind === "web" ? qsTranslate("LauncherItem", "Open") : kind === "clip" ? qsTranslate("LauncherItem", "Delete") : kind === "app" ? (row.detail ?? "") : ""
-    readonly property bool quietTrailing: kind === "app" || kind === "window" || kind === "clip" || [qsTranslate("LauncherItem", "In use"), qsTranslate("LauncherItem", "Off"), qsTranslate("LauncherItem", "Only one installed"), qsTranslate("LauncherItem", "None installed")].includes(trailing)
-    readonly property bool twoLines: shape === "row" && kind !== "app" && kind !== "window" && kind !== "clip" && kind !== "calculator" && (row?.detail ?? "") !== ""
+    readonly property string trailing: kind === "window" ? String(row.tag ?? "") : kind === "calculator" ? qsTranslate("LauncherItem", "Copy") : kind === "web" ? qsTranslate("LauncherItem", "Open") : kind === "clip" ? qsTranslate("LauncherItem", "Delete") : kind === "app" || kind === "command" ? (row.detail ?? "") : ""
+    readonly property bool quietTrailing: kind === "app" || kind === "command" || kind === "window" || kind === "clip" || [qsTranslate("LauncherItem", "In use"), qsTranslate("LauncherItem", "Off"), qsTranslate("LauncherItem", "Only one installed"), qsTranslate("LauncherItem", "None installed")].includes(trailing)
+    readonly property bool twoLines: shape === "row" && kind !== "command" && kind !== "app" && kind !== "window" && kind !== "clip" && kind !== "calculator" && (row?.detail ?? "") !== ""
     function escaped(text: string): string {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
     }
@@ -108,9 +110,9 @@ Item {
         Text {
             anchors.centerIn: tileIcon
             visible: tileIcon.status !== Image.Ready
-            text: (item.row?.label ?? "?").slice(0, 1).toLocaleUpperCase()
+            text: item.kind === "emoji" ? item.row?.emoji ?? "" : (item.row?.label ?? "?").slice(0, 1).toLocaleUpperCase()
             font.family: ShellPalette.uiFont
-            font.pixelSize: 20
+            font.pixelSize: item.kind === "emoji" ? 32 : 20
             font.weight: Font.DemiBold
             color: item.dim
         }
@@ -180,7 +182,7 @@ Item {
             x: 46
             y: item.twoLines || item.kind === "file" ? parent.cy - 15 : parent.cy - 8
             height: 16
-            width: parent.width - 46 - (trailingText.visible ? trailingText.implicitWidth + 28 : 14)
+            width: parent.width - 46 - (trailingText.visible ? trailingText.width + 28 : 14)
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
             textFormat: item.kind === "file" ? Text.StyledText : Text.PlainText

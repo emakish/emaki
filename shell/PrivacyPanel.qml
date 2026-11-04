@@ -40,7 +40,7 @@ Item {
     signal toggle
     // For tests/glass-shots.py.
     readonly property alias panelGlass: panelGlass
-    readonly property alias contentLayer: layer
+    readonly property alias contentLayer: layerObject
     readonly property alias onGlassLayer: onGlass
     readonly property bool glassReady: backdrop !== null && backdrop.ready && GraphicsInfo.api !== GraphicsInfo.Software
     readonly property real dpr: Screen.devicePixelRatio || 1
@@ -72,7 +72,7 @@ Item {
     onTargetHeightChanged: wake()
     readonly property real shownWidth: islandWidth + (targetWidth - islandWidth) * morph
     readonly property real shownHeight: {
-        tick;
+        void tick;
         return Metrics.islandHeight + (Math.max(Metrics.islandHeight, heightSpring.x) - Metrics.islandHeight) * morph;
     }
     readonly property real shownX: islandX + (frameX - islandX) * morph
@@ -109,14 +109,14 @@ Item {
             animating = false;
     }
     readonly property var drops: {
-        tick;
+        void tick;
         if (morph >= .6 || !islandBubble)
             return [];
         const d = Liquid.drop(islandBubble, islandX, Metrics.top);
         return d ? [d] : [];
     }
     readonly property real islandAlpha: {
-        tick;
+        void tick;
         return morph < .6 ? Liquid.onGlass(islandBubble) : 0;
     }
     function glassStatus(): var {
@@ -192,7 +192,7 @@ Item {
     // ---- Under the glass. The layer starts at the screen origin, so its texture lies on
     // whole device pixels; the pill's line sits at the pill, the list in its frame ----
     Item {
-        id: layer
+        id: layerObject
         x: -panel.shownX
         y: -Metrics.top
         width: Math.max(panel.frameX + panel.targetWidth, panel.islandX + panel.islandWidth) + 16
@@ -320,9 +320,9 @@ Item {
     }
     ShaderEffectSource {
         id: contentTexture
-        width: layer.width
-        height: layer.height
-        sourceItem: layer
+        width: layerObject.width
+        height: layerObject.height
+        sourceItem: layerObject
         hideSource: panel.glassReady
         live: true
         visible: false
@@ -338,7 +338,7 @@ Item {
         drops: panel.drops
         uRadius: panel.shownRadius
         uIcons: contentTexture
-        uSceneSize: Qt.point(layer.width, layer.height)
+        uSceneSize: Qt.point(layerObject.width, layerObject.height)
         uCover: panel.backdrop ? panel.backdrop.coverFor(Qt.point(0, 0)) : Qt.vector4d(0, 0, 1, 1)
     }
 
@@ -347,8 +347,8 @@ Item {
         id: onGlass
         x: -panel.shownX
         y: -Metrics.top
-        width: layer.width
-        height: layer.height
+        width: layerObject.width
+        height: layerObject.height
         PrivacyCompactRow {
             x: panel.islandX
             y: Metrics.top

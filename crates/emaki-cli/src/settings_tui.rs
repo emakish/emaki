@@ -423,6 +423,8 @@ fn menu(
 
 fn allowed_text(source: &str) -> String {
     match source {
+        "catalog style id; empty unsets" => tr("catalog style id; empty unsets"),
+        "absolute local path; empty unsets" => tr("absolute local path; empty unsets"),
         "0..64 logical pixels" => tr("0..64 logical pixels"),
         "1..4 distinct XKB layout codes, comma-separated (us,ru); empty unsets" => {
             tr("1..4 distinct XKB layout codes, comma-separated (us,ru); empty unsets")
@@ -454,8 +456,10 @@ fn allowed_text(source: &str) -> String {
             tr("full | half | third | twothirds; empty unsets")
         }
         "light | dark | automatic; empty unsets" => tr("light | dark | automatic; empty unsets"),
-        "orange | coral | rose | amber | green | teal | blue | violet; empty unsets" => {
-            tr("orange | coral | rose | amber | green | teal | blue | violet; empty unsets")
+        "orange | coral | rose | amber | green | teal | blue | violet | silver | graphite; empty unsets" => {
+            tr(
+                "orange | coral | rose | amber | green | teal | blue | violet | silver | graphite; empty unsets",
+            )
         }
         "true | false; empty unsets" => tr("true | false; empty unsets"),
         "true | false; false or empty restores inherited focus behavior" => {

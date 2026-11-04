@@ -30,14 +30,19 @@ ShellRoot {
         }
         return null;
     }
+    function fail(message: string): void {
+        console.error("SHOTS_FAILED stage=" + stage + " " + message);
+        Qt.quit();
+        throw new Error(message);
+    }
     function save(item: Item, name: string, next: var): void {
         const accepted = item.grabToImage(result => {
             if (!result.saveToFile(destination + "/" + name + "@" + shotScale + "x.png"))
-                throw new Error("Screenshot save failed");
+                root.fail("Screenshot save failed");
             next();
         }, Qt.size(item.width, item.height));
         if (!accepted)
-            throw new Error("Screenshot grab failed");
+            root.fail("Screenshot grab failed");
     }
 
     SystemFixture {
@@ -149,7 +154,7 @@ ShellRoot {
             if (root.stage === 0) {
                 if (root.fallback) {
                     if (scene.wallpaper.state !== root.fallback || scene.bar.systemGlass.glassReady)
-                        throw new Error("Incorrect flat fallback");
+                        root.fail("Incorrect flat fallback");
                     root.save(canvas, "bar-flat-" + root.fallback, () => {
                         console.log("FLAT_FALLBACK_OK", root.fallback);
                         console.log("SHOTS_COMPLETE");
@@ -174,7 +179,7 @@ ShellRoot {
             } else if (root.stage === 1) {
                 // The clock island is on glass: hovering turns it into a Clear drop.
                 if (JSON.parse(scene.status()).clock_glass.island.alpha < .99)
-                    throw new Error("Hover did not raise the clock island's drop");
+                    root.fail("Hover did not raise the clock island's drop");
                 root.save(canvas, "bar-hover", () => {
                     root.stage = 2;
                     // The launcher button turns into a Clear bubble under the pointer.
@@ -183,7 +188,7 @@ ShellRoot {
                 });
             } else if (root.stage === 2) {
                 if (JSON.parse(scene.status()).left_glass.logo.alpha < .99)
-                    throw new Error("Hover did not raise the button's bubble");
+                    root.fail("Hover did not raise the button's bubble");
                 root.save(canvas, "bar-logo-hover", () => {
                     pointer.mouseMove(canvas, 1000, 600);
                     root.stage = 3;
@@ -192,26 +197,29 @@ ShellRoot {
                 });
             } else if (root.stage === 3) {
                 const glass = JSON.parse(scene.status()).launcher_glass;
-                if (glass.mode.alpha < .99 || glass.select.alpha < .99 || glass.select_shape !== "tile")
-                    throw new Error("Launcher drops missing: " + JSON.stringify(glass));
+                if (glass.select.alpha < .99 || glass.select_shape !== "tile" || glass.drops.filter(drop => drop.kind === "select").length !== 1 || glass.drops.some(drop => drop.kind === "mode" || drop.kind === "category"))
+                    root.fail("Launcher drops missing: " + JSON.stringify(glass));
                 root.save(canvas, "launcher", () => {
                     root.stage = 4;
-                    // Down moves the highlight on (the 0.8.0 step) and enters results; Left
-                    // then moves the one selection bubble to the neighbouring tile.
+                    // Down follows the visible layers: category, then results. Right
+                    // moves the one selection bubble to the neighbouring tile.
                     if (!scene.input.inputFocused)
-                        throw new Error("Launcher did not begin in the search field");
+                        root.fail("Launcher did not begin in the search field");
+                    pointer.keyClick(Qt.Key_Down);
+                    if (!canvas.Window.window.activeFocusItem?.objectName.startsWith("launcher-category-"))
+                        root.fail("Down did not enter launcher categories");
                     pointer.keyClick(Qt.Key_Down);
                     if (canvas.Window.window.activeFocusItem?.objectName !== "launcher-results")
-                        throw new Error("Down did not enter launcher results");
+                        root.fail("Down did not enter launcher results");
                     root.enteredIndex = JSON.parse(scene.status()).search.selected_index;
-                    if (root.enteredIndex < 1)
-                        throw new Error("Down did not move the highlight on");
-                    pointer.keyClick(Qt.Key_Left);
+                    if (root.enteredIndex < 0)
+                        root.fail("Down did not select a result");
+                    pointer.keyClick(Qt.Key_Right);
                     tick.restart();
                 });
             } else if (root.stage === 4) {
-                if (canvas.Window.window.activeFocusItem?.objectName !== "launcher-results" || JSON.parse(scene.status()).search.selected_index !== root.enteredIndex - 1)
-                    throw new Error("Arrow did not move the selection: " + root.enteredIndex + " -> " + JSON.parse(scene.status()).search.selected_index);
+                if (canvas.Window.window.activeFocusItem?.objectName !== "launcher-results" || JSON.parse(scene.status()).search.selected_index !== root.enteredIndex + 1)
+                    root.fail("Arrow did not move the selection: " + root.enteredIndex + " -> " + JSON.parse(scene.status()).search.selected_index);
                 root.save(canvas, "launcher-selected", () => {
                     root.stage = 200;
                     scene.context.settingsController.openOn(scene, "panel");
@@ -220,9 +228,9 @@ ShellRoot {
             } else if (root.stage === 200) {
                 const state = JSON.parse(scene.status());
                 if (state.launcher_panel.width !== Math.min(1240, state.system.x - 20) || state.launcher_panel.height !== 810)
-                    throw new Error("Settings did not grow inside the launcher: " + JSON.stringify(state.launcher_panel));
+                    root.fail("Settings did not grow inside the launcher: " + JSON.stringify(state.launcher_panel));
                 if (!scene.input.settingsActive || !scene.input.settingsView)
-                    throw new Error("Settings view is not hosted by the launcher");
+                    root.fail("Settings view is not hosted by the launcher");
                 root.save(canvas, "launcher-settings", () => {
                     root.stage = 5;
                     scene.closeAll();
@@ -236,7 +244,7 @@ ShellRoot {
             } else if (root.stage === 100) {
                 const island = JSON.parse(scene.status()).system_glass.island;
                 if (island.alpha < .99 || island.hover_key !== "cell-sound")
-                    throw new Error("Hover did not raise the system cell's drop: " + JSON.stringify(island));
+                    root.fail("Hover did not raise the system cell's drop: " + JSON.stringify(island));
                 root.save(canvas, "bar-system-hover", () => {
                     pointer.mouseMove(canvas, 1000, 600);
                     root.stage = 6;
@@ -246,7 +254,7 @@ ShellRoot {
             } else if (root.stage === 6) {
                 // At rest the liquid frame loops stop: no frame is drawn for nothing.
                 if (scene.bar.leftIslands.animating || scene.input.animating || scene.bar.clockIsland.animating || scene.clockPanel.animating || scene.bar.systemGlass.animating || scene.systemPanel.animating)
-                    throw new Error("Liquid motion did not settle");
+                    root.fail("Liquid motion did not settle");
                 console.log("MATERIAL_IDLE_OK");
                 root.stage = 7;
                 const now = Date.now();
@@ -349,10 +357,10 @@ ShellRoot {
                 // app, the chosen output and input rest under their drops.
                 const glass = JSON.parse(scene.status()).system_glass.panel;
                 if (root.stage === 19 && (!glass.tab || glass.tab.alpha < .99 || glass.tab_page !== "sound" || glass.knobs < 3 || glass.rows < 2))
-                    throw new Error("System panel drops missing: " + JSON.stringify(glass));
+                    root.fail("System panel drops missing: " + JSON.stringify(glass));
                 // Only the open page's tab is the accent drop (knobs and chosen rows stay plain).
                 if (root.stage === 19 && glass.selected !== 1)
-                    throw new Error("System panel: not exactly the tab selected: " + JSON.stringify(glass));
+                    root.fail("System panel: not exactly the tab selected: " + JSON.stringify(glass));
                 if (root.stage === 19)
                     console.log("SELECTED_DROPS " + JSON.stringify({
                         shot: "system-sound",
@@ -505,17 +513,17 @@ ShellRoot {
                 // The pointer on the first notification row: the hover drop flows to it.
                 const row = root.findTarget(scene.clockPanel, "note-");
                 if (!row)
-                    throw new Error("No notification row in the drawer");
+                    root.fail("No notification row in the drawer");
                 pointer.mouseMove(row, row.width / 2, row.height / 2);
                 root.stage = 45;
                 tick.restart();
             } else if (root.stage === 45) {
                 const glass = JSON.parse(scene.status()).clock_glass.panel;
                 if (glass.hover.alpha < .99 || !glass.hover_key.startsWith("note-") || glass.today.alpha < .99 || glass.knob.alpha < .99 || glass.player.alpha < .99)
-                    throw new Error("Clock panel drops missing: " + JSON.stringify(glass));
+                    root.fail("Clock panel drops missing: " + JSON.stringify(glass));
                 // Today and the chosen player take the accent, the hover drop on the row is plain.
                 if (glass.selected !== 2)
-                    throw new Error("Clock panel: not exactly today and the player selected: " + JSON.stringify(glass));
+                    root.fail("Clock panel: not exactly today and the player selected: " + JSON.stringify(glass));
                 console.log("SELECTED_DROPS " + JSON.stringify({
                     shot: "drawer-hover",
                     accent: [glass.today, glass.player],

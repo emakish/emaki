@@ -2,14 +2,16 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The window at a niri third of every screen size: layout checks at each width, and the
-default size drawn exactly as before.
+unchanged pages at the default size drawn exactly as in the released reference.
 
   layout.py                  layout checks, minimum size, pixel comparison with BASE
+  layout.py --platform-theme qt6ct  explicitly repeat with the session platform theme
   layout.py --source REV     the layout checks against the UI of a git revision (shows a fix's "before")
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -31,18 +33,22 @@ SIZES = [[206, 342], [206, 399], [206, 400], [240, 420], [313, 482], [400, 600],
          [560, 700], [632, 342], [633, 1022], [720, 700], [846, 1542], [960, 600], [1000, 700], [1180, 780], [1200, 800]]
 # The narrowest and the shortest third above: the window's minimum must stay within it.
 THIRD = (206, 342)
-# The reviewed 0.9 look: Rose accent, real Emaki mark and stronger secondary text.
+# The released 1.0.1 look includes the heading-width repair, release mark and progress labels.
 # The shared fixture includes a foreign package, so its AUR-off notice remains visible.
 # Interaction tests separately cover zero/unknown counts. Keep this reference pinned:
 # only an intentional, reviewed visual change may advance the pixel baseline.
-BASE = 'b5bd4f9816f9a33aed71b091b9331f134fb24715'
+# Browse was redesigned for local discovery in 1.1 (DECISIONS, 2026-10-31); its
+# current layout is checked above, while the other pages keep the released pixel guard.
+BASE = 'bdd6f3c759d879eda5bc217dfee663609e22af14'
 DEFAULT = [[1180, 780]]
+# The release gate exercises Qt defaults; a theme is used only when explicitly requested.
+PLATFORM_THEME = None
 
 
 def walk(size, source=UI, shots=''):
     """One window size in its own process: an offscreen window does not reliably take a new size."""
     try:
-        log = interactions.run(*size, entry='LayoutTest.qml', source=source, timeout=300,
+        log = interactions.run(*size, entry='LayoutTest.qml', source=source, timeout=300, platform_theme=PLATFORM_THEME,
                                extra={'TEST_SIZES': json.dumps([size]), 'TEST_SHOTS': shots})
     except AssertionError as error:
         log = str(error)
@@ -55,7 +61,7 @@ def walk(size, source=UI, shots=''):
 
 
 def layout(source=UI, sizes=SIZES, shots=''):
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=int(os.environ.get("EMAKI_TEST_JOBS", "2"))) as pool:
         results = list(pool.map(lambda size: walk(size, source, shots), sizes))
     failed = [line for _, _, failures in results for line in failures]
     for size, checked, failures in results:
@@ -99,17 +105,22 @@ def identical():
         shots = {}
         for name, source in (('base', base), ('now', UI)):
             (root / f'{name}-shots').mkdir()
-            interactions.run(entry='LayoutTest.qml', source=source, timeout=300,
+            interactions.run(entry='LayoutTest.qml', source=source, timeout=300, platform_theme=PLATFORM_THEME,
                              extra={'TEST_SIZES': json.dumps(DEFAULT), 'TEST_SHOTS': str(root / f'{name}-shots'), 'TEST_SHOTS_ONLY': '1'})
             shots[name] = {path.name: path.read_bytes() for path in (root / f'{name}-shots').glob('*.png')}
         assert shots['base'] and set(shots['base']) == set(shots['now']), (sorted(shots['base']), sorted(shots['now']))
-        differ = sorted(name for name in shots['base'] if shots['base'][name] != shots['now'][name])
+        # The default-font review dialog intentionally grows to fit fallback stars.
+        # Keep its exact released-pixel guard with qt6ct, where they already fit.
+        compared = [name for name in shots["base"] if not name.startswith("browse-")
+                    and (PLATFORM_THEME == 'qt6ct' or not name.startswith("review-dialog-"))]
+        assert compared, "the historical guard compares unchanged pages"
+        differ = sorted(name for name in compared if shots["base"][name] != shots["now"][name])
         if differ:
             keep = ROOT / '.cache/evidence/N81W/pixel-diff'
             shutil.rmtree(keep, ignore_errors=True)
             shutil.copytree(root, keep, ignore=shutil.ignore_patterns('*.qml', '*.js', 'tests'))
             raise AssertionError(f'the default size draws differently from {BASE}: {differ} (shots kept in {keep})')
-        print('PASS pixel-identical at 1180x780 with', BASE, f'({len(shots["now"])} pages)')
+        print('PASS pixel-identical at 1180x780 with', BASE, f'({len(compared)} unchanged pages; Browse and the resized default-font review dialog use current layout checks)')
 
 
 # Program icons as a picture that takes a while to load: a plain fill with many tiny shapes in one
@@ -130,7 +141,7 @@ def images():
         root = Path(directory)
         slow_icon(root / 'slow.svg')
         (root / 'shots').mkdir()
-        interactions.run(entry='LayoutTest.qml', timeout=300,
+        interactions.run(entry='LayoutTest.qml', timeout=300, platform_theme=PLATFORM_THEME,
                          extra={'TEST_SIZES': json.dumps(DEFAULT), 'TEST_SHOTS': str(root / 'shots'), 'TEST_SHOTS_ONLY': '1', 'TEST_ICON': str(root / 'slow.svg')})
         shot = Image.open(root / 'shots/program-1180x780.png').convert('RGB')
         filled = list(shot.getdata()).count(SLOW_FILL)
@@ -141,7 +152,10 @@ def images():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', help='run the layout checks against the UI of this git revision')
+    parser.add_argument('--platform-theme', choices=('qt6ct',),
+                        help='explicit platform theme; the default clears the host platform theme')
     arguments = parser.parse_args()
+    PLATFORM_THEME = arguments.platform_theme
     if arguments.source:
         with tempfile.TemporaryDirectory(prefix='emaki-manager-source-') as directory:
             source = checkout(arguments.source, Path(directory) / 'ui')

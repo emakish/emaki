@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Decode shipped Xcursor files into comparison PNGs; requires Pillow, no display.
+
+Usage: nice -n 19 python3 scripts/cursor-contact-sheet --output /tmp/cursors
+Pixels are shown at native resolution, using the nearest nominal size as niri does.
+"""
+import argparse
+from functools import lru_cache
+from pathlib import Path
+import runpy
+import struct
+import sys
+
+from PIL import Image, ImageDraw, ImageFont
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parent.parent
+BUILD = runpy.run_path(str(ROOT / 'scripts/build-cursors'))
+THEMES = tuple(BUILD['THEMES'])
+BACKGROUNDS = ('#f4f4f4', '#202124')
+LABEL = 220
+CELL = 160
+HEADER = 120
+FONT = ImageFont.load_default(size=14)
+SMALL = ImageFont.load_default(size=12)
+
+
+@lru_cache(maxsize=512)
+def decode(theme, name, request):
+    data = (ROOT / 'cursors' / theme / 'cursors' / name).read_bytes()
+    magic, header, version, count = struct.unpack_from('<4s3I', data)
+    assert (magic, header, version) == (b'Xcur', 16, 0x10000)
+    entries = [struct.unpack_from('<3I', data, 16 + i*12) for i in range(count)]
+    nominal = min((size for _, size, _ in entries), key=lambda size: abs(size-request))
+    result = []
+    for kind, size, offset in entries:
+        if size != nominal:
+            continue
+        assert kind == 0xFFFD0002
+        _, _, _, _, width, height, hx, hy, delay = struct.unpack_from('<9I', data, offset)
+        pixels = struct.unpack_from(f'<{width*height}I', data, offset+36)
+        rgba = bytearray()
+        for pixel in pixels:
+            alpha = pixel >> 24
+            rgba.extend([min(255, (channel*255 + alpha//2)//alpha) if alpha else 0
+                         for channel in ((pixel >> 16) & 255, (pixel >> 8) & 255, pixel & 255)])
+            rgba.append(alpha)
+        result.append((Image.frombytes('RGBA', (width, height), bytes(rgba)), hx, hy, delay))
+    return nominal, result
+
+
+def tile(sheet, origin, theme, name, size, background, frame=0):
+    x, y = origin
+    draw = ImageDraw.Draw(sheet)
+    draw.rectangle((x, y, x+CELL-1, y+CELL-1), fill=background)
+    nominal, frames = decode(theme, name, size)
+    raster, hx, hy, delay = frames[frame % len(frames)]
+    # Preserve every native pixel, at every size.
+    assert raster.width <= CELL-12 and raster.height <= CELL-25, (theme, name, size)
+    sheet.paste(raster, (x+(CELL-raster.width)//2, y+8+(CELL-28-raster.height)//2), raster)
+    colour = '#666666' if background == BACKGROUNDS[0] else '#c2c3c5'
+    draw.text((x+5, y+CELL-18), f'{nominal}px  hot {hx},{hy}', font=SMALL, fill=colour)
+
+
+def comparison(output, names, sizes, title):
+    columns = len(THEMES)*len(sizes)*len(BACKGROUNDS)
+    sheet = Image.new('RGB', (LABEL+columns*CELL, HEADER+len(names)*CELL), '#ffffff')
+    draw = ImageDraw.Draw(sheet)
+    draw.text((12, 12), title, font=FONT, fill='#202124')
+    draw.text((12, 36), 'Native pixels; nearest nominal size. Bottom labels: selected size and hotspot.',
+              font=FONT, fill='#555555')
+    for group, theme in enumerate(THEMES):
+        left = LABEL+group*len(sizes)*2*CELL
+        draw.text((left+8, 65), theme, font=FONT, fill='#202124')
+        for index, size in enumerate(sizes):
+            for bg, background in enumerate(BACKGROUNDS):
+                x = left+(index*2+bg)*CELL
+                draw.text((x+8, 96), f'{size}px / {"light" if bg == 0 else "dark"}', font=FONT, fill='#202124')
+                for row, name in enumerate(names):
+                    tile(sheet, (x, HEADER+row*CELL), theme, name, size, background)
+    for row, name in enumerate(names):
+        y = HEADER+row*CELL
+        draw.text((12, y+42), name, font=FONT, fill='#202124')
+        canonical = (ROOT / 'cursors/Emaki-White/cursors' / name).resolve().name
+        if name != canonical:
+            draw.text((12, y+65), f'= {canonical}', font=SMALL, fill='#666666')
+    sheet.save(output)
+    print(f'wrote {output} ({sheet.width}x{sheet.height})')
+
+
+def closeup(output, names, sizes, zoom=4, gap=6):
+    """Native pixels magnified with no smoothing, tiles packed tight: outlines and antialiasing
+    at small sizes can be judged by eye. Columns: theme, size, background."""
+    columns = [(theme, size, background) for theme in THEMES for size in sizes
+               for background in BACKGROUNDS]
+    widths = [max(decode(theme, name, size)[1][0][0].width for name in names) * zoom
+              for theme, size, _ in columns]
+    heights = [max(decode(theme, name, size)[1][0][0].height for theme, size, _ in columns) * zoom
+               for name in names]
+    sheet = Image.new('RGB', (LABEL + sum(widths) + gap*len(columns), HEADER + sum(heights)
+                              + gap*len(names)), '#ffffff')
+    draw = ImageDraw.Draw(sheet)
+    draw.text((12, 12), f'Native pixels magnified {zoom} times, nearest nominal size', font=FONT,
+              fill='#202124')
+    x = LABEL
+    for (theme, size, background), width in zip(columns, widths):
+        draw.text((x, 70), theme, font=SMALL, fill='#202124')
+        draw.text((x, 92), f'{size}px', font=SMALL, fill='#555555')
+        y = HEADER
+        for name, height in zip(names, heights):
+            raster = decode(theme, name, size)[1][0][0]
+            tile = Image.new('RGBA', raster.size, background)
+            tile.alpha_composite(raster)
+            big = tile.convert('RGB').resize((raster.width*zoom, raster.height*zoom),
+                                             Image.Resampling.NEAREST)
+            draw.rectangle((x, y, x+width-1, y+height-1), fill=background)
+            sheet.paste(big, (x, y))
+            y += height + gap
+        x += width + gap
+    y = HEADER
+    for name, height in zip(names, heights):
+        draw.text((12, y + height//2 - 8), name, font=FONT, fill='#202124')
+        y += height + gap
+    sheet.save(output)
+    print(f'wrote {output} ({sheet.width}x{sheet.height})')
+
+
+def animation_sheet(output):
+    rows = [(theme, name, background) for theme in THEMES for name in ('wait', 'progress')
+            for background in BACKGROUNDS]
+    count = max(len(decode(theme, name, 32)[1]) for theme, name, _ in rows)
+    sheet = Image.new('RGB', (LABEL+count*CELL, HEADER+len(rows)*CELL), '#ffffff')
+    draw = ImageDraw.Draw(sheet)
+    draw.text((12, 12), 'All animation frames at a 32px request, in playback order', font=FONT, fill='#202124')
+    for row, (theme, name, background) in enumerate(rows):
+        _, frames = decode(theme, name, 32)
+        y = HEADER+row*CELL
+        draw.text((12, y+35), f'{theme} / {name}', font=FONT, fill='#202124')
+        draw.text((12, y+60), f'{len(frames)} frames, {frames[0][3]}ms each', font=SMALL, fill='#666666')
+        for index in range(len(frames)):
+            tile(sheet, (LABEL+index*CELL, y), theme, name, 32, background, index)
+    sheet.save(output)
+    print(f'wrote {output} ({sheet.width}x{sheet.height})')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, required=True)
+    args = parser.parse_args()
+    args.output.mkdir(parents=True, exist_ok=True)
+    names = sorted(path.name for path in (ROOT / 'cursors/Emaki-White/cursors').iterdir())
+    comparison(args.output / 'overview.png', list(BUILD['ALIASES']), (24, 32, 48, 64),
+               'Cursor comparison: all 14 shapes')
+    comparison(args.output / 'all-names.png', names, (24, 32, 48, 64),
+               f'Cursor comparison: all {len(names)} names, including aliases')
+    comparison(args.output / 'fractional.png', list(BUILD['ALIASES']), (30, 36, 42, 60, 72),
+               '24px cursor at 1.25, 1.5, 1.75, 2.5 and 3 times scale')
+    closeup(args.output / 'closeup.png', list(BUILD['ALIASES']), (24, 32))
+    animation_sheet(args.output / 'animations.png')
+
+
+if __name__ == '__main__':
+    main()

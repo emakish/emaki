@@ -734,15 +734,15 @@ package_shell-tools() {
         # The marker pins whatever release the active recipe carries.
         release = re.search(r'^pkgrel=(\d+)$', active, re.M).group(1)
         expected = {
-            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki=26.04-30', 'quickshell-emaki>=0.3.1-14', 'kwallet>=6.30', 'systemd>=256',
+            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki=26.04-31', 'quickshell-emaki>=0.3.1-15', 'kwallet>=6.30', 'systemd>=256',
                              # Emaki.I18n is built against Qt 6.12 (0.11).
                              'qt6-declarative>=6.12', 'qt6-base>=6.12.0', 'qt6-base<6.13',
                              'libicui18n.so=78-64', 'libicuuc.so=78-64'},
             'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12'},
             'emaki-installer': {'archinstall=4.5-1', 'emaki-config>=1.0.0-2'},
             'emaki-sudo-key': {'emaki-config>=0.9.0-1'},
-            'emaki': {'emaki-config=1.0.1-2', 'emaki-desktop=0.9.0-2', 'emaki-keyring>=0.9.0-1',
-                      'emaki-mirrorlist>=0.9.0-1', 'niri-emaki=26.04-30', f'quickshell-emaki=0.3.1-{release}'},
+            'emaki': {'emaki-config=1.1.0-1', 'emaki-themes=1.1.0-1', 'emaki-desktop=0.9.0-2', 'emaki-keyring>=0.9.0-1',
+                      'emaki-mirrorlist>=0.9.0-1', 'niri-emaki=26.04-31', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},
             'quickshell-emaki': {'libEGL.so', 'libOpenGL.so', 'libgcc_s.so',
@@ -761,8 +761,10 @@ package_shell-tools() {
                                                       ('makedepends', 'qt6-shadertools'))
                                 for bound in (f'>={lower}', f'<{upper}')}
         self.assertEqual({(f.package, f.kind, f.value) for f in fences}, expected_fences)
-        # The translation plugin replaces two Wayland fences with two base fences.
-        self.assertEqual(len(fences), 44 if activated else 40)
+        # The release marker also pins the separately delivered themes package.
+        self.assertIn(('emaki', 'depends', 'emaki-themes=1.1.0-1'),
+                      {(f.package, f.kind, f.value) for f in fences})
+        self.assertEqual(len(fences), 45 if activated else 41)
         self.assertTrue(set(expected) <= names)
 
 

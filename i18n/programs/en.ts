@@ -928,24 +928,20 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
             <translation>Installing…</translation>
         </message>
         <message>
-            <source>Development kits</source>
-            <translation>Development kits</translation>
-        </message>
-        <message>
-            <source>Websites as apps</source>
-            <translation>Websites as apps</translation>
-        </message>
-        <message>
-            <source>Our picks are not available right now. Try Refresh.</source>
-            <translation>Our picks are not available right now. Try Refresh.</translation>
-        </message>
-        <message>
             <source>Most installed this month</source>
             <translation>Most installed this month</translation>
         </message>
         <message>
             <source>What the full install adds</source>
             <translation>What the full install adds</translation>
+        </message>
+        <message>
+            <source>Development kits</source>
+            <translation>Development kits</translation>
+        </message>
+        <message>
+            <source>Websites as apps</source>
+            <translation>Websites as apps</translation>
         </message>
         <message>
             <source>From Emaki</source>
@@ -1423,6 +1419,69 @@ SPDX-License-Identifier: GPL-3.0-or-later -->
         <message>
             <source>%1k</source>
             <translation>%1k</translation>
+        </message>
+    </context>
+    <context>
+        <name>StorefrontData</name>
+        <message>
+            <source>Discover your next favorite</source>
+            <translation>Discover your next favorite</translation>
+        </message>
+        <message>
+            <source>A few ideas for your computer. Recommendations stay on this device.</source>
+            <translation>A few ideas for your computer. Recommendations stay on this device.</translation>
+        </message>
+        <message>
+            <source>App of the day</source>
+            <translation>App of the day</translation>
+        </message>
+        <message>
+            <source>Explore app</source>
+            <translation>Explore app</translation>
+        </message>
+        <message>
+            <source>See all</source>
+            <translation>See all</translation>
+        </message>
+        <message>
+            <source>Find your next possibility</source>
+            <translation>Find your next possibility</translation>
+        </message>
+        <message>
+            <source>Because you have %1</source>
+            <translation>Because you have %1</translation>
+        </message>
+        <message>
+            <source>Ideas based on programs installed on this computer.</source>
+            <translation>Ideas based on programs installed on this computer.</translation>
+        </message>
+        <message>
+            <source>More to discover soon</source>
+            <translation>More to discover soon</translation>
+        </message>
+        <message>
+            <source>Browse the categories. Ideas appear when matching programs are available in the catalog.</source>
+            <translation>Browse the categories. Ideas appear when matching programs are available in the catalog.</translation>
+        </message>
+        <message>
+            <source>Preview unavailable</source>
+            <translation>Preview unavailable</translation>
+        </message>
+        <message>
+            <source>Coming from Windows?</source>
+            <translation>Coming from Windows?</translation>
+        </message>
+        <message>
+            <source>Familiar ways to browse, work and watch.</source>
+            <translation>Familiar ways to browse, work and watch.</translation>
+        </message>
+        <message>
+            <source>Make something new</source>
+            <translation>Make something new</translation>
+        </message>
+        <message>
+            <source>Turn an idea into a drawing, a design or a new world.</source>
+            <translation>Turn an idea into a drawing, a design or a new world.</translation>
         </message>
     </context>
     <context>

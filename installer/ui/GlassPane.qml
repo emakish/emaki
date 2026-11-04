@@ -9,13 +9,14 @@ Item {
     // The floating surface uses wallpaper glass; it never captures its own window.
     // The same published wallpaper helper as the shell supplies this texture.
     property string wallpaperTexture: ""
+    property color fallbackColor: Shell.LiquidPalette.flatPanel
     // Match tokens.toml and niri's window geometry clip for this floating window.
     readonly property real cornerRadius: 16
     readonly property bool software: GraphicsInfo.api === GraphicsInfo.Software
     Rectangle {
         anchors.fill: parent
         radius: root.cornerRadius
-        color: Shell.LiquidPalette.flatPanel
+        color: root.software ? root.fallbackColor : Shell.LiquidPalette.flatPanel
     }
     Loader {
         anchors.fill: parent

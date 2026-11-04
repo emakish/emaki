@@ -402,7 +402,7 @@ class PersonalConfiguration(unittest.TestCase):
                 failed_probe = None
                 portal_answer = b''
 
-                def run(self, command, root=False, check=True):
+                def run(self, command, root=False, check=True, timeout=900):
                     if self.failed_probe and command.endswith(' ' + self.failed_probe):
                         return subprocess.CompletedProcess(command, 1, b'', b'probe failed')
                     if command.endswith(' read'):

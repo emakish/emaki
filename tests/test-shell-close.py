@@ -33,15 +33,19 @@ for app_id, name in (('fixture-anki', 'Anki'), ('fixture-qvidcap', 'Qt V4L2 vide
         f'[Desktop Entry]\nType=Application\nName={name}\nExec=/usr/bin/true\nTerminal=false\n')
 shutil.copytree(ROOT / 'shell', profile / 'qml')
 shutil.copyfile(ROOT / 'tests/fixtures/ShellCloseTest.qml', profile / 'qml/shell.qml')
+# The profile owns HOME, both configuration locations and the Notes backend: the host's
+# QT_QPA_PLATFORMTHEME=qt6ct would copy its selector into the profile before any Emaki code runs.
 env = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(runtime_path(profile) / 'n.sock'),
+           HOME=str(profile), EMAKI_NOTES_HELPER=str(ROOT / 'notes/backend.py'),
            QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_SCALE_FACTOR='1',
            QML_DISABLE_DISK_CACHE='1', XDG_CONFIG_HOME=str(profile / 'config'),
+           XDG_CONFIG_DIRS=str(profile / 'config'),
            XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
            XDG_DATA_DIRS=str(profile / 'share'), XDG_CACHE_HOME=str(profile / 'cache'),
            XDG_RUNTIME_DIR=str(runtime_path(profile)), TMPDIR=str(profile / 'tmp'),
            DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session'),
            DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'no-system'))
-for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_SCREEN_SCALE_FACTORS', 'QT_LOGGING_RULES'):
+for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'QT_QPA_PLATFORMTHEME', 'QT_SCREEN_SCALE_FACTORS', 'QT_LOGGING_RULES'):
     env.pop(name, None)
 server = Server(runtime_path(profile) / 'n.sock')
 thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -160,7 +164,11 @@ try:
                 proc.wait(timeout=3)
     contents = log_path.read_text()
     assert not any(w in contents for w in ('WARN', 'ERROR', 'FAIL!', 'PRIVATE', 'ReferenceError', 'TypeError')), contents
-    assert all(not list((profile / part).rglob('*')) for part in ('config', 'state', 'data'))
+    # Nothing in config. Notes creates only its two empty private directories (as in test-shell.py).
+    assert not list((profile / 'config').rglob('*'))
+    written = {str(p.relative_to(profile)) for part in ('state', 'data') for p in (profile / part).rglob('*')}
+    assert written == {'state/emaki', 'state/emaki/notes', 'data/emaki', 'data/emaki/calendar'}, written
+    assert all((profile / path).is_dir() for path in written), written
 finally:
     server.stop.set()
     server.shutdown()
